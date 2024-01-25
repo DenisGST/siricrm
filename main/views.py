@@ -3,15 +3,21 @@ from django.shortcuts import render
 
 def index(request):
     context: dict[str, str] = {
-        'title': 'Home',
-        'content': 'Главная страница Siri CRM',
-        'list': ['first', 'second'],
-        'dict': {'first':1},
-        'is_authenticated': False
+        'title': 'SiriCRM - Главная',
+        'content': 'Система управления SiriCRM'
+        
     }
 
     return render(request,'main/index.html', context)
 
 
 def about(request):
-    return HttpResponse('About page')
+    context: dict[str, str] = {
+        'title': 'SiriCRM - Про SiriCRM',
+        'content': "Про SiriCRM",
+        'text_on_page': "SiriCRM - Система управления делами юридической компании."
+        
+    }
+
+    return render(request,'main/about.html', context)
+
