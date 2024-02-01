@@ -5,12 +5,11 @@ from goods.models import Categories
 
 def index(request):
 
-    categories = Categories.objects.all()
+    
 
     context: dict[str, str] = {
         'title': 'SiriCRM - Главная',
         'content': 'Система управления SiriCRM',
-        'categories': categories
         
     }
 
