@@ -85,8 +85,12 @@ WSGI_APPLICATION = 'siricrm.wsgi.application'
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'ENGINE': 'django.db.backends.postgressql',
+        'NAME': 'postgres',
+        'USER': 'root',
+        'PASSWORD': 'Qxgba7ha9Z!$',
+        'HOST': 'localhost',
+        'PORT': '5432',
     }
 }
 
