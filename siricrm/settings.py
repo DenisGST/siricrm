@@ -39,6 +39,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'django.contrib.postgres',
 
      "debug_toolbar",
 
@@ -85,9 +86,9 @@ WSGI_APPLICATION = 'siricrm.wsgi.application'
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.postgressql',
-        'NAME': 'postgres',
-        'USER': 'root',
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': 'db_siricrm',
+        'USER': 'dbroot',
         'PASSWORD': 'Qxgba7ha9Z!$',
         'HOST': 'localhost',
         'PORT': '5432',
