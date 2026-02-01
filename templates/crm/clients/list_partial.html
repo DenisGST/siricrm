@@ -1,0 +1,110 @@
+<div class="overflow-x-auto">
+  <table class="table table-zebra table-sm">
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>Клиент</th>
+        <th>Контакты</th>
+        <th>Оператор</th>
+        <th>Статус</th>
+        <th>Последнее сообщение</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for client in page_obj %}
+        <tr
+          class="hover cursor-pointer"
+          hx-get="{% url 'chat' client.id %}"
+          hx-target="#content-area"
+          hx-swap="innerHTML"
+        >
+          <th>{{ forloop.counter }}</th>
+          <td>
+            <div class="font-semibold">
+              {{ client.first_name }} {{ client.last_name }}
+            </div>
+            {% if client.username %}
+              <div class="text-xs text-base-content/70">
+                @{{ client.username }}
+              </div>
+            {% endif %}
+          </td>
+          <td class="text-xs">
+            {% if client.phone %}
+              <div>📱 {{ client.phone }}</div>
+            {% endif %}
+            {% if client.email %}
+              <div>📧 {{ client.email }}</div>
+            {% endif %}
+          </td>
+          <td class="text-xs">
+            {% if client.assigned_operator %}
+              {{ client.assigned_operator.user.get_full_name }}
+            {% else %}
+              <span class="badge badge-ghost badge-xs">Не назначен</span>
+            {% endif %}
+          </td>
+          <td>
+            <span class="badge badge-sm">
+              {{ client.get_status_display }}
+            </span>
+          </td>
+          <td class="text-xs">
+            {% if client.last_message_at %}
+              {{ client.last_message_at|date:"d.m.Y H:i" }}
+            {% else %}
+              —
+            {% endif %}
+          </td>
+          <td>
+            <button
+              class="btn btn-xs btn-outline"
+              hx-get="{% url 'chat' client.id %}"
+              hx-target="#content-area"
+              hx-swap="innerHTML"
+            >
+              Открыть чат
+            </button>
+          </td>
+        </tr>
+      {% empty %}
+        <tr>
+          <td colspan="7" class="text-center text-sm text-base-content/60">
+            Клиентов нет
+          </td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% if page_obj.paginator.num_pages > 1 %}
+  <div
+    class="join mt-3"
+    hx-target="#clients-table-wrapper"
+    hx-swap="outerHTML"
+  >
+    {% if page_obj.has_previous %}
+      <button
+        class="btn btn-sm join-item"
+        hx-get="?page={{ page_obj.previous_page_number }}&search={{ search }}"
+      >
+        «
+      </button>
+    {% endif %}
+
+    <button class="btn btn-sm join-item btn-ghost">
+      Стр. {{ page_obj.number }} / {{ page_obj.paginator.num_pages }}
+    </button>
+
+    {% if page_obj.has_next %}
+      <button
+        class="btn btn-sm join-item"
+        hx-get="?page={{ page_obj.next_page_number }}&search={{ search }}"
+      >
+        »
+      </button>
+    {% endif %}
+  </div>
+{% endif %}

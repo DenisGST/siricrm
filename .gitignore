@@ -1,0 +1,52 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pdb
+*.egg
+*.egg-info/
+dist/
+build/
+
+# Virtualenv
+venv/
+.envrc
+.env.bak
+
+# Django
+*.log
+logs/
+db.sqlite3
+media/
+staticfiles/
+static_collected/
+*.pot
+*.py,cover
+
+# Local settings / secrets
+.env
+*.local.py
+settings_local.py
+
+# IDE / Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Migrations cache (опционально, если не хочешь трекать pycache)
+**/migrations/__pycache__/
+
+# Node / front (если вдруг появится)
+node_modules/
+npm-debug.log*
+yarn-error.log*
+
+# Docker
+docker-compose.override.yml
+*.pid

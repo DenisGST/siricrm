@@ -1,0 +1,192 @@
+{% load static %}
+{% load form_extras %}
+
+<div class="max-w-xl mx-auto">
+  <div class="flex items-center justify-between mb-4">
+    <h2 class="text-xl font-bold">
+      {% if form.instance.pk %}Редактирование клиента{% else %}Новый клиент{% endif %}
+    </h2>
+
+    <button
+      type="button"
+      class="btn btn-sm btn-ghost"
+      onclick="history.back()"
+    >
+      ← Назад
+    </button>
+  </div>
+
+  <form
+    method="post"
+    hx-post="{{ request.path }}"
+    hx-target="#content-area"
+    hx-swap="innerHTML"
+    class="space-y-4"
+  >
+    {% csrf_token %}
+
+    {% if form.non_field_errors %}
+      <div class="alert alert-error text-sm">
+        {{ form.non_field_errors }}
+      </div>
+    {% endif %}
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <!-- Имя -->
+      <div class="form-control">
+        <label class="label">
+          <span class="label-text">Имя</span>
+        </label>
+        {{ form.first_name|add_class:"input input-bordered input-sm w-full" }}
+        {% if form.first_name.errors %}
+          <label class="label">
+            <span class="label-text-alt text-error text-xs">
+              {{ form.first_name.errors.0 }}
+            </span>
+          </label>
+        {% endif %}
+      </div>
+
+      <!-- Фамилия -->
+      <div class="form-control">
+        <label class="label">
+          <span class="label-text">Фамилия</span>
+        </label>
+        {{ form.last_name|add_class:"input input-bordered input-sm w-full" }}
+        {% if form.last_name.errors %}
+          <label class="label">
+            <span class="label-text-alt text-error text-xs">
+              {{ form.last_name.errors.0 }}
+            </span>
+          </label>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <!-- Username -->
+      <div class="form-control">
+        <label class="label">
+          <span class="label-text">Username (Telegram)</span>
+        </label>
+        {{ form.username|add_class:"input input-bordered input-sm w-full" }}
+        {% if form.username.errors %}
+          <label class="label">
+            <span class="label-text-alt text-error text-xs">
+              {{ form.username.errors.0 }}
+            </span>
+          </label>
+        {% endif %}
+      </div>
+
+      <!-- Telegram ID -->
+      <div class="form-control">
+        <label class="label">
+          <span class="label-text">Telegram ID</span>
+        </label>
+        {{ form.telegram_id|add_class:"input input-bordered input-sm w-full" }}
+        {% if form.telegram_id.errors %}
+          <label class="label">
+            <span class="label-text-alt text-error text-xs">
+              {{ form.telegram_id.errors.0 }}
+            </span>
+          </label>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <!-- Телефон -->
+      <div class="form-control">
+        <label class="label">
+          <span class="label-text">Телефон</span>
+        </label>
+        {{ form.phone|add_class:"input input-bordered input-sm w-full" }}
+        {% if form.phone.errors %}
+          <label class="label">
+            <span class="label-text-alt text-error text-xs">
+              {{ form.phone.errors.0 }}
+            </span>
+          </label>
+        {% endif %}
+      </div>
+
+      <!-- Email -->
+      <div class="form-control">
+        <label class="label">
+          <span class="label-text">Email</span>
+        </label>
+        {{ form.email|add_class:"input input-bordered input-sm w-full" }}
+        {% if form.email.errors %}
+          <label class="label">
+            <span class="label-text-alt text-error text-xs">
+              {{ form.email.errors.0 }}
+            </span>
+          </label>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Назначенный оператор -->
+    <div class="form-control">
+      <label class="label">
+        <span class="label-text">Оператор</span>
+      </label>
+      {{ form.assigned_operator|add_class:"select select-bordered select-sm w-full" }}
+      {% if form.assigned_operator.errors %}
+        <label class="label">
+          <span class="label-text-alt text-error text-xs">
+            {{ form.assigned_operator.errors.0 }}
+          </span>
+        </label>
+      {% endif %}
+    </div>
+
+    <!-- Статус -->
+    <div class="form-control">
+      <label class="label">
+        <span class="label-text">Статус</span>
+      </label>
+      {{ form.status|add_class:"select select-bordered select-sm w-full" }}
+      {% if form.status.errors %}
+        <label class="label">
+          <span class="label-text-alt text-error text-xs">
+            {{ form.status.errors.0 }}
+          </span>
+        </label>
+      {% endif %}
+    </div>
+
+    <!-- Заметки -->
+    <div class="form-control">
+      <label class="label">
+        <span class="label-text">Заметки</span>
+      </label>
+      {{ form.notes|add_class:"textarea textarea-bordered textarea-sm w-full" }}
+      {% if form.notes.errors %}
+        <label class="label">
+          <span class="label-text-alt text-error text-xs">
+            {{ form.notes.errors.0 }}
+          </span>
+        </label>
+      {% endif %}
+    </div>
+
+    <div class="flex justify-end gap-2 pt-2">
+      <button
+        type="button"
+        class="btn btn-sm btn-ghost"
+        onclick="history.back()"
+      >
+        Отмена
+      </button>
+
+      <button
+        type="submit"
+        class="btn btn-sm btn-primary"
+      >
+        {% if form.instance.pk %}Сохранить{% else %}Создать{% endif %}
+      </button>
+    </div>
+  </form>
+</div>

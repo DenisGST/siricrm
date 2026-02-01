@@ -1,0 +1,39 @@
+{% load static %}
+<div class="flex flex-col gap-4">
+
+  <div class="flex flex-wrap items-center justify-between gap-2">
+    <h2 class="text-xl font-bold">Клиенты</h2>
+
+    <form
+      hx-get="{% url 'clients_list' %}"
+      hx-target="#clients-table-wrapper"
+      hx-swap="outerHTML"
+      class="join"
+    >
+      <input
+        type="text"
+        name="search"
+        value="{{ search }}"
+        placeholder="Поиск: имя, телефон, @username, email"
+        class="input input-sm input-bordered join-item"
+      />
+      <button class="btn btn-sm btn-primary join-item" type="submit">
+        Найти
+      </button>
+
+      <a
+        href="{% url 'client_create' %}"
+        hx-get="{% url 'client_create' %}"
+        hx-target="#content-area"
+        hx-swap="innerHTML"
+        class="btn btn-sm btn-primary"
+      >
+        + Новый клиент
+      </a>
+    </form>
+  </div>
+
+  <div id="clients-table-wrapper">
+    {% include "crm/clients/list_partial.html" %}
+  </div>
+</div>

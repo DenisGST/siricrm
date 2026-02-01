@@ -1,0 +1,80 @@
+{% load static %}
+<div class="flex justify-between items-center mb-4">
+  <h2 class="text-xl font-bold">Kanban по клиентам</h2>
+
+  <button
+    class="btn btn-sm btn-primary"
+    hx-get="{% url 'client_create' %}"
+    hx-target="#content-area"
+    hx-swap="innerHTML"
+  >
+    + Новый клиент
+  </button>
+</div>
+
+<div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+  <!-- Колонка: Лиды -->
+  <div class="bg-base-200 rounded-lg p-3">
+    <div class="flex items-center justify-between mb-2">
+      <h2 class="font-bold text-sm uppercase">Лиды</h2>
+      <span class="badge badge-sm badge-warning">{{ leads|length }}</span>
+    </div>
+
+    <div id="kanban-lead"
+         class="space-y-2 min-h-[50px]"
+         hx-get="{% url 'kanban_column' 'lead' %}"
+         hx-trigger="load"
+         hx-target="#kanban-lead"
+         hx-swap="innerHTML">
+      <!-- сюда HTMX подгрузит карточки -->
+    </div>
+  </div>
+
+  <!-- Колонка: Активные -->
+  <div class="bg-base-200 rounded-lg p-3">
+    <div class="flex items-center justify-between mb-2">
+      <h2 class="font-bold text-sm uppercase">Активные</h2>
+      <span class="badge badge-sm badge-success">{{ actives|length }}</span>
+    </div>
+
+    <div id="kanban-active"
+         class="space-y-2 min-h-[50px]"
+         hx-get="{% url 'kanban_column' 'active' %}"
+         hx-trigger="load"
+         hx-target="#kanban-active"
+         hx-swap="innerHTML">
+    </div>
+  </div>
+
+  <!-- Колонка: Неактивные -->
+  <div class="bg-base-200 rounded-lg p-3">
+    <div class="flex items-center justify-between mb-2">
+      <h2 class="font-bold text-sm uppercase">Неактивные</h2>
+      <span class="badge badge-sm badge-neutral">{{ inactives|length }}</span>
+    </div>
+
+    <div id="kanban-inactive"
+         class="space-y-2 min-h-[50px]"
+         hx-get="{% url 'kanban_column' 'inactive' %}"
+         hx-trigger="load"
+         hx-target="#kanban-inactive"
+         hx-swap="innerHTML">
+    </div>
+  </div>
+
+  <!-- Колонка: Закрытые -->
+  <div class="bg-base-200 rounded-lg p-3">
+    <div class="flex items-center justify-between mb-2">
+      <h2 class="font-bold text-sm uppercase">Закрытые</h2>
+      <span class="badge badge-sm badge-accent">{{ closeds|length }}</span>
+    </div>
+
+    <div id="kanban-closed"
+         class="space-y-2 min-h-[50px]"
+         hx-get="{% url 'kanban_column' 'closed' %}"
+         hx-trigger="load"
+         hx-target="#kanban-closed"
+         hx-swap="innerHTML">
+    </div>
+  </div>
+</div>

@@ -1,0 +1,69 @@
+{% load static %}
+<div id="telegram-auth-block">
+  <div class="max-w-lg mx-auto">
+    <div class="card bg-base-100 shadow-md">
+      <div class="card-body">
+        <h2 class="card-title mb-2">
+          Привязка Telegram аккаунта
+        </h2>
+
+        {% if request.user.telegram_user %}
+          <div class="alert alert-success mb-3">
+            <span>
+              Ваш Telegram уже привязан:
+              <strong>
+                {{ request.user.telegram_user.first_name }}
+                {% if request.user.telegram_user.last_name %}
+                  {{ request.user.telegram_user.last_name }}
+                {% endif %}
+                {% if request.user.telegram_user.username %}
+                  (@{{ request.user.telegram_user.username }})
+                {% endif %}
+              </strong>
+            </span>
+          </div>
+        {% endif %}
+
+        <p class="text-sm mb-2">
+          1. Откройте нашего бота в Telegram:
+        </p>
+
+        <a
+          href="https://t.me/{{ bot_username }}"
+          target="_blank"
+          class="btn btn-sm btn-primary mb-3"
+        >
+          Открыть бота @{{ bot_username }}
+        </a>
+
+        <p class="text-sm mb-2">
+          2. Отправьте боту команду:
+        </p>
+
+        <div class="mockup-code mb-3">
+          <pre><code>/auth {{ auth_code }}</code></pre>
+        </div>
+
+        <p class="text-xs text-base-content/70 mb-4">
+          Код одноразовый и действует ограниченное время. После отправки бот
+          свяжет ваш Telegram аккаунт с текущей учётной записью CRM.
+        </p>
+
+        <div class="divider my-2"></div>
+
+        <div class="flex justify-between items-center">
+          <form method="post" hx-post="{{ request.path }}" hx-target="#telegram-auth-block" hx-swap="outerHTML">
+            {% csrf_token %}
+            <button class="btn btn-sm btn-outline" type="submit" name="regen" value="1">
+              Сгенерировать новый код
+            </button>
+          </form>
+
+          <a href="/" class="btn btn-sm btn-ghost">
+            На главную
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

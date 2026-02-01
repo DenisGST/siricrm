@@ -1,0 +1,391 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CRM Dashboard</title>
+
+    <!-- Сначала Tailwind, потом daisyUI поверх -->
+    <link rel="stylesheet" href="{% static 'css/tailwind.css' %}">
+    <link rel="stylesheet" href="{% static 'css/daisyui.css' %}">
+
+    <!-- Твои стили -->
+    <link rel="stylesheet" href="{% static 'css/style.css' %}">
+
+    <!-- HTMX -->
+    <script src="https://unpkg.com/htmx.org@1.9.8"></script>
+    <!-- CSRF для HTMX -->
+    <script>
+        const csrftoken =
+            document.querySelector('[name=csrfmiddlewaretoken]')?.value ||
+            document.cookie.split('; ').find(row => row.startsWith('csrftoken='))?.split('=')[1];
+
+        document.addEventListener('htmx:configRequest', (event) => {
+            if (csrftoken) {
+                event.detail.headers['X-CSRFToken'] = csrftoken;
+            }
+        });
+    </script>
+
+    <style>
+        [hx-boost] { cursor: pointer; }
+        .htmx-loading { opacity: 0.6; }
+        .htmx-swapping { opacity: 0; transition: opacity 1s ease-out; }
+        .htmx-settling { opacity: 1; transition: opacity 1s ease-in; }
+    </style>
+</head>
+<body data-theme="light" class="bg-transparent">
+
+<div class="min-h-screen flex bg-base-200">
+    <!-- Левый navbar -->
+    <nav id="sidebar"
+         class="w-56 bg-base-100 border-r border-base-300 flex flex-col transition-all duration-200">
+        <!-- Логотип -->
+        <div class="px-4 py-3 border-b border-base-300 flex items-center gap-2">
+            <a href="/" class="flex items-center gap-2">
+                <img src="{% static 'img/logo.png' %}"
+                     alt="Логотип"
+                     class="w-7 h-7 rounded" />
+                <span class="sidebar-label font-bold text-sm">SiriCRM</span>
+            </a>
+        </div>
+
+        <!-- Основное меню -->
+        <div class="flex-1 overflow-y-auto">
+            <ul class="menu p-2 text-sm">
+                <li>
+                    <a href="/" hx-boost="true">
+                        <span>🏠</span>
+                        <span class="sidebar-label ml-2">Главная</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="/dashboard/" hx-boost="true">
+                        <span>📊</span>
+                        <span class="sidebar-label ml-2">Dashboard</span>
+                    </a>
+                </li>
+
+                <li class="menu-title mt-2 sidebar-label">
+                    <span>CRM</span>
+                </li>
+                <li>
+                    <a href="#"
+                       hx-get="/kanban/"
+                       hx-target="#content-area"
+                       hx-swap="innerHTML">
+                        <span>📋</span>
+                        <span class="sidebar-label ml-2">Kanban</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="#"
+                       hx-get="/clients/"
+                       hx-target="#content-area"
+                       hx-swap="innerHTML">
+                        <span>👥</span>
+                        <span class="sidebar-label ml-2">Клиенты</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="#"
+                       hx-get="/operators/"
+                       hx-target="#content-area"
+                       hx-swap="innerHTML">
+                        <span>👨‍💼</span>
+                        <span class="sidebar-label ml-2">Операторы</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="#"
+                       hx-get="/logs/"
+                       hx-target="#content-area"
+                       hx-swap="innerHTML">
+                        <span>📊</span>
+                        <span class="sidebar-label ml-2">Логи</span>
+                    </a>
+                </li>
+
+                <li class="menu-title mt-2 sidebar-label">
+                    <span>Администрирование</span>
+                </li>
+                {% if user.is_superuser %}
+                <li>
+                    <a href="/admin/" hx-boost="true">
+                        <span>⚙️</span>
+                        <span class="sidebar-label ml-2">Django Admin</span>
+                    </a>
+                </li>
+                {% endif %}
+                <li>
+                    <a href="/settings/" hx-boost="true">
+                        <span>🔧</span>
+                        <span class="sidebar-label ml-2">Настройки</span>
+                    </a>
+                </li>
+            </ul>
+        </div>
+
+        <!-- Блок пользователя внизу -->
+        <div class="px-4 py-3 border-t border-base-300 flex items-center justify-between text-xs">
+            <div class="flex items-center gap-2">
+                <div class="w-7 h-7 rounded-full bg-primary text-primary-content flex items-center justify-center text-[0.7rem]">
+                    {{ user.first_name|first }}
+                </div>
+                <div class="sidebar-label flex flex-col max-w-[110px]">
+                    <span class="font-semibold truncate">
+                        {{ user.get_full_name|default:user.username }}
+                    </span>
+                    <span class="text-[0.6rem] text-base-content/70">
+                        Онлайн
+                    </span>
+                </div>
+            </div>
+            <form method="post" action="{% url 'logout' %}">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-ghost btn-xs px-2 text-[0.6rem]">
+                    🚪
+                </button>
+            </form>
+        </div>
+    </nav>
+
+    <!-- Правая часть: top‑bar + контент -->
+    <div class="flex-1 flex flex-col">
+        <!-- Верхний бар с кнопкой сворачивания -->
+        <header class="navbar bg-base-100 border-b border-base-300 px-2 h-12 min-h-0">
+            <div class="navbar-start">
+                <button id="sidebar-toggle-btn"
+                        type="button"
+                        class="btn btn-ghost btn-xs px-2">
+                ☰
+                </button>
+                <span class="ml-2 text-sm font-bold">Dashboard</span>
+            </div>
+
+            <div class="navbar-center hidden md:flex">
+                <span class="text-xs text-base-content/60">
+                Панель управления CRM
+                </span>
+            </div>
+
+            <div class="navbar-end gap-2">
+                <span class="hidden sm:inline text-[0.7rem] text-base-content/60">
+                {{ user.get_full_name|default:user.username }}
+                </span>
+                <form method="post" action="{% url 'logout' %}">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-ghost btn-xs px-2" title="Выйти">
+                    🚪
+                </button>
+                </form>
+            </div>
+            </header>
+
+        <!-- Основной контент -->
+        <main class="flex-1 p-3 overflow-y-auto">
+            {% block content %}
+
+            <!-- Блок про Telegram -->
+            <div class="mb-4">
+                <div class="alert alert-info flex justify-between items-center">
+                    <div class="text-xs">
+                        {% if telegram_user %}
+                            <span class="font-semibold">Telegram привязан:</span>
+                            <span class="ml-1">
+                                {{ telegram_user.first_name }}
+                                {% if telegram_user.last_name %} {{ telegram_user.last_name }}{% endif %}
+                                {% if telegram_user.username %} (@{{ telegram_user.username }}){% endif %}
+                            </span>
+                        {% else %}
+                            <span class="font-semibold">Telegram не привязан.</span>
+                            <span class="ml-1 text-xs">
+                                Привяжите аккаунт, чтобы работать через бота.
+                            </span>
+                        {% endif %}
+                    </div>
+
+                    <div class="flex gap-2">
+                        {% if telegram_bot_username %}
+                            <a href="https://t.me/{{ telegram_bot_username }}"
+                               target="_blank"
+                               class="btn btn-xs btn-outline">
+                                Открыть бота
+                            </a>
+                        {% endif %}
+
+                        <button
+                            class="btn btn-xs btn-primary"
+                            hx-get="{% url 'telegram_login' %}"
+                            hx-target="#content-area"
+                            hx-swap="innerHTML"
+                        >
+                            {% if telegram_user %}Изменить привязку{% else %}Привязать Telegram{% endif %}
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Статистика (4 карточки) -->
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+                <div class="stat bg-base-100 shadow-md rounded-lg border border-base-300">
+                    <div class="stat-figure text-primary">
+                        <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                            <path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v2h8v-2zM6 8a2 2 0 11-4 0 2 2 0 014 0zM16 18v-3a5.972 5.972 0 00-.75-2.906A3.005 3.005 0 0119 15v3h-3zM4.75 12.094A5.973 5.973 0 004 15v3H1v-3a3 3 0 013.75-2.906z"></path>
+                        </svg>
+                    </div>
+                    <div class="stat-title text-[0.9rem]">Активных операторов</div>
+                    <div class="stat-value text-sm">
+                        <span
+                            hx-get="{% url 'operators_online_count' %}"
+                            hx-trigger="load"
+                            hx-swap="innerHTML">0</span>
+                    </div>
+                </div>
+
+                <div class="stat bg-base-100 shadow-md rounded-lg border border-base-300">
+                    <div class="stat-figure text-success">
+                        <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clip-rule="evenodd"></path>
+                        </svg>
+                    </div>
+                    <div class="stat-title text-[0.9rem]">Активных клиентов</div>
+                    <div class="stat-value text-sm">
+                        <span
+                            hx-get="{% url 'clients_active_count' %}"
+                            hx-trigger="load"
+                            hx-swap="innerHTML">0</span>
+                    </div>
+                </div>
+
+                <div class="stat bg-base-100 shadow-md rounded-lg border border-base-300">
+                    <div class="stat-figure text-info">
+                        <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                            <path d="M2 5a2 2 0 012-2h12a2 2 0 012 2v10a2 2 0 01-2 2H4a2 2 0 01-2-2V5z"></path>
+                        </svg>
+                    </div>
+                    <div class="stat-title text-[0.9rem]">Новых сообщений</div>
+                    <div class="stat-value text-sm">
+                        <span
+                            hx-get="{% url 'messages_new_count' %}"
+                            hx-trigger="load"
+                            hx-swap="innerHTML">0</span>
+                    </div>
+                </div>
+
+                <div class="stat bg-base-100 shadow-md rounded-lg border border-base-300">
+                    <div class="stat-figure text-warning">
+                        <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                            <path d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z"></path>
+                            <path fill-rule="evenodd" d="M4 5a2 2 0 012-2 1 1 0 00-1-1H3a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2V5a1 1 0 00-1 1v10H4V5z" clip-rule="evenodd"></path>
+                        </svg>
+                    </div>
+                    <div class="stat-title text-[0.9rem]">Лидов</div>
+                    <div class="stat-value text-sm">
+                        <span
+                            hx-get="{% url 'lead_count' %}"
+                            hx-trigger="load"
+                            hx-swap="innerHTML">0</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tabs -->
+            <div class="tabs tabs-boxed bg-base-100 rounded-lg p-2 mb-4 border border-base-300">
+                <a class="tab tab-active"
+                   hx-get="/kanban/"
+                   hx-target="#content-area"
+                   hx-swap="innerHTML">
+                        📋 Kanban
+                </a>
+                <a class="tab"
+                   hx-get="/clients/"
+                   hx-target="#content-area"
+                   hx-swap="innerHTML">
+                        👥 Клиенты
+                </a>
+                <a class="tab"
+                   hx-get="/operators/"
+                   hx-target="#content-area"
+                   hx-swap="innerHTML">
+                        👨‍💼 Операторы
+                </a>
+                <a class="tab"
+                   hx-get="{% url 'logs_list' %}"
+                   hx-target="#content-area"
+                   hx-swap="innerHTML">
+                        📊 Логи
+                </a>
+            </div>
+
+            <!-- Основная зона контента -->
+            <div id="content-area" class="bg-base-100 rounded-lg shadow-md border border-base-300 p-3">
+                {% include "crm/kanban.html" %}
+            </div>
+
+            {% endblock %}
+        </main>
+    </div>
+</div>
+
+<!-- Toast -->
+<div id="toast-container" class="fixed bottom-4 right-4 z-50 space-y-2"></div>
+<div id="stats-container" hx-swap-oob="true"></div>
+
+<script>
+    document.body.addEventListener('htmx:afterRequest', (event) => {
+        if (event.detail.xhr.status === 201 || event.detail.xhr.status === 200) {
+            showToast('✅ Успешно!', 'success');
+        } else if (event.detail.xhr.status >= 400) {
+            showToast('❌ Ошибка!', 'error');
+        }
+    });
+
+    function showToast(message, type = 'info') {
+        const toast = document.createElement('div');
+        toast.className = `alert alert-${type} shadow-lg rounded-lg w-96`;
+        toast.innerHTML = `<div><span>${message}</span></div>`;
+
+        const container = document.getElementById('toast-container');
+        container.appendChild(toast);
+
+        setTimeout(() => toast.remove(), 4000);
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        const sidebar = document.getElementById('sidebar');
+        const btn = document.getElementById('sidebar-toggle-btn');
+        const labels = document.querySelectorAll('.sidebar-label');
+
+        if (sidebar && btn) {
+            btn.addEventListener('click', () => {
+                const collapsed = sidebar.classList.toggle('sidebar-collapsed');
+                labels.forEach(el => {
+                    el.style.display = collapsed ? 'none' : '';
+                });
+            });
+        }
+
+        htmx.ajax('GET', '/api/stats/', '#stats-container');
+    });
+</script>
+<script>
+  document.addEventListener('DOMContentLoaded', () => {
+    const tabsContainer = document.querySelector('.tabs.tabs-boxed');
+    if (!tabsContainer) return;
+
+    tabsContainer.addEventListener('click', (event) => {
+      const tab = event.target.closest('.tab');
+      if (!tab) return;
+
+      tabsContainer.querySelectorAll('.tab').forEach(t => {
+        t.classList.remove('tab-active');
+      });
+
+      tab.classList.add('tab-active');
+    });
+  });
+</script>
+</body>
+</html>

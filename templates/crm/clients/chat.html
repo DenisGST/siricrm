@@ -1,0 +1,31 @@
+<div class="flex flex-col h-full gap-4">
+  <div class="flex items-center justify-between">
+    <div>
+      <h2 class="text-lg font-bold">
+        Чат с {{ client.first_name }} {{ client.last_name }}
+      </h2>
+      {% if client.username %}
+        <p class="text-xs text-base-content/70">@{{ client.username }}</p>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="border rounded-lg p-3 h-80 overflow-y-auto bg-base-200">
+    {% for msg in messages %}
+      <div class="mb-2">
+        <div class="text-[10px] text-base-content/60">
+          {{ msg.created_at|date:"d.m.Y H:i" }}
+          ·
+          {% if msg.direction == "incoming" %}Клиент{% else %}Оператор{% endif %}
+        </div>
+        <div class="text-sm">
+          {{ msg.content }}
+        </div>
+      </div>
+    {% empty %}
+      <div class="text-sm text-base-content/60">
+        Сообщений пока нет.
+      </div>
+    {% endfor %}
+  </div>
+</div>

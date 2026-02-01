@@ -1,0 +1,628 @@
+import logging
+import uuid
+import re
+
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import (
+    Application,
+    CommandHandler,
+    MessageHandler,
+    filters,
+    ContextTypes,
+)
+
+from django.contrib.auth.models import User
+from django.utils import timezone
+
+from asgiref.sync import sync_to_async
+
+from apps.crm.models import Operator, Client, OperatorLog, Message
+from apps.auth_telegram.models import TelegramUser, TelegramAuthCode
+
+from .s3_utils import upload_telegram_file_to_s3
+
+logger = logging.getLogger(__name__)
+
+WORK_START_HOUR = 9
+WORK_END_HOUR = 18
+MSK_TZ = timezone.get_fixed_timezone(3 * 60)  # UTC+3
+PHONE_RE = re.compile(r"[+\d][\d\-\s\(\)]{5,}")  # очень мягко, под российские номера
+
+async def bot_reply_and_log(
+    *,
+    client: Client,
+    chat_id: int,
+    text: str,
+    context: ContextTypes.DEFAULT_TYPE,
+    operator: Operator | None = None,
+) -> None:
+    """
+    Отправляет сообщение от бота и сохраняет его в CRM.Message как исходящее.
+    """
+    sent_msg = await context.bot.send_message(chat_id=chat_id, text=text)
+
+    await sync_to_async(Message.objects.create)(
+        client=client,
+        operator=operator,
+        content=text,
+        message_type="text",
+        direction="outgoing",
+        telegram_message_id=sent_msg.message_id,
+    )
+# парсер моб.тел, ФИО 
+def parse_phone_and_fio(text: str):
+    """
+    Ожидаем что-то вроде:
+    8 999 123-45-67 Иванов Иван Иванович
+    +7 (999) 123-45-67 Петров Петр
+    Возвращаем: phone, last_name, first_name, patronymic
+    """
+    text = text.strip()
+    m = PHONE_RE.search(text)
+    if not m:
+        return None, None, None, None
+
+    phone_raw = m.group(0)
+    # нормализуем телефон: оставим только цифры и '+'
+    phone = re.sub(r"[^\d+]", "", phone_raw)
+
+    # остальная часть — ФИО
+    fio_part = (text[:m.start()] + " " + text[m.end():]).strip()
+    fio_tokens = [t for t in fio_part.split() if t]
+
+    last_name = first_name = patronymic = ""
+
+    if len(fio_tokens) == 1:
+        last_name = fio_tokens[0]
+    elif len(fio_tokens) == 2:
+        last_name, first_name = fio_tokens
+    elif len(fio_tokens) >= 3:
+        last_name, first_name, patronymic = fio_tokens[0], fio_tokens[1], " ".join(fio_tokens[2:])
+
+    return phone, first_name, last_name, patronymic
+
+# Хелпер: рабочее время по МСК
+def is_working_time(dt: timezone.datetime) -> bool:
+    dt_msk = dt.astimezone(MSK_TZ)
+    if dt_msk.weekday() >= 5:  # 5,6 = сб, вс
+        return False
+    if WORK_START_HOUR <= dt_msk.hour < WORK_END_HOUR:
+        return True
+    return False
+
+class TelegramHandlers:
+    """Handlers for Telegram bot interactions"""
+
+    # ---------- AUTH ----------
+
+    @staticmethod
+    async def auth_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """
+        /auth CODE — привязка Telegram к уже существующему Django-пользователю.
+        """
+        tg_user = update.effective_user
+        message = update.message
+
+        parts = message.text.split(maxsplit=1)
+        if len(parts) != 2:
+            await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text="Используйте: /auth КОД, показанный на сайте.",
+            )
+            return
+
+        code = parts[1].strip().upper()
+
+        try:
+            code_obj = await sync_to_async(TelegramAuthCode.objects.get)(
+                code=code,
+                is_used=False,
+            )
+        except TelegramAuthCode.DoesNotExist:
+            await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text="❌ Неверный или просроченный код.",
+            )
+            return
+
+        if code_obj.is_expired():
+            await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text="⏰ Код истёк. Сгенерируйте новый на сайте.",
+            )
+            return
+
+        django_user = await sync_to_async(lambda: code_obj.user)()
+
+        await sync_to_async(TelegramUser.objects.update_or_create)(
+            telegram_id=tg_user.id,
+            defaults={
+                "user": django_user,
+                "first_name": tg_user.first_name or "",
+                "last_name": tg_user.last_name or "",
+                "username": tg_user.username or "",
+                "is_verified": True,
+                "last_login": timezone.now(),
+            },
+        )
+
+        code_obj.is_used = True
+        await sync_to_async(code_obj.save)()
+
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text=(
+                "✅ Ваш Telegram успешно привязан к аккаунту CRM.\n"
+                "Теперь вы можете работать через бота."
+            ),
+        )
+
+    # ---------- BASIC COMMANDS ----------
+
+    @staticmethod
+    async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /start command"""
+        user = update.effective_user
+
+        try:
+            telegram_user = await sync_to_async(TelegramUser.objects.get)(
+                telegram_id=user.id
+            )
+            await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text=(
+                    f"Привет, {user.first_name}! 👋\n\n"
+                    f"Вы уже зарегистрированы в системе."
+                ),
+            )
+        except TelegramUser.DoesNotExist:
+            keyboard = [
+                [
+                    InlineKeyboardButton(
+                        "Зарегистрироваться в CRM",
+                        url=f"https://yourdomain.com/telegram/login/{user.id}/",
+                    )
+                ]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+
+            await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text=(
+                    f"Привет, {user.first_name}! 👋\n\n"
+                    f"Добро пожаловать в CRM систему!\n"
+                    f"Нажмите кнопку ниже для регистрации."
+                ),
+                reply_markup=reply_markup,
+            )
+
+    @staticmethod
+    async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /help command"""
+        help_text = """
+🤖 Доступные команды:
+/start - Начало работы
+/help - Эта справка
+/status - Ваш статус в системе
+/clients - Список ваших клиентов
+
+💬 Отправляйте сообщения клиентам прямо через бота!
+        """
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text=help_text,
+        )
+
+    @staticmethod
+    async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /status command"""
+        user = update.effective_user
+
+        try:
+            operator = await sync_to_async(Operator.objects.get)(
+                telegram_id=user.id
+            )
+            clients_count = await sync_to_async(lambda: operator.clients.count())()
+
+            status_text = f"""
+📊 Ваш статус:
+👤 Имя: {operator.user.get_full_name()}
+🏢 Отдел: {operator.department.name if operator.department else 'Не назначен'}
+📱 Статус: {'🟢 Онлайн' if operator.is_online else '⚫ Офлайн'}
+👥 Клиентов: {clients_count}
+✅ Статус: {'Активен' if operator.is_active else 'Неактивен'}
+            """
+            await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text=status_text,
+            )
+        except Operator.DoesNotExist:
+            await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text=(
+                    "❌ Вы не зарегистрированы как оператор в системе.\n"
+                    "Используйте /start для регистрации."
+                ),
+            )
+
+    # ---------- ROUTING MESSAGES ----------
+    @staticmethod
+    async def _auto_reply_first_message(context: ContextTypes.DEFAULT_TYPE):
+        chat_id = context.job.data["chat_id"]
+        client_id = context.job.data.get("client_id")
+
+        text = (
+            "Добрый день, мы приняли ваше сообщение. "
+            "Вам в ближайшее время ответит наш специалист."
+        )
+
+        sent_msg = await context.bot.send_message(chat_id=chat_id, text=text)
+
+        if client_id:
+            client = await sync_to_async(Client.objects.get)(pk=client_id)
+            await sync_to_async(CrmMessage.objects.create)(
+                client=client,
+                operator=None,
+                content=text,
+                message_type="text",
+                direction="outgoing",
+                telegram_message_id=sent_msg.message_id,
+            )
+
+    @staticmethod
+    async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle incoming text messages from clients or operators"""
+        user = update.effective_user
+        message = update.message
+
+        if not user or not message or not message.text:
+            return
+
+        now = timezone.now()
+
+        try:
+            # 1. Если это оператор — оставляем старую логику
+            operator = await sync_to_async(
+                Operator.objects.filter(telegram_id=user.id).first
+            )()
+            if operator:
+                await TelegramHandlers._handle_operator_message(
+                    operator, message, context
+                )
+                return
+
+            # 2. Клиент
+            client = await sync_to_async(
+                Client.objects.filter(telegram_id=user.id).first
+            )()
+
+            # --- a) Клиент впервые пишет (в Client его ещё нет) ---
+            if client is None:
+                client = await sync_to_async(Client.objects.create)(
+                    telegram_id=user.id,
+                    first_name=user.first_name or "",
+                    last_name=user.last_name or "",
+                    username=user.username or "",
+                    status="lead",
+                    last_message_at=now,
+                )
+                logger.info("Auto-registered new client: %s", client)
+
+                # сохраняем это первое сообщение как обычное
+                await sync_to_async(Message.objects.create)(
+                    client=client,
+                    operator=None,
+                    content=message.text,
+                    message_type="text",
+                    direction="incoming",
+                    telegram_message_id=message.message_id,
+                )
+
+                await bot_reply_and_log(
+                    client=client,
+                    chat_id=message.chat_id,
+                    text=(
+                        "Здравствуйте! Похоже, вы обращаетесь к нам впервые.\n\n"
+                        "Пожалуйста, отправьте ваш номер телефона и фамилию, имя, отчество одной строкой.\n\n"
+                        "Пример: 8 999 123-45-67 Иванов Иван Иванович"
+                    ),
+                    context=context,
+                )
+                return
+
+            # Клиент уже есть — обновляем last_message_at
+            await sync_to_async(Client.objects.filter(pk=client.pk).update)(
+                last_message_at=now
+            )
+
+             # --- если у клиента ещё нет телефона, пробуем разобрать текущее сообщение как телефон+ФИО ---
+            if not client.phone:
+                phone, first_name, last_name, patronymic = parse_phone_and_fio(message.text)
+                if phone:
+                    client.phone = phone
+                    if first_name:
+                        client.first_name = first_name
+                    if last_name:
+                        client.last_name = last_name
+                    if patronymic:
+                        client.patronymic = patronymic
+                    client.contacts_confirmed = True 
+                    await sync_to_async(client.save)()
+
+                    await bot_reply_and_log(
+                        client=client,
+                        chat_id=message.chat_id,
+                        text="Спасибо! Мы сохранили ваши контактные данные и готовы выслушать ваше обращение.",
+                        context=context,
+                    )
+                    # дальше продолжаем обычную логику (сохранение самого сообщения и т.п.)
+                    # но чтобы не дублировать, можно просто не выходить здесь
+                else:
+                    # не смогли распарсить телефон — вежливо попросим в нужном формате
+                    await message.reply_text(
+                        "Не удалось распознать номер телефона.\n\n"
+                        "Пожалуйста, отправьте фамилию, имя, отчество и номер телефона "
+                        "одной строкой.\n\n"
+                        "Пример: 8 999 123-45-67 Иванов Иван Иванович"
+                    )
+                    # можно завершить обработку, чтобы это сообщение не шло дальше как обычное
+                    return
+
+
+            # --- b) Клиент есть, проверяем рабочее/нерабочее время ---
+            if not is_working_time(now):
+                await bot_reply_and_log(
+                    client=client,
+                    chat_id=message.chat_id,
+                    text=(
+                        "Мы приняли Ваше сообщение, однако мы работаем с 9:00 до 18:00 по МСК, "
+                        "кроме выходных и праздничных дней. Поэтому Вам ответит наш специалист "
+                        "в начале рабочего дня. Надеемся на понимание."
+                    ),
+                    context=context,
+                )
+
+                # сохраняем сообщение в CRM
+                await sync_to_async(Message.objects.create)(
+                    client=client,
+                    content=message.text,
+                    message_type="text",
+                    direction="incoming",
+                    telegram_message_id=message.message_id,
+                )
+                return
+
+            # --- c) Клиент есть, сейчас рабочее время ---
+            # Сохраняем сообщение в CRM
+            await sync_to_async(Message.objects.create)(
+                client=client,
+                content=message.text,
+                message_type="text",
+                direction="incoming",
+                telegram_message_id=message.message_id,
+            )
+
+            # Логика «если клиент к нам обращался ранее и ничего не писал после первого обращения»
+            # Интерпретация: это его самое первое сообщение (нет других incoming-сообщений до этого)
+            previous_msgs_exist = await sync_to_async(
+                lambda: Message.objects.filter(
+                    client=client,
+                    direction="incoming",
+                )
+                .exclude(telegram_message_id=message.message_id)
+                .exists()
+            )()
+
+            if not previous_msgs_exist:
+                # первое сообщение клиента: через 30 секунд отправляем автоответ
+                await context.application.job_queue.run_once(
+                    callback=TelegramHandlers._auto_reply_first_message,
+                    when=30,
+                    data={"chat_id": message.chat_id, "client_id": client.id},
+                )
+            # если сообщений уже было — ничего не шлём, оператор ответит сам
+        except Exception as e:
+            logger.exception("Error handling message: %s", e)
+            await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text="❌ Ошибка при обработке сообщения.",
+            )
+
+
+    @staticmethod
+    async def _handle_operator_message(
+        operator: Operator,
+        message,
+        context: ContextTypes.DEFAULT_TYPE,
+    ):
+        text = message.text
+
+        if ":" not in text:
+            await context.bot.send_message(
+                chat_id=message.chat_id,
+                text="❌ Неправильный формат.\nИспользуйте: client_id: ваше сообщение",
+            )
+            return
+
+        try:
+            client_id, message_text = text.split(":", 1)
+            client = await sync_to_async(Client.objects.get)(id=client_id.strip())
+
+            msg_obj = await sync_to_async(Message.objects.create)(
+                operator=operator,
+                client=client,
+                content=message_text.strip(),
+                message_type="text",
+                direction="outgoing",
+                telegram_message_id=message.message_id,
+            )
+
+            await sync_to_async(OperatorLog.objects.create)(
+                operator=operator,
+                action="message_sent",
+                description=f"Сообщение отправлено клиенту {client}",
+                client=client,
+                message=msg_obj,
+                ip_address=message.from_user.id,
+            )
+
+            await context.bot.send_message(
+                chat_id=message.chat_id,
+                text=f"✅ Сообщение отправлено клиенту {client.first_name}",
+            )
+
+        except Client.DoesNotExist:
+            await context.bot.send_message(
+                chat_id=message.chat_id,
+                text="❌ Клиент не найден.",
+            )
+        except ValueError:
+            await context.bot.send_message(
+                chat_id=message.chat_id,
+                text="❌ Неправильный ID клиента.",
+            )
+
+    # ---------- FILES: PHOTO & DOCUMENT ----------
+
+    @staticmethod
+    async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        user = update.effective_user
+        message = update.message
+
+        photo = message.photo[-1]
+        tg_file = await photo.get_file()
+        file_bytes = await tg_file.download_as_bytearray()
+
+        filename = f"photo_{photo.file_unique_id}.jpg"
+        file_url = upload_telegram_file_to_s3(
+            bytes(file_bytes),
+            prefix="telegram/images",
+            filename=filename,
+        )
+
+        client = await TelegramHandlers._get_or_create_client_for_user(user)
+
+        await sync_to_async(Message.objects.create)(
+            operator=None,
+            client=client,
+            message_type="image",
+            content="Изображение от клиента",
+            telegram_message_id=message.message_id,
+            file_url=file_url,
+            file_name=filename,
+            direction="incoming",
+        )
+
+        await context.bot.send_message(
+            chat_id=message.chat_id,
+            text="📷 Картинка получена и сохранена в CRM.",
+        )
+
+    @staticmethod
+    async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        try:
+            user = update.effective_user
+            message = update.message
+            doc = message.document
+
+            if doc is None:
+                logger.warning("handle_document called but message.document is None: %s", message.to_dict())
+                return
+
+            tg_file = await doc.get_file()
+            file_bytes = await tg_file.download_as_bytearray()
+
+            filename = doc.file_name or f"file_{doc.file_unique_id}"
+
+            file_url = upload_telegram_file_to_s3(
+                bytes(file_bytes),
+                prefix="telegram/docs",
+                filename=filename,
+            )
+
+            client = await TelegramHandlers._get_or_create_client_for_user(user)
+
+            await sync_to_async(Message.objects.create)(
+                operator=None,
+                client=client,
+                message_type="document",
+                content=f"Файл: {filename}",
+                telegram_message_id=message.message_id,
+                file_url=file_url,
+                file_name=filename,
+                direction="incoming",
+            )
+
+            await context.bot.send_message(
+                chat_id=message.chat_id,
+                text=f"📎 Файл «{filename}» получен и сохранён в CRM.",
+            )
+
+        except Exception as e:
+            logger.exception("Error in handle_document: %s", e)
+            await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text="❌ Ошибка при обработке файла.",
+            )
+
+    # ---------- UTILS ----------
+
+    @staticmethod
+    async def _get_or_create_client_for_user(user):
+        client = await sync_to_async(
+            Client.objects.filter(telegram_id=user.id).first
+        )()
+        if client:
+            return client
+
+        client = await sync_to_async(Client.objects.create)(
+            telegram_id=user.id,
+            first_name=user.first_name or "",
+            last_name=user.last_name or "",
+            username=user.username or "",
+        )
+        return client
+    
+    
+"""
+async def setup_telegram_bot():
+#   Initialize Telegram bot with handlers
+    try:
+        application = Application.builder().token(TELEGRAM_TOKEN).build()
+
+        application.add_handler(
+            MessageHandler(filters.ALL, TelegramHandlers.debug_any)
+        )
+        application.add_handler(
+            MessageHandler(filters.ALL, TelegramHandlers.handle_document)
+        )
+        
+        application.add_handler(CommandHandler("start", TelegramHandlers.start_command))
+        application.add_handler(CommandHandler("help", TelegramHandlers.help_command))
+        application.add_handler(
+            CommandHandler("status", TelegramHandlers.status_command)
+        )
+        application.add_handler(CommandHandler("auth", TelegramHandlers.auth_command))
+
+        application.add_handler(
+            MessageHandler(
+                filters.PHOTO & ~filters.COMMAND, TelegramHandlers.handle_photo
+            )
+        )
+        application.add_handler(
+            MessageHandler(filters.ALL, TelegramHandlers.handle_document)
+        )
+        
+        application.add_handler(
+            MessageHandler(
+                filters.TEXT & ~filters.COMMAND, TelegramHandlers.handle_message
+            )
+        )
+       
+
+        await application.initialize()
+        return application
+    except Exception as e:
+        logger.error(f"Failed to setup Telegram bot: {e}")
+        return None
+"""

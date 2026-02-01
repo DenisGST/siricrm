@@ -1,0 +1,63 @@
+{% load static %}
+
+
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <title>Вход в SiriCRM</title>
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://cdn.jsdelivr.net/npm/daisyui@3.7.1/dist/full.css" rel="stylesheet" type="text/css" />
+  <link rel="stylesheet" href="{% static 'css/style.css' %}">
+</head>
+<body data-theme="light" class="min-h-screen flex items-center justify-center bg-base-200">
+
+  <div class="card w-full max-w-sm bg-base-100 shadow-xl">
+    
+    <div class="card-body">
+      <h2 class="card-title mb-2 ">Вход в CRM</h2>
+
+      {% if form.errors %}
+        <div class="alert alert-error text-sm mb-2">
+          Некорректный логин или пароль.
+        </div>
+      {% endif %}
+
+      {% if next %}
+        <p class="text-center text-sm text-base-content/70 mb-2">
+          Для доступа нужно авторизоваться.
+        </p>
+      {% endif %}
+
+      <form method="post" action="{% url 'login' %}">
+        {% csrf_token %}
+
+        <div class="form-control mb-2">
+          <label class="label">
+            <span class="label-text">Логин</span>
+          </label>
+          {{ form.username }}
+        </div>
+
+       
+        <div class="form-control mb-4">
+          <label class="label">
+            <span class="label-text">Пароль</span>
+          </label>
+          {{ form.password }}
+        </div>
+
+        <input type="hidden" name="next" value="{{ next }}">
+
+        <div class="form-control">
+          <button class="btn btn-primary w-full" type="submit">
+            Войти
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+</body>
+</html>

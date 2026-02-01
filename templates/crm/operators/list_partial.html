@@ -1,0 +1,105 @@
+<div class="overflow-x-auto">
+  <table class="table table-zebra table-sm">
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>Оператор</th>
+        <th>Telegram</th>
+        <th>Отдел</th>
+        <th>Статус</th>
+        <th>Клиентов</th>
+        <th>Последний онлайн</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for op in page_obj %}
+        <tr class="hover">
+          <th>{{ forloop.counter }}</th>
+          <td>
+            <div class="font-semibold">
+              {{ op.user.get_full_name|default:op.user.username }}
+            </div>
+            <div class="text-xs text-base-content/70">
+              {{ op.user.email }}
+            </div>
+          </td>
+          <td class="text-xs">
+            {% if op.telegram_username %}
+              @{{ op.telegram_username }}
+            {% else %}
+              —
+            {% endif %}
+            <div class="text-[10px] text-base-content/60">
+              ID: {{ op.telegram_id }}
+            </div>
+          </td>
+          <td class="text-xs">
+            {% if op.department %}
+              {{ op.department.name }}
+            {% else %}
+              <span class="badge badge-ghost badge-xs">Не назначен</span>
+            {% endif %}
+          </td>
+          <td>
+            <div class="flex items-center gap-1">
+              {% if op.is_online %}
+                <span class="badge badge-success badge-xs">Онлайн</span>
+              {% else %}
+                <span class="badge badge-neutral badge-xs">Оффлайн</span>
+              {% endif %}
+              {% if op.is_active %}
+                <span class="badge badge-ghost badge-xs">Активен</span>
+              {% else %}
+                <span class="badge badge-error badge-xs">Отключен</span>
+              {% endif %}
+            </div>
+          </td>
+          <td>
+            <span class="badge badge-outline badge-sm">
+              {{ op.clients_count }}
+            </span>
+          </td>
+          <td class="text-xs">
+            {{ op.last_seen|date:"d.m.Y H:i" }}
+          </td>
+        </tr>
+      {% empty %}
+        <tr>
+          <td colspan="7" class="text-center text-sm text-base-content/60">
+            Операторов нет
+          </td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% if page_obj.paginator.num_pages > 1 %}
+  <div
+    class="join mt-3"
+    hx-target="#operators-table-wrapper"
+    hx-swap="outerHTML"
+  >
+    {% if page_obj.has_previous %}
+      <button
+        class="btn btn-sm join-item"
+        hx-get="?page={{ page_obj.previous_page_number }}&search={{ search }}"
+      >
+        «
+      </button>
+    {% endif %}
+
+    <button class="btn btn-sm join-item btn-ghost">
+      Стр. {{ page_obj.number }} / {{ page_obj.paginator.num_pages }}
+    </button>
+
+    {% if page_obj.has_next %}
+      <button
+        class="btn btn-sm join-item"
+        hx-get="?page={{ page_obj.next_page_number }}&search={{ search }}"
+      >
+        »
+      </button>
+    {% endif %}
+  </div>
+{% endif %}

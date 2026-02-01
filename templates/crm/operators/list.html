@@ -1,0 +1,29 @@
+{% load static %}
+
+<div class="flex flex-col gap-4">
+  <div class="flex flex-wrap items-center justify-between gap-2">
+    <h2 class="text-xl font-bold">Операторы</h2>
+
+    <form
+      hx-get="{% url 'operators_list' %}"
+      hx-target="#operators-table-wrapper"
+      hx-swap="outerHTML"
+      class="join"
+    >
+      <input
+        type="text"
+        name="search"
+        value="{{ search }}"
+        placeholder="Поиск: имя, @username, отдел"
+        class="input input-sm input-bordered join-item"
+      />
+      <button type="submit" class="btn btn-sm btn-primary join-item">
+        Найти
+      </button>
+    </form>
+  </div>
+
+  <div id="operators-table-wrapper">
+    {% include "crm/operators/list_partial.html" %}
+  </div>
+</div>

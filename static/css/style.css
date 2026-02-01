@@ -1,0 +1,142 @@
+/* Базовый фон страницы – светло‑серый, как у Reddit */
+html {
+  font-size: 14px; /* было 16px по умолчанию */
+}
+
+body {
+  font-size: 1rem;
+  background-color: #6890b9; /* reddit-like */
+}
+
+/* Навбар – белый, с тонкой тенью */
+.navbar,
+.bg-base-100 {
+  background-color: #ffffff;
+}
+
+/* Карточки/контент – белые, с мягким скруглением */
+.card,
+.stat,
+#content-area {
+  border-radius: 0.5rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+
+/* Заголовки – тёмно‑серый */
+h1 {
+  font-size: 1.5rem;
+}
+h2 {
+  font-size: 1.2rem;
+}
+h3 {
+  font-size: 1.1rem;
+}
+
+
+h1,
+h2,
+h3,
+.stat-title {
+  color: #1a1a1b; /* reddit text */
+  font-size: 1rem;
+}
+.stat-value {
+  font-size: 1rem;
+}
+
+/* Основной текст */
+body,
+.text-base-content {
+  color: #1a1a1b;
+}
+
+/* Ссылки – синий Reddit */
+a,
+a:visited {
+  color: #0079d3;
+}
+a:hover {
+  color: #005999;
+}
+
+/* Кнопки primary – синие */
+.btn-primary {
+  background-color: #0079d3;
+  border-color: #0079d3;
+}
+.btn-primary:hover {
+  background-color: #005999;
+  border-color: #005999;
+}
+
+/* Кнопки outline – серые, как на Reddit */
+.btn-outline {
+  border-color: #d7dfe3;
+  color: #1a1a1b;
+}
+.btn-outline:hover {
+  background-color: #f6f7f8;
+}
+
+/* Карточки‑статы ближе к Reddit */
+.stat {
+  background-color: #ffffff;
+  border: 1px solid #edeff1;
+}
+
+/* Сайдбар – чуть темнее, как левая колонка Reddit */
+.drawer-side .menu {
+  background-color: #f6f7f8;
+  border-right: 1px solid #edeff1;
+}
+
+/* Табы */
+.tabs-boxed {
+  background-color: #ffffff;
+  border: 1px solid #edeff1;
+}
+.tab {
+  color: #878a8c;
+}
+.tab.tab-active {
+  background-color: #ffffff;
+  border-bottom: 2px solid #0079d3;
+  color: #1a1a1b;
+}
+
+/* Алёрты чуть мягче */
+.alert-info {
+  background-color: #e9f5ff;
+  border-color: #cde7ff;
+}
+
+/* Toast */
+#toast-container .alert {
+  background-color: #ffffff;
+  border: 1px solid #edeff1;
+}
+
+/* Кнопки чуть меньше */
+.btn,
+button,
+input,
+select,
+textarea {
+  font-size: 1rem;
+}
+/* Чтобы меню выглядело аккуратно в узком режиме */
+/* Узкий режим сайдбара */
+#sidebar.sidebar-collapsed {
+  width: 3.2rem; /* только иконки */
+}
+
+
+
+#sidebar.sidebar-collapsed .menu > li > a {
+  justify-content: center;
+  padding-left: 0.5rem;
+  padding-right: 0.5rem;
+}
+
+/* Заголовки (menu-title) прячем через класс sidebar-label — JS уже управляет display */

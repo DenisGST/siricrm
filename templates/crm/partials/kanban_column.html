@@ -1,0 +1,5 @@
+{% for client in clients %}
+  {% include "crm/partials/kanban_card.html" with client=client %}
+{% empty %}
+  <div class="text-xs text-base-content/50">Нет клиентов</div>
+{% endfor %}
