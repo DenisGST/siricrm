@@ -13,6 +13,13 @@ from .models import Message
 from django.db.models import Prefetch
 from apps.auth_telegram.models import TelegramUser  # если нужно
 
+
+def dashboard_view(request):
+    bot_status = get_bot_status()
+    return render(request, "dashboard.html", {
+        "bot_status": bot_status,
+    })
+
 @login_required
 def chat(request, client_id):
     client = get_object_or_404(

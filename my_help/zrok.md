@@ -8,6 +8,33 @@ zrok share public http://localhost:8000/api/telegram/webhook/
 https://api.telegram.org/bot8446931203:AAEInJ7kDzNWoZATy0lO0xvA-yM2qkanmHM/setWebhook?url=https://sf805yylreea.share.zrok.io
 
 # Изменить ALLOWED HOST
+
+
+# Запуск через tmux
+
+## Установить:
+bash
+apt install tmux
+
+## Старт сессии:
+bash
+tmux
+
+## Внутри tmux запускаешь всё, что нужно:
+bash
+source venv/bin/activate
+python manage.py runserver 0.0.0.0:8000
+./tailwindcss -i ./assets/css/input.css -o ./static/css/tailwind.css --watch
+
+## Можно в разных окнах tmux (Ctrl+B, затем C — новое окно; Ctrl+B, затем N/P — переключение).
+
+## Отсоединиться от сессии, не останавливая процессы:
+Нажми: Ctrl+B, потом D.
+## Потом снова подключиться:
+bash
+tmux attach
+## (Если сессий несколько: tmux ls и tmux attach -t имя).
+
 Для запуска туннеля в zrok необходимо выполнить три основных этапа: регистрацию, активацию окружения и сам запуск. 
 1. Регистрация и вход
 Если вы используете публичный инстанс (например, zrok.io), сначала создайте аккаунт и получите токен:
