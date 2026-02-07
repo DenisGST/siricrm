@@ -5,6 +5,8 @@ from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib.auth.decorators import login_required
 from django.http import HttpResponse, HttpResponseBadRequest
 from django.views.decorators.http import require_POST
+from django.template.loader import render_to_string
+
 from apps.crm.models import *
 from django.db import models
 from .models import Client
@@ -15,6 +17,7 @@ from .models import Message
 from django.db.models import Prefetch
 from django.db import transaction
 from apps.auth_telegram.models import TelegramUser  # если нужно
+from apps.realtime.utils import push_chat_message
 from .telegram_sender import send_from_crm_sync
 
 CLIENTS_PER_PAGE = 20
@@ -23,12 +26,11 @@ CLIENTS_PER_PAGE = 20
 @require_POST
 def telegram_send_message(request, client_id):
     client = get_object_or_404(Client, pk=client_id)
-
     content = (request.POST.get("content") or "").strip()
-    file = request.FILES.get("file")
+    up_file = request.FILES.get("file")
 
-    # если ничего не ввели и файл не выбрали — просто перерисуем чат
-    if not content and not file:
+    # если ничего не ввели и файл не выбрали — можно вернуть 400 или просто пустой ответ
+    if not content and not up_file:
         messages_qs = Message.objects.filter(client=client).order_by("created_at")
         return render(
             request,
@@ -41,24 +43,41 @@ def telegram_send_message(request, client_id):
     except Operator.DoesNotExist:
         operator = None
 
-    # обновляем дату последнего сообщения
+    # обновляем дату последнего сообщения у клиента
     client.last_message_at = timezone.now()
     client.save(update_fields=["last_message_at"])
 
-    # вот здесь используется send_from_crm_sync
+    # отправка в Telegram + создание Message
     send_from_crm_sync(
         client=client,
         text=content or None,
-        file=file,
+        file=up_file,
         operator=operator,
     )
 
-    # перечитываем сообщения и отдаём обновлённую панель
-    messages_qs = Message.objects.filter(client=client).order_by("created_at")
-    return render(
-        request,
-        "crm/partials/telegram_chat_panel.html",
-        {"client": client, "messages": messages_qs},
+    # берём только что созданное сообщение (последнее исходящее для этого клиента)
+    msg = (
+        Message.objects.filter(client=client)
+        .order_by("-created_at")
+        .first()
+    )
+    if msg:
+        push_chat_message(msg)
+
+    if not msg:
+        return HttpResponseBadRequest("No message created")
+
+    # рендерим HTML одного сообщения
+    html = render_to_string(
+        "crm/partials/telegram_message.html",
+        {"msg": msg},
+        request=request,
+    )
+
+    # возвращаем только его: форма с hx-target="#telegram-chat-messages"
+    # и hx-swap="beforeend" добавит его в конец ленты
+    return HttpResponse(
+        render_to_string("crm/partials/telegram_message.html", {"msg": msg}, request=request)
     )
 
 @login_required

@@ -13,6 +13,8 @@ from apps.crm.models import Client, Message, Operator
 from apps.files.models import StoredFile
 from apps.files.s3_utils import upload_file_to_s3
 
+
+
 logger = logging.getLogger(__name__)
 
 

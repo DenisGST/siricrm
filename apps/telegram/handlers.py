@@ -20,6 +20,12 @@ from apps.crm.models import Operator, Client, OperatorLog, Message
 from apps.auth_telegram.models import TelegramUser, TelegramAuthCode
 from apps.files.models import StoredFile
 from apps.files.s3_utils import upload_file_to_s3
+from apps.realtime.utils import push_chat_message
+
+# from channels.layers import get_channel_layer
+from asgiref.sync import async_to_sync
+from django.template.loader import render_to_string
+
 
 #from .s3_utils import upload_telegram_file_to_s3
 
@@ -43,7 +49,7 @@ async def bot_reply_and_log(
     """
     sent_msg = await context.bot.send_message(chat_id=chat_id, text=text)
 
-    await sync_to_async(Message.objects.create)(
+    msg = await sync_to_async(Message.objects.create)(
         client=client,
         operator=operator,
         content=text,
@@ -51,6 +57,7 @@ async def bot_reply_and_log(
         direction="outgoing",
         telegram_message_id=sent_msg.message_id,
     )
+    await sync_to_async(push_chat_message)(msg)
 # парсер моб.тел, ФИО 
 def parse_phone_and_fio(text: str):
     """
@@ -270,6 +277,7 @@ class TelegramHandlers:
                 direction="outgoing",
                 telegram_message_id=sent_msg.message_id,
             )
+            await sync_to_async(push_chat_message)(msg)
 
     @staticmethod
     async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -319,6 +327,9 @@ class TelegramHandlers:
                     direction="incoming",
                     telegram_message_id=message.message_id,
                 )
+                await sync_to_async(push_chat_message)(msg)
+
+               
 
                 await bot_reply_and_log(
                     client=client,
@@ -385,13 +396,14 @@ class TelegramHandlers:
                 )
 
                 # сохраняем сообщение в CRM
-                await sync_to_async(Message.objects.create)(
+                msg = await sync_to_async(Message.objects.create)(
                     client=client,
                     content=message.text,
                     message_type="text",
                     direction="incoming",
                     telegram_message_id=message.message_id,
                 )
+                await sync_to_async(push_chat_message)(msg)
                 return
 
             # --- c) Клиент есть, сейчас рабочее время ---
@@ -403,6 +415,7 @@ class TelegramHandlers:
                 direction="incoming",
                 telegram_message_id=message.message_id,
             )
+            await sync_to_async(push_chat_message)(msg)
 
             # Логика «если клиент к нам обращался ранее и ничего не писал после первого обращения»
             # Интерпретация: это его самое первое сообщение (нет других incoming-сообщений до этого)
@@ -458,6 +471,7 @@ class TelegramHandlers:
                 direction="outgoing",
                 telegram_message_id=message.message_id,
             )
+            await sync_to_async(push_chat_message)(msg)
 
             await sync_to_async(OperatorLog.objects.create)(
                 operator=operator,
@@ -524,6 +538,7 @@ class TelegramHandlers:
             file=stored_file,
             direction="incoming",
         )
+        await sync_to_async(push_chat_message)(msg)
 
         # 5) ответ клиенту
         await context.bot.send_message(
@@ -574,6 +589,7 @@ class TelegramHandlers:
                 file=stored_file,
                 direction="incoming",
             )
+            await sync_to_async(push_chat_message)(msg)
 
             # 5) ответ
             await context.bot.send_message(
@@ -641,3 +657,4 @@ async def send_text_from_crm(
         direction="outgoing",
         telegram_message_id=sent_msg.message_id,
     )
+    await sync_to_async(push_chat_message)(msg)

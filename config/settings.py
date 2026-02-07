@@ -24,11 +24,15 @@ INSTALLED_APPS = [
     'django_celery_results',
     'storages',
     'drf_spectacular',
+    
+    'channels',
 
     'apps.core',
     'apps.crm',
     'apps.auth_telegram',
-    'apps.files'
+    'apps.files',
+    'apps.realtime',
+
 ]
 
 MIDDLEWARE = [
@@ -63,6 +67,14 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'config.wsgi.application'
 ASGI_APPLICATION = 'config.asgi.application'
+
+ASGI_APPLICATION = "config.asgi.application"
+
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels.layers.InMemoryChannelLayer",  # потом можно заменить на Redis
+    }
+}
 
 DATABASES = {
     'default': dj_database_url.config(
@@ -196,3 +208,10 @@ os.makedirs(BASE_DIR / 'logs', exist_ok=True)
 LOGIN_URL = "/accounts/login/"
 LOGIN_REDIRECT_URL = "/dashboard/"      # куда вести после успешного логина
 LOGOUT_REDIRECT_URL = LOGIN_URL         # после logout → на страницу логина
+
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels.layers.InMemoryChannelLayer",  # для начала
+        # потом Redis
+    }
+}

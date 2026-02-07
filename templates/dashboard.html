@@ -16,6 +16,7 @@
 
   <!-- HTMX -->
   <script src="https://unpkg.com/htmx.org@1.9.8"></script>
+  <script src="https://unpkg.com/htmx.org/dist/ext/ws.js"></script>
   <!-- CSRF для HTMX -->
   <script>
     const csrftoken =
@@ -35,6 +36,9 @@
     .htmx-swapping { opacity: 0; transition: opacity 1s ease-out; }
     .htmx-settling { opacity: 1; transition: opacity 1s ease-in; }
   </style>
+
+
+
 </head>
 <body data-theme="winter" class="bg-base-200">
 
@@ -658,6 +662,30 @@ document.body.addEventListener('htmx:afterSwap', (e) => {
     sel.removeAllRanges();
     sel.addRange(range);
   }
+</script>
+
+<!-- Невидимый ws‑подключатель для уведомлений -->
+<div
+  id="notifications-ws"
+  hx-ext="ws"
+  hx-ws="connect:/ws/notifications/"
+></div>
+
+<script>
+  //прокрутка списка сообщений, когда приходит новое
+  document.body.addEventListener("htmx:oobAfterSwap", function (evt) {
+    const chat = document.querySelector("#telegram-chat-messages");
+    if (!chat) return;
+    chat.scrollTop = chat.scrollHeight;
+  });
+</script>
+<script>
+  // прокрутка сообщений, кода отправили сообщение
+  document.body.addEventListener("htmx:afterSwap", function (evt) {
+    if (evt.target.id !== "telegram-chat-messages") return;
+    const chat = evt.target;
+    chat.scrollTop = chat.scrollHeight;
+  });
 </script>
 
 </body>

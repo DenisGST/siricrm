@@ -1,0 +1,8 @@
+<div
+  class="toast toast-end mt-2"
+  hx-swap-oob="afterbegin:#toast-container"
+>
+  <div class="alert alert-{{ level|default:'info' }} shadow-lg">
+    <span class="text-sm">{{ text }}</span>
+  </div>
+</div>

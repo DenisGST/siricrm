@@ -21,16 +21,56 @@
   id="telegram-chat-messages"
   class="flex-1 overflow-y-auto px-4 py-3 space-y-3 bg-base-100"
   style="max-height: calc(80vh - 140px);"
-  hx-ext="ws"
   hx-ws="connect:/ws/telegram/{{ client.id }}/"
 >
   {% for msg in messages %}
-  {% include "crm/partials/telegram_message.html" with msg=msg %}
-{% empty %}
-  <div class="text-xs text-base-content/60">
-    Сообщений пока нет. Напишите первое сообщение клиенту.
-  </div>
-{% endfor %}
+    {% if msg.direction == "incoming" %}
+      <div class="chat chat-start">
+    {% else %}
+      <div class="chat chat-end">
+    {% endif %}
+
+        <div class="chat-bubble
+                    {% if msg.direction == 'incoming' %}
+                      bg-emerald-50 text-emerald-900
+                    {% else %}
+                      chat-bubble-primary
+                    {% endif %}">
+          {% if msg.message_type == "text" and not msg.file %}
+            {{ msg.content|linebreaksbr }}
+          {% elif msg.message_type == "image" and msg.file %}
+            <a href="{% url 'file_download' msg.file.id %}" target="_blank" class="block">
+              <img src="{% url 'file_download' msg.file.id %}"
+                   alt="{{ msg.file.filename }}"
+                   class="max-w-xs rounded-lg">
+            </a>
+            {% if msg.content %}
+              <div class="mt-1 text-xs opacity-80">{{ msg.content|linebreaksbr }}</div>
+            {% endif %}
+          {% elif msg.message_type == "document" and msg.file %}
+            <a href="{% url 'file_download' msg.file.id %}" target="_blank"
+               class="flex items-center gap-2">
+              📎 <span class="underline text-xs break-all">
+                {{ msg.file.filename|default:"Файл" }}
+              </span>
+            </a>
+            {% if msg.content %}
+              <div class="mt-1 text-xs opacity-80">{{ msg.content|linebreaksbr }}</div>
+            {% endif %}
+          {% else %}
+            {{ msg.content|linebreaksbr }}
+          {% endif %}
+        </div>
+
+        <div class="chat-footer text-[10px] text-base-content/60">
+          {{ msg.created_at|date:"d.m H:i" }}
+        </div>
+      </div>
+  {% empty %}
+    <div class="text-xs text-base-content/60">
+      Сообщений пока нет. Напишите первое сообщение клиенту.
+    </div>
+  {% endfor %}
 </div>
 
 <!-- Форма отправки -->

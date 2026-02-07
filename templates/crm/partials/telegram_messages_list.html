@@ -1,0 +1,8 @@
+{# crm/partials/telegram_messages_list.html #}
+{% for msg in messages %}
+  {% include "crm/partials/telegram_message.html" with msg=msg %}
+{% empty %}
+  <div class="text-xs text-base-content/60">
+    Сообщений пока нет. Напишите первое сообщение клиенту.
+  </div>
+{% endfor %}
