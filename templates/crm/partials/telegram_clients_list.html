@@ -1,0 +1,56 @@
+{% for client in page_obj %}
+  <button
+    class="tg-client-item w-full px-3 py-2 flex items-center gap-3 hover:bg-base-200 text-left border-l-2 border-transparent"
+    data-client-id="{{ client.id }}"
+    hx-get="{% url 'telegram_chat_for_client' client.id %}"
+    hx-target="#telegram-chat-panel"
+    hx-swap="innerHTML"
+    onclick="setActiveTelegramClient(this)"
+  >
+
+    <div class="avatar placeholder">
+      <div class="w-8 rounded-full bg-primary text-primary-content text-xs">
+        {{ client.first_name|first|default:"?" }}
+      </div>
+    </div>
+    <div class="flex-1 min-w-0">
+      <div class="flex justify-between items-center">
+        <span class="font-medium text-sm truncate">
+          {{ client.first_name }}{% if client.last_name %} {{ client.last_name }}{% endif %}
+        </span>
+        {% if client.last_message_at %}
+          <span class="text-[10px] text-base-content/60">
+            {{ client.last_message_at|date:"H:i" }}
+          </span>
+        {% endif %}
+      </div>
+      <div class="text-xs text-base-content/70 truncate">
+        {% if client.username %}
+          @{{ client.username }}
+        {% elif client.phone %}
+          {{ client.phone }}
+        {% else %}
+          Без контактов
+        {% endif %}
+      </div>
+      <div class="text-[10px] text-base-content/50 mt-0.5">
+        {% if client.status == "lead" %}Лид{% elif client.status == "active" %}Активный{% elif client.status == "inactive" %}Неактивный{% elif client.status == "closed" %}Закрыт{% endif %}
+      </div>
+    </div>
+  </button>
+{% empty %}
+  <div class="px-3 py-2 text-xs text-base-content/60">
+    Клиенты не найдены.
+  </div>
+{% endfor %}
+
+{% if has_next %}
+  <div
+    class="w-full h-8 flex items-center justify-center text-[11px] text-base-content/60"
+    hx-get="{% url 'telegram_clients_list' %}?page={{ next_page_number }}"
+    hx-trigger="revealed"
+    hx-swap="outerHTML"
+  >
+    Загрузка ещё...
+  </div>
+{% endif %}

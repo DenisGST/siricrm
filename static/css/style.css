@@ -191,8 +191,8 @@ textarea {
   }
 }
 
-/* класс для синей кнопки с постоянным пульсом */
-.btn-telegram-blue-pulse {
+/* класс для красной кнопки с постоянным пульсом */
+.btn-telegram-red-pulse {
   animation: telegram-red-pulse 1.3s ease-out infinite;
 }
 
@@ -222,4 +222,28 @@ textarea {
 /* класс для синей кнопки с постоянным пульсом */
 .btn-telegram-blue-pulse {
   animation: telegram-blue-pulse 1.3s ease-out infinite;
+}
+
+.tg-client-item.active {
+  background-color: hsl(var(--b3)) !important;
+  border-color: hsl(var(--p)) !important;
+}
+
+#telegram-clients-list {
+  background-color: hsl(var(--b1));
+}
+
+#tg_emoji_popover .emoji-grid {
+  display: grid;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+}
+
+#tg_message_input {
+  border-width: 1px;
+  border-style: solid;
+  border-color: hsl(var(--b3)); /* или var(--b2)/--bc по вкусу */
+}
+#tg_message_input:focus {
+  outline: none;
+  border-color: hsl(var(--p));  /* подсветка при фокусе */
 }

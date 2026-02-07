@@ -43,4 +43,7 @@ urlpatterns = [
     
     # CRM views
     path('', include('apps.crm.urls')),
+
+    # files view
+    path("files/", include("apps.files.urls")),
 ]

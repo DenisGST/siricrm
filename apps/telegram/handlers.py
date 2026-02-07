@@ -13,13 +13,15 @@ from telegram.ext import (
 
 from django.contrib.auth.models import User
 from django.utils import timezone
-
+from django.conf import settings
 from asgiref.sync import sync_to_async
 
 from apps.crm.models import Operator, Client, OperatorLog, Message
 from apps.auth_telegram.models import TelegramUser, TelegramAuthCode
+from apps.files.models import StoredFile
+from apps.files.s3_utils import upload_file_to_s3
 
-from .s3_utils import upload_telegram_file_to_s3
+#from .s3_utils import upload_telegram_file_to_s3
 
 logger = logging.getLogger(__name__)
 
@@ -494,25 +496,36 @@ class TelegramHandlers:
         file_bytes = await tg_file.download_as_bytearray()
 
         filename = f"photo_{photo.file_unique_id}.jpg"
-        file_url = upload_telegram_file_to_s3(
+
+        # 1) грузим в S3 через новый helper -> получаем bucket, key
+        bucket, key = upload_file_to_s3(
             bytes(file_bytes),
             prefix="telegram/images",
             filename=filename,
         )
 
+        # 2) создаём StoredFile
+        stored_file = await sync_to_async(StoredFile.objects.create)(
+            bucket=bucket,
+            key=key,
+            filename=filename,
+        )
+
+        # 3) находим/создаём клиента
         client = await TelegramHandlers._get_or_create_client_for_user(user)
 
+        # 4) создаём Message с FK на StoredFile
         await sync_to_async(Message.objects.create)(
             operator=None,
             client=client,
             message_type="image",
             content="Изображение от клиента",
             telegram_message_id=message.message_id,
-            file_url=file_url,
-            file_name=filename,
+            file=stored_file,
             direction="incoming",
         )
 
+        # 5) ответ клиенту
         await context.bot.send_message(
             chat_id=message.chat_id,
             text="📷 Картинка получена и сохранена в CRM.",
@@ -534,25 +547,35 @@ class TelegramHandlers:
 
             filename = doc.file_name or f"file_{doc.file_unique_id}"
 
-            file_url = upload_telegram_file_to_s3(
+            # 1) грузим в S3
+            bucket, key = upload_file_to_s3(
                 bytes(file_bytes),
                 prefix="telegram/docs",
                 filename=filename,
             )
 
+            # 2) StoredFile
+            stored_file = await sync_to_async(StoredFile.objects.create)(
+                bucket=bucket,
+                key=key,
+                filename=filename,
+            )
+
+            # 3) клиент
             client = await TelegramHandlers._get_or_create_client_for_user(user)
 
+            # 4) Message с FK на StoredFile
             await sync_to_async(Message.objects.create)(
                 operator=None,
                 client=client,
                 message_type="document",
                 content=f"Файл: {filename}",
                 telegram_message_id=message.message_id,
-                file_url=file_url,
-                file_name=filename,
+                file=stored_file,
                 direction="incoming",
             )
 
+            # 5) ответ
             await context.bot.send_message(
                 chat_id=message.chat_id,
                 text=f"📎 Файл «{filename}» получен и сохранён в CRM.",
@@ -583,46 +606,38 @@ class TelegramHandlers:
         )
         return client
     
-    
-"""
-async def setup_telegram_bot():
-#   Initialize Telegram bot with handlers
-    try:
-        application = Application.builder().token(TELEGRAM_TOKEN).build()
+# ---- SEND MASSAGE FRO CHAT
 
-        application.add_handler(
-            MessageHandler(filters.ALL, TelegramHandlers.debug_any)
-        )
-        application.add_handler(
-            MessageHandler(filters.ALL, TelegramHandlers.handle_document)
-        )
-        
-        application.add_handler(CommandHandler("start", TelegramHandlers.start_command))
-        application.add_handler(CommandHandler("help", TelegramHandlers.help_command))
-        application.add_handler(
-            CommandHandler("status", TelegramHandlers.status_command)
-        )
-        application.add_handler(CommandHandler("auth", TelegramHandlers.auth_command))
+async def send_text_from_crm(
+    *,
+    client: Client,
+    text: str,
+    operator: Operator | None = None,
+) -> None:
+    """
+    Асинхронно отправляет сообщение клиенту из CRM
+    и сохраняет его в Message как исходящее.
+    Используется и из бота, и из Django-части.
+    """
+    if application is None:
+        # если бот не инициализирован — просто логируем/падаем тихо
+        logger.error("Telegram application is not initialized")
+        return
 
-        application.add_handler(
-            MessageHandler(
-                filters.PHOTO & ~filters.COMMAND, TelegramHandlers.handle_photo
-            )
-        )
-        application.add_handler(
-            MessageHandler(filters.ALL, TelegramHandlers.handle_document)
-        )
-        
-        application.add_handler(
-            MessageHandler(
-                filters.TEXT & ~filters.COMMAND, TelegramHandlers.handle_message
-            )
-        )
-       
+    chat_id = client.telegram_id
+    if not chat_id:
+        logger.error("Client %s has no telegram_id", client)
+        return
 
-        await application.initialize()
-        return application
-    except Exception as e:
-        logger.error(f"Failed to setup Telegram bot: {e}")
-        return None
-"""
+    # отправляем через уже существующий application.bot
+    sent_msg = await application.bot.send_message(chat_id=chat_id, text=text)
+
+    # пишем в CRM
+    await sync_to_async(Message.objects.create)(
+        client=client,
+        operator=operator,
+        content=text,
+        message_type="text",
+        direction="outgoing",
+        telegram_message_id=sent_msg.message_id,
+    )

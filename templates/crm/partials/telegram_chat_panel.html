@@ -1,0 +1,256 @@
+<!-- Шапка с информацией о клиенте -->
+<div class="px-4 py-3 border-b border-base-200 flex items-center gap-3">
+  <div class="avatar placeholder">
+    <div class="w-8 rounded-full bg-secondary text-secondary-content text-xs">
+      {{ client.first_name|first|default:"К" }}
+    </div>
+  </div>
+  <div class="flex flex-col">
+    <span class="font-medium text-sm">
+      {{ client.first_name }}{% if client.last_name %} {{ client.last_name }}{% endif %}
+    </span>
+    <span class="text-xs text-base-content/60">
+      {% if client.username %}@{{ client.username }}{% endif %}
+      {% if client.phone %} • {{ client.phone }}{% endif %}
+    </span>
+  </div>
+</div>
+
+<!-- Лента сообщений -->
+<div
+  id="telegram-chat-messages"
+  class="flex-1 overflow-y-auto px-4 py-3 space-y-3 bg-base-100"
+  style="max-height: calc(80vh - 140px);"
+>
+  {% for msg in messages %}
+    {% if msg.direction == "incoming" %}
+      <div class="chat chat-start">
+    {% else %}
+      <div class="chat chat-end">
+    {% endif %}
+
+        <div class="chat-bubble
+                    {% if msg.direction == 'incoming' %}
+                      bg-emerald-50 text-emerald-900
+                    {% else %}
+                      chat-bubble-primary
+                    {% endif %}">
+          {% if msg.message_type == "text" and not msg.file %}
+            {{ msg.content }}
+          {% elif msg.message_type == "image" and msg.file %}
+            <a href="{% url 'file_download' msg.file.id %}" target="_blank" class="block">
+              <img src="{% url 'file_download' msg.file.id %}"
+                   alt="{{ msg.file.filename }}"
+                   class="max-w-xs rounded-lg">
+            </a>
+            {% if msg.content %}
+              <div class="mt-1 text-xs opacity-80">{{ msg.content }}</div>
+            {% endif %}
+          {% elif msg.message_type == "document" and msg.file %}
+            <a href="{% url 'file_download' msg.file.id %}" target="_blank"
+               class="flex items-center gap-2">
+              📎 <span class="underline text-xs break-all">
+                {{ msg.file.filename|default:"Файл" }}
+              </span>
+            </a>
+            {% if msg.content %}
+              <div class="mt-1 text-xs opacity-80">{{ msg.content }}</div>
+            {% endif %}
+          {% else %}
+            {{ msg.content }}
+          {% endif %}
+        </div>
+
+        <div class="chat-footer text-[10px] text-base-content/60">
+          {{ msg.created_at|date:"d.m H:i" }}
+        </div>
+      </div>
+  {% empty %}
+    <div class="text-xs text-base-content/60">
+      Сообщений пока нет. Напишите первое сообщение клиенту.
+    </div>
+  {% endfor %}
+</div>
+
+<!-- Форма отправки -->
+<div class="border-t border-base-200 p-3">
+  <form
+    id="telegram-chat-send-form"
+    hx-post="{% url 'telegram_send_message' client.id %}"
+    hx-target="#telegram-chat-panel"
+    hx-swap="innerHTML show:bottom"
+    enctype="multipart/form-data"
+    class="flex flex-col gap-2"
+  >
+    {% csrf_token %}
+
+    <!-- скрытое поле для текста -->
+    <input type="hidden" name="content" id="tg_hidden_content">
+
+    <!-- Строка с кнопками и полем -->
+    <div class="flex items-end gap-2">
+      <label class="btn btn-sm btn-ghost" for="tg_file_input">
+        <svg xmlns="http://www.w3.org/2000/svg"
+             viewBox="0 0 24 24"
+             fill="none"
+             stroke="currentColor"
+             stroke-width="1.5"
+             class="w-5 h-5">
+          <path stroke-linecap="round" stroke-linejoin="round"
+                d="M18.375 12.375 13.5 17.25a4.125 4.125 0 1 1-5.835-5.835l6.364-6.364a2.875 2.875 0 1 1 4.065 4.065L11.25 18.75" />
+        </svg>
+      </label>
+      <input id="tg_file_input" type="file" name="file" class="hidden">
+
+      <!-- Поле ввода -->
+      <div
+        id="tg_message_input"
+        class="flex-1 max-h-32 min-h-[3.5rem] px-3 py-2 rounded-lg bg-base-100 text-sm overflow-y-auto outline-none border border-siriBorder focus:border-siriBorderDark"
+        contenteditable="true"
+        data-placeholder="Напишите сообщение..."
+        onkeydown="handleChatInputKey(event)"
+      ></div>
+
+      <!-- Кнопка эмодзи -->
+      <button
+        type="button"
+        id="tg_emoji_button"
+        class="btn btn-sm btn-ghost text-lg"
+        onclick="toggleEmojiPicker()"
+      >
+        😊
+      </button>
+
+      <!-- Поповер‑пикер -->
+      <div
+        id="tg_emoji_popover"
+        class="hidden absolute bottom-12 right-20 z-50 w-64 max-h-64 rounded-lg border border-base-300 bg-base-100 shadow-lg p-2 overflow-y-auto"
+      >
+        <div class="text-xs text-base-content/60 px-1 mb-1">Эмодзи</div>
+        <div class="emoji-grid grid grid-cols-8 gap-1 text-xl leading-none"></div>
+      </div>
+
+      <!-- Отправка (самолётик) -->
+      <button type="submit" class="btn btn-sm btn-primary px-3">
+        <svg xmlns="http://www.w3.org/2000/svg"
+             class="w-4 h-4"
+             fill="none"
+             viewBox="0 0 24 24"
+             stroke="currentColor"
+             stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round"
+                d="M5 12l14-7-4 14-3-5-5-2z" />
+        </svg>
+      </button>
+    </div>
+
+    <!-- Бейдж загруженного файла -->
+    <div id="tg_file_badge" class="hidden text-xs">
+      <div class="inline-flex items-center gap-2 px-2 py-1 rounded bg-base-200 text-base-content/80">
+        <span class="truncate max-w-[220px]" id="tg_file_name"></span>
+        <button type="button" class="btn btn-xs btn-ghost px-1" onclick="clearSelectedFile()">
+          ✕
+        </button>
+      </div>
+    </div>
+  </form>
+</div>
+
+<script>
+  // автоскролл вниз при загрузке панели чата
+  (function () {
+    const box = document.getElementById('telegram-chat-messages');
+    if (box) {
+      box.scrollTop = box.scrollHeight;
+    }
+  })();
+
+  // показать выбранный файл
+  document.addEventListener('change', (e) => {
+    if (e.target && e.target.id === 'tg_file_input') {
+      const input = e.target;
+      const badge = document.getElementById('tg_file_badge');
+      const nameEl = document.getElementById('tg_file_name');
+
+      if (input.files && input.files.length > 0) {
+        const file = input.files[0];
+        nameEl.textContent = file.name;
+        badge.classList.remove('hidden');
+      } else {
+        badge.classList.add('hidden');
+        nameEl.textContent = '';
+      }
+    }
+  });
+
+  function clearSelectedFile() {
+    const input = document.getElementById('tg_file_input');
+    const badge = document.getElementById('tg_file_badge');
+    const nameEl = document.getElementById('tg_file_name');
+
+    if (!input) return;
+
+    input.value = '';
+    badge.classList.add('hidden');
+    nameEl.textContent = '';
+  }
+
+  // работа с текстом
+
+  function getMessageText() {
+  const el = document.getElementById('tg_message_input');
+  if (!el) return '';
+
+  // Берём HTML и превращаем в обычный текст
+  let html = el.innerHTML;
+
+  // <br> -> \n
+  html = html.replace(/<br\s*\/?>/gi, '\n');            // [web:1857]
+
+  // блоки <div> / <p> -> переносы строк
+  html = html.replace(/<\/(div|p)>/gi, '\n');           // [web:1861]
+
+  // убираем остальные теги
+  html = html.replace(/<[^>]+>/g, '');
+
+  // заменяем &nbsp; на обычные пробелы
+  html = html.replace(/&nbsp;/gi, ' ');
+
+  return html.trim();
+}
+
+  function clearMessageInput() {
+    const box = document.getElementById('tg_message_input');
+    const hidden = document.getElementById('tg_hidden_content');
+    if (box) box.innerHTML = '';
+    if (hidden) hidden.value = '';
+  }
+
+  // Enter = отправка, Shift+Enter = новая строка
+  function handleChatInputKey(e) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      const form = e.target.closest('form');
+      if (!form) return;
+
+      const text = getMessageText();
+      const hidden = document.getElementById('tg_hidden_content');
+      if (hidden) hidden.value = text;
+
+      form.requestSubmit(); // нормальный submit, который подхватит htmx[web:1842][web:1666]
+      }
+  }
+
+  // При клике по кнопке самолётика тоже прокидываем текст в hidden
+  document.addEventListener('click', (e) => {
+    const btn = e.target.closest('#telegram-chat-send-form button[type="submit"]');
+    if (!btn) return;
+
+    const form = btn.form;
+    if (!form) return;
+
+    const text = getMessageText();
+    const hidden = document.getElementById('tg_hidden_content');
+    if (hidden) hidden.value = text;
+  });
+</script>

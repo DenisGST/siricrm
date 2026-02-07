@@ -2,393 +2,517 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CRM Dashboard</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" href="{% static 'img/favicon.ico' %}">
+  <title>CRM Dashboard</title>
 
-    <!-- Сначала Tailwind, потом daisyUI поверх -->
-    <link rel="stylesheet" href="{% static 'css/tailwind.css' %}">
-    <link rel="stylesheet" href="{% static 'css/daisyui.css' %}">
+  <!-- Сначала Tailwind, потом daisyUI -->
+  <link rel="stylesheet" href="{% static 'css/tailwind.css' %}">
+  <link rel="stylesheet" href="{% static 'css/daisyui.css' %}">
 
-    <!-- Твои стили -->
-    <link rel="stylesheet" href="{% static 'css/style.css' %}">
+  <!-- Твои стили -->
+  <link rel="stylesheet" href="{% static 'css/style.css' %}">
 
-    <!-- HTMX -->
-    <script src="https://unpkg.com/htmx.org@1.9.8"></script>
-    <!-- CSRF для HTMX -->
-    <script>
-        const csrftoken =
-            document.querySelector('[name=csrfmiddlewaretoken]')?.value ||
-            document.cookie.split('; ').find(row => row.startsWith('csrftoken='))?.split('=')[1];
+  <!-- HTMX -->
+  <script src="https://unpkg.com/htmx.org@1.9.8"></script>
+  <!-- CSRF для HTMX -->
+  <script>
+    const csrftoken =
+      document.querySelector('[name=csrfmiddlewaretoken]')?.value ||
+      document.cookie.split('; ').find(row => row.startsWith('csrftoken='))?.split('=')[1];
 
-        document.addEventListener('htmx:configRequest', (event) => {
-            if (csrftoken) {
-                event.detail.headers['X-CSRFToken'] = csrftoken;
-            }
-        });
-    </script>
+    document.addEventListener('htmx:configRequest', (event) => {
+      if (csrftoken) {
+        event.detail.headers['X-CSRFToken'] = csrftoken;
+      }
+    });
+  </script>
 
-    <style>
-        [hx-boost] { cursor: pointer; }
-        .htmx-loading { opacity: 0.6; }
-        .htmx-swapping { opacity: 0; transition: opacity 1s ease-out; }
-        .htmx-settling { opacity: 1; transition: opacity 1s ease-in; }
-    </style>
+  <style>
+    [hx-boost] { cursor: pointer; }
+    .htmx-loading { opacity: 0.6; }
+    .htmx-swapping { opacity: 0; transition: opacity 1s ease-out; }
+    .htmx-settling { opacity: 1; transition: opacity 1s ease-in; }
+  </style>
 </head>
 <body data-theme="winter" class="bg-base-200">
 
 <div class="min-h-screen flex bg-base-200">
-    <!-- Левый navbar -->
-    <nav id="sidebar"
-         class="w-56 bg-base-100 border-r border-base-300 flex flex-col transition-all duration-200">
-        <!-- Логотип -->
-        <div class="px-4 py-3 border-b border-base-300 flex items-center gap-2">
-            <a href="/" class="flex items-center gap-2">
-                <img src="{% static 'img/logo.png' %}"
-                     alt="Логотип"
-                     class="w-7 h-7 rounded" />
-                <span class="sidebar-label font-bold text-sm">SiriCRM</span>
-            </a>
-        </div>
+  <!-- Левый sidebar -->
+  <nav id="sidebar"
+       class="w-56 bg-base-100 border-r border-base-300 flex flex-col transition-all duration-200">
 
-        <!-- Основное меню -->
-        <div class="flex-1 overflow-y-auto">
-            <ul class="menu p-2 text-sm">
-                <li>
-                    <a href="/" hx-boost="true">
-                        <span>🏠</span>
-                        <span class="sidebar-label ml-2">Главная</span>
-                    </a>
-                </li>
-                <li>
-                    <a href="/dashboard/" hx-boost="true">
-                        <span>📊</span>
-                        <span class="sidebar-label ml-2">Dashboard</span>
-                    </a>
-                </li>
-
-                <li class="menu-title mt-2 sidebar-label">
-                    <span>CRM</span>
-                </li>
-                <li>
-                    <a href="#"
-                       hx-get="/kanban/"
-                       hx-target="#content-area"
-                       hx-swap="innerHTML">
-                        <span>📋</span>
-                        <span class="sidebar-label ml-2">Kanban</span>
-                    </a>
-                </li>
-                <li>
-                    <a href="#"
-                       hx-get="/clients/"
-                       hx-target="#content-area"
-                       hx-swap="innerHTML">
-                        <span>👥</span>
-                        <span class="sidebar-label ml-2">Клиенты</span>
-                    </a>
-                </li>
-                <li>
-                    <a href="#"
-                       hx-get="/operators/"
-                       hx-target="#content-area"
-                       hx-swap="innerHTML">
-                        <span>👨‍💼</span>
-                        <span class="sidebar-label ml-2">Операторы</span>
-                    </a>
-                </li>
-                <li>
-                    <a href="#"
-                       hx-get="/logs/"
-                       hx-target="#content-area"
-                       hx-swap="innerHTML">
-                        <span>📊</span>
-                        <span class="sidebar-label ml-2">Логи</span>
-                    </a>
-                </li>
-
-                <li class="menu-title mt-2 sidebar-label">
-                    <span>Администрирование</span>
-                </li>
-                {% if user.is_superuser %}
-                <li>
-                    <a href="/admin/" hx-boost="true">
-                        <span>⚙️</span>
-                        <span class="sidebar-label ml-2">Django Admin</span>
-                    </a>
-                </li>
-                {% endif %}
-                <li>
-                    <a href="/settings/" hx-boost="true">
-                        <span>🔧</span>
-                        <span class="sidebar-label ml-2">Настройки</span>
-                    </a>
-                </li>
-            </ul>
-        </div>
-        
-        <!-- Telegram блок (полный, для расширенного сайдбара) -->
-        <div class="telegram-block px-4 py-3 border-t border-base-300 text-[0.72rem] space-y-2">
-            <div class="flex flex-col gap-1">
-                <div class="flex items-center gap-2">
-                    <span class="text-[0.65rem] uppercase tracking-wide text-base-content/60">
-                        Telegram
-                    </span>
-                    {% if telegram_user %}
-                        <span class="badge badge-success badge-xs">подключён</span>
-                    {% else %}
-                        <span class="badge badge-ghost badge-xs">не подключён</span>
-                    {% endif %}
-                </div>
-
-                {% if telegram_user %}
-                    <div class="text-base-content/90 leading-snug">
-                        <span class="font-medium">
-                            {{ telegram_user.first_name }}
-                            {% if telegram_user.last_name %} {{ telegram_user.last_name }}{% endif %}
-                        </span>
-                        {% if telegram_user.username %}
-                            <span class="text-base-content/70">
-                                · @{{ telegram_user.username }}
-                            </span>
-                        {% endif %}
-                    </div>
-                {% else %}
-                    <div class="text-base-content/70 leading-snug">
-                        Привяжите аккаунт, чтобы работать через бота.
-                    </div>
-                {% endif %}
-            </div>
-
-            <div class="flex flex-col gap-2">
-                {% if telegram_bot_username %}
-                    <a href="https://t.me/{{ telegram_bot_username }}"
-                       target="_blank"
-                       class="btn btn-outline btn-xs justify-center">
-                        Открыть бота
-                    </a>
-                {% endif %}
-
-                <button
-                    class="btn btn-primary btn-xs justify-center"
-                    hx-get="{% url 'telegram_login' %}"
-                    hx-target="#content-area"
-                    hx-swap="innerHTML"
-                >
-                    {% if telegram_user %}Изменить привязку{% else %}Привязать Telegram{% endif %}
-                </button>
-            </div>
-        </div>
-
-        <!-- Telegram статус-иконка для свернутого сайдбара -->
-        <div class="telegram-icon px-4 py-3 border-t border-base-300 flex justify-center">
-            {% if telegram_user %}
-                <div class="w-3 h-3 rounded-full bg-green-500" title="Telegram подключён"></div>
-            {% else %}
-                <div class="w-3 h-3 rounded-full bg-red-500" title="Telegram не подключён"></div>
-            {% endif %}
-        </div>
-
-       
-        <!-- Блок пользователя внизу -->
-        <div class="px-4 py-3 border-t border-base-300 flex items-center justify-between text-xs">
-            <div class="flex items-center gap-2">
-                <div class="w-7 h-7 rounded-full bg-primary text-primary-content flex items-center justify-center text-[0.7rem]">
-                    {{ user.first_name|first }}
-                </div>
-                <div class="sidebar-label flex flex-col max-w-[110px]">
-                    <span class="font-semibold truncate">
-                        {{ user.get_full_name|default:user.username }}
-                    </span>
-                    <span class="text-[0.6rem] text-base-content/70">
-                        Онлайн
-                    </span>
-                </div>
-            </div>
-            <form method="post" action="{% url 'logout' %}">
-                {% csrf_token %}
-                <button type="submit" class="btn btn-ghost btn-xs px-2 text-[0.6rem]">
-                    🚪
-                </button>
-            </form>
-        </div>
-    </nav>
-
-    <!-- Правая часть: top‑bar + контент -->
-    <div class="flex-1 flex flex-col">
-        <!-- Верхний бар с кнопкой сворачивания -->
-        <header class="navbar bg-base-100 border-b border-base-300 px-2 h-12 min-h-0">
-            <div class="navbar-start">
-                <button id="sidebar-toggle-btn"
-                        type="button"
-                        class="btn btn-ghost btn-xs px-2">
-                ☰
-                </button>
-                <span class="ml-2 text-sm font-bold">Dashboard</span>
-            </div>
-
-            <div class="navbar-center hidden md:flex">
-                <span class="text-xs text-base-content/80">
-                Панель управления CRM
-                </span>
-            </div>
-
-            <!-- Иконка состояния телеграм -->
-            <div class="navbar-end gap-3">
-            
-                {% if bot_status == "ok" %}
-                <div class="tooltip tooltip-left tooltip-bot-status" data-tip="Бот работает">
-                    <button class="btn btn-circle btn-sm btn-ghost bg-transparent btn-glow">
-                        {% include "partials/telegram_green.svg" %}
-                    </button>
-                </div>
-
-                {% elif bot_status == "pending" %}
-                <div class="tooltip tooltip-left tooltip-bot-status" data-tip="Есть неотвеченные сообщения">
-                    <button class="btn btn-circle btn-sm btn-ghost bg-transparent btn-glow btn-telegram-blue-pulse">
-                    {% include "partials/telegram_blue.svg" %}
-                    </button>
-                </div>
-
-                {% else %}
-                <div class="tooltip tooltip-left tooltip-bot-status" data-tip="Ошибка бота">
-                   <button class="btn btn-circle btn-sm btn-ghost bg-transparent btn-glow btn-telegram-red-pulse">
-                    {% include "partials/telegram_red.svg" %}
-                    </button>
-                </div>
-                {% endif %}
-            
-            </div>
-
-
-        </header>
-
-        <!-- Основной контент -->
-        <main class="flex-1 p-3 overflow-y-auto">
-            {% block content %}
-
-            <!-- Статистика (4 карточки, компактно) -->
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
-            <div class="bg-base-100 border border-base-300 rounded-lg px-3 py-2 flex items-center gap-2 text-xs">
-                <span class="text-primary">
-                <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                    <path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v2h8v-2zM6 8a2 2 0 11-4 0 2 2 0 014 0zM16 18v-3a5.972 5.972 0 00-.75-2.906A3.005 3.005 0 0119 15v3h-3zM4.75 12.094A5.973 5.973 0 004 15v3H1v-3a3 3 0 013.75-2.906z"></path>
-                </svg>
-                </span>
-                <span class="text-base-content/80 font-medium text-[0.8rem] truncate">
-                Активных операторов
-                </span>
-                <span class="ml-auto font-semibold text-base-content">
-                <span
-                    hx-get="{% url 'operators_online_count' %}"
-                    hx-trigger="load"
-                    hx-swap="innerHTML">0</span>
-                </span>
-            </div>
-
-            <div class="bg-base-100 border border-base-300 rounded-lg px-3 py-2 flex items-center gap-2 text-xs">
-                <span class="text-success">
-                <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                    <path fill-rule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clip-rule="evenodd"></path>
-                </svg>
-                </span>
-                <span class="text-base-content/80 font-medium text-[0.8rem] truncate">
-                Активных клиентов
-                </span>
-                <span class="ml-auto font-semibold text-base-content">
-                <span
-                    hx-get="{% url 'clients_active_count' %}"
-                    hx-trigger="load"
-                    hx-swap="innerHTML">0</span>
-                </span>
-            </div>
-
-            <div class="bg-base-100 border border-base-300 rounded-lg px-3 py-2 flex items-center gap-2 text-xs">
-                <span class="text-info">
-                <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                    <path d="M2 5a2 2 0 012-2h12a2 2 0 012 2v10a2 2 0 01-2 2H4a2 2 0 01-2-2V5z"></path>
-                </svg>
-                </span>
-                <span class="text-base-content/80 font-medium text-[0.8rem] truncate">
-                Новых сообщений
-                </span>
-                <span class="ml-auto font-semibold text-base-content">
-                <span
-                    hx-get="{% url 'messages_new_count' %}"
-                    hx-trigger="load"
-                    hx-swap="innerHTML">0</span>
-                </span>
-            </div>
-
-            <div class="bg-base-100 border border-base-300 rounded-lg px-3 py-2 flex items-center gap-2 text-xs">
-                <span class="text-warning">
-                <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                    <path d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z"></path>
-                    <path fill-rule="evenodd" d="M4 5a2 2 0 012-2 1 1 0 00-1-1H3a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2V5a1 1 0 00-1 1v10H4V5z" clip-rule="evenodd"></path>
-                </svg>
-                </span>
-                <span class="text-base-content/80 font-medium text-[0.8rem] truncate">
-                Лидов
-                </span>
-                <span class="ml-auto font-semibold text-base-content">
-                <span
-                    hx-get="{% url 'lead_count' %}"
-                    hx-trigger="load"
-                    hx-swap="innerHTML">0</span>
-                </span>
-            </div>
-            </div>
-
-            <!-- Tabs -->
-            <div class="border-b border-base-300 mb-4">
-            <div class="tabs -mb-px text-xs">
-                <a class="tab tab-bordered tab-active px-3"
-                hx-get="/kanban/"
-                hx-target="#content-area"
-                hx-swap="innerHTML">
-                Kanban
-                </a>
-                <a class="tab tab-bordered px-3"
-                hx-get="/clients/"
-                hx-target="#content-area"
-                hx-swap="innerHTML">
-                Клиенты
-                </a>
-                <a class="tab tab-bordered px-3"
-                hx-get="/operators/"
-                hx-target="#content-area"
-                hx-swap="innerHTML">
-                Операторы
-                </a>
-                <a class="tab tab-bordered px-3"
-                hx-get="{% url 'logs_list' %}"
-                hx-target="#content-area"
-                hx-swap="innerHTML">
-                Логи
-                </a>
-            </div>
-            </div>
-
-            <!-- Основная зона контента -->
-            <div id="content-area" class="bg-base-100 rounded-lg shadow-md border border-base-300 p-3">
-                {% include "crm/kanban.html" %}
-            </div>
-
-            {% endblock %}
-        </main>
+    <!-- Логотип -->
+    <div class="px-4 py-3 border-b border-base-300 flex items-center gap-2">
+      <a href="/" class="flex items-center gap-2">
+        <img src="{% static 'img/logo.png' %}" alt="Логотип" class="w-7 h-7 rounded">
+        <span class="sidebar-label font-bold text-sm">SiriCRM</span>
+      </a>
     </div>
+
+    <!-- Основное меню -->
+    <div class="flex-1 overflow-y-auto">
+      <ul class="menu p-2 text-sm">
+        <li>
+          <a href="/" hx-boost="true">
+            <span>🏠</span>
+            <span class="sidebar-label ml-2">Главная</span>
+          </a>
+        </li>
+        <li>
+          <a href="/dashboard/" hx-boost="true">
+            <span>📊</span>
+            <span class="sidebar-label ml-2">Dashboard</span>
+          </a>
+        </li>
+
+        <li class="menu-title mt-2 sidebar-label"><span>CRM</span></li>
+
+        <li>
+          <a href="#"
+             hx-get="/kanban/"
+             hx-target="#content-area"
+             hx-swap="innerHTML">
+            <span>📋</span>
+            <span class="sidebar-label ml-2">Kanban</span>
+          </a>
+        </li>
+        <li>
+          <a href="#"
+             hx-get="/clients/"
+             hx-target="#content-area"
+             hx-swap="innerHTML">
+            <span>👥</span>
+            <span class="sidebar-label ml-2">Клиенты</span>
+          </a>
+        </li>
+        <li>
+          <a href="#"
+             hx-get="/operators/"
+             hx-target="#content-area"
+             hx-swap="innerHTML">
+            <span>👨‍💼</span>
+            <span class="sidebar-label ml-2">Операторы</span>
+          </a>
+        </li>
+        <li>
+          <a href="#"
+             hx-get="/logs/"
+             hx-target="#content-area"
+             hx-swap="innerHTML">
+            <span>📊</span>
+            <span class="sidebar-label ml-2">Логи</span>
+          </a>
+        </li>
+
+        <li class="menu-title mt-2 sidebar-label"><span>Администрирование</span></li>
+
+        {% if user.is_superuser %}
+        <li>
+          <a href="/admin/" hx-boost="true">
+            <span>⚙️</span>
+            <span class="sidebar-label ml-2">Django Admin</span>
+          </a>
+        </li>
+        {% endif %}
+
+        <li>
+          <a href="/settings/" hx-boost="true">
+            <span>🔧</span>
+            <span class="sidebar-label ml-2">Настройки</span>
+          </a>
+        </li>
+      </ul>
+    </div>
+
+    <!-- Telegram блок -->
+    <div class="telegram-block px-4 py-3 border-t border-base-300 text-[0.72rem] space-y-2">
+      <div class="flex flex-col gap-1">
+        <div class="flex items-center gap-2">
+          <span class="text-[0.65rem] uppercase tracking-wide text-base-content/60">Telegram</span>
+          {% if telegram_user %}
+            <span class="badge badge-success badge-xs">подключён</span>
+          {% else %}
+            <span class="badge badge-ghost badge-xs">не подключён</span>
+          {% endif %}
+        </div>
+
+        {% if telegram_user %}
+          <div class="text-base-content/90 leading-snug">
+            <span class="font-medium">
+              {{ telegram_user.first_name }}
+              {% if telegram_user.last_name %} {{ telegram_user.last_name }}{% endif %}
+            </span>
+            {% if telegram_user.username %}
+              <span class="text-base-content/70">· @{{ telegram_user.username }}</span>
+            {% endif %}
+          </div>
+        {% else %}
+          <div class="text-base-content/70 leading-snug">
+            Привяжите аккаунт, чтобы работать через бота.
+          </div>
+        {% endif %}
+      </div>
+
+      <div class="flex flex-col gap-2">
+        {% if telegram_bot_username %}
+          <a href="https://t.me/{{ telegram_bot_username }}"
+             target="_blank"
+             class="btn btn-outline btn-xs justify-center">
+            Открыть бота
+          </a>
+        {% endif %}
+
+        <button
+          class="btn btn-primary btn-xs justify-center"
+          hx-get="{% url 'telegram_login' %}"
+          hx-target="#content-area"
+          hx-swap="innerHTML">
+          {% if telegram_user %}Изменить привязку{% else %}Привязать Telegram{% endif %}
+        </button>
+      </div>
+    </div>
+
+    <!-- Статус-иконка для свернутого сайдбара -->
+    <div class="telegram-icon px-4 py-3 border-t border-base-300 flex justify-center">
+      {% if telegram_user %}
+        <div class="w-3 h-3 rounded-full bg-green-500" title="Telegram подключён"></div>
+      {% else %}
+        <div class="w-3 h-3 rounded-full bg-red-500" title="Telegram не подключён"></div>
+      {% endif %}
+    </div>
+
+    <!-- Пользователь -->
+    <div class="px-4 py-3 border-t border-base-300 flex items-center justify-between text-xs">
+      <div class="flex items-center gap-2">
+        <div class="w-7 h-7 rounded-full bg-primary text-primary-content flex items-center justify-center text-[0.7rem]">
+          {{ user.first_name|first }}
+        </div>
+        <div class="sidebar-label flex flex-col max-w-[110px]">
+          <span class="font-semibold truncate">
+            {{ user.get_full_name|default:user.username }}
+          </span>
+          <span class="text-[0.6rem] text-base-content/70">Онлайн</span>
+        </div>
+      </div>
+      <form method="post" action="{% url 'logout' %}">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-ghost btn-xs px-2 text-[0.6rem]">🚪</button>
+      </form>
+    </div>
+  </nav>
+
+  <!-- Правая часть: top-bar + контент -->
+  <div class="flex-1 flex flex-col">
+    <!-- Верхний бар -->
+    <header class="navbar bg-base-100 border-b border-base-300 px-2 h-12 min-h-0">
+      <div class="navbar-start">
+        <button id="sidebar-toggle-btn" type="button" class="btn btn-ghost btn-xs px-2">☰</button>
+        <span class="ml-2 text-sm font-bold">Dashboard</span>
+      </div>
+
+      <div class="navbar-center hidden md:flex">
+        <span class="text-xs text-base-content/80">Панель управления CRM</span>
+      </div>
+
+      <!-- Иконка состояния телеграм -->
+      <div class="navbar-end gap-3">
+        {% if bot_status == "ok" %}
+          <div class="tooltip tooltip-left tooltip-bot-status" data-tip="Бот работает">
+            <button
+              type="button"
+              class="btn btn-circle btn-sm btn-ghost bg-transparent btn-glow"
+              onclick="openTelegramChatModal()">
+              {% include "partials/telegram_green.svg" %}
+            </button>
+          </div>
+        {% elif bot_status == "pending" %}
+          <div class="tooltip tooltip-left tooltip-bot-status" data-tip="Есть неотвеченные сообщения">
+            <button
+              type="button"
+              class="btn btn-circle btn-sm btn-ghost bg-transparent btn-glow btn-telegram-blue-pulse"
+              onclick="openTelegramChatModal()">
+              {% include "partials/telegram_blue.svg" %}
+            </button>
+          </div>
+        {% else %}
+          <div class="tooltip tooltip-left tooltip-bot-status" data-tip="Ошибка бота">
+            <button
+              type="button"
+              class="btn btn-circle btn-sm btn-ghost bg-transparent btn-glow btn-telegram-red-pulse"
+              onclick="openTelegramChatModal()">
+              {% include "partials/telegram_red.svg" %}
+            </button>
+          </div>
+        {% endif %}
+      </div>
+    </header>
+
+    <!-- Основной контент -->
+    <main class="flex-1 p-3 overflow-y-auto">
+      {% block content %}
+
+      <!-- Статистика -->
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+        <div class="bg-base-100 border border-base-300 rounded-lg px-3 py-2 flex items-center gap-2 text-xs">
+          <span class="text-primary">
+            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+              <path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v2h8v-2zM6 8a2 2 0 11-4 0 2 2 0 014 0zM16 18v-3a5.972 5.972 0 00-.75-2.906A3.005 3.005 0 0119 15v3h-3zM4.75 12.094A5.973 5.973 0 004 15v3H1v-3a3 3 0 013.75-2.906z"></path>
+            </svg>
+          </span>
+          <span class="text-base-content/80 font-medium text-[0.8rem] truncate">
+            Активных операторов
+          </span>
+          <span class="ml-auto font-semibold text-base-content">
+            <span
+              hx-get="{% url 'operators_online_count' %}"
+              hx-trigger="load"
+              hx-swap="innerHTML">0</span>
+          </span>
+        </div>
+
+        <div class="bg-base-100 border border-base-300 rounded-lg px-3 py-2 flex items-center gap-2 text-xs">
+          <span class="text-success">
+            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+              <path fill-rule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clip-rule="evenodd"></path>
+            </svg>
+          </span>
+          <span class="text-base-content/80 font-medium text-[0.8rem] truncate">
+            Активных клиентов
+          </span>
+          <span class="ml-auto font-semibold text-base-content">
+            <span
+              hx-get="{% url 'clients_active_count' %}"
+              hx-trigger="load"
+              hx-swap="innerHTML">0</span>
+          </span>
+        </div>
+
+        <div class="bg-base-100 border border-base-300 rounded-lg px-3 py-2 flex items-center gap-2 text-xs">
+          <span class="text-info">
+            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+              <path d="M2 5a2 2 0 012-2h12a2 2 0 012 2v10a2 2 0 01-2 2H4a2 2 0 01-2-2V5z"></path>
+            </svg>
+          </span>
+          <span class="text-base-content/80 font-medium text-[0.8rem] truncate">
+            Новых сообщений
+          </span>
+          <span class="ml-auto font-semibold text-base-content">
+            <span
+              hx-get="{% url 'messages_new_count' %}"
+              hx-trigger="load"
+              hx-swap="innerHTML">0</span>
+          </span>
+        </div>
+
+        <div class="bg-base-100 border border-base-300 rounded-lg px-3 py-2 flex items-center gap-2 text-xs">
+          <span class="text-warning">
+            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+              <path d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z"></path>
+              <path fill-rule="evenodd" d="M4 5a2 2 0 012-2 1 1 0 00-1-1H3a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2V5a1 1 0 00-1 1v10H4V5z" clip-rule="evenodd"></path>
+            </svg>
+          </span>
+          <span class="text-base-content/80 font-medium text-[0.8rem] truncate">
+            Лидов
+          </span>
+          <span class="ml-auto font-semibold text-base-content">
+            <span
+              hx-get="{% url 'lead_count' %}"
+              hx-trigger="load"
+              hx-swap="innerHTML">0</span>
+          </span>
+        </div>
+      </div>
+
+      <!-- Tabs -->
+      <div class="border-b border-base-300 mb-4">
+        <div class="tabs -mb-px text-xs">
+          <a class="tab tab-bordered tab-active px-3"
+             hx-get="/kanban/"
+             hx-target="#content-area"
+             hx-swap="innerHTML">Kanban</a>
+          <a class="tab tab-bordered px-3"
+             hx-get="/clients/"
+             hx-target="#content-area"
+             hx-swap="innerHTML">Клиенты</a>
+          <a class="tab tab-bordered px-3"
+             hx-get="/operators/"
+             hx-target="#content-area"
+             hx-swap="innerHTML">Операторы</a>
+          <a class="tab tab-bordered px-3"
+             hx-get="{% url 'logs_list' %}"
+             hx-target="#content-area"
+             hx-swap="innerHTML">Логи</a>
+        </div>
+      </div>
+
+      <!-- Основная зона контента -->
+      <div id="content-area" class="bg-base-100 rounded-lg shadow-md border border-base-300 p-3">
+        {% include "crm/kanban.html" %}
+      </div>
+
+      {% endblock %}
+    </main>
+  </div>
 </div>
+
+<!-- Модалка Siri-чат -->
+<div
+  id="telegram_chat_modal"
+  style="
+    position: fixed;
+    inset: 0;
+    z-index: 999999;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.6);
+  "
+>
+  <div
+    class="bg-base-100 text-base-content rounded-xl overflow-hidden shadow-2xl flex flex-col"
+    style="
+      padding: 0;
+      width: 90%;
+      max-width: 960px;
+      height: 80vh;
+      display: flex;
+      flex-direction: column;
+      border-radius: 5px;
+    "
+  >
+    <!-- Header -->
+    <div
+      class="flex items-center justify-between px-4 py-3 border-b border-base-300 bg-base-200"
+      style="
+        background-color: hsl(var(--b2));  /* bg-base-200 */
+        border-top-left-radius: 5px;
+        border-top-right-radius: 5px;
+      "
+    >
+      <h3 class="font-semibold text-lg">Siri-Telegram чат</h3>
+      <button
+        type="button"
+        class="btn btn-ghost btn-sm"
+        onclick="closeTelegramChatModal()"
+      >
+        ✕
+      </button>
+    </div>
+
+    <!-- 2‑колоночный контент -->
+    <div class="flex flex-1 min-h-0 overflow-hidden">
+      <!-- Левая колонка: список клиентов -->
+      <aside class="w-72 border-r border-base-200 flex flex-col min-h-0">
+        <div class="px-3 pt-3 pb-2 border-b border-base-200">
+          <label class="input input-sm input-bordered flex items-center gap-2">
+            <span class="text-sm text-base-content/70">Поиск</span>
+            <input type="text" class="grow" placeholder="ФИО, телефон">
+          </label>
+        </div>
+
+        <!-- СКРОЛЛ ВНУТРИ ЛЕВОЙ КОЛОНКИ -->
+        <div
+          id="telegram-clients-list"
+          class="flex-1 min-h-0 overflow-y-auto px-3"
+          hx-get="{% url 'telegram_clients_list' %}"
+          hx-trigger="load"
+          hx-swap="innerHTML"
+        >
+          <!-- сюда подгрузится partial со списком клиентов -->
+        </div>
+      </aside>
+
+      <!-- Правая колонка: чат -->
+      <section class="flex-1 flex flex-col min-h-0" id="telegram-chat-panel">
+        <div class="px-4 py-3 border-b border-base-200 flex items-center gap-3">
+          <div class="avatar placeholder">
+            <div class="w-8 rounded-full bg-secondary text-secondary-content text-xs">
+              К
+            </div>
+          </div>
+          <div class="flex flex-col">
+            <span class="font-medium text-sm">Клиент не выбран</span>
+            <span class="text-xs text-base-content/60">-------</span>
+          </div>
+        </div>
+
+        <!-- СКРОЛЛ ЛЕНТЫ СООБЩЕНИЙ -->
+        <div class="flex-1 min-h-0 overflow-y-auto px-4 py-3 space-y-3 bg-base-100">
+          <div class="chat chat-start">
+            <div class="chat-bubble chat-bubble-neutral">
+              Выберите клиента...
+            </div>
+            <div class="chat-footer text-[10px] text-base-content/60">12:30</div>
+          </div>
+        </div>
+
+        <div class="border-t border-base-200 p-3">
+          <form class="flex items-end gap-2 relative" onsubmit="sendTelegramMessage(event)">
+            <!-- Кнопка вложений -->
+            <label class="btn btn-sm btn-ghost" for="tg_file_input">📎</label>
+            <input id="tg_file_input" type="file" class="hidden">
+
+            <!-- Поле ввода -->
+            <div
+              id="tg_message_input"
+              class="flex-1 max-h-32 min-h-[3.5rem] px-3 py-2 rounded-lg bg-base-100 text-sm overflow-y-auto"
+              contenteditable="true"
+              data-placeholder="Напишите сообщение..."
+              onkeydown="handleChatInputKey(event)"
+            ></div>
+
+            <!-- Кнопка эмодзи -->
+            <button
+              type="button"
+              id="tg_emoji_button"
+              class="btn btn-sm btn-ghost text-lg"
+              onclick="toggleEmojiPicker()"
+            >
+              😊
+            </button>
+
+            <!-- Поповер‑пикер -->
+            <div
+              id="tg_emoji_popover"
+              class="hidden absolute bottom-12 right-20 z-50 w-64 max-h-64 rounded-lg border border-base-300 bg-base-100 shadow-lg p-2 overflow-y-auto"
+            >
+              <div class="text-xs text-base-content/60 px-1 mb-1">Эмодзи</div>
+              <div class="emoji-grid grid grid-cols-8 gap-1 text-xl leading-none">
+                <!-- заполним через JS -->
+              </div>
+            </div>
+
+            <!-- Отправка -->
+            <button type="submit" class="btn btn-sm btn-primary px-3">
+              <svg xmlns="http://www.w3.org/2000/svg"
+                  class="w-4 h-4"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round"
+                      d="M5 12l14-7-4 14-3-5-5-2z" />
+              </svg>
+            </button>
+          </form>
+        </div>
+      </section>
+    </div>
+  </div>
+</div>
+
 
 <!-- Toast -->
 <div id="toast-container" class="fixed bottom-4 right-4 z-50 space-y-2"></div>
 <div id="stats-container" hx-swap-oob="true"></div>
 
 <script>
-  // Toast для HTMX-запросов
+  // Toast для HTMX
   document.addEventListener('htmx:afterRequest', (event) => {
     const status = event.detail?.xhr?.status;
     if (!status) return;
-
     if (status === 200 || status === 201) {
       showToast('Успешно', 'success');
     } else if (status >= 400) {
@@ -399,11 +523,9 @@
   function showToast(message, type = 'info') {
     const container = document.getElementById('toast-container');
     if (!container) return;
-
     const toast = document.createElement('div');
     toast.className = `alert alert-${type} shadow-lg rounded-lg w-96`;
     toast.innerHTML = `<div><span>${message}</span></div>`;
-
     container.appendChild(toast);
     setTimeout(() => toast.remove(), 4000);
   }
@@ -422,7 +544,6 @@
       });
     }
 
-    // безопасный вызов htmx.ajax
     if (window.htmx) {
       htmx.ajax('GET', '/api/stats/', '#stats-container');
     }
@@ -430,21 +551,114 @@
 </script>
 
 <script>
-  document.addEventListener('DOMContentLoaded', () => {
-    const tabsContainer = document.querySelector('.tabs.tabs-boxed');
-    if (!tabsContainer) return;
-
-    tabsContainer.addEventListener('click', (event) => {
-      const tab = event.target.closest('.tab');
-      if (!tab) return;
-
-      tabsContainer.querySelectorAll('.tab').forEach(t => {
-        t.classList.remove('tab-active');
-      });
-
-      tab.classList.add('tab-active');
-    });
-  });
+  function openTelegramChatModal() {
+    const el = document.getElementById('telegram_chat_modal');
+    if (el) el.style.display = 'flex';
+  }
+  function closeTelegramChatModal() {
+    const el = document.getElementById('telegram_chat_modal');
+    if (el) el.style.display = 'none';
+  }
 </script>
+<script>
+  function setActiveTelegramClient(el) {
+    document
+      .querySelectorAll('#telegram-clients-list .tg-client-item.active')
+      .forEach(item => item.classList.remove('active'));
+
+    el.classList.add('active');
+  }
+</script>
+
+<script>
+ const EMOJIS = ['😀','😁','😂','🤣','😊','😉','😍','😘',
+                '👍','👌','🙏','👏','🔥','✨','✅','❗',
+                '😎','🤔','🤨','😇','😡','😭','😴','🤯'];
+
+  function initEmojiGrid() {
+    const grid = document.querySelector('#tg_emoji_popover .emoji-grid');
+    if (!grid) return;
+
+    // если уже заполнено — не дублируем
+    if (grid.dataset.initialized === '1') return;
+
+    EMOJIS.forEach(e => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.textContent = e;
+      btn.className = 'w-7 h-7 flex items-center justify-center rounded hover:bg-base-200';
+      btn.onclick = () => {
+        insertAtCaret(e);
+      };
+      grid.appendChild(btn);
+    });
+
+    grid.dataset.initialized = '1';
+  };
+
+  document.addEventListener('DOMContentLoaded', initEmojiGrid);
+
+document.body.addEventListener('htmx:afterSwap', (e) => {
+  // если обновлялся панель чата, переинициализируем сетку
+  if (e.detail.target && e.detail.target.id === 'telegram-chat-panel') {
+    initEmojiGrid();
+  }
+});
+
+  function toggleEmojiPicker() {
+    const pop = document.getElementById('tg_emoji_popover');
+    pop.classList.toggle('hidden');
+  }
+
+  // закрытие при клике вне
+  document.addEventListener('click', (e) => {
+    const pop = document.getElementById('tg_emoji_popover');
+    const btn = document.getElementById('tg_emoji_button');
+    if (!pop || pop.classList.contains('hidden')) return;
+    if (!pop.contains(e.target) && !btn.contains(e.target)) {
+      pop.classList.add('hidden');
+    }
+  });
+
+  function handleChatInputKey(e) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      const form = e.target.closest('form');
+      if (form) form.requestSubmit();
+    }
+  }
+
+  function getMessageHtml() {
+    const el = document.getElementById('tg_message_input');
+    return el.innerHTML.trim();
+  }
+
+  function clearMessageInput() {
+    document.getElementById('tg_message_input').innerHTML = '';
+  }
+
+  function sendTelegramMessage(e) {
+    e.preventDefault();
+    const html = getMessageHtml();
+    if (!html) return;
+    console.log('SEND MESSAGE HTML:', html); // сюда твой HTMX/fetch
+    clearMessageInput();
+    document.getElementById('tg_emoji_popover').classList.add('hidden');
+  }
+
+  function insertAtCaret(text) {
+    const el = document.getElementById('tg_message_input');
+    el.focus();
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0) return;
+    const range = sel.getRangeAt(0);
+    range.deleteContents();
+    range.insertNode(document.createTextNode(text));
+    range.collapse(false);
+    sel.removeAllRanges();
+    sel.addRange(range);
+  }
+</script>
+
 </body>
 </html>

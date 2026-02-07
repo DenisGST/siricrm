@@ -16,5 +16,9 @@ urlpatterns = [
     path("dashboard/stats/client-active/", clients_active_count, name="clients_active_count"),
     path("dashboard/stats/message-new/", messages_new_count, name="messages_new_count"),
     path("dashboard/stats/lead/", lead_count, name="lead_count"),
+    path("telegram/clients/", views.telegram_clients_list, name="telegram_clients_list"),
+    path("telegram/chat/<uuid:client_id>/", views.telegram_chat_for_client, name="telegram_chat_for_client"),
+    path("telegram/chat/<uuid:client_id>/send/", views.telegram_send_message, name="telegram_send_message"),
+
 ]
 

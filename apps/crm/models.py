@@ -2,6 +2,8 @@ from django.db import models
 from django.contrib.auth.models import User
 from django.utils import timezone
 import uuid
+from apps.files.models import StoredFile
+
 
 class TimeStampedModel(models.Model):
     """Base model with created_at and updated_at fields"""
@@ -159,6 +161,14 @@ class Message(TimeStampedModel):
     # File attachment (S3 path)
     file_url = models.URLField(blank=True, verbose_name='URL файла')
     file_name = models.CharField(max_length=255, blank=True, verbose_name='Имя файла')
+    file = models.ForeignKey(
+        StoredFile,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="messages",
+        verbose_name="Файл",
+    )
     
     # Direction
     DIRECTION_CHOICES = [

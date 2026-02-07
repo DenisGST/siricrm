@@ -23,7 +23,7 @@ s3_client = boto3.client(
         
     )
 
-def upload_telegram_file_to_s3(file_bytes: bytes, *, prefix: str, filename: str) -> tuple[str, str]:
+def upload_file_to_s3(file_bytes: bytes, *, prefix: str, filename: str) -> tuple[str, str]:
     """
     Загружает файл в S3 и возвращает (bucket, key).
     prefix — папка внутри бакета, например 'telegram/images'.

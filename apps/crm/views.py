@@ -1,8 +1,10 @@
+import boto3
 from django.conf import settings
 from django.core.paginator import Paginator
 from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib.auth.decorators import login_required
 from django.http import HttpResponse, HttpResponseBadRequest
+from django.views.decorators.http import require_POST
 from apps.crm.models import *
 from django.db import models
 from .models import Client
@@ -11,7 +13,91 @@ from .models import Operator
 from .models import OperatorLog
 from .models import Message
 from django.db.models import Prefetch
+from django.db import transaction
 from apps.auth_telegram.models import TelegramUser  # если нужно
+from .telegram_sender import send_from_crm_sync
+
+CLIENTS_PER_PAGE = 20
+
+@login_required
+@require_POST
+def telegram_send_message(request, client_id):
+    client = get_object_or_404(Client, pk=client_id)
+
+    content = (request.POST.get("content") or "").strip()
+    file = request.FILES.get("file")
+
+    # если ничего не ввели и файл не выбрали — просто перерисуем чат
+    if not content and not file:
+        messages_qs = Message.objects.filter(client=client).order_by("created_at")
+        return render(
+            request,
+            "crm/partials/telegram_chat_panel.html",
+            {"client": client, "messages": messages_qs},
+        )
+
+    try:
+        operator = Operator.objects.get(user=request.user)
+    except Operator.DoesNotExist:
+        operator = None
+
+    # обновляем дату последнего сообщения
+    client.last_message_at = timezone.now()
+    client.save(update_fields=["last_message_at"])
+
+    # вот здесь используется send_from_crm_sync
+    send_from_crm_sync(
+        client=client,
+        text=content or None,
+        file=file,
+        operator=operator,
+    )
+
+    # перечитываем сообщения и отдаём обновлённую панель
+    messages_qs = Message.objects.filter(client=client).order_by("created_at")
+    return render(
+        request,
+        "crm/partials/telegram_chat_panel.html",
+        {"client": client, "messages": messages_qs},
+    )
+
+@login_required
+def telegram_chat_for_client(request, client_id):
+    client = get_object_or_404(Client, pk=client_id)
+
+    # последние N сообщений, например 50
+    messages_qs = (
+        Message.objects
+        .filter(client=client)
+        .order_by("created_at")  # в порядке диалога
+    )[:200]  # при желании ограничь
+
+    context = {
+        "client": client,
+        "messages": messages_qs,
+    }
+    return render(request, "crm/partials/telegram_chat_panel.html", context)
+
+
+@login_required
+def telegram_clients_list(request):
+    page_number = request.GET.get("page", 1)
+
+    qs = Client.objects.all()
+
+    # можно отфильтровать только «живых» клиентов, если нужно:
+    # qs = qs.filter(status__in=["lead", "active"])
+
+    paginator = Paginator(qs, CLIENTS_PER_PAGE)
+    page_obj = paginator.get_page(page_number)
+
+    context = {
+        "page_obj": page_obj,
+        "has_next": page_obj.has_next(),
+        "next_page_number": page_obj.next_page_number() if page_obj.has_next() else None,
+    }
+
+    return render(request, "crm/partials/telegram_clients_list.html", context)
 
 
 def dashboard_view(request):

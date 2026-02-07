@@ -28,6 +28,7 @@ INSTALLED_APPS = [
     'apps.core',
     'apps.crm',
     'apps.auth_telegram',
+    'apps.files'
 ]
 
 MIDDLEWARE = [
