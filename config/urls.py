@@ -6,12 +6,13 @@ from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 from apps.crm.api import (
     ClientViewSet,
     MessageViewSet,
-    stats_view,
+    
 )
 from apps.core.api import (
     DepartmentViewSet,
     EmployeeViewSet,
     EmployeeLogViewSet,
+    stats_view,
 )
 
 # API Router

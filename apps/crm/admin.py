@@ -10,7 +10,6 @@ class ClientAdmin(admin.ModelAdmin):
         "patronymic",
         "username",
         "telegram_id",
-        "assigned_employee",
         "status",
         "last_message_at",
         "contacts_confirmed",
@@ -25,9 +24,9 @@ class ClientAdmin(admin.ModelAdmin):
         "telegram_id",
         "contacts_confirmed",
     )
-    autocomplete_fields = ("assigned_employee",)
-    date_hierarchy = "created_at"
-    ordering = ("-last_message_at",)
+    list_filter = ("status",)
+    autocomplete_fields = ("employees",)  
+    filter_horizontal = ("employees",)    
 
 
 @admin.register(Message)

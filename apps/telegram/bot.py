@@ -12,8 +12,8 @@ application = (
 # Регистрируем все хэндлеры ОДИН РАЗ
 application.add_handler(CommandHandler("start", TelegramHandlers.start_command))
 application.add_handler(CommandHandler("help", TelegramHandlers.help_command))
-application.add_handler(CommandHandler("status", TelegramHandlers.status_command))
-application.add_handler(CommandHandler("auth", TelegramHandlers.auth_command))
+# application.add_handler(CommandHandler("status", TelegramHandlers.status_command))
+# application.add_handler(CommandHandler("auth", TelegramHandlers.auth_command))
 
 application.add_handler(
     MessageHandler(filters.PHOTO, TelegramHandlers.handle_photo)

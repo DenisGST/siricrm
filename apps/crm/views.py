@@ -11,8 +11,7 @@ from apps.crm.models import *
 from django.db import models
 from .models import Client
 from .forms import ClientForm
-from .models import Employee
-from .models import EmployeeLog
+from apps.core.models import Employee, EmployeeLog
 from .models import Message
 from django.db.models import Prefetch
 from django.db import transaction
@@ -298,10 +297,11 @@ def kanban(request):
 
 @login_required
 def kanban_column(request, status):
-    if status not in dict(Client.STATUS_CHOICES):
-        return HttpResponseBadRequest("Invalid status")
-
-    clients = Client.objects.filter(status=status).select_related("assigned_employee")
+    clients = (
+        Client.objects.filter(status=status)
+        .prefetch_related("employees")         # если нужно подтянуть сотрудников
+        .order_by("-last_message_at")
+    )
     return render(request, "crm/partials/kanban_column.html", {"clients": clients})
 
 @login_required

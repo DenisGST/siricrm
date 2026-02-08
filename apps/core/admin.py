@@ -10,7 +10,7 @@ class EmployeeAdmin(admin.ModelAdmin):
         "department",
         "is_active",
         "is_online",
-        "last_seen",
+        
     )
     list_filter = ("is_active", "is_online", "department")
     search_fields = (
@@ -19,7 +19,7 @@ class EmployeeAdmin(admin.ModelAdmin):
         "user__last_name",
     )
     autocomplete_fields = ("user", "department")
-    ordering = ("-last_seen",)
+    
 
     @admin.display(description="Сотрудник")
     def user_full_name(self, obj: Employee):
