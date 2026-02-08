@@ -1,0 +1,16 @@
+{% extends "crm/dashboard.html" %}
+
+{% block content %}
+<h1 class="text-xl font-semibold mb-4">Удалить сотрудника</h1>
+
+<p class="mb-4">
+  Удалить сотрудника
+  <strong>{{ employee.user.get_full_name|default:employee.user.username }}</strong>?
+</p>
+
+<form method="post">
+  {% csrf_token %}
+  <button type="submit" class="btn btn-error">Удалить</button>
+  <a href="{% url 'employee_list' %}" class="btn ml-2">Отмена</a>
+</form>
+{% endblock %}

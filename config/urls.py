@@ -46,4 +46,7 @@ urlpatterns = [
 
     # files view
     path("files/", include("apps.files.urls")),
+    
+    #??????????
+    path("", include("apps.core.urls")),
 ]

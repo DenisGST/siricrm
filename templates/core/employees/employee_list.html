@@ -1,0 +1,41 @@
+{% extends "crm/dashboard.html" %}
+
+{% block content %}
+<h1 class="text-xl font-semibold mb-4">Сотрудники</h1>
+
+<a href="{% url 'employee_create' %}" class="btn btn-primary mb-4">Добавить сотрудника</a>
+
+<table class="table table-zebra w-full text-sm">
+  <thead>
+    <tr>
+      <th>ID</th>
+      <th>Пользователь</th>
+      <th>Отдел</th>
+      <th>Роль</th>
+      <th>Активен</th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for e in employees %}
+      <tr>
+        <td>{{ e.id }}</td>
+        <td>{{ e.user.get_full_name|default:e.user.username }}</td>
+        <td>{{ e.department.name }}</td>
+        <td>{{ e.get_role_display }}</td>
+        <td>{{ e.is_active|yesno:"Да,Нет" }}</td>
+        <td class="text-right">
+          <a href="{% url 'employee_edit' e.id %}" class="btn btn-xs">Редактировать</a>
+          <a href="{% url 'employee_delete' e.id %}" class="btn btn-xs btn-error">Удалить</a>
+        </td>
+      </tr>
+    {% empty %}
+      <tr>
+        <td colspan="6" class="text-center text-base-content/60">
+          Сотрудники ещё не добавлены.
+        </td>
+      </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}
