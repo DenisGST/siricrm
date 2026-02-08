@@ -511,6 +511,12 @@
 <!-- Toast -->
 <div id="toast-container" class="fixed bottom-4 right-4 z-50 space-y-2"></div>
 <div id="stats-container" hx-swap-oob="true"></div>
+<!-- Невидимый ws‑подключатель для уведомлений -->
+<div
+  id="notifications-ws"
+  hx-ext="ws"
+  hx-ws="connect:/ws/notifications/"
+></div>
 
 <script>
   // Toast для HTMX
@@ -664,12 +670,7 @@ document.body.addEventListener('htmx:afterSwap', (e) => {
   }
 </script>
 
-<!-- Невидимый ws‑подключатель для уведомлений -->
-<div
-  id="notifications-ws"
-  hx-ext="ws"
-  hx-ws="connect:/ws/notifications/"
-></div>
+
 
 <script>
   //прокрутка списка сообщений, когда приходит новое

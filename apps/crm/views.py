@@ -17,7 +17,7 @@ from .models import Message
 from django.db.models import Prefetch
 from django.db import transaction
 from apps.auth_telegram.models import TelegramUser  # если нужно
-from apps.realtime.utils import push_chat_message
+from apps.realtime.utils import push_chat_message, push_toast
 from .telegram_sender import send_from_crm_sync
 
 CLIENTS_PER_PAGE = 20
@@ -63,6 +63,7 @@ def telegram_send_message(request, client_id):
     )
     if msg:
         push_chat_message(msg)
+        push_toast(request.user, "Сообщение клиенту отправлено", level="success")
 
     if not msg:
         return HttpResponseBadRequest("No message created")

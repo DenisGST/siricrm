@@ -3,7 +3,7 @@ from django.contrib.auth.models import User
 from django.utils import timezone
 import uuid
 from apps.files.models import StoredFile
-
+from apps.core.models import Employee
 
 class TimeStampedModel(models.Model):
     """Base model with created_at and updated_at fields"""
@@ -13,9 +13,9 @@ class TimeStampedModel(models.Model):
     class Meta:
         abstract = True
 
-
+"""
 class Department(TimeStampedModel):
-    """Department/Team model"""
+    # Department/Team model
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=255, verbose_name='Название отдела')
     description = models.TextField(blank=True, verbose_name='Описание')
@@ -36,10 +36,10 @@ class Department(TimeStampedModel):
         verbose_name = 'Отдел'
         verbose_name_plural = 'Отделы'
         ordering = ['name']
-
-
+"""
+"""
 class Operator(TimeStampedModel):
-    """Operator/Agent model"""
+    # Operator/Agent model
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='operator')
     telegram_id = models.BigIntegerField(unique=True, verbose_name='Telegram ID')
@@ -64,7 +64,7 @@ class Operator(TimeStampedModel):
         verbose_name = 'Оператор'
         verbose_name_plural = 'Операторы'
         ordering = ['-last_seen']
-
+"""
 
 class Client(TimeStampedModel):
     """Customer/Client model"""
@@ -81,13 +81,11 @@ class Client(TimeStampedModel):
     contacts_confirmed = models.BooleanField(default=False, verbose_name='Контакты подтверждены')
     notes = models.TextField(blank=True, verbose_name='Заметки')
     last_message_at = models.DateTimeField(null=True, blank=True, verbose_name='Последнее сообщение')
-    assigned_operator = models.ForeignKey(
-        Operator,
-        on_delete=models.SET_NULL,
-        null=True,
+    employees = models.ManyToManyField(
+        Employee,
+        related_name="clients",
         blank=True,
-        related_name='clients',
-        verbose_name='Назначенный оператор'
+        help_text="Сотрудники, работающие с клиентом",
     )
     
     STATUS_CHOICES = [
@@ -114,7 +112,6 @@ class Client(TimeStampedModel):
         ordering = ['-last_message_at']
         indexes = [
             models.Index(fields=['telegram_id']),
-            models.Index(fields=['assigned_operator', '-last_message_at']),
             models.Index(fields=['status']),
         ]
 
@@ -123,14 +120,14 @@ class Message(TimeStampedModel):
     """Message model for conversations"""
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     
-    # Sender can be an operator or system
-    operator = models.ForeignKey(
-        Operator,
+    # Sender can be an employee or system
+    employee = models.ForeignKey(
+        Employee,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
         related_name='sent_messages',
-        verbose_name='Оператор'
+        verbose_name='Сотрудник'
     )
     
     client = models.ForeignKey(
@@ -145,6 +142,8 @@ class Message(TimeStampedModel):
         ('image', 'Изображение'),
         ('document', 'Документ'),
         ('system', 'Системное'),
+        ('audio', 'Аудио'),
+
     ]
     message_type = models.CharField(
         max_length=20,
@@ -186,7 +185,7 @@ class Message(TimeStampedModel):
     read_at = models.DateTimeField(null=True, blank=True, verbose_name='Время прочтения')
 
     def __str__(self):
-        return f"Message from {self.operator} to {self.client} at {self.created_at}"
+        return f"Message from {self.employee} to {self.client} at {self.created_at}"
 
     class Meta:
         verbose_name = 'Сообщение'
@@ -194,19 +193,19 @@ class Message(TimeStampedModel):
         ordering = ['created_at']
         indexes = [
             models.Index(fields=['client', 'created_at']),
-            models.Index(fields=['operator', 'created_at']),
+            models.Index(fields=['employee', 'created_at']),
             models.Index(fields=['is_read']),
         ]
 
-
-class OperatorLog(models.Model):
-    """Audit log for operator actions"""
+"""
+class EmployeeLog(models.Model):
+   # Audit log for Employee actions
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    operator = models.ForeignKey(
-        Operator,
+    employee = models.ForeignKey(
+        Employee,
         on_delete=models.CASCADE,
         related_name='logs',
-        verbose_name='Оператор'
+        verbose_name='Сотрудник'
     )
     
     ACTION_CHOICES = [
@@ -214,7 +213,9 @@ class OperatorLog(models.Model):
         ('logout', 'Выход'),
         ('message_sent', 'Сообщение отправлено'),
         ('message_received', 'Сообщение получено'),
+        ('client_add', 'Клиент добавлен'),
         ('client_assigned', 'Клиент назначен'),
+        ('client_edit', 'Данные Клиента изменены'),
         ('client_reassigned', 'Клиент переназначен'),
         ('client_status_changed', 'Статус клиента изменен'),
         ('note_added', 'Заметка добавлена'),
@@ -234,7 +235,7 @@ class OperatorLog(models.Model):
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name='operator_logs',
+        related_name='employee_logs',
         verbose_name='Клиент'
     )
     message = models.ForeignKey(
@@ -253,18 +254,18 @@ class OperatorLog(models.Model):
     timestamp = models.DateTimeField(auto_now_add=True, verbose_name='Время')
 
     def __str__(self):
-        return f"{self.operator} - {self.get_action_display()} at {self.timestamp}"
+        return f"{self.employee} - {self.get_action_display()} at {self.timestamp}"
 
     class Meta:
-        verbose_name = 'Лог оператора'
-        verbose_name_plural = 'Логи операторов'
+        verbose_name = 'Лог сотрудника'
+        verbose_name_plural = 'Логи осотрудников'
         ordering = ['-timestamp']
         indexes = [
-            models.Index(fields=['operator', 'timestamp']),
+            models.Index(fields=['employee', 'timestamp']),
             models.Index(fields=['action', 'timestamp']),
             models.Index(fields=['client', 'timestamp']),
         ]
-
+"""
 class Service(TimeStampedModel):
     """Услуга, привязанная к клиенту"""
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

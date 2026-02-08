@@ -1,14 +1,15 @@
 from django.contrib import admin
 from .models import Department, Operator, Client, Message, OperatorLog, Service
 
-
+"""
 @admin.register(Department)
 class DepartmentAdmin(admin.ModelAdmin):
     list_display = ("name", "manager", "is_active", "created_at")
     list_filter = ("is_active",)
     search_fields = ("name", "description")
     autocomplete_fields = ("manager",)
-
+"""
+"""
 @admin.register(Operator)
 class OperatorAdmin(admin.ModelAdmin):
     list_display = (
@@ -35,7 +36,7 @@ class OperatorAdmin(admin.ModelAdmin):
     @admin.display(description="Оператор")
     def user_full_name(self, obj: Operator):
         return obj.user.get_full_name() or obj.user.username
-
+"""
 @admin.register(Client)
 class ClientAdmin(admin.ModelAdmin):
     list_display = (
