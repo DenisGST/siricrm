@@ -1,42 +1,7 @@
 from django.contrib import admin
-from .models import Department, Operator, Client, Message, OperatorLog, Service
+from .models import Client, Message, Service
 
-"""
-@admin.register(Department)
-class DepartmentAdmin(admin.ModelAdmin):
-    list_display = ("name", "manager", "is_active", "created_at")
-    list_filter = ("is_active",)
-    search_fields = ("name", "description")
-    autocomplete_fields = ("manager",)
-"""
-"""
-@admin.register(Operator)
-class OperatorAdmin(admin.ModelAdmin):
-    list_display = (
-        "user_full_name",
-        "telegram_username",
-        "telegram_id",
-        "department",
-        "is_active",
-        "is_online",
-        "clients_count",
-        "last_seen",
-    )
-    list_filter = ("is_active", "is_online", "department")
-    search_fields = (
-        "user__username",
-        "user__first_name",
-        "user__last_name",
-        "telegram_username",
-        "telegram_id",
-    )
-    autocomplete_fields = ("user", "department")
-    ordering = ("-last_seen",)
 
-    @admin.display(description="Оператор")
-    def user_full_name(self, obj: Operator):
-        return obj.user.get_full_name() or obj.user.username
-"""
 @admin.register(Client)
 class ClientAdmin(admin.ModelAdmin):
     list_display = (
@@ -45,7 +10,7 @@ class ClientAdmin(admin.ModelAdmin):
         "patronymic",
         "username",
         "telegram_id",
-        "assigned_operator",
+        "assigned_employee",
         "status",
         "last_message_at",
         "contacts_confirmed",
@@ -60,7 +25,7 @@ class ClientAdmin(admin.ModelAdmin):
         "telegram_id",
         "contacts_confirmed",
     )
-    autocomplete_fields = ("assigned_operator",)
+    autocomplete_fields = ("assigned_employee",)
     date_hierarchy = "created_at"
     ordering = ("-last_message_at",)
 
@@ -69,7 +34,7 @@ class ClientAdmin(admin.ModelAdmin):
 class MessageAdmin(admin.ModelAdmin):
     list_display = (
         "client",
-        "operator",
+        "employee",
         "direction",
         "message_type",
         "short_content",
@@ -79,23 +44,13 @@ class MessageAdmin(admin.ModelAdmin):
     )
     list_filter = ("direction", "message_type", "is_read",)
     search_fields = ("content",)
-    autocomplete_fields = ("client", "operator",)
+    autocomplete_fields = ("client", "employee",)
     date_hierarchy = "created_at"
     ordering = ("created_at",)
 
     @admin.display(description="Текст")
     def short_content(self, obj: Message):
         return (obj.content[:50] + "…") if len(obj.content) > 50 else obj.content
-
-
-@admin.register(OperatorLog)
-class OperatorLogAdmin(admin.ModelAdmin):
-    list_display = ("operator", "action", "client", "timestamp", "ip_address")
-    list_filter = ("action", "timestamp")
-    search_fields = ("description", "ip_address", "user_agent")
-    autocomplete_fields = ("operator", "client", "message")
-    date_hierarchy = "timestamp"
-    ordering = ("-timestamp",)
 
 @admin.register(Service)
 class ServiceAdmin(admin.ModelAdmin):

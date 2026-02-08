@@ -3,7 +3,7 @@
     <thead>
       <tr>
         <th>#</th>
-        <th>Оператор</th>
+        <th>Сотрудник</th>
         <th>Telegram</th>
         <th>Отдел</th>
         <th>Статус</th>
@@ -66,7 +66,7 @@
       {% empty %}
         <tr>
           <td colspan="7" class="text-center text-sm text-base-content/60">
-            Операторов нет
+            Сотрудников нет
           </td>
         </tr>
       {% endfor %}
@@ -77,7 +77,7 @@
 {% if page_obj.paginator.num_pages > 1 %}
   <div
     class="join mt-3"
-    hx-target="#operators-table-wrapper"
+    hx-target="#employees-table-wrapper"
     hx-swap="outerHTML"
   >
     {% if page_obj.has_previous %}

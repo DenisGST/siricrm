@@ -1,10 +1,12 @@
+# apps/core/models.py
+
 from django.conf import settings
 from django.db import models
 from django.contrib.auth.models import User
 from django.utils import timezone
 import uuid
 
-from apps.crm.models import Client
+#from apps.crm.models import Client
 
 
 class TimeStampedModel(models.Model):
@@ -41,7 +43,7 @@ class Employee(models.Model):
     ROLE_CHOICES = [
         ("operator", "Оператор"),
         ("manager", "Менеджер"),
-        ("сonsultant", "Консультант"),
+        ("consultant", "Консультант"),
         ("assitent_legal", "Помощник юриста"),
         ("lawyer", "Юрист"),
         ("head_dep", "Руководитель отдела"),
@@ -118,7 +120,7 @@ class EmployeeLog(models.Model):
     
     # Context
     client = models.ForeignKey(
-        Client,
+        'crm.Client',
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
@@ -126,7 +128,7 @@ class EmployeeLog(models.Model):
         verbose_name='Клиент'
     )
     message = models.ForeignKey(
-        Message,
+        'crm.Message',
         on_delete=models.SET_NULL,
         null=True,
         blank=True,

@@ -20,8 +20,8 @@ app.conf.beat_schedule = {
         'task': 'apps.crm.tasks.generate_daily_report',
         'schedule': crontab(hour=22, minute=0),  # 10 PM daily
     },
-    'sync-operator-status': {
-        'task': 'apps.crm.tasks.sync_operator_status',
+    'sync-employee-status': {
+        'task': 'apps.crm.tasks.sync_employee_status',
         'schedule': 60,  # Every minute
     },
 }

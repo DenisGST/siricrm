@@ -4,21 +4,23 @@ from rest_framework.routers import DefaultRouter
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
 from apps.crm.api import (
-    DepartmentViewSet,
-    OperatorViewSet,
     ClientViewSet,
     MessageViewSet,
-    OperatorLogViewSet,
     stats_view,
+)
+from apps.core.api import (
+    DepartmentViewSet,
+    EmployeeViewSet,
+    EmployeeLogViewSet,
 )
 
 # API Router
 api_router = DefaultRouter()
 api_router.register(r'departments', DepartmentViewSet, basename='department')
-api_router.register(r'operators', OperatorViewSet, basename='operator')
+api_router.register(r'employees', EmployeeViewSet, basename='employee')
 api_router.register(r'clients', ClientViewSet, basename='client')
 api_router.register(r'messages', MessageViewSet, basename='message')
-api_router.register(r'logs', OperatorLogViewSet, basename='log')
+api_router.register(r'logs', EmployeeLogViewSet, basename='log')
 
 urlpatterns = [
     # Admin

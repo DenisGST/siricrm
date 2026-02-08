@@ -4,7 +4,9 @@ import concurrent.futures
 from asgiref.sync import async_to_sync
 from telegram.ext import Application
 
-from apps.crm.models import Client, Operator
+from apps.crm.models import Client
+from apps.core.models import Employee
+
 from apps.telegram_bot.handlers import send_text_from_crm, application  # путь подправь под свой проект
 
 
@@ -12,7 +14,7 @@ def send_text_from_crm_sync(
     *,
     client: Client,
     text: str,
-    operator: Operator | None = None,
+    employee: Employee | None = None,
 ) -> None:
     """
     Синхронная обёртка для вызова async send_text_from_crm из Django-view.
@@ -28,7 +30,7 @@ def send_text_from_crm_sync(
 
     async def _run():
         try:
-            await send_text_from_crm(client=client, text=text, operator=operator)
+            await send_text_from_crm(client=client, text=text, employee=employee)
             future.set_result(True)
         except Exception as e:
             future.set_exception(e)

@@ -2,11 +2,11 @@
 
 <div class="flex flex-col gap-4">
   <div class="flex flex-wrap items-center justify-between gap-2">
-    <h2 class="text-xl font-bold">Операторы</h2>
+    <h2 class="text-xl font-bold">Сотрудники</h2>
 
     <form
-      hx-get="{% url 'operators_list' %}"
-      hx-target="#operators-table-wrapper"
+      hx-get="{% url 'employees_list' %}"
+      hx-target="#employees-table-wrapper"
       hx-swap="outerHTML"
       class="join"
     >
@@ -23,7 +23,7 @@
     </form>
   </div>
 
-  <div id="operators-table-wrapper">
-    {% include "crm/operators/list_partial.html" %}
+  <div id="employees-table-wrapper">
+    {% include "crm/employees/list_partial.html" %}
   </div>
 </div>

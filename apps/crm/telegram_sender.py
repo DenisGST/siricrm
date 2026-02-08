@@ -8,7 +8,8 @@ from django.conf import settings
 from telegram import Bot
 from telegram.error import TelegramError
 
-from apps.crm.models import Client, Message, Operator
+from apps.crm.models import Client, Message
+from apps.core.models import Employee
 
 from apps.files.models import StoredFile
 from apps.files.s3_utils import upload_file_to_s3
@@ -22,7 +23,7 @@ async def _send_text_async(
     *,
     client: Client,
     text: str,
-    operator: Operator | None,
+    employee: Employee | None,
 ) -> None:
     if not client.telegram_id:
         logger.error("Client %s has no telegram_id", client)
@@ -39,7 +40,7 @@ async def _send_text_async(
         await asyncio.to_thread(
             Message.objects.create,
             client=client,
-            operator=operator,
+            employee=employee,
             content=text,
             message_type="text",
             direction="outgoing",
@@ -61,7 +62,7 @@ async def _send_text_async(
         await asyncio.to_thread(
             Message.objects.create,
             client=client,
-            operator=operator,
+            employee=employee,
             content=text,
             message_type="text",
             direction="outgoing",
@@ -75,7 +76,7 @@ async def _send_text_async(
         await asyncio.to_thread(
             Message.objects.create,
             client=client,
-            operator=operator,
+            employee=employee,
             content=text,
             message_type="text",
             direction="outgoing",
@@ -86,7 +87,7 @@ def send_text_from_crm_sync(
     *,
     client: Client,
     text: str,
-    operator: Operator | None = None,
+    employee: Employee | None = None,
 ) -> None:
     if not text:
         return
@@ -99,7 +100,7 @@ def send_text_from_crm_sync(
     )
 
     asyncio.run(
-        _send_text_async(client=client, text=text, operator=operator)
+        _send_text_async(client=client, text=text, employee=employee)
     )
 
 async def _send_file_async(
@@ -107,7 +108,7 @@ async def _send_file_async(
     client: Client,
     file_bytes: bytes,
     filename: str,
-    operator: Operator | None,
+    employee: Employee | None,
 ):
     bot = Bot(token=settings.TELEGRAM_BOT_TOKEN)
 
@@ -135,7 +136,7 @@ async def _send_file_async(
             photo=file_bytes,
         )
         msg_type = "image"
-        content = "Изображение от оператора"
+        content = "Изображение от сотрудника"
     else:
         sent_msg = await bot.send_document(
             chat_id=client.telegram_id,
@@ -148,7 +149,7 @@ async def _send_file_async(
     await asyncio.to_thread(
         Message.objects.create,
         client=client,
-        operator=operator,
+        employee=employee,
         message_type=msg_type,
         content=content,
         telegram_message_id=sent_msg.message_id,
@@ -161,7 +162,7 @@ def send_from_crm_sync(
     client: Client,
     text: str | None,
     file,
-    operator: Operator | None = None,
+    employee: Employee | None = None,
 ) -> None:
     if not client.telegram_id:
         logger.error("Client %s has no telegram_id", client)
@@ -176,7 +177,7 @@ def send_from_crm_sync(
                     client=client,
                     file_bytes=file_bytes,
                     filename=filename,
-                    operator=operator,
+                    employee=employee,
                 )
             )
         if text:
@@ -184,7 +185,7 @@ def send_from_crm_sync(
                 _send_text_async(
                     client=client,
                     text=text,
-                    operator=operator,
+                    employee=employee,
                 )
             )
     except TelegramError as e:

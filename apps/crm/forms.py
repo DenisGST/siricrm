@@ -13,7 +13,7 @@ class ClientForm(forms.ModelForm):
             "telegram_id",
             "phone",
             "email",
-            "assigned_operator",
+            "assigned_employee",
             "status",
             "notes",
         ]

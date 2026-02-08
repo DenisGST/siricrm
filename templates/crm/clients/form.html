@@ -127,16 +127,16 @@
       </div>
     </div>
 
-    <!-- Назначенный оператор -->
+    <!-- Назначенный сотрудник -->
     <div class="form-control">
       <label class="label">
-        <span class="label-text">Оператор</span>
+        <span class="label-text">Сотрудник</span>
       </label>
-      {{ form.assigned_operator|add_class:"select select-bordered select-sm w-full" }}
-      {% if form.assigned_operator.errors %}
+      {{ form.assigned_employee|add_class:"select select-bordered select-sm w-full" }}
+      {% if form.assigned_employee.errors %}
         <label class="label">
           <span class="label-text-alt text-error text-xs">
-            {{ form.assigned_operator.errors.0 }}
+            {{ form.assigned_employee.errors.0 }}
           </span>
         </label>
       {% endif %}

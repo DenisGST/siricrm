@@ -5,7 +5,7 @@
         <th>#</th>
         <th>Клиент</th>
         <th>Контакты</th>
-        <th>Оператор</th>
+        <th>Сотрудник</th>
         <th>Статус</th>
         <th>Последнее сообщение</th>
         <th></th>
@@ -39,8 +39,8 @@
             {% endif %}
           </td>
           <td class="text-xs">
-            {% if client.assigned_operator %}
-              {{ client.assigned_operator.user.get_full_name }}
+            {% if client.assigned_employee %}
+              {{ client.assigned_employee.user.get_full_name }}
             {% else %}
               <span class="badge badge-ghost badge-xs">Не назначен</span>
             {% endif %}

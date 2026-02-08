@@ -7,9 +7,9 @@
       <h3 class="card-title text-sm">
         {{ client.first_name }} {{ client.last_name }}
       </h3>
-      {% if client.assigned_operator %}
+      {% if client.assigned_employee %}
         <span class="badge badge-outline text-xs">
-          {{ client.assigned_operator.user.get_full_name }}
+          {{ client.assigned_employee.user.get_full_name }}
         </span>
       {% endif %}
     </div>

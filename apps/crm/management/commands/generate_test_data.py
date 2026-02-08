@@ -5,7 +5,8 @@ from django.utils import timezone
 
 from faker import Faker
 
-from apps.crm.models import Client, Message, Operator
+from apps.crm.models import Client, Message
+from apps.core.models import Employee
 
 
 class Command(BaseCommand):
@@ -57,8 +58,8 @@ class Command(BaseCommand):
 
         self.stdout.write(self.style.SUCCESS(f"Создано клиентов: {len(clients)}"))
 
-        # 2. Берём любого оператора (если есть)
-        operator = Operator.objects.first()
+        # 2. Берём любого сотрудника (если есть)
+        employee = Employee.objects.first()
 
         # 3. Генерируем сообщения
         total_msgs = 0
@@ -76,7 +77,7 @@ class Command(BaseCommand):
 
                 msg = Message(
                     client=client,
-                    operator=operator if not is_incoming else None,
+                    employee=employee if not is_incoming else None,
                     message_type="text",
                     content=fake.sentence(nb_words=10),
                     direction=direction,

@@ -7,17 +7,24 @@ from rest_framework.filters import SearchFilter, OrderingFilter
 from django.db.models import Count
 
 from apps.crm.models import (
-    Operator, Client, Message, OperatorLog, Department
+    Client, Message
 )
-from apps.crm.serializers import (
-    OperatorSerializer,
-    ClientSerializer,
-    MessageSerializer,
-    OperatorLogSerializer,
+from apps.core.models import (
+    Employee, EmployeeLog, Department
+)
+from apps.core.serializers import (
+    EmployeeSerializer,
+    EmployeeLogSerializer,
     DepartmentSerializer,
 )
 
-from .models import Operator, Client, Message
+from apps.crm.serializers import (
+    ClientSerializer,
+    MessageSerializer,
+)
+
+from .models import Employee, Client, Message
+
 
 class DepartmentViewSet(viewsets.ModelViewSet):
     """
@@ -29,9 +36,9 @@ class DepartmentViewSet(viewsets.ModelViewSet):
     - GET /api/departments/{id}/ - Get department details
     - PUT /api/departments/{id}/ - Update department
     - DELETE /api/departments/{id}/ - Delete department
-    - GET /api/departments/{id}/operators/ - Get operators in department
+    - GET /api/departments/{id}/employees/ - Get employees in department
     """
-    queryset = Department.objects.prefetch_related('operators', 'manager')
+    queryset = Department.objects.prefetch_related('employees', 'manager')
     serializer_class = DepartmentSerializer
     permission_classes = [IsAuthenticated]
     filter_backends = [SearchFilter, OrderingFilter]
@@ -39,76 +46,76 @@ class DepartmentViewSet(viewsets.ModelViewSet):
     ordering_fields = ['name', 'created_at']
     
     @action(detail=True, methods=['get'])
-    def operators(self, request, pk=None):
-        """Get all operators in this department"""
+    def employees(self, request, pk=None):
+        """Get all employees in this department"""
         department = self.get_object()
-        operators = department.operators.filter(is_active=True)
-        serializer = OperatorSerializer(operators, many=True)
+        employees = department.employee.filter(is_active=True)
+        serializer = EmployeeSerializer(employees, many=True)
         return Response(serializer.data)
     
     @action(detail=True, methods=['get'])
     def stats(self, request, pk=None):
         """Get department statistics"""
         department = self.get_object()
-        operators = department.operators.all()
+        employees = department.employee.all()
         
         stats = {
             'department': department.name,
-            'operators_count': operators.count(),
-            'active_operators': operators.filter(is_active=True).count(),
-            'online_operators': operators.filter(is_online=True).count(),
+            'employees_count': employees.count(),
+            'active_employees': employees.filter(is_active=True).count(),
+            'online_employees': employees.filter(is_online=True).count(),
             'total_clients': Client.objects.filter(
-                assigned_operator__department=department
+                assigned_employees__department=department
             ).count(),
             'active_clients': Client.objects.filter(
-                assigned_operator__department=department,
+                assigned_employees__department=department,
                 status='active'
             ).count(),
         }
         return Response(stats)
 
 
-class OperatorViewSet(viewsets.ModelViewSet):
+class EmployeeViewSet(viewsets.ModelViewSet):
     """
-    API ViewSet for Operator management
+    API ViewSet for Employee management
     
     Endpoints:
-    - GET /api/operators/ - List all operators
-    - POST /api/operators/ - Create new operator
-    - GET /api/operators/{id}/ - Get operator details
-    - PUT /api/operators/{id}/ - Update operator
-    - DELETE /api/operators/{id}/ - Delete operator
-    - GET /api/operators/{id}/clients/ - Get operator's clients
-    - GET /api/operators/{id}/stats/ - Get operator statistics
+    - GET /api/employees/ - List all employees
+    - POST /api/employees/ - Create new employee
+    - GET /api/employees/{id}/ - Get employee details
+    - PUT /api/employees/{id}/ - Update employee
+    - DELETE /api/employees/{id}/ - Delete employee
+    - GET /api/employees/{id}/clients/ - Get employee's clients
+    - GET /api/employees/{id}/stats/ - Get employee statistics
     """
-    queryset = Operator.objects.select_related('user', 'department')
-    serializer_class = OperatorSerializer
+    queryset = Employee.objects.select_related('user', 'department')
+    serializer_class = EmployeeSerializer
     permission_classes = [IsAuthenticated]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     filterset_fields = ['department', 'is_active', 'is_online']
-    search_fields = ['user__first_name', 'user__last_name', 'telegram_username']
+    search_fields = ['user__first_name', 'user__last_name']
     ordering_fields = ['last_seen', 'clients_count']
     
     @action(detail=True, methods=['get'])
     def clients(self, request, pk=None):
-        """Get all clients assigned to this operator"""
-        operator = self.get_object()
-        clients = operator.clients.all()
+        """Get all clients assigned to this employee"""
+        employee = self.get_object()
+        clients = employee.clients.all()
         serializer = ClientSerializer(clients, many=True)
         return Response(serializer.data)
     
     @action(detail=True, methods=['get'])
     def stats(self, request, pk=None):
-        """Get operator statistics"""
-        from apps.crm.tasks import generate_operator_stats
-        operator = self.get_object()
+        """Get employee statistics"""
+        from apps.crm.tasks import generate_employee_stats
+        employee = self.get_object()
         
         # Get date range from query params
         start_date = request.query_params.get('start_date')
         end_date = request.query_params.get('end_date')
         
-        stats = generate_operator_stats.delay(
-            operator_id=str(operator.id),
+        stats = generate_employee_stats.delay(
+            employee_id=str(employee.id),
             start_date=start_date,
             end_date=end_date
         ).get()
@@ -117,14 +124,14 @@ class OperatorViewSet(viewsets.ModelViewSet):
     
     @action(detail=True, methods=['post'])
     def toggle_online(self, request, pk=None):
-        """Toggle operator online status"""
-        operator = self.get_object()
-        operator.is_online = not operator.is_online
-        operator.save(update_fields=['is_online'])
+        """Toggle employee online status"""
+        employee = self.get_object()
+        employee.is_online = not employee.is_online
+        employee.save(update_fields=['is_online'])
         
         return Response({
             'status': 'success',
-            'is_online': operator.is_online
+            'is_online': employee.is_online
         })
 
 
@@ -139,13 +146,13 @@ class ClientViewSet(viewsets.ModelViewSet):
     - PUT /api/clients/{id}/ - Update client
     - DELETE /api/clients/{id}/ - Delete client
     - GET /api/clients/{id}/messages/ - Get client conversation
-    - POST /api/clients/{id}/assign_operator/ - Assign operator
+    - POST /api/clients/{id}/assign_employee/ - Assign employee
     """
-    queryset = Client.objects.select_related('assigned_operator')
+    queryset = Client.objects.select_related('assigned_employee')
     serializer_class = ClientSerializer
     permission_classes = [IsAuthenticated]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
-    filterset_fields = ['status', 'assigned_operator']
+    filterset_fields = ['status', 'assigned_employee']
     search_fields = ['first_name', 'last_name', 'username', 'phone', 'email']
     ordering_fields = ['last_message_at', 'created_at']
     
@@ -163,24 +170,24 @@ class ClientViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
     
     @action(detail=True, methods=['post'])
-    def assign_operator(self, request, pk=None):
-        """Assign operator to client"""
+    def assign_employee(self, request, pk=None):
+        """Assign employee to client"""
         client = self.get_object()
-        operator_id = request.data.get('operator_id')
+        employee_id = request.data.get('employee_id')
         
         try:
-            from apps.crm.models import Operator
-            operator = Operator.objects.get(id=operator_id)
-            client.assigned_operator = operator
-            client.save(update_fields=['assigned_operator'])
+            from apps.core.models import Employee
+            employee = Employee.objects.get(id=employee_id)
+            client.assigned_employee = employee
+            client.save(update_fields=['assigned_employee'])
             
             return Response({
                 'status': 'success',
-                'message': f'Client assigned to {operator}'
+                'message': f'Client assigned to {employee}'
             })
-        except Operator.DoesNotExist:
+        except Employee.DoesNotExist:
             return Response(
-                {'error': 'Operator not found'},
+                {'error': 'Employee not found'},
                 status=status.HTTP_404_NOT_FOUND
             )
     
@@ -195,8 +202,8 @@ class ClientViewSet(viewsets.ModelViewSet):
             client.save(update_fields=['status'])
             
             # Log action
-            OperatorLog.objects.create(
-                operator=request.user.operator,
+            EmployeeLog.objects.create(
+                employee=request.user.employee,
                 action='client_status_changed',
                 description=f"Client status changed to {new_status}",
                 client=client,
@@ -224,20 +231,20 @@ class MessageViewSet(viewsets.ModelViewSet):
     - PUT /api/messages/{id}/ - Update message
     - DELETE /api/messages/{id}/ - Delete message
     """
-    queryset = Message.objects.select_related('operator', 'client')
+    queryset = Message.objects.select_related('employee', 'client')
     serializer_class = MessageSerializer
     permission_classes = [IsAuthenticated]
     filter_backends = [DjangoFilterBackend, OrderingFilter]
-    filterset_fields = ['client', 'operator', 'direction', 'message_type']
+    filterset_fields = ['client', 'employee', 'direction', 'message_type']
     ordering_fields = ['created_at']
     
     def perform_create(self, serializer):
         """Save message and log action"""
-        message = serializer.save(operator=self.request.user.operator)
+        message = serializer.save(employee=self.request.user.employee)
         
         # Log action
-        OperatorLog.objects.create(
-            operator=self.request.user.operator,
+        EmployeeLog.objects.create(
+            employee=self.request.user.employee,
             action='message_sent',
             description=f"Message sent to {message.client}",
             client=message.client,
@@ -245,19 +252,19 @@ class MessageViewSet(viewsets.ModelViewSet):
         )
 
 
-class OperatorLogViewSet(viewsets.ReadOnlyModelViewSet):
+class EmployeeLogViewSet(viewsets.ReadOnlyModelViewSet):
     """
-    API ViewSet for Operator Logs (read-only)
+    API ViewSet for employee Logs (read-only)
     
     Endpoints:
     - GET /api/logs/ - List logs
     - GET /api/logs/{id}/ - Get log details
     """
-    queryset = OperatorLog.objects.select_related('operator', 'client', 'message')
-    serializer_class = OperatorLogSerializer
+    queryset = EmployeeLog.objects.select_related('employee', 'client', 'message')
+    serializer_class = EmployeeLogSerializer
     permission_classes = [IsAuthenticated]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
-    filterset_fields = ['operator', 'action', 'client']
+    filterset_fields = ['employee', 'action', 'client']
     search_fields = ['description']
     ordering_fields = ['timestamp', 'action']
     
@@ -265,12 +272,12 @@ class OperatorLogViewSet(viewsets.ReadOnlyModelViewSet):
         """Filter logs for non-admin users to only see their own"""
         user = self.request.user
         if user.is_staff:
-            return OperatorLog.objects.all()
+            return EmployeeLog.objects.all()
         
         try:
-            return OperatorLog.objects.filter(operator=user.operator)
+            return EmployeeLog.objects.filter(employee=user.employee)
         except:
-            return OperatorLog.objects.none()
+            return EmployeeLog.objects.none()
 
 
 
@@ -278,7 +285,7 @@ class OperatorLogViewSet(viewsets.ReadOnlyModelViewSet):
 @permission_classes([IsAuthenticated])
 def stats_view(request):
     return Response({
-        "operators_online": Operator.objects.filter(is_online=True).count(),
+        "employees_online": Employee.objects.filter(is_online=True).count(),
         "clients_active": Client.objects.filter(status="active").count(),
         "unread_messages": Message.objects.filter(is_read=False).count(),
         "leads": Client.objects.filter(status="lead").count(),

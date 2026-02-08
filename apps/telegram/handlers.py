@@ -16,7 +16,8 @@ from django.utils import timezone
 from django.conf import settings
 from asgiref.sync import sync_to_async
 
-from apps.crm.models import Operator, Client, OperatorLog, Message
+from apps.crm.models import Client, Message
+from apps.core.models import Employee, EmployeeLog
 from apps.auth_telegram.models import TelegramUser, TelegramAuthCode
 from apps.files.models import StoredFile
 from apps.files.s3_utils import upload_file_to_s3
@@ -42,7 +43,7 @@ async def bot_reply_and_log(
     chat_id: int,
     text: str,
     context: ContextTypes.DEFAULT_TYPE,
-    operator: Operator | None = None,
+    employee: Employee | None = None,
 ) -> None:
     """
     Отправляет сообщение от бота и сохраняет его в CRM.Message как исходящее.
@@ -51,7 +52,7 @@ async def bot_reply_and_log(
 
     msg = await sync_to_async(Message.objects.create)(
         client=client,
-        operator=operator,
+        employee=employee,
         content=text,
         message_type="text",
         direction="outgoing",
@@ -228,28 +229,28 @@ class TelegramHandlers:
         user = update.effective_user
 
         try:
-            operator = await sync_to_async(Operator.objects.get)(
+            employee = await sync_to_async(Employee.objects.get)(
                 telegram_id=user.id
             )
-            clients_count = await sync_to_async(lambda: operator.clients.count())()
+            clients_count = await sync_to_async(lambda: employee.clients.count())()
 
             status_text = f"""
 📊 Ваш статус:
-👤 Имя: {operator.user.get_full_name()}
-🏢 Отдел: {operator.department.name if operator.department else 'Не назначен'}
-📱 Статус: {'🟢 Онлайн' if operator.is_online else '⚫ Офлайн'}
+👤 Имя: {employee.user.get_full_name()}
+🏢 Отдел: {employee.department.name if employee.department else 'Не назначен'}
+📱 Статус: {'🟢 Онлайн' if employee.is_online else '⚫ Офлайн'}
 👥 Клиентов: {clients_count}
-✅ Статус: {'Активен' if operator.is_active else 'Неактивен'}
+✅ Статус: {'Активен' if employee.is_active else 'Неактивен'}
             """
             await context.bot.send_message(
                 chat_id=update.effective_chat.id,
                 text=status_text,
             )
-        except Operator.DoesNotExist:
+        except Employee.DoesNotExist:
             await context.bot.send_message(
                 chat_id=update.effective_chat.id,
                 text=(
-                    "❌ Вы не зарегистрированы как оператор в системе.\n"
+                    "❌ Вы не зарегистрированы как сотрудник в системе.\n"
                     "Используйте /start для регистрации."
                 ),
             )
@@ -271,7 +272,7 @@ class TelegramHandlers:
             client = await sync_to_async(Client.objects.get)(pk=client_id)
             await sync_to_async(CrmMessage.objects.create)(
                 client=client,
-                operator=None,
+                employee=None,
                 content=text,
                 message_type="text",
                 direction="outgoing",
@@ -281,7 +282,7 @@ class TelegramHandlers:
 
     @staticmethod
     async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle incoming text messages from clients or operators"""
+        """Handle incoming text messages from clients or employees"""
         user = update.effective_user
         message = update.message
 
@@ -291,13 +292,13 @@ class TelegramHandlers:
         now = timezone.now()
 
         try:
-            # 1. Если это оператор — оставляем старую логику
-            operator = await sync_to_async(
-                Operator.objects.filter(telegram_id=user.id).first
+            # 1. Если это сотрудник — оставляем старую логику
+            employee = await sync_to_async(
+                Employee.objects.filter(telegram_id=user.id).first
             )()
-            if operator:
-                await TelegramHandlers._handle_operator_message(
-                    operator, message, context
+            if employee:
+                await TelegramHandlers._handle_employee_message(
+                    employee, message, context
                 )
                 return
 
@@ -321,7 +322,7 @@ class TelegramHandlers:
                 # сохраняем это первое сообщение как обычное
                 await sync_to_async(Message.objects.create)(
                     client=client,
-                    operator=None,
+                    employee=None,
                     content=message.text,
                     message_type="text",
                     direction="incoming",
@@ -435,7 +436,7 @@ class TelegramHandlers:
                     when=30,
                     data={"chat_id": message.chat_id, "client_id": client.id},
                 )
-            # если сообщений уже было — ничего не шлём, оператор ответит сам
+            # если сообщений уже было — ничего не шлём, сотрудник ответит сам
         except Exception as e:
             logger.exception("Error handling message: %s", e)
             await context.bot.send_message(
@@ -445,8 +446,8 @@ class TelegramHandlers:
 
 
     @staticmethod
-    async def _handle_operator_message(
-        operator: Operator,
+    async def _handle_employee_message(
+        employee: Employee,
         message,
         context: ContextTypes.DEFAULT_TYPE,
     ):
@@ -464,7 +465,7 @@ class TelegramHandlers:
             client = await sync_to_async(Client.objects.get)(id=client_id.strip())
 
             msg_obj = await sync_to_async(Message.objects.create)(
-                operator=operator,
+                employee=employee,
                 client=client,
                 content=message_text.strip(),
                 message_type="text",
@@ -473,8 +474,8 @@ class TelegramHandlers:
             )
             await sync_to_async(push_chat_message)(msg)
 
-            await sync_to_async(OperatorLog.objects.create)(
-                operator=operator,
+            await sync_to_async(EmployeeLog.objects.create)(
+                employee=employee,
                 action="message_sent",
                 description=f"Сообщение отправлено клиенту {client}",
                 client=client,
@@ -530,7 +531,7 @@ class TelegramHandlers:
 
         # 4) создаём Message с FK на StoredFile
         await sync_to_async(Message.objects.create)(
-            operator=None,
+            employee=None,
             client=client,
             message_type="image",
             content="Изображение от клиента",
@@ -581,7 +582,7 @@ class TelegramHandlers:
 
             # 4) Message с FK на StoredFile
             await sync_to_async(Message.objects.create)(
-                operator=None,
+                employee=None,
                 client=client,
                 message_type="document",
                 content=f"Файл: {filename}",
@@ -628,7 +629,7 @@ async def send_text_from_crm(
     *,
     client: Client,
     text: str,
-    operator: Operator | None = None,
+    employee: Employee | None = None,
 ) -> None:
     """
     Асинхронно отправляет сообщение клиенту из CRM
@@ -651,7 +652,7 @@ async def send_text_from_crm(
     # пишем в CRM
     await sync_to_async(Message.objects.create)(
         client=client,
-        operator=operator,
+        employee=employee,
         content=text,
         message_type="text",
         direction="outgoing",

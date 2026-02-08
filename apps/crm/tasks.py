@@ -5,7 +5,10 @@ from django.db.models import Count, Q
 import logging
 
 from apps.crm.models import (
-    Operator, Client, Message, OperatorLog, Department
+    Client, Message
+)
+from apps.core.models import (
+    Emploee, EmployeeLog, Department
 )
 
 logger = logging.getLogger(__name__)
@@ -13,9 +16,9 @@ logger = logging.getLogger(__name__)
 
 @shared_task
 def cleanup_old_logs(days=30):
-    """Remove operator logs older than N days"""
+    """Remove employee logs older than N days"""
     cutoff_date = timezone.now() - timedelta(days=days)
-    deleted_count, _ = OperatorLog.objects.filter(timestamp__lt=cutoff_date).delete()
+    deleted_count, _ = EmployeeLog.objects.filter(timestamp__lt=cutoff_date).delete()
     logger.info(f"Deleted {deleted_count} old logs")
     return f"Deleted {deleted_count} logs older than {days} days"
 
@@ -28,59 +31,59 @@ def generate_daily_report():
     
     try:
         for dept in Department.objects.filter(is_active=True):
-            operators = dept.operators.filter(is_active=True)
+            employees = dept.employee.filter(is_active=True)
             
             report_data[dept.name] = {
-                'operators_count': operators.count(),
+                'employees_count': employee.count(),
                 'messages_sent': 0,
                 'messages_received': 0,
                 'new_clients': 0,
                 'active_clients': 0,
-                'operator_stats': []
+                'employee_stats': []
             }
             
-            for operator in operators:
-                # Messages sent by operator today
+            for employee in employees:
+                # Messages sent by employee today
                 messages_sent = Message.objects.filter(
-                    operator=operator,
+                    employee=employee,
                     direction='outgoing',
                     created_at__date=today
                 ).count()
                 
-                # Messages received by operator's clients
+                # Messages received by employee's clients
                 messages_received = Message.objects.filter(
-                    client__assigned_operator=operator,
+                    client__assigned_employee=employee,
                     direction='incoming',
                     created_at__date=today
                 ).count()
                 
-                # Logs for operator today
-                actions = OperatorLog.objects.filter(
-                    operator=operator,
+                # Logs for employee today
+                actions = EmployeeLog.objects.filter(
+                    employee=employee,
                     timestamp__date=today
                 )
                 
                 report_data[dept.name]['messages_sent'] += messages_sent
                 report_data[dept.name]['messages_received'] += messages_received
                 
-                report_data[dept.name]['operator_stats'].append({
-                    'operator': operator.user.get_full_name(),
+                report_data[dept.name]['oemployee_stats'].append({
+                    'employee': employee.user.get_full_name(),
                     'messages_sent': messages_sent,
                     'messages_received': messages_received,
                     'actions_count': actions.count(),
-                    'clients_count': operator.clients.count(),
+                    'clients_count': employee.clients.count(),
                 })
             
             # New clients for department
             new_clients = Client.objects.filter(
-                assigned_operator__department=dept,
+                assigned_employee__department=dept,
                 created_at__date=today
             ).count()
             report_data[dept.name]['new_clients'] = new_clients
             
             # Active clients
             active_clients = Client.objects.filter(
-                assigned_operator__department=dept,
+                assigned_employee__department=dept,
                 status='active'
             ).count()
             report_data[dept.name]['active_clients'] = active_clients
@@ -94,31 +97,31 @@ def generate_daily_report():
 
 
 @shared_task
-def sync_operator_status():
-    """Check and update operator online status"""
+def sync_employee_status():
+    """Check and update employee online status"""
     timeout_minutes = 5  # Mark as offline if no activity for 5 minutes
     cutoff_time = timezone.now() - timedelta(minutes=timeout_minutes)
     
     try:
-        # Get all online operators
-        online_operators = Operator.objects.filter(is_online=True)
+        # Get all online employees
+        online_employees = Employee.objects.filter(is_online=True)
         
-        for operator in online_operators:
+        for employee in employees_employees:
             # Check last action time
-            last_action = OperatorLog.objects.filter(
-                operator=operator
+            last_action = EmployeeLog.objects.filter(
+                employee=employee
             ).order_by('-timestamp').first()
             
             if last_action and last_action.timestamp < cutoff_time:
                 # Mark as offline
-                operator.is_online = False
-                operator.save(update_fields=['is_online'])
-                logger.info(f"Marked {operator} as offline due to inactivity")
+                employee.is_online = False
+                employee.save(update_fields=['is_online'])
+                logger.info(f"Marked {employee} as offline due to inactivity")
         
-        return f"Updated status for {len(online_operators)} operators"
+        return f"Updated status for {len(online_employees)} employees"
         
     except Exception as e:
-        logger.error(f"Error syncing operator status: {e}")
+        logger.error(f"Error syncing employee status: {e}")
         return {'error': str(e)}
 
 
@@ -133,8 +136,8 @@ def send_message_to_telegram(message_id):
         bot = Bot(token=config('TELEGRAM_TOKEN'))
         
         # Send message to client in Telegram
-        if message.operator:
-            text = f"{message.operator.user.get_full_name()}: {message.content}"
+        if message.employee:
+            text = f"{message.employee.user.get_full_name()}: {message.content}"
         else:
             text = message.content
         
@@ -159,39 +162,39 @@ def send_message_to_telegram(message_id):
 
 @shared_task
 def reassign_clients_by_load():
-    """Reassign clients based on operator workload"""
+    """Reassign clients based on employee workload"""
     try:
-        # Get all clients without assigned operator
+        # Get all clients without assigned employee
         unassigned_clients = Client.objects.filter(
-            assigned_operator__isnull=True,
+            assigned_employee__isnull=True,
             status__in=['lead', 'active']
         )
         
         for client in unassigned_clients:
-            # Find operator with least clients in their department
-            if client.assigned_operator and client.assigned_operator.department:
-                dept = client.assigned_operator.department
+            # Find employee with least clients in their department
+            if client.assigned_employee and client.assigned_employee.department:
+                dept = client.assigned_employee.department
             else:
                 # Get department with least load
                 dept = Department.objects.annotate(
-                    operator_count=Count('operators'),
-                    total_clients=Count('operators__clients')
+                    employee_count=Count('employees'),
+                    total_clients=Count('employees__clients')
                 ).order_by('total_clients').first()
             
             if dept:
-                operator = Operator.objects.filter(
+                employee = Employee.objects.filter(
                     department=dept,
                     is_active=True
                 ).annotate(
                     client_count=Count('clients')
                 ).order_by('client_count').first()
                 
-                if operator:
-                    client.assigned_operator = operator
-                    client.save(update_fields=['assigned_operator'])
+                if employee:
+                    client.assigned_employee = employee
+                    client.save(update_fields=['assigned_employee'])
                     
-                    OperatorLog.objects.create(
-                        operator=operator,
+                    EmployeeLog.objects.create(
+                        employee=employee,
                         action='client_assigned',
                         description=f"Клиент {client} переназначен системой",
                         client=client,
@@ -206,12 +209,12 @@ def reassign_clients_by_load():
 
 
 @shared_task
-def generate_operator_stats(operator_id, start_date=None, end_date=None):
-    """Generate detailed statistics for an operator"""
+def generate_employee_stats(employee_id, start_date=None, end_date=None):
+    """Generate detailed statistics for an employee"""
     try:
         from django.db.models import Count
         
-        operator = Operator.objects.get(id=operator_id)
+        employee = Employee.objects.get(id=employee_id)
         
         if not start_date:
             start_date = timezone.now() - timedelta(days=30)
@@ -219,20 +222,20 @@ def generate_operator_stats(operator_id, start_date=None, end_date=None):
             end_date = timezone.now()
         
         stats = {
-            'operator': operator.user.get_full_name(),
+            'employee': employee.user.get_full_name(),
             'period': f"{start_date.date()} to {end_date.date()}",
             'total_messages': Message.objects.filter(
-                operator=operator,
+                employee=employee,
                 created_at__range=[start_date, end_date]
             ).count(),
-            'clients_assigned': operator.clients.count(),
+            'clients_assigned': employee.clients.count(),
             'messages_by_type': {},
             'daily_activity': {},
         }
         
         # Group messages by type
         messages_by_type = Message.objects.filter(
-            operator=operator,
+            employee=employee,
             created_at__range=[start_date, end_date]
         ).values('message_type').annotate(count=Count('id'))
         
@@ -240,22 +243,22 @@ def generate_operator_stats(operator_id, start_date=None, end_date=None):
             stats['messages_by_type'][item['message_type']] = item['count']
         
         # Daily activity breakdown
-        daily_data = OperatorLog.objects.filter(
-            operator=operator,
+        daily_data = EmployeeLog.objects.filter(
+            employee=employee,
             timestamp__range=[start_date, end_date]
         ).values('timestamp__date').annotate(count=Count('id'))
         
         for item in daily_data:
             stats['daily_activity'][str(item['timestamp__date'])] = item['count']
         
-        logger.info(f"Generated stats for {operator}: {stats}")
+        logger.info(f"Generated stats for {employee}: {stats}")
         return stats
         
-    except Operator.DoesNotExist:
-        logger.error(f"Operator {operator_id} not found")
-        return {'error': 'Operator not found'}
+    except Employee.DoesNotExist:
+        logger.error(f"Employee {employee_id} not found")
+        return {'error': 'Employee not found'}
     except Exception as e:
-        logger.error(f"Error generating operator stats: {e}")
+        logger.error(f"Error generating employee stats: {e}")
         return {'error': str(e)}
 
 

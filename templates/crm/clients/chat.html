@@ -16,7 +16,7 @@
         <div class="text-[10px] text-base-content/60">
           {{ msg.created_at|date:"d.m.Y H:i" }}
           ·
-          {% if msg.direction == "incoming" %}Клиент{% else %}Оператор{% endif %}
+          {% if msg.direction == "incoming" %}Клиент{% else %}Сотрудник{% endif %}
         </div>
         <div class="text-sm">
           {{ msg.content }}

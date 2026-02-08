@@ -31,3 +31,12 @@ class DepartmentAdmin(admin.ModelAdmin):
     list_filter = ("is_active",)
     search_fields = ("name", "description")
     autocomplete_fields = ("manager",)
+
+@admin.register(EmployeeLog)
+class EmployeeLogAdmin(admin.ModelAdmin):
+    list_display = ("employee", "action", "client", "timestamp", "ip_address")
+    list_filter = ("action", "timestamp")
+    search_fields = ("description", "ip_address", "user_agent")
+    autocomplete_fields = ("employee", "client", "message")
+    date_hierarchy = "timestamp"
+    ordering = ("-timestamp",)

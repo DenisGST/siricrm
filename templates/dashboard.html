@@ -93,11 +93,11 @@
         </li>
         <li>
           <a href="#"
-             hx-get="/operators/"
+             hx-get="/employees/"
              hx-target="#content-area"
              hx-swap="innerHTML">
             <span>👨‍💼</span>
-            <span class="sidebar-label ml-2">Операторы</span>
+            <span class="sidebar-label ml-2">Сотрудники</span>
           </a>
         </li>
         <li>
@@ -266,11 +266,11 @@
             </svg>
           </span>
           <span class="text-base-content/80 font-medium text-[0.8rem] truncate">
-            Активных операторов
+            Активных сотрудников
           </span>
           <span class="ml-auto font-semibold text-base-content">
             <span
-              hx-get="{% url 'operators_online_count' %}"
+              hx-get="{% url 'employees_online_count' %}"
               hx-trigger="load"
               hx-swap="innerHTML">0</span>
           </span>
@@ -341,9 +341,9 @@
              hx-target="#content-area"
              hx-swap="innerHTML">Клиенты</a>
           <a class="tab tab-bordered px-3"
-             hx-get="/operators/"
+             hx-get="/employees/"
              hx-target="#content-area"
-             hx-swap="innerHTML">Операторы</a>
+             hx-swap="innerHTML">Сотрудники</a>
           <a class="tab tab-bordered px-3"
              hx-get="{% url 'logs_list' %}"
              hx-target="#content-area"

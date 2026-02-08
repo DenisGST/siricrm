@@ -1,3 +1,5 @@
+# apps/crm/models.py
+
 from django.db import models
 from django.contrib.auth.models import User
 from django.utils import timezone
@@ -79,7 +81,6 @@ class Client(TimeStampedModel):
     notes = models.TextField(blank=True, verbose_name='Заметки')
     last_message_at = models.DateTimeField(null=True, blank=True, verbose_name='Последнее сообщение')
     contacts_confirmed = models.BooleanField(default=False, verbose_name='Контакты подтверждены')
-    notes = models.TextField(blank=True, verbose_name='Заметки')
     last_message_at = models.DateTimeField(null=True, blank=True, verbose_name='Последнее сообщение')
     employees = models.ManyToManyField(
         Employee,

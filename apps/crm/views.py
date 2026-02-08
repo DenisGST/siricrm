@@ -11,8 +11,8 @@ from apps.crm.models import *
 from django.db import models
 from .models import Client
 from .forms import ClientForm
-from .models import Operator
-from .models import OperatorLog
+from .models import Employee
+from .models import EmployeeLog
 from .models import Message
 from django.db.models import Prefetch
 from django.db import transaction
@@ -39,9 +39,9 @@ def telegram_send_message(request, client_id):
         )
 
     try:
-        operator = Operator.objects.get(user=request.user)
-    except Operator.DoesNotExist:
-        operator = None
+        employee = Employee.objects.get(user=request.user)
+    except Employee.DoesNotExist:
+        employee = None
 
     # обновляем дату последнего сообщения у клиента
     client.last_message_at = timezone.now()
@@ -52,7 +52,7 @@ def telegram_send_message(request, client_id):
         client=client,
         text=content or None,
         file=up_file,
-        operator=operator,
+        employee=employee,
     )
 
     # берём только что созданное сообщение (последнее исходящее для этого клиента)
@@ -129,11 +129,11 @@ def dashboard_view(request):
 @login_required
 def chat(request, client_id):
     client = get_object_or_404(
-        Client.objects.select_related("assigned_operator")
+        Client.objects.select_related("assigned_employee")
         .prefetch_related(
             Prefetch(
                 "messages",
-                queryset=Message.objects.select_related("operator").order_by("created_at"),
+                queryset=Message.objects.select_related("employee").order_by("created_at"),
             )
         ),
         id=client_id,
@@ -165,10 +165,10 @@ def dashboard(request):
 
 @login_required
 def kanban(request):
-    leads = Client.objects.filter(status="lead").select_related("assigned_operator")
-    actives = Client.objects.filter(status="active").select_related("assigned_operator")
-    inactives = Client.objects.filter(status="inactive").select_related("assigned_operator")
-    closeds = Client.objects.filter(status="closed").select_related("assigned_operator")
+    leads = Client.objects.filter(status="lead").select_related("assigned_employee")
+    actives = Client.objects.filter(status="active").select_related("assigned_employee")
+    inactives = Client.objects.filter(status="inactive").select_related("assigned_employee")
+    closeds = Client.objects.filter(status="closed").select_related("assigned_employee")
 
     return render(
         request,
@@ -199,10 +199,10 @@ def client_create(request):
 
             if request.headers.get("HX-Request"):
                 # Перерисовать Kanban после создания клиента
-                leads = Client.objects.filter(status="lead").select_related("assigned_operator")
-                actives = Client.objects.filter(status="active").select_related("assigned_operator")
-                inactives = Client.objects.filter(status="inactive").select_related("assigned_operator")
-                closeds = Client.objects.filter(status="closed").select_related("assigned_operator")
+                leads = Client.objects.filter(status="lead").select_related("assigned_employee")
+                actives = Client.objects.filter(status="active").select_related("assigned_employee")
+                inactives = Client.objects.filter(status="inactive").select_related("assigned_employee")
+                closeds = Client.objects.filter(status="closed").select_related("assigned_employee")
 
                 return render(
                     request,
@@ -226,9 +226,9 @@ def client_create(request):
     )    
 
 @login_required
-def operators_list(request):
+def employees_list(request):
     search = request.GET.get("search", "").strip()
-    qs = Operator.objects.select_related("user", "department")
+    qs = Employee.objects.select_related("user", "department")
 
     if search:
         qs = qs.filter(
@@ -243,9 +243,9 @@ def operators_list(request):
     page_obj = paginator.get_page(page_number)
 
     template = (
-        "crm/operators/list_partial.html"
+        "crm/employees/list_partial.html"
         if request.headers.get("HX-Request")
-        else "crm/operators/list.html"
+        else "crm/employees/list.html"
     )
 
     return render(
@@ -260,12 +260,12 @@ def operators_list(request):
 @login_required
 def logs_list(request):
     search = request.GET.get("search", "").strip()
-    qs = OperatorLog.objects.select_related("operator", "client", "message")
+    qs = EmployeeLog.objects.select_related("employee", "client", "message")
 
     if search:
         qs = qs.filter(
-            models.Q(operator__user__first_name__icontains=search)
-            | models.Q(operator__user__last_name__icontains=search)
+            models.Q(employee__user__first_name__icontains=search)
+            | models.Q(employee__user__last_name__icontains=search)
             | models.Q(action__icontains=search)
             | models.Q(description__icontains=search)
             | models.Q(client__first_name__icontains=search)
@@ -301,13 +301,13 @@ def kanban_column(request, status):
     if status not in dict(Client.STATUS_CHOICES):
         return HttpResponseBadRequest("Invalid status")
 
-    clients = Client.objects.filter(status=status).select_related("assigned_operator")
+    clients = Client.objects.filter(status=status).select_related("assigned_employee")
     return render(request, "crm/partials/kanban_column.html", {"clients": clients})
 
 @login_required
 def clients_list(request):
     search = request.GET.get("search", "").strip()
-    qs = Client.objects.select_related("assigned_operator")
+    qs = Client.objects.select_related("assigned_employee")
 
     if search:
         qs = qs.filter(
@@ -338,8 +338,8 @@ def clients_list(request):
     )
 
 @login_required
-def operators_online_count(request):
-    count = Operator.objects.filter(is_online=True).count()
+def employees_online_count(request):
+    count = Employee.objects.filter(is_online=True).count()
     return HttpResponse(count)
 
 @login_required
