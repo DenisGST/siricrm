@@ -9,6 +9,7 @@ from django.template.loader import render_to_string
 
 from apps.crm.models import *
 from django.db import models
+from django.db.models import Q
 from .models import Client
 from .forms import ClientForm
 from apps.core.models import Employee, EmployeeLog
@@ -100,12 +101,18 @@ def telegram_chat_for_client(request, client_id):
 
 @login_required
 def telegram_clients_list(request):
-    page_number = request.GET.get("page", 1)
+    page_number = request.GET.get("page") or 1
+    query = (request.GET.get("q") or "").strip()
 
-    qs = Client.objects.all()
+    qs = Client.objects.all().order_by("-last_message_at")
 
-    # можно отфильтровать только «живых» клиентов, если нужно:
-    # qs = qs.filter(status__in=["lead", "active"])
+    if query:
+        qs = qs.filter(
+            Q(first_name__icontains=query)
+            | Q(last_name__icontains=query)
+            | Q(username__icontains=query)
+            | Q(phone__icontains=query)
+        )
 
     paginator = Paginator(qs, CLIENTS_PER_PAGE)
     page_obj = paginator.get_page(page_number)
@@ -118,7 +125,6 @@ def telegram_clients_list(request):
 
     return render(request, "crm/partials/telegram_clients_list.html", context)
 
-
 def dashboard_view(request):
     bot_status = get_bot_status()
     return render(request, "dashboard.html", {
@@ -128,12 +134,12 @@ def dashboard_view(request):
 @login_required
 def chat(request, client_id):
     client = get_object_or_404(
-        Client.objects.select_related("assigned_employee")
-        .prefetch_related(
+        Client.objects.prefetch_related(
+            "employees",  # M2M поле
             Prefetch(
                 "messages",
                 queryset=Message.objects.select_related("employee").order_by("created_at"),
-            )
+            ),
         ),
         id=client_id,
     )
@@ -307,7 +313,8 @@ def kanban_column(request, status):
 @login_required
 def clients_list(request):
     search = request.GET.get("search", "").strip()
-    qs = Client.objects.select_related("assigned_employee")
+
+    qs = Client.objects.prefetch_related("employees")
 
     if search:
         qs = qs.filter(
@@ -318,15 +325,16 @@ def clients_list(request):
             | models.Q(email__icontains=search)
         )
 
-    paginator = Paginator(qs.order_by("-last_message_at"), 25)
+    paginator = Paginator(qs.order_by("-last_message_at"), 15)
     page_number = request.GET.get("page") or 1
     page_obj = paginator.get_page(page_number)
 
-    template = (
-        "crm/clients/list_partial.html"
-        if request.headers.get("HX-Request")
-        else "crm/clients/list.html"
-    )
+    # КЛЮЧЕВОЕ УСЛОВИЕ:
+    # partial=1 -> только кусок таблицы
+    if request.headers.get("HX-Request") and request.GET.get("partial") == "1":
+        template = "crm/clients/list_partial.html"
+    else:
+        template = "crm/clients/list.html"
 
     return render(
         request,

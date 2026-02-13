@@ -15,58 +15,7 @@ class TimeStampedModel(models.Model):
     class Meta:
         abstract = True
 
-"""
-class Department(TimeStampedModel):
-    # Department/Team model
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    name = models.CharField(max_length=255, verbose_name='Название отдела')
-    description = models.TextField(blank=True, verbose_name='Описание')
-    manager = models.ForeignKey(
-        User,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name='managed_departments',
-        verbose_name='Менеджер отдела'
-    )
-    is_active = models.BooleanField(default=True, verbose_name='Активен')
 
-    def __str__(self):
-        return self.name
-
-    class Meta:
-        verbose_name = 'Отдел'
-        verbose_name_plural = 'Отделы'
-        ordering = ['name']
-"""
-"""
-class Operator(TimeStampedModel):
-    # Operator/Agent model
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='operator')
-    telegram_id = models.BigIntegerField(unique=True, verbose_name='Telegram ID')
-    telegram_username = models.CharField(max_length=255, blank=True)
-    department = models.ForeignKey(
-        Department,
-        on_delete=models.SET_NULL,
-        null=True,
-        related_name='operators',
-        verbose_name='Отдел'
-    )
-    is_active = models.BooleanField(default=True, verbose_name='Активен')
-    is_online = models.BooleanField(default=False, verbose_name='Онлайн')
-    joined_at = models.DateTimeField(auto_now_add=True, verbose_name='Дата присоединения')
-    last_seen = models.DateTimeField(default=timezone.now, verbose_name='Последний визит')
-    clients_count = models.IntegerField(default=0, verbose_name='Количество клиентов')
-
-    def __str__(self):
-        return f"{self.user.get_full_name()} (@{self.telegram_username})"
-
-    class Meta:
-        verbose_name = 'Оператор'
-        verbose_name_plural = 'Операторы'
-        ordering = ['-last_seen']
-"""
 
 class Client(TimeStampedModel):
     """Customer/Client model"""

@@ -1,8 +1,18 @@
-<div
-  class="toast toast-end mt-2"
-  hx-swap-oob="afterbegin:#toast-container"
->
-  <div class="alert alert-{{ level|default:'info' }} shadow-lg">
-    <span class="text-sm">{{ text }}</span>
+<div id="toast-container" hx-swap-oob="afterbegin">
+  <div
+    class="alert text-white shadow-lg flex items-center gap-2"
+    style="background-color: rgba(31, 193, 34, 0.51);"
+  >
+    <span class="flex-1 text-sm">
+      {{ text }}
+    </span>
+    <button
+      type="button"
+      class="btn btn-xs btn-circle btn-ghost text-white"
+      aria-label="Закрыть"
+      data-toast-close="1"
+    >
+      ✕
+    </button>
   </div>
 </div>

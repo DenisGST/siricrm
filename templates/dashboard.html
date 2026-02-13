@@ -409,13 +409,19 @@
     <div class="flex flex-1 min-h-0 overflow-hidden">
       <!-- Левая колонка: список клиентов -->
       <aside class="w-72 border-r border-base-200 flex flex-col min-h-0">
-        <div class="px-3 pt-3 pb-2 border-b border-base-200">
-          <label class="input input-sm input-bordered flex items-center gap-2">
-            <span class="text-sm text-base-content/70">Поиск</span>
-            <input type="text" class="grow" placeholder="ФИО, телефон">
-          </label>
+        <div class="px-3 py-2 mb-2 mt-1 border-b border-base-200">
+          <input
+            id="telegram-search"
+            type="search"
+            name="q"
+            placeholder=" 🔎 ФИО, телефон"
+            class="w-full h-8 px-3 text-xs rounded-lg bg-base-100 border border-base-300"
+            hx-get="/telegram/clients/"
+            hx-trigger="input changed delay:400ms"
+            hx-target="#telegram-clients-list"
+            hx-swap="innerHTML"
+          >
         </div>
-
         <!-- СКРОЛЛ ВНУТРИ ЛЕВОЙ КОЛОНКИ -->
         <div
           id="telegram-clients-list"
@@ -509,26 +515,28 @@
 
 
 <!-- Toast -->
-<div id="toast-container" class="fixed bottom-4 right-4 z-50 space-y-2"></div>
-<div id="stats-container" hx-swap-oob="true"></div>
+<audio id="toast-sound" src="{% static 'sounds/notify.mp3' %}" preload="auto"></audio>
+<div id="toast-container"
+     class="fixed bottom-4 right-4 z-50 space-y-2"></div>
+
 <!-- Невидимый ws‑подключатель для уведомлений -->
-<div
-  id="notifications-ws"
-  hx-ext="ws"
-  hx-ws="connect:/ws/notifications/"
-></div>
+<div id="notifications-ws"
+     hx-ext="ws"
+     ws-connect="/ws/notifications/"></div>
+<div id="stats-container" hx-swap-oob="true"></div>
+
+
 
 <script>
-  // Toast для HTMX
-  document.addEventListener('htmx:afterRequest', (event) => {
-    const status = event.detail?.xhr?.status;
-    if (!status) return;
-    if (status === 200 || status === 201) {
-      showToast('Успешно', 'success');
-    } else if (status >= 400) {
-      showToast('Ошибка', 'error');
-    }
-  });
+ // Toast для HTMX: показываем только ошибки (4xx/5xx)
+document.addEventListener('htmx:afterRequest', (event) => {
+  const status = event.detail?.xhr?.status;
+  if (!status) return;
+
+  if (status >= 400) {
+    showToast('Ошибка', 'error');
+  }
+});
 
   function showToast(message, type = 'info') {
     const container = document.getElementById('toast-container');
@@ -686,6 +694,77 @@ document.body.addEventListener('htmx:afterSwap', (e) => {
     if (evt.target.id !== "telegram-chat-messages") return;
     const chat = evt.target;
     chat.scrollTop = chat.scrollHeight;
+  });
+</script>
+
+<script>
+  document.addEventListener("DOMContentLoaded", function () {
+    var container = document.getElementById("toast-container");
+    if (!container) return;
+
+    container.addEventListener("click", function (e) {
+      var btn = e.target.closest("[data-toast-close]");
+      if (!btn) return;
+
+      // Ищем ближайший alert и удаляем его
+      var alertBox = btn.closest(".alert");
+      if (alertBox) {
+        alertBox.remove();
+      }
+    });
+  });
+
+  document.body.addEventListener("htmx:oobAfterSwap", function () {
+    var container = document.getElementById("toast-container");
+    if (!container) return;
+
+    var alerts = container.querySelectorAll(".alert");
+    alerts.forEach(function (alertBox) {
+      if (alertBox.dataset.autohideSet) return;
+      alertBox.dataset.autohideSet = "1";
+
+      setTimeout(function () {
+        if (alertBox.isConnected) {
+          alertBox.remove();
+        }
+      }, 1 * 60 * 1000);
+    });
+  });
+</script>
+
+<script>
+  document.body.addEventListener("htmx:wsAfterMessage", function (event) {
+    const audio = document.getElementById("toast-sound");
+    if (!audio) return;
+
+    // перезапуск звука
+    audio.currentTime = 0;
+    audio.play().catch(function (err) {
+      // игнорируем, если браузер заблокировал автоплей
+      console.debug("toast sound play blocked", err);
+    });
+  });
+</script>
+
+<script>
+  document.body.addEventListener("htmx:afterSwap", function (evt) {
+    const target = evt.target;
+    if (!target || target.id !== "telegram-clients-list") return;
+
+    setTimeout(function () {
+      const firstClient = document.querySelector("#telegram-clients-list .tg-client-item");
+      if (!firstClient) return;
+
+      // визуально помечаем активного
+      setActiveTelegramClient(firstClient);
+
+      // берём URL из hx-get
+      const url = firstClient.getAttribute("hx-get");
+      if (!url || !window.htmx) return;
+
+      // руками дергаем загрузку панели чата
+      htmx.ajax("GET", url, "#telegram-chat-panel");
+    }, 0);
   });
 </script>
 

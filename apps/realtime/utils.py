@@ -6,6 +6,24 @@ from apps.crm.models import Message, Client  # твои модели
 
 channel_layer = get_channel_layer()
 
+def push_toast(user, text: str, level: str = "info"):
+    """
+    Тост одному пользователю (по user.id), если тебе это всё ещё нужно.
+    """
+    if channel_layer is None:
+        return
+    if not user or not user.is_authenticated:
+        return
+
+    html = render_to_string(
+        "realtime/partials/toast.html",
+        {"text": text, "level": level},
+    )
+
+    async_to_sync(channel_layer.group_send)(
+        f"user_notifications_{user.id}",
+        {"type": "notify", "html": html},
+    )
 
 def push_chat_message(msg: Message):
     if channel_layer is None:
@@ -27,10 +45,11 @@ def push_chat_message(msg: Message):
     )
 
 
-def push_toast(user, text: str, level: str = "info"):
+def push_client_toast(client: Client, text: str, level: str = "info"):
+    """
+    Показать тост всем сотрудникам, закреплённым за клиентом.
+    """
     if channel_layer is None:
-        return
-    if not user or not user.is_authenticated:
         return
 
     html = render_to_string(
@@ -39,7 +58,7 @@ def push_toast(user, text: str, level: str = "info"):
     )
 
     async_to_sync(channel_layer.group_send)(
-        f"user_notifications_{user.id}",
+        f"client_ops_{client.id}",
         {"type": "notify", "html": html},
     )
 

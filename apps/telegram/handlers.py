@@ -22,7 +22,8 @@ from apps.core.models import Employee, EmployeeLog
 from apps.auth_telegram.models import TelegramUser, TelegramAuthCode
 from apps.files.models import StoredFile
 from apps.files.s3_utils import upload_file_to_s3
-from apps.realtime.utils import push_chat_message
+from apps.realtime.utils import push_chat_message, push_client_toast
+
 
 # from channels.layers import get_channel_layer
 from asgiref.sync import async_to_sync
@@ -248,6 +249,9 @@ class TelegramHandlers:
                 telegram_message_id=sent_msg.message_id,
             )
             await sync_to_async(push_chat_message)(msg)
+            await sync_to_async(push_client_toast)(
+                client,text=f"1 Новое сообщение от клиента {client.first_name or client.id}",
+            )
 
     @staticmethod
     async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -288,6 +292,9 @@ class TelegramHandlers:
                     telegram_message_id=message.message_id,
                 )
                 await sync_to_async(push_chat_message)(msg)
+                await sync_to_async(push_client_toast)(
+                    client,text=f"88Новое сообщение от клиента {client.first_name or client.id}",
+                )
 
 
                 await bot_reply_and_log(
@@ -363,6 +370,9 @@ class TelegramHandlers:
                 telegram_message_id=message.message_id,
             )
             await sync_to_async(push_chat_message)(msg)
+            await sync_to_async(push_client_toast)(
+                client,text=f"2Новое сообщение от клиента {client.first_name or client.id}",
+            )
             return
 
             # --- c) Клиент есть, сейчас рабочее время ---
@@ -375,6 +385,9 @@ class TelegramHandlers:
                 telegram_message_id=message.message_id,
             )
             await sync_to_async(push_chat_message)(msg)
+            await sync_to_async(push_client_toast)(
+                client,text=f"3Новое сообщение от клиента {client.first_name or client.id}",
+            )
 
             # Логика «если клиент к нам обращался ранее и ничего не писал после первого обращения»
             # Интерпретация: это его самое первое сообщение (нет других incoming-сообщений до этого)
@@ -438,11 +451,14 @@ class TelegramHandlers:
             direction="incoming",
         )
         await sync_to_async(push_chat_message)(msg)
+        await sync_to_async(push_client_toast)(
+                client,text=f"Фото от клиента {client.first_name or client.id}",
+            )
 
         # 5) ответ клиенту
         await context.bot.send_message(
             chat_id=message.chat_id,
-            text="📷 Картинка получена и сохранена в CRM.",
+            text="📷 Картинка получена и сохранена.",
         )
 
     @staticmethod
@@ -489,11 +505,14 @@ class TelegramHandlers:
                 direction="incoming",
             )
             await sync_to_async(push_chat_message)(msg)
+            await sync_to_async(push_client_toast)(
+                client,text=f"Файл от клиента {client.first_name or client.id}",
+            )
 
             # 5) ответ
             await context.bot.send_message(
                 chat_id=message.chat_id,
-                text=f"📎 Файл «{filename}» получен и сохранён в CRM.",
+                text=f"📎 Файл «{filename}» получен и сохранён.",
             )
 
         except Exception as e:
@@ -557,3 +576,6 @@ async def send_text_from_crm(
         telegram_message_id=sent_msg.message_id,
     )
     await sync_to_async(push_chat_message)(msg)
+    await sync_to_async(push_client_toast)(
+                client,text=f"Отправлено клиенту {client.first_name or client.id}",
+            )

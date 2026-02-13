@@ -1,6 +1,11 @@
+# /var/www/projects/siricrm/apps/realtime/consumers.py
 from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
+from asgiref.sync import sync_to_async
 from django.contrib.auth.models import AnonymousUser
+
+from apps.core.models import Employee
+from apps.crm.models import Client
 
 class TelegramChatConsumer(AsyncWebsocketConsumer):
     async def connect(self):
@@ -30,13 +35,38 @@ class NotificationsConsumer(AsyncWebsocketConsumer):
             await self.close()
             return
 
-        self.user_group = f"user_notifications_{user.id}"
-        await self.channel_layer.group_add(self.user_group, self.channel_name)
+        # защита от двойного connect для одного channel_name
+        if getattr(self, "already_connected", False):
+            await self.close()
+            return
+        self.already_connected = True
+
+        self.groups_list = []
+
+        # находим Employee по user
+        try:
+            employee = await sync_to_async(Employee.objects.get)(user=user)
+        except Employee.DoesNotExist:
+            await self.accept()
+            return
+
+        # группы клиентов, с которыми он работает
+        client_ids = await sync_to_async(
+            lambda: list(
+                Client.objects.filter(employees=employee).values_list("id", flat=True)
+            )
+        )()
+
+        for cid in client_ids:
+            group_name = f"client_ops_{cid}"
+            await self.channel_layer.group_add(group_name, self.channel_name)
+            self.groups_list.append(group_name)
+
         await self.accept()
 
     async def disconnect(self, code):
-        await self.channel_layer.group_discard(self.user_group, self.channel_name)
+        for group in self.groups_list:
+            await self.channel_layer.group_discard(group, self.channel_name)
 
     async def notify(self, event):
-        # event: {"type": "notify", "html": "..."}
         await self.send(text_data=event["html"])

@@ -247,3 +247,24 @@ textarea {
   outline: none;
   border-color: hsl(var(--p));  /* подсветка при фокусе */
 }
+
+
+/* глобально снимаем дефолтный фокус для всех инпутов */
+input:focus,
+textarea:focus {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+#telegram-search {
+  outline: none !important;
+  box-shadow: none !important;
+  border-color: #d4d4d8;
+}
+
+#telegram-search:focus {
+  outline: none !important;
+  /* Снимаем любые тени, которые могли прилететь из daisyUI/Tailwind */
+  box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.35) !important;
+  border-color: #0545acd0 !important;
+}

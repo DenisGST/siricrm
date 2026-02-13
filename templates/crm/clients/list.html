@@ -5,8 +5,8 @@
     <h2 class="text-xl font-bold">Клиенты</h2>
 
     <form
-      hx-get="{% url 'clients_list' %}"
-      hx-target="#clients-table-wrapper"
+      hx-get="{% url 'clients_list' %}?partial=1"
+      hx-target="#clients-table"
       hx-swap="outerHTML"
       class="join"
     >
@@ -33,7 +33,6 @@
     </form>
   </div>
 
-  <div id="clients-table-wrapper">
-    {% include "crm/clients/list_partial.html" %}
-  </div>
+  {# тут БЕЗ id, id будет внутри partial #}
+  {% include "crm/clients/list_partial.html" %}
 </div>
