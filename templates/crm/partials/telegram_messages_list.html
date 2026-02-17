@@ -1,4 +1,5 @@
 {# crm/partials/telegram_messages_list.html #}
+
 {% for msg in messages %}
   {% include "crm/partials/telegram_message.html" with msg=msg %}
 {% empty %}

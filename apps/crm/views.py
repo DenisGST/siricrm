@@ -3,7 +3,7 @@ from django.conf import settings
 from django.core.paginator import Paginator
 from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib.auth.decorators import login_required
-from django.http import HttpResponse, HttpResponseBadRequest
+from django.http import HttpResponse, HttpResponseBadRequest, JsonResponse
 from django.views.decorators.http import require_POST
 from django.template.loader import render_to_string
 
@@ -21,7 +21,7 @@ from apps.realtime.utils import push_chat_message, push_toast
 from .telegram_sender import send_from_crm_sync
 
 CLIENTS_PER_PAGE = 20
-
+MESSAGES_PER_PAGE = 30  # сколько сообщений за раз подгружаем в телеграм
 @login_required
 @require_POST
 def telegram_send_message(request, client_id):
@@ -85,19 +85,51 @@ def telegram_send_message(request, client_id):
 def telegram_chat_for_client(request, client_id):
     client = get_object_or_404(Client, pk=client_id)
 
-    # последние N сообщений, например 50
-    messages_qs = (
+    qs = (
         Message.objects
         .filter(client=client)
-        .order_by("created_at")  # в порядке диалога
-    )[:200]  # при желании ограничь
+        .select_related("employee")
+        .order_by("created_at")
+    )
 
-    context = {
-        "client": client,
-        "messages": messages_qs,
-    }
-    return render(request, "crm/partials/telegram_chat_panel.html", context)
+    paginator = Paginator(qs, MESSAGES_PER_PAGE)
 
+    page_param = request.GET.get("page")
+    if page_param:
+        page_number = int(page_param)
+    else:
+        page_number = paginator.num_pages or 1
+
+    page_obj = paginator.get_page(page_number)
+
+    # подгрузка вверх
+    if request.headers.get("HX-Request") and "page=" in request.META.get("QUERY_STRING", ""):
+        html = render_to_string(
+            "crm/partials/telegram_messages_list.html",
+            {
+                "client": client,
+                "page_obj": page_obj,
+                "messages": page_obj.object_list,
+            },
+            request=request,
+        )
+        return JsonResponse({
+            "html": html,
+            "page": page_obj.number,
+            "has_previous": page_obj.has_previous(),
+            "previous_page_number": page_obj.previous_page_number() if page_obj.has_previous() else None,
+        })
+
+    # первый заход / смена клиента
+    return render(
+        request,
+        "crm/partials/telegram_chat_panel.html",
+        {
+            "client": client,
+            "page_obj": page_obj,
+            "messages": page_obj.object_list,
+        },
+    )
 
 @login_required
 def telegram_clients_list(request):

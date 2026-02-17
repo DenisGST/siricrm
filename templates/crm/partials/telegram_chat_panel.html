@@ -1,132 +1,125 @@
-<!-- siricrm/templates/crm/partials/telegram_chat_panel.html
- 
-Шапка с информацией о клиенте -->
-<div class="px-4 py-3 border-b border-base-200 flex items-center gap-3">
-  <div class="avatar placeholder">
-    <div class="w-8 rounded-full bg-secondary text-secondary-content text-xs">
-      {{ client.first_name|first|default:"К" }}
+{# siricrm/templates/crm/partials/telegram_chat_panel.html #}
+
+<div class="flex flex-col h-full min-h-0">
+  {# Шапка с информацией о клиенте #}
+  <div class="px-4 py-3 border-b border-base-200 flex items-center gap-3">
+    <div class="avatar placeholder">
+      <div class="w-8 rounded-full bg-secondary text-secondary-content text-xs">
+        {{ client.first_name|first|default:"К" }}
+      </div>
+    </div>
+    <div class="flex flex-col">
+      <span class="font-medium text-sm">
+        {{ client.first_name }}{% if client.last_name %} {{ client.last_name }}{% endif %}
+      </span>
+      <span class="text-xs text-base-content/60">
+        {% if client.username %}@{{ client.username }}{% endif %}
+        {% if client.phone %} • {{ client.phone }}{% endif %}
+      </span>
     </div>
   </div>
-  <div class="flex flex-col">
-    <span class="font-medium text-sm">
-      {{ client.first_name }}{% if client.last_name %} {{ client.last_name }}{% endif %}
-    </span>
-    <span class="text-xs text-base-content/60">
-      {% if client.username %}@{{ client.username }}{% endif %}
-      {% if client.phone %} • {{ client.phone }}{% endif %}
-    </span>
-  </div>
-</div>
 
-<!-- Лента сообщений -->
+{# Лента сообщений #}
 <div
   id="telegram-chat-messages"
-  class="flex-1 overflow-y-auto px-4 py-3 space-y-3 bg-base-100"
-  style="max-height: calc(80vh - 140px);"
+  class="flex-1 overflow-y-auto px-4 py-3 bg-base-100"
   hx-ext="ws"
   ws-connect="/ws/telegram/{{ client.id }}/"
+  data-top-page="{{ page_obj.number }}"
+  data-client-id="{{ client.id }}"
+  style="scroll-behavior: smooth;"
 >
-  {% for msg in messages %}
-  {% include "crm/partials/telegram_message.html" with msg=msg %}
-{% empty %}
-  <div class="text-xs text-base-content/60">
-    Сообщений пока нет. Напишите первое сообщение клиенту.
+  <div class="space-y-3" id="telegram-messages-inner">
+    {% include "crm/partials/telegram_messages_list.html" with messages=messages %}
   </div>
-{% endfor %}
 </div>
 
-<!-- Форма отправки -->
-<div class="border-t border-base-200 p-3">
-  <form
-  id="telegram-chat-send-form"
-  hx-post="{% url 'telegram_send_message' client.id %}"
-  hx-swap="none"
-  enctype="multipart/form-data"
-  class="flex flex-col gap-2"
-  >
-    {% csrf_token %}
 
-    <!-- скрытое поле для текста -->
-    <input type="hidden" name="content" id="tg_hidden_content">
+  {# Форма отправки #}
+  <div class="border-t border-base-200 p-3">
+    <form
+      id="telegram-chat-send-form"
+      hx-post="{% url 'telegram_send_message' client.id %}"
+      hx-swap="none"
+      enctype="multipart/form-data"
+      class="flex flex-col gap-2"
+    >
+      {% csrf_token %}
 
-    <!-- Строка с кнопками и полем -->
-    <div class="flex items-end gap-2">
-      <label class="btn btn-sm btn-ghost" for="tg_file_input">
-        <svg xmlns="http://www.w3.org/2000/svg"
-             viewBox="0 0 24 24"
-             fill="none"
-             stroke="currentColor"
-             stroke-width="1.5"
-             class="w-5 h-5">
-          <path stroke-linecap="round" stroke-linejoin="round"
-                d="M18.375 12.375 13.5 17.25a4.125 4.125 0 1 1-5.835-5.835l6.364-6.364a2.875 2.875 0 1 1 4.065 4.065L11.25 18.75" />
-        </svg>
-      </label>
-      <input id="tg_file_input" type="file" name="file" class="hidden">
+      {# скрытое поле для текста #}
+      <input type="hidden" name="content" id="tg_hidden_content">
 
-      <!-- Поле ввода -->
-      <div
-        id="tg_message_input"
-        class="flex-1 max-h-32 min-h-[3.5rem] px-3 py-2 rounded-lg bg-base-100 text-sm overflow-y-auto outline-none border border-siriBorder focus:border-siriBorderDark"
-        contenteditable="true"
-        data-placeholder="Напишите сообщение..."
-        onkeydown="handleChatInputKey(event)"
-      ></div>
+      {# Строка с кнопками и полем #}
+      <div class="flex items-end gap-2">
+        <label class="btn btn-sm btn-ghost" for="tg_file_input">
+          <svg xmlns="http://www.w3.org/2000/svg"
+               viewBox="0 0 24 24"
+               fill="none"
+               stroke="currentColor"
+               stroke-width="1.5"
+               class="w-5 h-5">
+            <path stroke-linecap="round" stroke-linejoin="round"
+                  d="M18.375 12.375 13.5 17.25a4.125 4.125 0 1 1-5.835-5.835l6.364-6.364a2.875 2.875 0 1 1 4.065 4.065L11.25 18.75" />
+          </svg>
+        </label>
+        <input id="tg_file_input" type="file" name="file" class="hidden">
 
-      <!-- Кнопка эмодзи -->
-      <button
-        type="button"
-        id="tg_emoji_button"
-        class="btn btn-sm btn-ghost text-lg"
-        onclick="toggleEmojiPicker()"
-      >
-        😊
-      </button>
+        {# Поле ввода #}
+        <div
+          id="tg_message_input"
+          class="flex-1 max-h-32 min-h-[3.5rem] px-3 py-2 rounded-lg bg-base-100 text-sm overflow-y-auto outline-none border border-siriBorder focus:border-siriBorderDark"
+          contenteditable="true"
+          data-placeholder="Напишите сообщение..."
+          onkeydown="handleChatInputKey(event)"
+        ></div>
 
-      <!-- Поповер‑пикер -->
-      <div
-        id="tg_emoji_popover"
-        class="hidden absolute bottom-12 right-20 z-50 w-64 max-h-64 rounded-lg border border-base-300 bg-base-100 shadow-lg p-2 overflow-y-auto"
-      >
-        <div class="text-xs text-base-content/60 px-1 mb-1">Эмодзи</div>
-        <div class="emoji-grid grid grid-cols-8 gap-1 text-xl leading-none"></div>
-      </div>
+        {# Кнопка эмодзи #}
+        <button
+          type="button"
+          id="tg_emoji_button"
+          class="btn btn-sm btn-ghost text-lg"
+          onclick="toggleEmojiPicker()"
+        >
+          😊
+        </button>
 
-      <!-- Отправка (самолётик) -->
-      <button type="submit" class="btn btn-sm btn-primary px-3">
-        <svg xmlns="http://www.w3.org/2000/svg"
-             class="w-4 h-4"
-             fill="none"
-             viewBox="0 0 24 24"
-             stroke="currentColor"
-             stroke-width="2">
-          <path stroke-linecap="round" stroke-linejoin="round"
-                d="M5 12l14-7-4 14-3-5-5-2z" />
-        </svg>
-      </button>
-    </div>
+        {# Поповер‑пикер #}
+        <div
+          id="tg_emoji_popover"
+          class="hidden absolute bottom-12 right-20 z-50 w-64 max-h-64 rounded-lg border border-base-300 bg-base-100 shadow-lg p-2 overflow-y-auto"
+        >
+          <div class="text-xs text-base-content/60 px-1 mb-1">Эмодзи</div>
+          <div class="emoji-grid grid grid-cols-8 gap-1 text-xl leading-none"></div>
+        </div>
 
-    <!-- Бейдж загруженного файла -->
-    <div id="tg_file_badge" class="hidden text-xs">
-      <div class="inline-flex items-center gap-2 px-2 py-1 rounded bg-base-200 text-base-content/80">
-        <span class="truncate max-w-[220px]" id="tg_file_name"></span>
-        <button type="button" class="btn btn-xs btn-ghost px-1" onclick="clearSelectedFile()">
-          ✕
+        {# Отправка (самолётик) #}
+        <button type="submit" class="btn btn-sm btn-primary px-3">
+          <svg xmlns="http://www.w3.org/2000/svg"
+               class="w-4 h-4"
+               fill="none"
+               viewBox="0 0 24 24"
+               stroke="currentColor"
+               stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round"
+                  d="M5 12l14-7-4 14-3-5-5-2z" />
+          </svg>
         </button>
       </div>
-    </div>
-  </form>
+
+      {# Бейдж загруженного файла #}
+      <div id="tg_file_badge" class="hidden text-xs">
+        <div class="inline-flex items-center gap-2 px-2 py-1 rounded bg-base-200 text-base-content/80">
+          <span class="truncate max-w-[220px]" id="tg_file_name"></span>
+          <button type="button" class="btn btn-xs btn-ghost px-1" onclick="clearSelectedFile()">
+            ✕
+          </button>
+        </div>
+      </div>
+    </form>
+  </div>
 </div>
 
 <script>
-  // автоскролл вниз при загрузке панели чата
-  (function () {
-    const box = document.getElementById('telegram-chat-messages');
-    if (box) {
-      box.scrollTop = box.scrollHeight;
-    }
-  })();
-
   // показать выбранный файл
   document.addEventListener('change', (e) => {
     if (e.target && e.target.id === 'tg_file_input') {
@@ -157,29 +150,19 @@
     nameEl.textContent = '';
   }
 
-  // работа с текстом
-
   function getMessageText() {
-  const el = document.getElementById('tg_message_input');
-  if (!el) return '';
+    const el = document.getElementById('tg_message_input');
+    if (!el) return '';
 
-  // Берём HTML и превращаем в обычный текст
-  let html = el.innerHTML;
+    let html = el.innerHTML;
 
-  // <br> -> \n
-  html = html.replace(/<br\s*\/?>/gi, '\n');            // [web:1857]
+    html = html.replace(/<br\s*\/?>/gi, '\n');
+    html = html.replace(/<\/(div|p)>/gi, '\n');
+    html = html.replace(/<[^>]+>/g, '');
+    html = html.replace(/&nbsp;/gi, ' ');
 
-  // блоки <div> / <p> -> переносы строк
-  html = html.replace(/<\/(div|p)>/gi, '\n');           // [web:1861]
-
-  // убираем остальные теги
-  html = html.replace(/<[^>]+>/g, '');
-
-  // заменяем &nbsp; на обычные пробелы
-  html = html.replace(/&nbsp;/gi, ' ');
-
-  return html.trim();
-}
+    return html.trim();
+  }
 
   function clearMessageInput() {
     const box = document.getElementById('tg_message_input');
@@ -199,8 +182,8 @@
       const hidden = document.getElementById('tg_hidden_content');
       if (hidden) hidden.value = text;
 
-      form.requestSubmit(); // нормальный submit, который подхватит htmx[web:1842][web:1666]
-      }
+      form.requestSubmit();
+    }
   }
 
   // При клике по кнопке самолётика тоже прокидываем текст в hidden
@@ -217,19 +200,104 @@
   });
 </script>
 
+
+
 <script>
+  // прокрутка с бесшовной пагинацией
+  function initInfiniteScrollTelegramChat() {
+    const box = document.getElementById('telegram-chat-messages');
+    const inner = document.getElementById('telegram-messages-inner');
+    if (!box || !inner) return;
+
+    if (box.dataset.infiniteInit === '1') return;
+    box.dataset.infiniteInit = '1';
+
+    let isLoadingOlder = false;
+
+    // при первом показе панели — в самый низ
+    box.style.scrollBehavior = 'auto';
+    box.scrollTop = box.scrollHeight;
+    box.style.scrollBehavior = 'smooth';
+
+    box.addEventListener('scroll', function () {
+      if (isLoadingOlder) return;
+
+      // грузим только у самого верха
+      if (box.scrollTop > 5) return;
+
+      const clientId = box.dataset.clientId;
+      let topPage = parseInt(box.dataset.topPage || '1', 10);
+      if (!clientId || isNaN(topPage) || topPage <= 1) return;
+
+      const targetPage = topPage - 1;
+      const url = `/telegram/chat/${clientId}/?page=${targetPage}`;
+      isLoadingOlder = true;
+
+      const oldScrollHeight = box.scrollHeight;
+      const oldScrollTop = box.scrollTop;
+
+      fetch(url, {
+        headers: { 'HX-Request': 'true' }
+      })
+        .then(r => r.json())
+        .then(data => {
+          if (!data.html) return;
+
+          const temp = document.createElement('div');
+          temp.innerHTML = data.html;
+          const nodes = Array.from(temp.childNodes);
+
+          const beforeHeight = box.scrollHeight;
+
+          // временно убираем плавность, чтобы не дёргалось
+          const prevScrollBehavior = box.style.scrollBehavior;
+          box.style.scrollBehavior = 'auto';
+
+          nodes.reverse().forEach(node => {
+            inner.insertBefore(node, inner.firstChild);
+          });
+
+          const afterHeight = box.scrollHeight;
+          const diff = afterHeight - beforeHeight;
+          box.scrollTop = oldScrollTop + diff;
+
+          box.style.scrollBehavior = prevScrollBehavior || 'smooth';
+
+          // обновляем текущую верхнюю страницу
+          box.dataset.topPage = String(data.page);
+        })
+        .finally(() => {
+          isLoadingOlder = false;
+        });
+    });
+  }
+
+  document.body.addEventListener('htmx:afterSwap', function (evt) {
+    if (evt.detail.target.id === 'telegram-chat-panel') {
+      initInfiniteScrollTelegramChat();
+    }
+  });
+</script>
+
+<script>
+  // очистка после отправки
   document.body.addEventListener('htmx:afterRequest', function (evt) {
-    const elt = evt.detail.elt; // элемент, который инициировал запрос
+    const elt = evt.detail.elt;
     if (!elt) return;
 
-    // очищаем только нашу форму отправки чата
+    // реагируем только на нашу форму отправки
     const form = elt.closest('#telegram-chat-send-form');
     if (!form) return;
 
-    // очищаем текст
+    // очистить текст
     clearMessageInput();
 
-    // очищаем выбранный файл
-    clearSelectedFile();
+    // очистить выбранный файл (если был)
+    const input = document.getElementById('tg_file_input');
+    const badge = document.getElementById('tg_file_badge');
+    const nameEl = document.getElementById('tg_file_name');
+    if (input) input.value = '';
+    if (badge) badge.classList.add('hidden');
+    if (nameEl) nameEl.textContent = '';
   });
 </script>

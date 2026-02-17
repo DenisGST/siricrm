@@ -268,3 +268,7 @@ textarea:focus {
   box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.35) !important;
   border-color: #0545acd0 !important;
 }
+
+#telegram-chat-messages {
+  scroll-behavior: smooth;
+}

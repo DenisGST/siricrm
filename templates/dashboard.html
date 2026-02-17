@@ -435,80 +435,19 @@
       </aside>
 
       <!-- Правая колонка: чат -->
-      <section class="flex-1 flex flex-col min-h-0" id="telegram-chat-panel">
-        <div class="px-4 py-3 border-b border-base-200 flex items-center gap-3">
-          <div class="avatar placeholder">
-            <div class="w-8 rounded-full bg-secondary text-secondary-content text-xs">
-              К
-            </div>
-          </div>
-          <div class="flex flex-col">
-            <span class="font-medium text-sm">Клиент не выбран</span>
-            <span class="text-xs text-base-content/60">-------</span>
-          </div>
-        </div>
-
-        <!-- СКРОЛЛ ЛЕНТЫ СООБЩЕНИЙ -->
-        <div class="flex-1 min-h-0 overflow-y-auto px-4 py-3 space-y-3 bg-base-100">
-          <div class="chat chat-start">
-            <div class="chat-bubble chat-bubble-neutral">
-              Выберите клиента...
-            </div>
-            <div class="chat-footer text-[10px] text-base-content/60">12:30</div>
-          </div>
-        </div>
-
-        <div class="border-t border-base-200 p-3">
-          <form class="flex items-end gap-2 relative" onsubmit="sendTelegramMessage(event)">
-            <!-- Кнопка вложений -->
-            <label class="btn btn-sm btn-ghost" for="tg_file_input">📎</label>
-            <input id="tg_file_input" type="file" class="hidden">
-
-            <!-- Поле ввода -->
-            <div
-              id="tg_message_input"
-              class="flex-1 max-h-32 min-h-[3.5rem] px-3 py-2 rounded-lg bg-base-100 text-sm overflow-y-auto"
-              contenteditable="true"
-              data-placeholder="Напишите сообщение..."
-              onkeydown="handleChatInputKey(event)"
-            ></div>
-
-            <!-- Кнопка эмодзи -->
-            <button
-              type="button"
-              id="tg_emoji_button"
-              class="btn btn-sm btn-ghost text-lg"
-              onclick="toggleEmojiPicker()"
-            >
-              😊
-            </button>
-
-            <!-- Поповер‑пикер -->
-            <div
-              id="tg_emoji_popover"
-              class="hidden absolute bottom-12 right-20 z-50 w-64 max-h-64 rounded-lg border border-base-300 bg-base-100 shadow-lg p-2 overflow-y-auto"
-            >
-              <div class="text-xs text-base-content/60 px-1 mb-1">Эмодзи</div>
-              <div class="emoji-grid grid grid-cols-8 gap-1 text-xl leading-none">
-                <!-- заполним через JS -->
-              </div>
-            </div>
-
-            <!-- Отправка -->
-            <button type="submit" class="btn btn-sm btn-primary px-3">
-              <svg xmlns="http://www.w3.org/2000/svg"
-                  class="w-4 h-4"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                  stroke-width="2">
-                <path stroke-linecap="round" stroke-linejoin="round"
-                      d="M5 12l14-7-4 14-3-5-5-2z" />
-              </svg>
-            </button>
-          </form>
-        </div>
+      <!-- Правая колонка: чат -->
+      <section
+        id="telegram-chat-panel"
+        class="flex-1 flex flex-col min-h-0"
+      >
+        {# пусто, сюда HTMX будет грузить telegram_chat_panel.html #}
       </section>
+
+
+
+
+
+      
     </div>
   </div>
 </div>
@@ -694,6 +633,21 @@ document.body.addEventListener('htmx:afterSwap', (e) => {
     if (evt.target.id !== "telegram-chat-messages") return;
     const chat = evt.target;
     chat.scrollTop = chat.scrollHeight;
+  });
+</script>
+
+<script>
+  function scrollTelegramChatToBottom() {
+    const box = document.querySelector("#telegram-chat-messages");
+    if (!box) return;
+    box.scrollTop = box.scrollHeight;
+  }
+  
+  document.body.addEventListener("htmx:afterSwap", (event) => {
+    // проверяем, что это именно замена содержимого панели чата
+    if (event.target.id === "telegram-chat-messages") {
+      scrollTelegramChatToBottom();
+    }
   });
 </script>
 
