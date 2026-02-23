@@ -82,5 +82,17 @@ services:
       - redis
       - celery
 
+  userbot:
+    build: .
+    command: python manage.py run_userbot
+    volumes:
+      - .:/app
+    depends_on:
+      - db
+      - redis
+    env_file:
+      - .env
+    restart: unless-stopped
+
 volumes:
   postgres_data:

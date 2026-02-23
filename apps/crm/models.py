@@ -134,7 +134,9 @@ class Message(TimeStampedModel):
     
     is_read = models.BooleanField(default=False, verbose_name='Прочитано')
     read_at = models.DateTimeField(null=True, blank=True, verbose_name='Время прочтения')
+    is_sent = models.BooleanField(default=False)  # отправлено (достигло получателя)
 
+    
     def __str__(self):
         return f"Message from {self.employee} to {self.client} at {self.created_at}"
 

@@ -32,6 +32,7 @@ INSTALLED_APPS = [
     'apps.auth_telegram',
     'apps.files',
     'apps.realtime',
+    'apps.telegram'
 
 ]
 
@@ -75,9 +76,8 @@ CHANNEL_LAYERS = {
 }
 
 DATABASES = {
-    'default': dj_database_url.config(
-        default=config('DATABASE_URL', default='sqlite:///db.sqlite3'),
-        conn_max_age=600,
+    'default': dj_database_url.parse(
+        config('DATABASE_URL', default='postgresql://crm_user:crm_password_dev@db:5432/crm_db')
     )
 }
 
@@ -142,7 +142,11 @@ CELERY_TASK_TIME_LIMIT = 30 * 60
 
 TELEGRAM_BOT_TOKEN = config('TELEGRAM_BOT_TOKEN', default='')
 TELEGRAM_WEBHOOK_URL = config('TELEGRAM_WEBHOOK_URL', default='')
-TELEGRAM_BOT_USERNAME = config("TELEGRAM_BOT_USERNAME", default="")
+TELEGRAM_BOT_USERNAME = config('TELEGRAM_BOT_USERNAME', default='')
+
+TELEGRAM_API_ID = config('TELEGRAM_API_ID', default='')
+TELEGRAM_API_HASH = config('TELEGRAM_API_HASH', default='')
+TELEGRAM_PHONE = config('TELEGRAM_PHONE', default='')
 
 LOGGING = {
     'version': 1,

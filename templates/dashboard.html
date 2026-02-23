@@ -671,12 +671,42 @@ document.body.addEventListener('htmx:afterSwap', (e) => {
   }
 
   function playToastSound() {
-    const audio = document.getElementById("toast-sound");
-    if (!audio) return;
-    audio.currentTime = 0;
-    audio.play().catch(err => {
-      console.debug("toast sound play blocked", err);
+      const audio = document.getElementById("toast-sound");
+      if (!audio) return;
+      audio.currentTime = 0;
+      audio.play().catch(err => {
+        console.debug("toast sound play blocked", err);
+      });
+    }
+
+    function showDesktopNotification(data) {
+    if (!("Notification" in window)) return;
+    if (Notification.permission !== "granted") return;
+
+    // data приходит из chat_ws_wrapper, но там только HTML
+    // для desktop push нам нужны данные клиента
+    // используем простой вариант: парсим из HTML или берём из DOM
+    
+    const title = "Новое сообщение в чате";
+    const body = "У вас входящее сообщение от клиента";
+    
+    const notification = new Notification(title, {
+      body: body,
+      icon: "{% static 'img/logo.png' %}",
+      badge: "{% static 'img/logo.png' %}",
+      tag: "telegram-chat", // чтобы не дублировать уведомления
+      requireInteraction: false, // авто-закроется через несколько секунд
     });
+
+    notification.onclick = function () {
+      window.focus();
+      notification.close();
+      // можно открыть модалку чата:
+      openTelegramChatModal();
+    };
+
+    // авто-закрытие через 5 секунд
+    setTimeout(() => notification.close(), 5000);
   }
 
   document.body.addEventListener("htmx:wsAfterMessage", function (event) {
@@ -693,6 +723,20 @@ document.body.addEventListener('htmx:afterSwap', (e) => {
 
     if (raw.includes('data-chat-message="1"')) {
       playIncomingChatSound();
+      setTimeout(() => {
+        // проверяем УЖЕ после того, как HTMX вставил HTML
+        const container = document.getElementById("telegram-messages-container");
+        if (!container) return;
+
+        const threshold = 200;
+        const isNear = container.scrollHeight - container.scrollTop - container.clientHeight < threshold;
+
+        if (isNear) {
+          container.scrollTop = container.scrollHeight;
+        }
+      }, 100); // увеличили задержку до 100мс 
+      
+       
     }
   });
 </script>

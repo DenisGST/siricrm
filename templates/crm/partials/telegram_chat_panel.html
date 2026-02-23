@@ -41,7 +41,7 @@
       hx-target="#telegram-messages-list"
       hx-swap="beforeend"
     >
-      <textarea name="content" rows="2" class="w-full textarea textarea-bordered resize-none" placeholder="Напишите сообщение..."></textarea>
+      <textarea name="content" rows="1" class="w-full textarea textarea-bordered resize-none" placeholder="Напишите сообщение..."></textarea>
       <div class="flex items-center justify-between gap-2">
         <div class="flex items-center gap-2">
           <label class="btn btn-ghost btn-xs">📎<input type="file" name="file" class="hidden"></label>
@@ -97,6 +97,7 @@
     container.scrollTop = container.scrollHeight;
     setTimeout(function () { scrollReady = true; }, 300);
   }
+  window.crmScrollBottom = scrollBottom;  // чтобы дергать снаружи
 
   var loading = false;
   var scrollReady = false;
@@ -267,12 +268,13 @@ function playIncomingSound() {
 <script>
   function isNearBottom(container) {
     if (!container) return false;
-    const threshold = 80; // px
+    const threshold = 200; // px
     return (
-      container.scrollHeight - container.scrollTop - container.clientHeight <
-      threshold
+      container.scrollHeight - container.scrollTop - container.clientHeight < threshold
     );
   }
+  window.crmIsNearBottom = isNearBottom;
+
 
   function scrollTelegramChatBottomIfVisibleForClient(clientId) {
     const list = document.getElementById("telegram-messages-list");
