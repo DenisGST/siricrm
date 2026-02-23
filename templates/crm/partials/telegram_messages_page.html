@@ -1,0 +1,16 @@
+{# Один «блок» подгруженных сообщений #}
+{# Первый (самый старый) элемент содержит триггер на загрузку ещё более старых #}
+{% for msg in messages %}
+  {% if forloop.first and page_obj.has_previous %}
+    <div
+      hx-get="{% url 'telegram_chat_for_client' client.id %}?page={{ page_obj.previous_page_number }}"
+      hx-trigger="intersect once"
+      hx-target="this"
+      hx-swap="beforebegin"
+    >
+      {% include "crm/partials/telegram_message.html" with msg=msg %}
+    </div>
+  {% else %}
+    {% include "crm/partials/telegram_message.html" with msg=msg %}
+  {% endif %}
+{% endfor %}

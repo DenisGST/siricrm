@@ -2,6 +2,8 @@
 import logging
 import uuid
 import re
+import os
+import tempfile
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
@@ -212,12 +214,10 @@ class TelegramHandlers:
     async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /help command"""
         help_text = """
-🤖 Доступные команды:
-/start - Начало работы
-/help - Эта справка
-
-
-💬 Отправляйте сообщения в СИРИУС прямо через бота!
+                    🤖 Доступные команды:
+                    /start - Начало работы
+                    /help - Эта справка
+                    💬 Отправляйте сообщения в СИРИУС прямо через бота!
         """
         await context.bot.send_message(
             chat_id=update.effective_chat.id,
@@ -539,7 +539,108 @@ class TelegramHandlers:
             username=user.username or "",
         )
         return client
-    
+
+    @staticmethod
+    async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """
+        Фото / голосовые / аудио / видео / документы в одном хендлере.
+        """
+        try:
+            user = update.effective_user
+            message = update.message
+            if not user or not message:
+                return
+
+            tg_obj = None
+            message_type = "document"
+            filename = ""
+
+            if message.voice:
+                tg_obj = message.voice
+                message_type = "audio"
+                filename = f"voice_{tg_obj.file_unique_id}.ogg"
+            elif message.audio:
+                tg_obj = message.audio
+                message_type = "audio"
+                filename = tg_obj.file_name or f"audio_{tg_obj.file_unique_id}.ogg"
+            elif message.video:
+                tg_obj = message.video
+                message_type = "video"
+                filename = tg_obj.file_name or f"video_{tg_obj.file_unique_id}.mp4"
+            elif message.photo:
+                tg_obj = message.photo[-1]
+                message_type = "image"
+                filename = f"photo_{tg_obj.file_unique_id}.jpg"
+            elif message.document:
+                tg_obj = message.document
+                message_type = "document"
+                filename = tg_obj.file_name or f"file_{tg_obj.file_unique_id}"
+
+            if tg_obj is None:
+                logger.warning("handle_media called but no media in message: %s", message.to_dict())
+                return
+
+            # 1) грузим в S3 (аналогично handle_document)
+            tg_file = await tg_obj.get_file()
+            file_bytes = await tg_file.download_as_bytearray()
+
+            prefix_map = {
+                "audio": "telegram/audio",
+                "video": "telegram/video",
+                "image": "telegram/photos",
+                "document": "telegram/docs",
+            }
+            prefix = prefix_map.get(message_type, "telegram/docs")
+
+            bucket, key = upload_file_to_s3(
+                bytes(file_bytes),
+                prefix=prefix,
+                filename=filename,
+            )
+
+            # 2) StoredFile
+            stored_file = await sync_to_async(StoredFile.objects.create)(
+                bucket=bucket,
+                key=key,
+                filename=filename,
+            )
+
+            # 3) клиент
+            client = await TelegramHandlers._get_or_create_client_for_user(user)
+
+            # 4) Message
+            msg = await sync_to_async(Message.objects.create)(
+                employee=None,
+                client=client,
+                message_type=message_type,
+                content=f"Файл: {filename}" if message_type != "audio" else "",
+                telegram_message_id=message.message_id,
+                file=stored_file,
+                direction="incoming",
+            )
+            await sync_to_async(push_chat_message)(msg)
+            await sync_to_async(push_client_toast)(
+                client,
+                text=f"Медиа от клиента {client.first_name or client.id}",
+            )
+
+            # 5) ответ пользователю
+            await context.bot.send_message(
+                chat_id=message.chat_id,
+                text=f"🎧 Голосовое получено и сохранено." if message_type == "audio"
+                    else f"🎥 Видео получено и сохранено." if message_type == "video"
+                    else f"🖼 Фото получено и сохранено." if message_type == "image"
+                    else f"📎 Файл «{filename}» получен и сохранён.",
+            )
+
+        except Exception as e:
+            logger.exception("Error in handle_media: %s", e)
+            await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text="❌ Ошибка при обработке медиа.",
+            )
+
+###############################################################################
 # ---- SEND MASSAGE FRO CHAT
 
 async def send_text_from_crm(
@@ -579,3 +680,5 @@ async def send_text_from_crm(
     await sync_to_async(push_client_toast)(
                 client,text=f"Отправлено клиенту {client.first_name or client.id}",
             )
+
+

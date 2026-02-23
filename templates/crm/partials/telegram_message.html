@@ -1,4 +1,4 @@
-{# ожидает: msg #}
+{# crm/partials/telegram_message.html #}
 {% if msg.direction == "incoming" %}
   <div class="chat chat-start">
 {% else %}
@@ -10,8 +10,12 @@
               {% else %}
                 chat-bubble-primary
               {% endif %}">
+
+    {# текст без файла #}
     {% if msg.message_type == "text" and not msg.file %}
       {{ msg.content|linebreaksbr }}
+
+    {# картинка #}
     {% elif msg.message_type == "image" and msg.file %}
       <a href="{% url 'file_download' msg.file.id %}" target="_blank" class="block">
         <img src="{% url 'file_download' msg.file.id %}"
@@ -21,6 +25,8 @@
       {% if msg.content %}
         <div class="mt-1 text-xs opacity-80">{{ msg.content|linebreaksbr }}</div>
       {% endif %}
+
+    {# документ #}
     {% elif msg.message_type == "document" and msg.file %}
       <a href="{% url 'file_download' msg.file.id %}" target="_blank"
          class="flex items-center gap-2">
@@ -31,6 +37,28 @@
       {% if msg.content %}
         <div class="mt-1 text-xs opacity-80">{{ msg.content|linebreaksbr }}</div>
       {% endif %}
+
+    {# аудио (voice/audio) #}
+    {% elif msg.message_type == "audio" and msg.file %}
+      <audio controls class="w-64">
+        <source src="{% url 'file_download' msg.file.id %}">
+        Ваш браузер не поддерживает аудио.
+      </audio>
+      {% if msg.content %}
+        <div class="mt-1 text-xs opacity-80">{{ msg.content|linebreaksbr }}</div>
+      {% endif %}
+
+    {# видео (если добавишь message_type == "video") #}
+    {% elif msg.message_type == "video" and msg.file %}
+      <video controls class="w-64 rounded-lg">
+        <source src="{% url 'file_download' msg.file.id %}">
+        Ваш браузер не поддерживает видео.
+      </video>
+      {% if msg.content %}
+        <div class="mt-1 text-xs opacity-80">{{ msg.content|linebreaksbr }}</div>
+      {% endif %}
+
+    {# фолбэк #}
     {% else %}
       {{ msg.content|linebreaksbr }}
     {% endif %}

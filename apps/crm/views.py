@@ -18,10 +18,13 @@ from django.db.models import Prefetch
 from django.db import transaction
 from apps.auth_telegram.models import TelegramUser  # если нужно
 from apps.realtime.utils import push_chat_message, push_toast
-from .telegram_sender import send_from_crm_sync
+from .telegram_sender import create_message_and_store_file
+from .tasks import send_telegram_message_async
+
 
 CLIENTS_PER_PAGE = 20
-MESSAGES_PER_PAGE = 30  # сколько сообщений за раз подгружаем в телеграм
+MESSAGES_PER_PAGE = 50  # сколько сообщений за раз подгружаем в телеграм
+
 @login_required
 @require_POST
 def telegram_send_message(request, client_id):
@@ -29,106 +32,61 @@ def telegram_send_message(request, client_id):
     content = (request.POST.get("content") or "").strip()
     up_file = request.FILES.get("file")
 
-    # если ничего не ввели и файл не выбрали — можно вернуть 400 или просто пустой ответ
     if not content and not up_file:
-        messages_qs = Message.objects.filter(client=client).order_by("created_at")
-        return render(
-            request,
-            "crm/partials/telegram_chat_panel.html",
-            {"client": client, "messages": messages_qs},
-        )
+        return HttpResponseBadRequest("Empty message")
 
     try:
         employee = Employee.objects.get(user=request.user)
     except Employee.DoesNotExist:
         employee = None
 
-    # обновляем дату последнего сообщения у клиента
     client.last_message_at = timezone.now()
     client.save(update_fields=["last_message_at"])
 
-    # отправка в Telegram + создание Message
-    send_from_crm_sync(
+    msg = create_message_and_store_file(
         client=client,
         text=content or None,
         file=up_file,
         employee=employee,
-    )
+    )  # создаём Message[file:2663]
 
-    # берём только что созданное сообщение (последнее исходящее для этого клиента)
-    msg = (
-        Message.objects.filter(client=client)
-        .order_by("-created_at")
-        .first()
-    )
-    if msg:
-        push_chat_message(msg)
-        push_toast(request.user, "Сообщение клиенту отправлено", level="success")
+    # БЕЗ push_chat_message, чтобы не было дублей и зависимостей от WS
 
-    if not msg:
-        return HttpResponseBadRequest("No message created")
+    push_toast(request.user, "Сообщение клиенту отправлено", level="success")
+    send_telegram_message_async.delay(str(msg.id))
 
-    # рендерим HTML одного сообщения
+    
     html = render_to_string(
         "crm/partials/telegram_message.html",
         {"msg": msg},
         request=request,
     )
+    return HttpResponse(html)
 
-    # возвращаем только его: форма с hx-target="#telegram-chat-messages"
-    # и hx-swap="beforeend" добавит его в конец ленты
-    return HttpResponse(
-        render_to_string("crm/partials/telegram_message.html", {"msg": msg}, request=request)
-    )
 
 @login_required
 def telegram_chat_for_client(request, client_id):
     client = get_object_or_404(Client, pk=client_id)
-
-    qs = (
-        Message.objects
-        .filter(client=client)
-        .select_related("employee")
-        .order_by("created_at")
-    )
+    qs = Message.objects.filter(client=client).select_related("employee").order_by("created_at")
 
     paginator = Paginator(qs, MESSAGES_PER_PAGE)
-
     page_param = request.GET.get("page")
-    if page_param:
-        page_number = int(page_param)
-    else:
-        page_number = paginator.num_pages or 1
-
+    page_number = int(page_param) if page_param else (paginator.num_pages or 1)
     page_obj = paginator.get_page(page_number)
 
-    # подгрузка вверх
-    if request.headers.get("HX-Request") and "page=" in request.META.get("QUERY_STRING", ""):
-        html = render_to_string(
+    # HX-запрос с page= → HTML фрагмент старых сообщений
+    if request.headers.get("HX-Request") and page_param:
+        return render(
+            request,
             "crm/partials/telegram_messages_list.html",
-            {
-                "client": client,
-                "page_obj": page_obj,
-                "messages": page_obj.object_list,
-            },
-            request=request,
+            {"messages": page_obj.object_list},
         )
-        return JsonResponse({
-            "html": html,
-            "page": page_obj.number,
-            "has_previous": page_obj.has_previous(),
-            "previous_page_number": page_obj.previous_page_number() if page_obj.has_previous() else None,
-        })
 
-    # первый заход / смена клиента
+    # обычный GET / HX без page → полная панель с последними сообщениями
     return render(
         request,
         "crm/partials/telegram_chat_panel.html",
-        {
-            "client": client,
-            "page_obj": page_obj,
-            "messages": page_obj.object_list,
-        },
+        {"client": client, "page_obj": page_obj, "messages": page_obj.object_list},
     )
 
 @login_required

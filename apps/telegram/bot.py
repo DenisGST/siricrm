@@ -24,4 +24,9 @@ application.add_handler(
 application.add_handler(
     MessageHandler(filters.TEXT & ~filters.COMMAND, TelegramHandlers.handle_message)
 )
-
+application.add_handler(
+    MessageHandler(
+        filters.VOICE | filters.AUDIO | filters.VIDEO | filters.VIDEO_NOTE,
+        TelegramHandlers.handle_media,
+    )
+)

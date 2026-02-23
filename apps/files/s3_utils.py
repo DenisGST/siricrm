@@ -38,3 +38,11 @@ def upload_file_to_s3(file_bytes: bytes, *, prefix: str, filename: str) -> tuple
     )
 
     return settings.AWS_STORAGE_BUCKET_NAME, key
+
+def download_file_from_s3(bucket: str, key: str) -> bytes:
+    """
+    Скачивает файл из S3 и возвращает его как bytes.
+    """
+    resp = s3_client.get_object(Bucket=bucket, Key=key)
+    return resp["Body"].read()
+

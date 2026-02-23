@@ -93,6 +93,7 @@ class Message(TimeStampedModel):
         ('document', 'Документ'),
         ('system', 'Системное'),
         ('audio', 'Аудио'),
+        ('video', 'Видео'),
 
     ]
     message_type = models.CharField(
