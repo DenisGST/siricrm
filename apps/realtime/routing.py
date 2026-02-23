@@ -1,9 +1,7 @@
 from django.urls import re_path
-from . import consumers
+from .consumers import TelegramChatConsumer, NotificationsConsumer
 
 websocket_urlpatterns = [
-    # Лента чата конкретного клиента
-     re_path(r"^ws/telegram/(?P<client_id>[^/]+)/$", consumers.TelegramChatConsumer.as_asgi()),
-    # Глобальные уведомления/тосты для сотрудников
-    re_path(r"^ws/notifications/$", consumers.NotificationsConsumer.as_asgi()),
+    re_path(r"^ws/notifications/$", NotificationsConsumer.as_asgi()),
+    re_path(r"^ws/telegram/client/(?P<client_id>[^/]+)/$", TelegramChatConsumer.as_asgi()),
 ]

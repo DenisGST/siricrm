@@ -1,3 +1,7 @@
-<div hx-swap-oob="beforeend:#telegram-chat-messages">
+{# realtime/partials/chat_ws_wrapper.html #}
+<div
+  id="telegram-messages-list"
+  hx-swap-oob="beforeend"
+  data-chat-message="1">
   {{ inner_html|safe }}
 </div>

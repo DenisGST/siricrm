@@ -626,38 +626,6 @@ document.body.addEventListener('htmx:afterSwap', (e) => {
 
 
 <script>
-  //прокрутка списка сообщений, когда приходит новое
-  document.body.addEventListener("htmx:oobAfterSwap", function (evt) {
-    const chat = document.querySelector("#telegram-chat-messages");
-    if (!chat) return;
-    chat.scrollTop = chat.scrollHeight;
-  });
-</script>
-<script>
-  // прокрутка сообщений, кода отправили сообщение
-  document.body.addEventListener("htmx:afterSwap", function (evt) {
-    if (evt.target.id !== "telegram-chat-messages") return;
-    const chat = evt.target;
-    chat.scrollTop = chat.scrollHeight;
-  });
-</script>
-
-<script>
-  function scrollTelegramChatToBottom() {
-    const box = document.querySelector("#telegram-chat-messages");
-    if (!box) return;
-    box.scrollTop = box.scrollHeight;
-  }
-  
-  document.body.addEventListener("htmx:afterSwap", (event) => {
-    // проверяем, что это именно замена содержимого панели чата
-    if (event.target.id === "telegram-chat-messages") {
-      scrollTelegramChatToBottom();
-    }
-  });
-</script>
-
-<script>
   document.addEventListener("DOMContentLoaded", function () {
     var container = document.getElementById("toast-container");
     if (!container) return;
@@ -697,75 +665,33 @@ document.body.addEventListener('htmx:afterSwap', (e) => {
     const audio = document.getElementById("incoming-sound");
     if (!audio) return;
     audio.currentTime = 0;
-    audio.play().catch(function (err) {
+    audio.play().catch(err => {
       console.debug("incoming sound play blocked", err);
     });
   }
 
-  function showDesktopNotification(data) {
-    if (!("Notification" in window)) return;
-    if (Notification.permission !== "granted") return;
-
-    if (data.type !== "chat_message" || data.direction !== "incoming") return;
-
-    const title =
-      data.client_name || "Новое сообщение от клиента " + (data.client_id || "");
-    let body = "";
-
-    if (data.message_type === "text" && data.content) {
-      body = data.content.length > 100 ? data.content.slice(0, 100) + "…" : data.content;
-    } else if (data.message_type === "image") {
-      body = "📷 Изображение от клиента";
-    } else if (data.message_type === "document") {
-      body = "📎 Файл от клиента";
-    } else {
-      body = "Новое сообщение в чате";
-    }
-
-    const n = new Notification(title, {
-      body: body,
-      icon: "{% static 'img/logo.png' %}", // или отдельная иконка для чата
+  function playToastSound() {
+    const audio = document.getElementById("toast-sound");
+    if (!audio) return;
+    audio.currentTime = 0;
+    audio.play().catch(err => {
+      console.debug("toast sound play blocked", err);
     });
-
-    n.onclick = function () {
-      window.focus();
-      n.close();
-      // при желании: здесь можно открыть модалку и нужного клиента
-      openTelegramChatModal();
-      // и, например, загрузить панель чата этого клиента, если знаешь URL
-    };
   }
 
   document.body.addEventListener("htmx:wsAfterMessage", function (event) {
-    const data = event.detail?.message;
-    if (!data) return;
-
-    // существующий код звука/toast/автоскролла...
-    // ...
-
-    showDesktopNotification(data);
-  });
-
-
-
-  document.body.addEventListener("htmx:wsAfterMessage", function (event) {
-    // event.detail.message содержит payload с сервера
-    const data = event.detail?.message;
-    if (!data) return;
-
-    // если это «обычный» toast (как у тебя сейчас) — оставляем старый звук
-    if (data.type === "toast") {
-      const audio = document.getElementById("toast-sound");
-      if (!audio) return;
-      audio.currentTime = 0;
-      audio.play().catch(function (err) {
-        console.debug("toast sound play blocked", err);
-      });
+    // htmx.ws кладёт HTML-строку в detail.messageContent [web:2856]
+    const raw = event.detail && (event.detail.messageContent || event.detail.message);
+    if (!raw || typeof raw !== "string") {
+      console.debug("wsAfterMessage: no raw html", event.detail);
       return;
     }
 
-    // если это новое входящее сообщение чата
-    if (data.type === "chat_message" && data.direction === "incoming") {
+    if (raw.includes('data-toast="1"')) {
+      playToastSound();
+    }
+
+    if (raw.includes('data-chat-message="1"')) {
       playIncomingChatSound();
     }
   });

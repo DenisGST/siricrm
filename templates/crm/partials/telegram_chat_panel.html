@@ -30,7 +30,7 @@
       {% include "crm/partials/telegram_messages_list.html" with messages=messages %}
     </div>
   </div>
-
+  
   <!-- Форма -->
   <div class="border-t px-4 py-2 shrink-0">
     <form
@@ -53,6 +53,11 @@
         <button type="submit" class="btn btn-primary btn-sm">Отправить</button>
       </div>
     </form>
+  </div>
+  <div
+    id="telegram-chat-ws"
+    hx-ext="ws"
+    ws-connect="/ws/telegram/client/{{ client.id }}/">
   </div>
 </div>
 

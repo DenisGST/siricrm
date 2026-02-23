@@ -1,7 +1,10 @@
+<!-- siricrm/templates/realtime/partials/toast.html-->
+
 <div id="toast-container" hx-swap-oob="afterbegin">
   <div
-    class="alert text-white shadow-lg flex items-center gap-2"
+    class="alert alert-{{ level }} text-white shadow-lg flex items-center gap-2"
     style="background-color: rgba(31, 193, 34, 0.51);"
+    data-toast="1"
   >
     <span class="flex-1 text-sm">
       {{ text }}
