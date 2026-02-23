@@ -1,3 +1,4 @@
+#/siricrm/apps/realtime/utils.py
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
 from django.template.loader import render_to_string
@@ -39,11 +40,26 @@ def push_chat_message(msg: Message):
         {"inner_html": message_html},
     )
 
+    # формируем JSON‑payload для фронта
+    payload = {
+        "type": "chat_message",
+        "html": html,
+        "client_id": msg.client_id,
+        "client_name": (
+            msg.client.first_name
+            or msg.client.username
+            or (msg.client.phone or "")
+            or str(msg.client_id)
+        ),
+        "direction": msg.direction,          # incoming / outgoing
+        "message_type": msg.message_type,    # text / image / document / voice ...
+        "content": msg.content or "",
+    }
+
     async_to_sync(channel_layer.group_send)(
         f"telegram_client_{msg.client_id}",
-        {"type": "chat_message", "html": html},
+        payload,
     )
-
 
 def push_client_toast(client: Client, text: str, level: str = "info"):
     """

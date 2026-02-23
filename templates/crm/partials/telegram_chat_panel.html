@@ -47,6 +47,7 @@
           <label class="btn btn-ghost btn-xs">📎<input type="file" name="file" class="hidden"></label>
           <button type="button" id="btn-record" class="btn btn-ghost btn-xs">🎙</button>
           <button type="button" id="btn-stop" class="btn btn-ghost btn-xs hidden">⏹</button>
+          <button type="button" id="btn-cancel" class="btn btn-ghost btn-xs hidden">❌</button>
           <div id="telegram-file-preview" class="text-xs text-gray-500"></div>
         </div>
         <button type="submit" class="btn btn-primary btn-sm">Отправить</button>
@@ -55,22 +56,45 @@
   </div>
 </div>
 
+
+<audio id="incoming-sound" src="/static/sounds/incoming.mp3" preload="auto"></audio>
+
 <script>
 (function () {
   var container = document.getElementById("telegram-messages-container");
   var list = document.getElementById("telegram-messages-list");
   if (!container || !list) return;
 
-  var loading = false;
-  var scrollReady = false; // пагинация включается ТОЛЬКО после первого scrollBottom
+  // --- общие элементы для отмены ---
+  var btnCancel = document.getElementById("btn-cancel");
+  var filePreview = document.getElementById("telegram-file-preview");
+  var sendForm = document.getElementById("telegram-send-form");
+  var currentMode = null; // 'file' | 'voice' | null
+
+  function showCancelIfNeeded() {
+    if (!btnCancel) return;
+    if (currentMode) {
+      btnCancel.classList.remove("hidden");
+    } else {
+      btnCancel.classList.add("hidden");
+    }
+  }
+
+  function clearVoiceInputs() {
+    if (!sendForm) return;
+    // удаляем все динамически добавленные input[name="file"] для голоса
+    var extraInputs = sendForm.querySelectorAll('input[name="file"].voice-generated');
+    extraInputs.forEach(function (inp) { inp.remove(); });
+  }
 
   // ── Скролл вниз ─────────────────────────────────────────────────────────
   function scrollBottom() {
     container.scrollTop = container.scrollHeight;
-    // включаем пагинацию через 300мс ПОСЛЕ скролла вниз
-    // к этому моменту scrollTop уже далеко от 0
     setTimeout(function () { scrollReady = true; }, 300);
   }
+
+  var loading = false;
+  var scrollReady = false;
 
   // ── Подгрузка старых сообщений при скролле вверх ────────────────────────
   container.addEventListener("scroll", async function () {
@@ -82,8 +106,6 @@
     if (!prevPage) return;
 
     loading = true;
-
-    // показываем спиннер
     var loader = document.getElementById("messages-loader");
     if (loader) loader.classList.remove("hidden");
 
@@ -91,9 +113,7 @@
     var url = "/telegram/chat/" + clientId + "/?page=" + prevPage;
 
     try {
-      var resp = await fetch(url, {
-        headers: { "HX-Request": "true" }
-      });
+      var resp = await fetch(url, { headers: { "HX-Request": "true" } });
       if (!resp.ok) { loading = false; return; }
 
       var html = await resp.text();
@@ -109,23 +129,22 @@
 
       var newPrevPage = parseInt(prevPage) - 1;
       list.dataset.prevPage = newPrevPage < 1 ? "" : newPrevPage.toString();
-
     } catch (e) {
       console.error("scroll-up error", e);
     } finally {
-      // скрываем спиннер
       if (loader) loader.classList.add("hidden");
       setTimeout(function () { loading = false; }, 200);
     }
   }, { passive: true });
 
-
   // ── После отправки: скролл вниз + очистка формы ─────────────────────────
   document.addEventListener("htmx:afterRequest", function (e) {
     if (e.detail.elt && e.detail.elt.id === "telegram-send-form" && e.detail.successful) {
       e.detail.elt.reset();
-      var pr = document.getElementById("telegram-file-preview");
-      if (pr) pr.innerHTML = "";
+      if (filePreview) filePreview.innerHTML = "";
+      clearVoiceInputs();
+      currentMode = null;
+      showCancelIfNeeded();
       setTimeout(scrollBottom, 50);
     }
   });
@@ -140,11 +159,17 @@
   // ── Превью файла ────────────────────────────────────────────────────────
   document.addEventListener("change", function (e) {
     if (e.target.name !== "file") return;
-    var preview = document.getElementById("telegram-file-preview");
-    if (!preview) return;
-    preview.innerHTML = "";
+
+    if (filePreview) filePreview.innerHTML = "";
+
     var file = e.target.files[0];
-    if (file) preview.textContent = file.name;
+    if (file) {
+      if (filePreview) filePreview.textContent = file.name;
+      currentMode = "file";
+    } else {
+      currentMode = null;
+    }
+    showCancelIfNeeded();
   });
 
   // ── Запись голоса ───────────────────────────────────────────────────────
@@ -160,25 +185,112 @@
         var blob = new Blob(chunks, {type: "audio/ogg;codecs=opus"});
         var f = new File([blob], "voice.ogg", {type: "audio/ogg"});
         var dt = new DataTransfer(); dt.items.add(f);
+
         var inp = document.createElement("input");
-        inp.type = "file"; inp.name = "file"; inp.style.display = "none";
+        inp.type = "file";
+        inp.name = "file";
+        inp.classList.add("voice-generated"); // чтобы отличать от обычного файла
+        inp.style.display = "none";
         inp.files = dt.files;
-        document.getElementById("telegram-send-form").appendChild(inp);
-        var pr = document.getElementById("telegram-file-preview");
-        if (pr) { pr.innerHTML = ""; var a = document.createElement("audio"); a.controls = true; a.src = URL.createObjectURL(blob); pr.appendChild(a); }
+        sendForm.appendChild(inp);
+
+        if (filePreview) {
+          filePreview.innerHTML = "";
+          var a = document.createElement("audio");
+          a.controls = true;
+          a.src = URL.createObjectURL(blob);
+          filePreview.appendChild(a);
+        }
+
+        currentMode = "voice";
+        showCancelIfNeeded();
       };
       rec.start();
       document.getElementById("btn-record").classList.add("hidden");
       document.getElementById("btn-stop").classList.remove("hidden");
-    } catch (err) { alert("Микрофон: " + err.message); }
+      // cancel покажем после фактического появления превью/файла
+    } catch (err) {
+      alert("Микрофон: " + err.message);
+    }
   });
+
   document.getElementById("btn-stop")?.addEventListener("click", function () {
     if (rec) rec.stop();
     document.getElementById("btn-stop").classList.add("hidden");
     document.getElementById("btn-record").classList.remove("hidden");
+    // currentMode выставится в rec.onstop
+  });
+
+  // ── Кнопка отмены последнего действия (файл/голос) ─────────────────────
+  btnCancel?.addEventListener("click", function () {
+    if (currentMode === "file") {
+      // сброс обычного выбранного файла
+      var realFileInput = sendForm.querySelector('label input[name="file"]');
+      if (realFileInput) realFileInput.value = "";
+    }
+
+    if (currentMode === "voice") {
+      // остановка рекордера, если вдруг ещё пишет
+      if (rec && rec.state === "recording") {
+        rec.stop();
+      }
+      clearVoiceInputs();
+    }
+
+    if (filePreview) {
+      filePreview.innerHTML = "";
+    }
+
+    currentMode = null;
+    showCancelIfNeeded();
   });
 
   // ── Первый скролл вниз ──────────────────────────────────────────────────
   setTimeout(scrollBottom, 100);
 })();
+
+function playIncomingSound() {
+  const audio = document.getElementById("incoming-sound");
+  if (!audio) return;
+  audio.currentTime = 0;
+  audio.play().catch(() => {});
+}
+
+</script>
+
+
+<script>
+  function isNearBottom(container) {
+    if (!container) return false;
+    const threshold = 80; // px
+    return (
+      container.scrollHeight - container.scrollTop - container.clientHeight <
+      threshold
+    );
+  }
+
+  function scrollTelegramChatBottomIfVisibleForClient(clientId) {
+    const list = document.getElementById("telegram-messages-list");
+    const container = document.getElementById("telegram-messages-container");
+    if (!list || !container) return;
+
+    const currentClientId = list.dataset.clientId;
+    if (String(currentClientId) !== String(clientId)) return;
+
+    if (!isNearBottom(container)) return;
+
+    setTimeout(function () {
+      container.scrollTop = container.scrollHeight;
+    }, 50);
+  }
+
+  document.body.addEventListener("htmx:wsAfterMessage", function (event) {
+    const data = event.detail?.message;
+    if (!data) return;
+
+    // автоскролл только для входящих сообщений, если открыт нужный клиент
+    if (data.type === "chat_message") {
+      scrollTelegramChatBottomIfVisibleForClient(data.client_id);
+    }
+  });
 </script>

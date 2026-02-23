@@ -272,3 +272,7 @@ textarea:focus {
 #telegram-chat-messages {
   scroll-behavior: smooth;
 }
+
+.hidden {
+  display: none !important;
+}

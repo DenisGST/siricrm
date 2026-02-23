@@ -443,11 +443,7 @@
         {# пусто, сюда HTMX будет грузить telegram_chat_panel.html #}
       </section>
 
-
-
-
-
-      
+   
     </div>
   </div>
 </div>
@@ -506,6 +502,16 @@ document.addEventListener('htmx:afterRequest', (event) => {
     }
   });
 </script>
+
+<script>
+  document.addEventListener("DOMContentLoaded", () => {
+    if (!("Notification" in window)) return;
+    if (Notification.permission === "default") {
+      Notification.requestPermission();
+    }
+  });
+</script>
+
 
 <script>
   function openTelegramChatModal() {
@@ -687,16 +693,81 @@ document.body.addEventListener('htmx:afterSwap', (e) => {
 </script>
 
 <script>
-  document.body.addEventListener("htmx:wsAfterMessage", function (event) {
-    const audio = document.getElementById("toast-sound");
+  function playIncomingChatSound() {
+    const audio = document.getElementById("incoming-sound");
     if (!audio) return;
-
-    // перезапуск звука
     audio.currentTime = 0;
     audio.play().catch(function (err) {
-      // игнорируем, если браузер заблокировал автоплей
-      console.debug("toast sound play blocked", err);
+      console.debug("incoming sound play blocked", err);
     });
+  }
+
+  function showDesktopNotification(data) {
+    if (!("Notification" in window)) return;
+    if (Notification.permission !== "granted") return;
+
+    if (data.type !== "chat_message" || data.direction !== "incoming") return;
+
+    const title =
+      data.client_name || "Новое сообщение от клиента " + (data.client_id || "");
+    let body = "";
+
+    if (data.message_type === "text" && data.content) {
+      body = data.content.length > 100 ? data.content.slice(0, 100) + "…" : data.content;
+    } else if (data.message_type === "image") {
+      body = "📷 Изображение от клиента";
+    } else if (data.message_type === "document") {
+      body = "📎 Файл от клиента";
+    } else {
+      body = "Новое сообщение в чате";
+    }
+
+    const n = new Notification(title, {
+      body: body,
+      icon: "{% static 'img/logo.png' %}", // или отдельная иконка для чата
+    });
+
+    n.onclick = function () {
+      window.focus();
+      n.close();
+      // при желании: здесь можно открыть модалку и нужного клиента
+      openTelegramChatModal();
+      // и, например, загрузить панель чата этого клиента, если знаешь URL
+    };
+  }
+
+  document.body.addEventListener("htmx:wsAfterMessage", function (event) {
+    const data = event.detail?.message;
+    if (!data) return;
+
+    // существующий код звука/toast/автоскролла...
+    // ...
+
+    showDesktopNotification(data);
+  });
+
+
+
+  document.body.addEventListener("htmx:wsAfterMessage", function (event) {
+    // event.detail.message содержит payload с сервера
+    const data = event.detail?.message;
+    if (!data) return;
+
+    // если это «обычный» toast (как у тебя сейчас) — оставляем старый звук
+    if (data.type === "toast") {
+      const audio = document.getElementById("toast-sound");
+      if (!audio) return;
+      audio.currentTime = 0;
+      audio.play().catch(function (err) {
+        console.debug("toast sound play blocked", err);
+      });
+      return;
+    }
+
+    // если это новое входящее сообщение чата
+    if (data.type === "chat_message" && data.direction === "incoming") {
+      playIncomingChatSound();
+    }
   });
 </script>
 
@@ -721,6 +792,6 @@ document.body.addEventListener('htmx:afterSwap', (e) => {
     }, 0);
   });
 </script>
-
+<audio id="incoming-sound" src="{% static 'sounds/incoming.mp3' %}" preload="auto"></audio>
 </body>
 </html>
