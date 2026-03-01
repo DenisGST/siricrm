@@ -54,3 +54,4 @@ docker-compose.override.yml
 #css
 tailwindcssuserbot_session.session
 *.session
+tailwindcss
