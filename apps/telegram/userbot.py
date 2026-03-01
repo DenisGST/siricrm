@@ -1,6 +1,8 @@
 import logging
+import asyncio
 from telethon import TelegramClient, events
 from telethon.tl.types import User, PeerUser
+from telethon.errors import FloodWaitError, AuthKeyError, PhoneCodeExpiredError
 from django.conf import settings
 from asgiref.sync import sync_to_async
 from apps.crm.models import Message, Client
@@ -81,8 +83,61 @@ async def import_message_history(telegram_id: int, limit: int = 100):
 
 async def start_userbot():
     """Запускает userbot для отслеживания прочтений и входящих сообщений."""
-    await client.start(phone=settings.TELEGRAM_PHONE)
-    logger.info("✅ Userbot started and connected")
+    MAX_RETRIES = 10
+    retry_count = 0
+    base_delay = 60  # начальная задержка 1 минута
+
+    while retry_count < MAX_RETRIES:
+        try:
+            await client.start(phone=settings.TELEGRAM_PHONE)
+            logger.info("✅ Userbot started and connected")
+            break  # успешная авторизация
+
+        except FloodWaitError as e:
+            retry_count += 1
+            wait_time = e.seconds if hasattr(e, 'seconds') else base_delay * (2 ** retry_count)
+            logger.warning(
+                f"⏳ FloodWaitError: Telegram requires wait of {wait_time}s. "
+                f"Retry {retry_count}/{MAX_RETRIES} in {wait_time}s..."
+            )
+            if retry_count >= MAX_RETRIES:
+                logger.error("❌ Max retries reached. Stopping userbot.")
+                raise
+            await asyncio.sleep(wait_time)
+
+        except (AuthKeyError, PhoneCodeExpiredError) as e:
+            logger.error(
+                f"❌ Auth error: {e}. Session may be invalid. "
+                "Delete 'userbot_session.session' and re-authorize."
+            )
+            raise
+
+        except EOFError:
+            retry_count += 1
+            delay = base_delay * (2 ** (retry_count - 1))  # exponential backoff
+            logger.warning(
+                f"⏳ EOFError (no interactive terminal). "
+                f"Retry {retry_count}/{MAX_RETRIES} in {delay}s..."
+            )
+            if retry_count >= MAX_RETRIES:
+                logger.error(
+                    "❌ Max retries reached. Run 'python manage.py run_userbot' "
+                    "locally to authorize first."
+                )
+                raise
+            await asyncio.sleep(delay)
+
+        except Exception as e:
+            retry_count += 1
+            delay = base_delay * (2 ** (retry_count - 1))
+            logger.exception(
+                f"❌ Unexpected error during userbot start: {e}. "
+                f"Retry {retry_count}/{MAX_RETRIES} in {delay}s..."
+            )
+            if retry_count >= MAX_RETRIES:
+                logger.error("❌ Max retries reached. Stopping userbot.")
+                raise
+            await asyncio.sleep(delay)
 
     # ========= Обработчик прочтений =========
     @client.on(events.Raw)
@@ -215,6 +270,4 @@ async def start_userbot():
 
 def run_userbot():
     """Запуск userbot в sync-режиме."""
-    import asyncio
-
     asyncio.run(start_userbot())
