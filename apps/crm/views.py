@@ -16,7 +16,6 @@ from apps.core.models import Employee, EmployeeLog
 from .models import Message
 from django.db.models import Prefetch
 from django.db import transaction
-from apps.auth_telegram.models import TelegramUser  # если нужно
 from apps.realtime.utils import push_chat_message, push_toast
 from apps.telegram.telegram_sender import create_message_and_store_file
 from .tasks import send_telegram_message_task
