@@ -250,7 +250,7 @@ class TelegramHandlers:
             )
             await sync_to_async(push_chat_message)(msg)
             await sync_to_async(push_client_toast)(
-                client,text=f"1 Новое сообщение от клиента {client.first_name or client.id}",
+                client,text=f"Новое сообщение от клиента {client.first_name or client.id}",
             )
 
     @staticmethod

@@ -25,7 +25,7 @@ class Client(TimeStampedModel):
     last_name = models.CharField(max_length=255, blank=True, verbose_name='Фамилия')
     patronymic = models.CharField(max_length=255, blank=True, verbose_name='Отчество')
     username = models.CharField(max_length=255, blank=True, verbose_name='Username')
-    phone = models.CharField(max_length=20, blank=True, verbose_name='Телефон')
+    phone = models.CharField(max_length=20, blank=True, null=True, verbose_name='Телефон')
     email = models.EmailField(blank=True, verbose_name='Email')
     notes = models.TextField(blank=True, verbose_name='Заметки')
     last_message_at = models.DateTimeField(null=True, blank=True, verbose_name='Последнее сообщение')
@@ -135,7 +135,9 @@ class Message(TimeStampedModel):
     is_read = models.BooleanField(default=False, verbose_name='Прочитано')
     read_at = models.DateTimeField(null=True, blank=True, verbose_name='Время прочтения')
     is_sent = models.BooleanField(default=False)  # отправлено (достигло получателя)
-
+    sent_at = models.DateTimeField(null=True, blank=True)
+    is_delivered = models.BooleanField(default=False)
+    delivered_at = models.DateTimeField(null=True, blank=True)
     
     def __str__(self):
         return f"Message from {self.employee} to {self.client} at {self.created_at}"

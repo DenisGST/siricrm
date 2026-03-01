@@ -9,11 +9,12 @@ from django.conf import settings
 from django.utils import timezone
 from django.db.models import Count
 
-from telegram import Bot
+
 
 from apps.crm.models import Client, Message
 from apps.core.models import Employee, EmployeeLog, Department
 from apps.files.s3_utils import download_file_from_s3
+from apps.telegram.telegram_sender import send_telegram_message
 
 logger = logging.getLogger(__name__)
 
@@ -113,76 +114,62 @@ def sync_employee_status():
         return {"error": str(e)}
 
 
-@shared_task(bind=True, max_retries=3, default_retry_delay=10)
-def send_telegram_message_async(self, message_id: str):
+@shared_task
+def send_telegram_message_task(message_id):
     """
-    Асинхронная отправка сообщения в Telegram:
-    - текст -> send_message
-    - файл -> скачиваем из S3 по bucket/key и отправляем байты.
+    Отправка сообщения через Telegram userbot с поддержкой медиа
     """
+    from apps.crm.models import Message
+    from django.utils import timezone
+    
     try:
-        msg = Message.objects.select_related("client", "file").get(id=message_id)
-    except Message.DoesNotExist:
-        logger.error("Message %s not found", message_id)
-        return {"error": "Message not found"}
-
-    client = msg.client
-    if not client.telegram_id:
-        logger.error("Client %s has no telegram_id", client.id)
-        return {"error": "No telegram_id"}
-
-    async def _send():
-        bot = Bot(token=settings.TELEGRAM_BOT_TOKEN)
-        chat_id = client.telegram_id
-
-        if msg.message_type == "text":
-            return await bot.send_message(chat_id=chat_id, text=msg.content or "")
-
-        stored = msg.file  # StoredFile
-        if not stored:
-            logger.error("Message %s has no StoredFile for type %s", msg.id, msg.message_type)
-            return None
-
-        # скачиваем исходный файл из S3
-        file_bytes = download_file_from_s3(stored.bucket, stored.key)
-
-        if msg.message_type == "audio":
-            return await bot.send_voice(chat_id=chat_id, voice=file_bytes)
-        elif msg.message_type == "video":
-            return await bot.send_video(chat_id=chat_id, video=file_bytes)
-        elif msg.message_type == "image":
-            return await bot.send_photo(
-                chat_id=chat_id,
-                photo=file_bytes,
-                caption=msg.content or None,
-            )
+        message = Message.objects.select_related('client', 'file').get(id=message_id)
+        
+        # Подготовка параметров для отправки
+        send_params = {
+            'telegram_id': message.client.telegram_id,
+            'text': message.content,
+            'message_type': message.message_type,
+        }
+        
+        # Если есть файл, добавляем его
+        if message.file:
+            from apps.files.s3_utils import download_file_from_s3
+            
+            # Скачиваем файл из S3
+            file_bytes = download_file_from_s3(message.file.bucket, message.file.key)
+            
+            send_params['file_bytes'] = file_bytes
+            send_params['file_name'] = message.file.filename
+            
+            logger.info(f"📦 Downloaded file {message.file.filename} from S3 for message {message_id}")
+        
+        # Отправляем через userbot
+        result = asyncio.run(send_telegram_message(**send_params))
+        
+        if result['success']:
+            # Обновляем сообщение
+            message.is_sent = True
+            message.telegram_message_id = result['message_id']
+            message.sent_at = timezone.now()
+            message.save(update_fields=['is_sent', 'telegram_message_id', 'sent_at'])
+            
+            logger.info(f"✅ Task: Message {message_id} sent successfully, telegram_id={result['message_id']}")
+            
+            # Обновляем UI через WebSocket
+            try:
+                from apps.realtime.utils import push_chat_message
+                push_chat_message(message)
+            except Exception as e:
+                logger.warning(f"Failed to push websocket update: {e}")
         else:
-            return await bot.send_document(
-                chat_id=chat_id,
-                document=file_bytes,
-                filename=stored.filename,
-                caption=msg.content or None,
-            )
+            logger.error(f"❌ Task: Failed to send message {message_id}: {result['error']}")
+            
+    except Message.DoesNotExist:
+        logger.error(f"❌ Task: Message {message_id} not found")
+    except Exception as e:
+        logger.exception(f"❌ Task error for message {message_id}: {e}")
 
-    try:
-        sent = asyncio.run(_send())
-    except Exception as exc:
-        logger.error("Telegram send failed for msg %s: %s", message_id, exc)
-        # повторяем через 10 секунд, макс 3 раза
-        raise self.retry(exc=exc)
-
-    if sent:
-        msg.telegram_message_id = sent.message_id
-        msg.save(update_fields=["telegram_message_id"])
-        logger.info(
-            "Sent Telegram message to client %s (chat_id=%s, msg_id=%s)",
-            client.id,
-            client.telegram_id,
-            sent.message_id,
-        )
-        return f"Message sent to Telegram (ID: {sent.message_id})"
-
-    return {"error": "Nothing sent"}
 
 @shared_task
 def reassign_clients_by_load():

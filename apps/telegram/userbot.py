@@ -1,7 +1,6 @@
 import logging
 from telethon import TelegramClient, events
-from telethon.tl.types import UpdateReadHistoryInbox, User, PeerUser
-from telethon.tl.functions.messages import GetHistoryRequest
+from telethon.tl.types import User, PeerUser
 from django.conf import settings
 from asgiref.sync import sync_to_async
 from apps.crm.models import Message, Client
@@ -17,11 +16,15 @@ client = TelegramClient(
 
 
 async def get_user_phone(user_id: int) -> str | None:
-    """Получить номер телефона пользователя по его ID"""
+    """
+    Получить номер телефона пользователя по его ID.
+    ВАЖНО: вызывать ТОЛЬКО при первом входящем сообщении,
+    дальше использовать значение из БД.
+    """
     try:
-        user = await client.get_entity(PeerUser(user_id))
-        if isinstance(user, User) and user.phone:
-            return f"+{user.phone}"
+        entity = await client.get_entity(PeerUser(user_id))
+        if isinstance(entity, User) and entity.phone:
+            return f"+{entity.phone}"
     except Exception as e:
         logger.warning(f"Could not get phone for user {user_id}: {e}")
     return None
@@ -29,49 +32,34 @@ async def get_user_phone(user_id: int) -> str | None:
 
 async def import_message_history(telegram_id: int, limit: int = 100):
     """
-    Импортирует историю сообщений с клиентом.
-    Полезно для первичной загрузки или синхронизации.
+    Импорт истории сообщений с клиентом.
+    ОСТАВЛЕНО как утилита под ручную кнопку в CRM.
+    НЕ вызывать автоматически по всем клиентам.
     """
     try:
-        # Получаем клиента из БД
         db_client = await sync_to_async(
             Client.objects.filter(telegram_id=telegram_id).first
         )()
-        
         if not db_client:
             logger.warning(f"Client with telegram_id={telegram_id} not found in DB")
             return
-        
-        # Получаем историю из Telegram
+
         peer = await client.get_entity(PeerUser(telegram_id))
-        history = await client(GetHistoryRequest(
-            peer=peer,
-            limit=limit,
-            offset_date=None,
-            offset_id=0,
-            max_id=0,
-            min_id=0,
-            add_offset=0,
-            hash=0
-        ))
-        
+        history = await client.get_messages(peer, limit=limit)
+
         imported_count = 0
-        for msg in history.messages:
-            if not msg.message:  # пропускаем сервисные сообщения
+        for msg in history:
+            if not msg.message:
                 continue
-            
-            # Проверяем, есть ли уже в БД
+
             exists = await sync_to_async(
                 Message.objects.filter(telegram_message_id=msg.id).exists
             )()
-            
             if exists:
                 continue
-            
-            # Определяем направление
+
             direction = "outgoing" if msg.out else "incoming"
-            
-            # Создаём в БД
+
             await sync_to_async(Message.objects.create)(
                 client=db_client,
                 employee=None,
@@ -84,83 +72,93 @@ async def import_message_history(telegram_id: int, limit: int = 100):
                 created_at=msg.date,
             )
             imported_count += 1
-        
+
         logger.info(f"Imported {imported_count} messages for client {telegram_id}")
-        
+
     except Exception as e:
         logger.exception(f"Error importing history for {telegram_id}: {e}")
 
 
 async def start_userbot():
-    """Запускает userbot для отслеживания прочтений и других событий"""
+    """Запускает userbot для отслеживания прочтений и входящих сообщений."""
     await client.start(phone=settings.TELEGRAM_PHONE)
     logger.info("✅ Userbot started and connected")
-    
-    # ========== Обработчик прочтений ==========
-    @client.on(events.Raw(types=[UpdateReadHistoryInbox]))
+
+    # ========= Обработчик прочтений =========
+    @client.on(events.Raw)
     async def handle_read(event):
-        """Когда клиент прочитал наши сообщения"""
+        """
+        Аккуратная обработка прочтений.
+        Проверяем тип события, чтобы не ловить лишнее.
+        """
+        from telethon.tl.types import UpdateReadHistoryInbox
+
+        if not isinstance(event, UpdateReadHistoryInbox):
+            return
+
         try:
             peer = event.peer
             max_id = event.max_id
-            
-            if hasattr(peer, 'user_id'):
-                telegram_id = peer.user_id
-            else:
+
+            telegram_id = getattr(peer, "user_id", None)
+            if not telegram_id:
                 return
-            
-            # Помечаем прочитанными
+
             updated = await sync_to_async(
                 Message.objects.filter(
                     client__telegram_id=telegram_id,
                     direction="outgoing",
                     telegram_message_id__lte=max_id,
-                    is_read=False
+                    is_read=False,
                 ).update
             )(is_read=True, read_at=timezone.now())
-            
+
             if updated > 0:
-                logger.info(f"📖 Marked {updated} messages as read for client {telegram_id}")
-                
-                # Обновляем UI через WebSocket
+                logger.info(
+                    f"📖 Marked {updated} messages as read for client {telegram_id}"
+                )
+
                 from apps.realtime.utils import push_chat_message
+
                 messages = await sync_to_async(list)(
                     Message.objects.filter(
                         client__telegram_id=telegram_id,
                         direction="outgoing",
                         telegram_message_id__lte=max_id,
-                        is_read=True
-                    )[:updated]
+                        is_read=True,
+                    ).order_by("-telegram_message_id")[:updated]
                 )
-                
+
                 for msg in messages:
                     await sync_to_async(push_chat_message)(msg)
-            
+
         except Exception as e:
             logger.exception("Error handling read receipt: %s", e)
-    
-    # ========== Обработчик новых входящих сообщений ==========
+
+    # ========= Обработчик новых входящих сообщений =========
     @client.on(events.NewMessage(incoming=True))
     async def handle_new_message(event):
         """
-        Дублирует функционал бота, но через Client API.
-        Можно использовать как резервный канал или для более богатой обработки.
+        Обрабатываем только личные сообщения от пользователей.
+        Телефон запрашиваем только при первом входящем.
         """
         try:
             sender = await event.get_sender()
-            if not sender or not hasattr(sender, 'id'):
+            # Игнорируем каналы/чатов, у которых нет id как у User
+            if not isinstance(sender, User):
                 return
-            
+
             telegram_id = sender.id
-            
-            # Получаем или создаём клиента
+
+            # Пытаемся найти клиента в БД
             db_client = await sync_to_async(
                 Client.objects.filter(telegram_id=telegram_id).first
             )()
-            
+
             if not db_client:
-                # Автосоздание клиента
+                # Первый входящий: создаём клиента и ОДИН раз запрашиваем телефон
                 phone = await get_user_phone(telegram_id)
+
                 db_client = await sync_to_async(Client.objects.create)(
                     telegram_id=telegram_id,
                     first_name=sender.first_name or "",
@@ -170,16 +168,26 @@ async def start_userbot():
                     status="lead",
                     last_message_at=timezone.now(),
                 )
-                logger.info(f"✨ Auto-created client {telegram_id} with phone {phone}")
-            
-            # Обновляем телефон, если его не было
-            if not db_client.phone:
-                phone = await get_user_phone(telegram_id)
-                if phone:
-                    db_client.phone = phone
-                    await sync_to_async(db_client.save)(update_fields=['phone'])
-            
-            # Сохраняем сообщение
+                logger.info(
+                    f"✨ Auto-created client {telegram_id} "
+                    f"with phone {phone}"
+                )
+            else:
+                # Обновляем last_message_at
+                db_client.last_message_at = timezone.now()
+                await sync_to_async(db_client.save)(update_fields=["last_message_at"])
+
+                # Если телефона нет, пробуем ОДИН раз добить
+                if not db_client.phone:
+                    phone = await get_user_phone(telegram_id)
+                    if phone:
+                        db_client.phone = phone
+                        await sync_to_async(db_client.save)(update_fields=["phone"])
+                        logger.info(
+                            f"📱 Updated phone for client {telegram_id} to {phone}"
+                        )
+
+            # Сохраняем входящее сообщение
             msg = await sync_to_async(Message.objects.create)(
                 client=db_client,
                 content=event.message.text or "",
@@ -187,24 +195,26 @@ async def start_userbot():
                 direction="incoming",
                 telegram_message_id=event.message.id,
                 is_sent=True,
-                is_read=True,  # входящие считаем сразу прочитанными ботом
+                is_read=True,
             )
-            
+
             from apps.realtime.utils import push_chat_message, push_client_toast
+
             await sync_to_async(push_chat_message)(msg)
             await sync_to_async(push_client_toast)(
                 db_client,
                 text=f"💬 Новое сообщение от {db_client.first_name or 'клиента'}",
             )
-            
+
         except Exception as e:
             logger.exception("Error in userbot new message handler: %s", e)
-    
+
     logger.info("👂 Userbot is now listening for events...")
     await client.run_until_disconnected()
 
 
 def run_userbot():
-    """Запуск userbot в sync-режиме"""
+    """Запуск userbot в sync-режиме."""
     import asyncio
+
     asyncio.run(start_userbot())

@@ -18,8 +18,8 @@ from django.db.models import Prefetch
 from django.db import transaction
 from apps.auth_telegram.models import TelegramUser  # если нужно
 from apps.realtime.utils import push_chat_message, push_toast
-from .telegram_sender import create_message_and_store_file
-from .tasks import send_telegram_message_async
+from apps.telegram.telegram_sender import create_message_and_store_file
+from .tasks import send_telegram_message_task
 
 
 CLIENTS_PER_PAGE = 20
@@ -53,7 +53,7 @@ def telegram_send_message(request, client_id):
     # БЕЗ push_chat_message, чтобы не было дублей и зависимостей от WS
 
     push_toast(request.user, "Сообщение клиенту отправлено", level="success")
-    send_telegram_message_async.delay(str(msg.id))
+    send_telegram_message_task.delay(str(msg.id))
 
     
     html = render_to_string(
