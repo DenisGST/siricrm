@@ -35,13 +35,7 @@ urlpatterns = [
     path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
     path('api/schema/swagger/', SpectacularSwaggerView.as_view(url_name='schema')),
     
-    # Telegram webhook
-    path('api/telegram/webhook/', include('apps.telegram.urls')),
-    
-    # Auth
-    path('api/auth/', include('apps.auth_telegram.urls')),
-
-     # Обычный Django login/logout по /accounts/login/
+    # Обычный Django login/logout по /accounts/login/
     path("accounts/", include("django.contrib.auth.urls")),
     
     # CRM views
