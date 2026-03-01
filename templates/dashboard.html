@@ -130,63 +130,6 @@
       </ul>
     </div>
 
-    <!-- Telegram блок -->
-    <div class="telegram-block px-4 py-3 border-t border-base-300 text-[0.72rem] space-y-2">
-      <div class="flex flex-col gap-1">
-        <div class="flex items-center gap-2">
-          <span class="text-[0.65rem] uppercase tracking-wide text-base-content/60">Telegram</span>
-          {% if telegram_user %}
-            <span class="badge badge-success badge-xs">подключён</span>
-          {% else %}
-            <span class="badge badge-ghost badge-xs">не подключён</span>
-          {% endif %}
-        </div>
-
-        {% if telegram_user %}
-          <div class="text-base-content/90 leading-snug">
-            <span class="font-medium">
-              {{ telegram_user.first_name }}
-              {% if telegram_user.last_name %} {{ telegram_user.last_name }}{% endif %}
-            </span>
-            {% if telegram_user.username %}
-              <span class="text-base-content/70">· @{{ telegram_user.username }}</span>
-            {% endif %}
-          </div>
-        {% else %}
-          <div class="text-base-content/70 leading-snug">
-            Привяжите аккаунт, чтобы работать через бота.
-          </div>
-        {% endif %}
-      </div>
-
-      <div class="flex flex-col gap-2">
-        {% if telegram_bot_username %}
-          <a href="https://t.me/{{ telegram_bot_username }}"
-             target="_blank"
-             class="btn btn-outline btn-xs justify-center">
-            Открыть бота
-          </a>
-        {% endif %}
-
-        <button
-          class="btn btn-primary btn-xs justify-center"
-          hx-get="{% url 'telegram_login' %}"
-          hx-target="#content-area"
-          hx-swap="innerHTML">
-          {% if telegram_user %}Изменить привязку{% else %}Привязать Telegram{% endif %}
-        </button>
-      </div>
-    </div>
-
-    <!-- Статус-иконка для свернутого сайдбара -->
-    <div class="telegram-icon px-4 py-3 border-t border-base-300 flex justify-center">
-      {% if telegram_user %}
-        <div class="w-3 h-3 rounded-full bg-green-500" title="Telegram подключён"></div>
-      {% else %}
-        <div class="w-3 h-3 rounded-full bg-red-500" title="Telegram не подключён"></div>
-      {% endif %}
-    </div>
-
     <!-- Пользователь -->
     <div class="px-4 py-3 border-t border-base-300 flex items-center justify-between text-xs">
       <div class="flex items-center gap-2">
@@ -435,7 +378,6 @@
       </aside>
 
       <!-- Правая колонка: чат -->
-      <!-- Правая колонка: чат -->
       <section
         id="telegram-chat-panel"
         class="flex-1 flex flex-col min-h-0"
@@ -604,7 +546,7 @@ document.body.addEventListener('htmx:afterSwap', (e) => {
     e.preventDefault();
     const html = getMessageHtml();
     if (!html) return;
-    console.log('SEND MESSAGE HTML:', html); // сюда твой HTMX/fetch
+    console.log('SEND MESSAGE HTML:', html);
     clearMessageInput();
     document.getElementById('tg_emoji_popover').classList.add('hidden');
   }
@@ -634,7 +576,6 @@ document.body.addEventListener('htmx:afterSwap', (e) => {
       var btn = e.target.closest("[data-toast-close]");
       if (!btn) return;
 
-      // Ищем ближайший alert и удаляем его
       var alertBox = btn.closest(".alert");
       if (alertBox) {
         alertBox.remove();
@@ -683,10 +624,6 @@ document.body.addEventListener('htmx:afterSwap', (e) => {
     if (!("Notification" in window)) return;
     if (Notification.permission !== "granted") return;
 
-    // data приходит из chat_ws_wrapper, но там только HTML
-    // для desktop push нам нужны данные клиента
-    // используем простой вариант: парсим из HTML или берём из DOM
-    
     const title = "Новое сообщение в чате";
     const body = "У вас входящее сообщение от клиента";
     
@@ -694,23 +631,20 @@ document.body.addEventListener('htmx:afterSwap', (e) => {
       body: body,
       icon: "{% static 'img/logo.png' %}",
       badge: "{% static 'img/logo.png' %}",
-      tag: "telegram-chat", // чтобы не дублировать уведомления
-      requireInteraction: false, // авто-закроется через несколько секунд
+      tag: "telegram-chat",
+      requireInteraction: false,
     });
 
     notification.onclick = function () {
       window.focus();
       notification.close();
-      // можно открыть модалку чата:
       openTelegramChatModal();
     };
 
-    // авто-закрытие через 5 секунд
     setTimeout(() => notification.close(), 5000);
   }
 
   document.body.addEventListener("htmx:wsAfterMessage", function (event) {
-    // htmx.ws кладёт HTML-строку в detail.messageContent [web:2856]
     const raw = event.detail && (event.detail.messageContent || event.detail.message);
     if (!raw || typeof raw !== "string") {
       console.debug("wsAfterMessage: no raw html", event.detail);
@@ -724,7 +658,6 @@ document.body.addEventListener('htmx:afterSwap', (e) => {
     if (raw.includes('data-chat-message="1"')) {
       playIncomingChatSound();
       setTimeout(() => {
-        // проверяем УЖЕ после того, как HTMX вставил HTML
         const container = document.getElementById("telegram-messages-container");
         if (!container) return;
 
@@ -734,9 +667,7 @@ document.body.addEventListener('htmx:afterSwap', (e) => {
         if (isNear) {
           container.scrollTop = container.scrollHeight;
         }
-      }, 100); // увеличили задержку до 100мс 
-      
-       
+      }, 100);
     }
   });
 </script>
@@ -750,14 +681,11 @@ document.body.addEventListener('htmx:afterSwap', (e) => {
       const firstClient = document.querySelector("#telegram-clients-list .tg-client-item");
       if (!firstClient) return;
 
-      // визуально помечаем активного
       setActiveTelegramClient(firstClient);
 
-      // берём URL из hx-get
       const url = firstClient.getAttribute("hx-get");
       if (!url || !window.htmx) return;
 
-      // руками дергаем загрузку панели чата
       htmx.ajax("GET", url, "#telegram-chat-panel");
     }, 0);
   });
