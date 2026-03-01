@@ -181,6 +181,14 @@ LOGGING = {
             'backupCount': 5,
             'formatter': 'verbose',
         },
+        'userbot_file': {
+            'level': 'INFO',
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': BASE_DIR / 'logs' / 'userbot.log',
+            'maxBytes': 10 * 1024 * 1024,
+            'backupCount': 5,
+            'formatter': 'verbose',
+        },
     },
     'loggers': {
         'django': {
@@ -195,6 +203,11 @@ LOGGING = {
         },
         'apps': {
             'handlers': ['console', 'file'],
+            'level': 'DEBUG',
+            'propagate': False,
+        },
+        'apps.telegram': {
+            'handlers': ['console', 'userbot_file'],
             'level': 'DEBUG',
             'propagate': False,
         },
