@@ -41,6 +41,7 @@ services:
       DEBUG: "True"
       DATABASE_URL: postgresql://crm_user:crm_password_dev@db:5432/crm_db
       REDIS_URL: redis://redis:6379/0
+      TELEGRAM_SESSION_STRING: ${TELEGRAM_SESSION_STRING}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
       TELEGRAM_WEBHOOK_URL: ${TELEGRAM_WEBHOOK_URL}
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
@@ -55,13 +56,17 @@ services:
 
   celery:
     build: .
-    command: celery -A config worker -l info
+    command: celery -A config worker -l info --max-tasks-per-child=100 --time-limit=300
+    #user: "1000:1000"
     volumes:
       - .:/app
     environment:
       DEBUG: "False"
       DATABASE_URL: postgresql://crm_user:crm_password_dev@db:5432/crm_db
       REDIS_URL: redis://redis:6379/0
+      TELEGRAM_SESSION_STRING: ${TELEGRAM_SESSION_STRING}  # ← ДОБАВЬ
+      TELEGRAM_API_ID: ${TELEGRAM_API_ID}  # ← ДОБАВЬ
+      TELEGRAM_API_HASH: ${TELEGRAM_API_HASH}  # ← ДОБАВЬ
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
@@ -70,16 +75,19 @@ services:
       - db
       - redis
       - web
+    restart: unless-stopped
 
   celery-beat:
     build: .
     command: celery -A config beat -l info --scheduler django_celery_beat.schedulers:DatabaseScheduler
+    #user: "1000:1000"
     volumes:
       - .:/app
     environment:
       DEBUG: "False"
       DATABASE_URL: postgresql://crm_user:crm_password_dev@db:5432/crm_db
       REDIS_URL: redis://redis:6379/0
+      TELEGRAM_SESSION_STRING: ${TELEGRAM_SESSION_STRING}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
     depends_on:
       - db
@@ -96,7 +104,16 @@ services:
       - redis
     env_file:
       - .env
+    environment:
+      DATABASE_URL: postgresql://crm_user:crm_password_dev@db:5432/crm_db
+      REDIS_URL: redis://redis:6379/0
+      TELEGRAM_SESSION_STRING: ${TELEGRAM_SESSION_STRING}  
     restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
 
 volumes:
   postgres_data:

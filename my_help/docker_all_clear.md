@@ -1,3 +1,24 @@
+### Полная пересборка и перезапуск всех контейнеров:
+
+bash
+# 1. Останови все контейнеры
+docker-compose down
+
+# 2. Пересобери образы (с очисткой кеша)
+docker-compose build --no-cache
+
+# 3. Запусти всё заново
+docker-compose up -d
+
+# 4. Проверь статус
+docker-compose ps
+Или быстрая версия (без очистки кеша):
+bash
+docker-compose down
+docker-compose build
+docker-compose up -d
+
+
 # Удалить/очистить все данные Докера (контейнеры, образы, тома и сети)
 
 ## Одной строкой

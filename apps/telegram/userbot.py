@@ -1,8 +1,12 @@
+# /var/www/projects/siricrm/apps/telegram/userbot.py
+
+import os
 import logging
 import asyncio
 from telethon import TelegramClient, events
 from telethon.tl.types import User, PeerUser
 from telethon.errors import FloodWaitError, AuthKeyError, PhoneCodeExpiredError
+from telethon.sessions import StringSession
 from django.conf import settings
 from asgiref.sync import sync_to_async
 from apps.crm.models import Message, Client
@@ -10,11 +14,24 @@ from django.utils import timezone
 
 logger = logging.getLogger(__name__)
 
-client = TelegramClient(
-    'userbot_session',
-    settings.TELEGRAM_API_ID,
-    settings.TELEGRAM_API_HASH
-)
+session_string = os.getenv('TELEGRAM_SESSION_STRING', '')
+
+if session_string:
+    # Используем StringSession
+    client = TelegramClient(
+        StringSession(session_string),
+        settings.TELEGRAM_API_ID,
+        settings.TELEGRAM_API_HASH
+    )
+    logger.info("📝 Userbot initialized with StringSession")
+else:
+    # Fallback на файл (если переменная не задана)
+    client = TelegramClient(
+        'userbot_session',
+        settings.TELEGRAM_API_ID,
+        settings.TELEGRAM_API_HASH
+    )
+    logger.warning("⚠️ Using file session (TELEGRAM_SESSION_STRING not set)")
 
 
 async def get_user_phone(user_id: int) -> str | None:
@@ -87,9 +104,11 @@ async def start_userbot():
     retry_count = 0
     base_delay = 60  # начальная задержка 1 минута
 
+
     while retry_count < MAX_RETRIES:
         try:
             await client.start(phone=settings.TELEGRAM_PHONE)
+            client.flood_sleep_threshold = 60
             logger.info("✅ Userbot started and connected")
             break  # успешная авторизация
 
@@ -265,7 +284,23 @@ async def start_userbot():
             logger.exception("Error in userbot new message handler: %s", e)
 
     logger.info("👂 Userbot is now listening for events...")
-    await client.run_until_disconnected()
+    
+    while True:
+        try:
+            await client.run_until_disconnected()
+            break  # Если вышли нормально
+        except (ConnectionError, OSError) as e:
+            logger.warning(f"⚠️ Connection lost: {e}. Reconnecting in 5s...")
+            await asyncio.sleep(5)
+            try:
+                if not client.is_connected():
+                    await client.connect()
+            except Exception as conn_err:
+                logger.error(f"Failed to reconnect: {conn_err}")
+                await asyncio.sleep(30)
+        except Exception as e:
+            logger.exception(f"❌ Critical error in event loop: {e}")
+            break
 
 
 def run_userbot():

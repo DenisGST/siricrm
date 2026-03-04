@@ -33,7 +33,7 @@ def generate_daily_report():
     report_data = {}
     try:
         for dept in Department.objects.filter(is_active=True):
-            employees = dept.employee.filter(is_active=True)
+            employees = dept.employees.filter(is_active=True)
             report_data[dept.name] = {
                 "employees_count": employees.count(),
                 "messages_sent": 0,
@@ -51,7 +51,7 @@ def generate_daily_report():
                 ).count()
 
                 messages_received = Message.objects.filter(
-                    client__assigned_employee=employee,
+                    client__employees=employee,
                     direction="incoming",
                     created_at__date=today,
                 ).count()
@@ -69,20 +69,20 @@ def generate_daily_report():
                         "messages_sent": messages_sent,
                         "messages_received": messages_received,
                         "actions_count": actions.count(),
-                        "clients_count": employee.clients.count(),
+                        "clients_count": Client.objects.filter(employees=employee).count(),
                     }
                 )
 
             new_clients = Client.objects.filter(
-                assigned_employee__department=dept,
+                employees__in=employees,
                 created_at__date=today,
-            ).count()
+            ).distinct().count()
             report_data[dept.name]["new_clients"] = new_clients
 
             active_clients = Client.objects.filter(
-                assigned_employee__department=dept,
+                employees__in=employees,
                 status="active",
-            ).count()
+            ).distinct().count()
             report_data[dept.name]["active_clients"] = active_clients
 
         logger.info(f"Generated daily report: {report_data}")
@@ -121,6 +121,11 @@ def send_telegram_message_task(message_id):
     """
     from apps.crm.models import Message
     from django.utils import timezone
+    import asyncio
+    
+    # Создаём новый event loop для этой задачи
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
     
     try:
         message = Message.objects.select_related('client', 'file').get(id=message_id)
@@ -144,8 +149,8 @@ def send_telegram_message_task(message_id):
             
             logger.info(f"📦 Downloaded file {message.file.filename} from S3 for message {message_id}")
         
-        # Отправляем через userbot
-        result = asyncio.run(send_telegram_message(**send_params))
+        # Отправляем через userbot в новом event loop
+        result = loop.run_until_complete(send_telegram_message(**send_params))
         
         if result['success']:
             # Обновляем сообщение
@@ -169,49 +174,51 @@ def send_telegram_message_task(message_id):
         logger.error(f"❌ Task: Message {message_id} not found")
     except Exception as e:
         logger.exception(f"❌ Task error for message {message_id}: {e}")
-
+    finally:
+        # Закрываем event loop
+        loop.close()
 
 @shared_task
 def reassign_clients_by_load():
     try:
+        # Клиенты без сотрудников
         unassigned_clients = Client.objects.filter(
-            assigned_employee__isnull=True,
+            employees__isnull=True,
             status__in=["lead", "active"],
         )
+        
         for client in unassigned_clients:
-            dept = (
-                client.assigned_employee.department
-                if client.assigned_employee and client.assigned_employee.department
-                else Department.objects.annotate(
-                    employee_count=Count("employees"),
-                    total_clients=Count("employees__clients"),
-                )
-                .order_by("total_clients")
-                .first()
-            )
+            # Выбираем отдел с наименьшей нагрузкой
+            dept = Department.objects.annotate(
+                employee_count=Count("employees"),
+                total_clients=Count("employees__client"),
+            ).order_by("total_clients").first()
+            
             if not dept:
                 continue
+                
+            # Выбираем сотрудника с наименьшей нагрузкой
             employee = (
                 Employee.objects.filter(department=dept, is_active=True)
-                .annotate(client_count=Count("clients"))
+                .annotate(client_count=Count("client"))
                 .order_by("client_count")
                 .first()
             )
+            
             if employee:
-                client.assigned_employee = employee
-                client.save(update_fields=["assigned_employee"])
+                client.employees.add(employee)  # ✅ ManyToMany
                 EmployeeLog.objects.create(
                     employee=employee,
                     action="client_assigned",
-                    description=f"Клиент {client} переназначен системой",
+                    description=f"Клиент {client} назначен системой",
                     client=client,
                 )
+                
         logger.info(f"Reassigned {unassigned_clients.count()} clients")
         return f"Reassigned {unassigned_clients.count()} clients"
     except Exception as e:
         logger.error(f"Error reassigning clients: {e}")
         return {"error": str(e)}
-
 
 @shared_task
 def generate_employee_stats(employee_id, start_date=None, end_date=None):
@@ -229,7 +236,7 @@ def generate_employee_stats(employee_id, start_date=None, end_date=None):
                 employee=employee,
                 created_at__range=[start_date, end_date],
             ).count(),
-            "clients_assigned": employee.clients.count(),
+            "clients_assigned": Client.objects.filter(employees=employee).count(),
             "messages_by_type": {},
             "daily_activity": {},
         }

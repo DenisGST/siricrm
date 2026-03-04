@@ -170,7 +170,7 @@ LOGGING = {
         'file': {
             'level': 'INFO',
             'class': 'logging.handlers.RotatingFileHandler',
-            'filename': BASE_DIR / 'logs' / 'crm.log',
+            'filename': '/app/logs/crm.log',  # ← ИСПРАВЛЕНО
             'maxBytes': 10 * 1024 * 1024,
             'backupCount': 5,
             'formatter': 'verbose',
@@ -178,7 +178,7 @@ LOGGING = {
         'celery_file': {
             'level': 'INFO',
             'class': 'logging.handlers.RotatingFileHandler',
-            'filename': BASE_DIR / 'logs' / 'celery.log',
+            'filename': '/app/logs/celery.log',  # ← ИСПРАВЛЕНО
             'maxBytes': 10 * 1024 * 1024,
             'backupCount': 5,
             'formatter': 'verbose',
@@ -186,7 +186,7 @@ LOGGING = {
         'userbot_file': {
             'level': 'INFO',
             'class': 'logging.handlers.RotatingFileHandler',
-            'filename': BASE_DIR / 'logs' / 'userbot.log',
+            'filename': '/app/logs/userbot.log',  # ← ИСПРАВЛЕНО
             'maxBytes': 10 * 1024 * 1024,
             'backupCount': 5,
             'formatter': 'verbose',
@@ -203,19 +203,13 @@ LOGGING = {
             'level': 'INFO',
             'propagate': False,
         },
-        'apps': {
-            'handlers': ['console', 'file'],
-            'level': 'DEBUG',
-            'propagate': False,
-        },
-        'apps.telegram': {
+        'userbot': {
             'handlers': ['console', 'userbot_file'],
-            'level': 'DEBUG',
+            'level': 'INFO',
             'propagate': False,
         },
     },
 }
-
 os.makedirs(BASE_DIR / 'logs', exist_ok=True)
 
 LOGIN_URL = "/accounts/login/"

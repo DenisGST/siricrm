@@ -2,7 +2,10 @@
 
 import logging
 import io
+import os
+import asyncio
 from telethon import TelegramClient
+from telethon.sessions import StringSession
 from telethon.tl.types import PeerUser, InputMediaUploadedDocument, DocumentAttributeFilename, DocumentAttributeAudio
 from django.conf import settings
 from apps.crm.models import Message
@@ -11,25 +14,31 @@ from apps.files.s3_utils import upload_file_to_s3
 
 logger = logging.getLogger(__name__)
 
-# Используем тот же клиент, что и в userbot
-client = TelegramClient(
-    'userbot_session',
-    settings.TELEGRAM_API_ID,
-    settings.TELEGRAM_API_HASH
-)
-
-
-async def ensure_connected():
-    """Проверяет подключение к Telegram"""
-    if not client.is_connected():
-        await client.connect()
-        if not await client.is_user_authorized():
-            await client.start(phone=settings.TELEGRAM_PHONE)
+async def get_telegram_client():
+    """
+    Создаёт новый Telegram клиент для текущего event loop.
+    Вызывается при каждой отправке сообщения.
+    """
+    session_string = os.getenv('TELEGRAM_SESSION_STRING', '')
+    
+    if not session_string:
+        raise ValueError("❌ TELEGRAM_SESSION_STRING not found in environment")
+    
+    client = TelegramClient(
+        StringSession(session_string),
+        api_id=settings.TELEGRAM_API_ID,
+        api_hash=settings.TELEGRAM_API_HASH
+    )
+    
+    await client.connect()
+    logger.info("✅ Telegram client connected")
+    
+    return client
 
 
 async def send_telegram_message(
-    telegram_id: int, 
-    text: str = None, 
+    telegram_id: int,
+    text: str = None,
     file_path: str = None,
     file_bytes: bytes = None,
     file_name: str = None,
@@ -51,8 +60,10 @@ async def send_telegram_message(
     Returns:
         dict с полями success, message_id, error
     """
+    client = None
     try:
-        await ensure_connected()
+        # Создаём новый клиент для текущего event loop
+        client = await get_telegram_client()
         
         peer = PeerUser(telegram_id)
         
@@ -82,7 +93,7 @@ async def send_telegram_message(
                 caption=text or ""
             )
             logger.info(f"🎤 Voice message sent to {telegram_id}, message_id={message.id}")
-            
+        
         elif message_type == "audio":
             # Аудиофайл
             message = await client.send_file(
@@ -96,7 +107,7 @@ async def send_telegram_message(
                 )]
             )
             logger.info(f"🎵 Audio sent to {telegram_id}, message_id={message.id}")
-            
+        
         elif message_type == "image":
             # Изображение
             message = await client.send_file(
@@ -105,7 +116,7 @@ async def send_telegram_message(
                 caption=text or ""
             )
             logger.info(f"🖼️ Image sent to {telegram_id}, message_id={message.id}")
-            
+        
         elif message_type == "video":
             # Видео
             message = await client.send_file(
@@ -114,7 +125,7 @@ async def send_telegram_message(
                 caption=text or ""
             )
             logger.info(f"🎬 Video sent to {telegram_id}, message_id={message.id}")
-            
+        
         else:
             # Документ
             attributes = []
@@ -134,7 +145,7 @@ async def send_telegram_message(
             'message_id': message.id,
             'error': None
         }
-        
+    
     except Exception as e:
         logger.exception(f"❌ Failed to send message to {telegram_id}: {e}")
         return {
@@ -142,6 +153,13 @@ async def send_telegram_message(
             'message_id': None,
             'error': str(e)
         }
+    finally:
+        # Обязательно отключаем клиент
+        if client:
+            try:
+                await client.disconnect()
+            except:
+                pass
 
 
 def create_message_and_store_file(*, client, text=None, file=None, employee=None) -> Message:
