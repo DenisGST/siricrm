@@ -8,9 +8,6 @@ from celery import shared_task
 from django.conf import settings
 from django.utils import timezone
 from django.db.models import Count
-
-
-
 from apps.crm.models import Client, Message
 from apps.core.models import Employee, EmployeeLog, Department
 from apps.files.s3_utils import download_file_from_s3

@@ -11,9 +11,11 @@
                 chat-bubble-primary
               {% endif %}">
 
+
     {# текст без файла #}
     {% if msg.message_type == "text" and not msg.file %}
       {{ msg.content|linebreaksbr }}
+
 
     {# картинка #}
     {% elif msg.message_type == "image" and msg.file %}
@@ -25,6 +27,7 @@
       {% if msg.content %}
         <div class="mt-1 text-xs opacity-80">{{ msg.content|linebreaksbr }}</div>
       {% endif %}
+
 
     {# документ #}
     {% elif msg.message_type == "document" and msg.file %}
@@ -38,15 +41,35 @@
         <div class="mt-1 text-xs opacity-80">{{ msg.content|linebreaksbr }}</div>
       {% endif %}
 
-    {# аудио (voice/audio) #}
-    {% elif msg.message_type == "audio" and msg.file %}
-      <audio controls class="w-64">
-        <source src="{% url 'file_download' msg.file.id %}">
-        Ваш браузер не поддерживает аудио.
-      </audio>
+
+    {# голосовое сообщение (voice) #}
+    {% elif msg.message_type == "voice" and msg.file %}
+      <div class="flex items-center gap-2">
+        🎤
+        <audio controls class="w-64">
+          <source src="{% url 'file_download' msg.file.id %}" type="audio/ogg">
+          Ваш браузер не поддерживает аудио.
+        </audio>
+      </div>
       {% if msg.content %}
         <div class="mt-1 text-xs opacity-80">{{ msg.content|linebreaksbr }}</div>
       {% endif %}
+
+
+    {# аудио (audio) #}
+    {% elif msg.message_type == "audio" and msg.file %}
+      <div class="flex items-center gap-2">
+        🎵
+        <audio controls class="w-64">
+          <source src="{% url 'file_download' msg.file.id %}">
+          Ваш браузер не поддерживает аудио.
+        </audio>
+      </div>
+      <div class="text-xs opacity-70 mt-1">{{ msg.file.filename|default:"Аудио" }}</div>
+      {% if msg.content %}
+        <div class="mt-1 text-xs opacity-80">{{ msg.content|linebreaksbr }}</div>
+      {% endif %}
+
 
     {# видео (если добавишь message_type == "video") #}
     {% elif msg.message_type == "video" and msg.file %}
@@ -58,11 +81,13 @@
         <div class="mt-1 text-xs opacity-80">{{ msg.content|linebreaksbr }}</div>
       {% endif %}
 
+
     {# фолбэк #}
     {% else %}
       {{ msg.content|linebreaksbr }}
     {% endif %}
   </div>
+
 
   <div class="chat-footer text-[10px] text-base-content/60">
     {{ msg.created_at|date:"d.m H:i" }}
