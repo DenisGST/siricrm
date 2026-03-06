@@ -12,12 +12,11 @@ from asgiref.sync import sync_to_async
 from apps.crm.models import Message, Client
 from django.utils import timezone
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger('userbot')
 
 session_string = os.getenv('TELEGRAM_SESSION_STRING', '')
 
 if session_string:
-    # Используем StringSession
     client = TelegramClient(
         StringSession(session_string),
         settings.TELEGRAM_API_ID,
@@ -25,7 +24,6 @@ if session_string:
     )
     logger.info("📝 Userbot initialized with StringSession")
 else:
-    # Fallback на файл (если переменная не задана)
     client = TelegramClient(
         'userbot_session',
         settings.TELEGRAM_API_ID,
@@ -35,11 +33,7 @@ else:
 
 
 async def get_user_phone(user_id: int) -> str | None:
-    """
-    Получить номер телефона пользователя по его ID.
-    ВАЖНО: вызывать ТОЛЬКО при первом входящем сообщении,
-    дальше использовать значение из БД.
-    """
+    """Получить номер телефона пользователя по его ID."""
     try:
         entity = await client.get_entity(PeerUser(user_id))
         if isinstance(entity, User) and entity.phone:
@@ -50,11 +44,7 @@ async def get_user_phone(user_id: int) -> str | None:
 
 
 async def import_message_history(telegram_id: int, limit: int = 100):
-    """
-    Импорт истории сообщений с клиентом.
-    ОСТАВЛЕНО как утилита под ручную кнопку в CRM.
-    НЕ вызывать автоматически по всем клиентам.
-    """
+    """Импорт истории сообщений с клиентом."""
     try:
         db_client = await sync_to_async(
             Client.objects.filter(telegram_id=telegram_id).first
@@ -102,15 +92,14 @@ async def start_userbot():
     """Запускает userbot для отслеживания прочтений и входящих сообщений."""
     MAX_RETRIES = 10
     retry_count = 0
-    base_delay = 60  # начальная задержка 1 минута
-
+    base_delay = 60
 
     while retry_count < MAX_RETRIES:
         try:
             await client.start(phone=settings.TELEGRAM_PHONE)
             client.flood_sleep_threshold = 60
             logger.info("✅ Userbot started and connected")
-            break  # успешная авторизация
+            break
 
         except FloodWaitError as e:
             retry_count += 1
@@ -133,7 +122,7 @@ async def start_userbot():
 
         except EOFError:
             retry_count += 1
-            delay = base_delay * (2 ** (retry_count - 1))  # exponential backoff
+            delay = base_delay * (2 ** (retry_count - 1))
             logger.warning(
                 f"⏳ EOFError (no interactive terminal). "
                 f"Retry {retry_count}/{MAX_RETRIES} in {delay}s..."
@@ -161,10 +150,7 @@ async def start_userbot():
     # ========= Обработчик прочтений =========
     @client.on(events.Raw)
     async def handle_read(event):
-        """
-        Аккуратная обработка прочтений.
-        Проверяем тип события, чтобы не ловить лишнее.
-        """
+        """Обработка прочтений."""
         from telethon.tl.types import UpdateReadHistoryInbox
 
         if not isinstance(event, UpdateReadHistoryInbox):
@@ -188,9 +174,7 @@ async def start_userbot():
             )(is_read=True, read_at=timezone.now())
 
             if updated > 0:
-                logger.info(
-                    f"📖 Marked {updated} messages as read for client {telegram_id}"
-                )
+                logger.info(f"📖 Marked {updated} messages as read for client {telegram_id}")
 
                 from apps.realtime.utils import push_chat_message
 
@@ -212,13 +196,10 @@ async def start_userbot():
     # ========= Обработчик новых входящих сообщений =========
     @client.on(events.NewMessage(incoming=True))
     async def handle_new_message(event):
-        """
-        Обрабатываем только личные сообщения от пользователей.
-        Телефон запрашиваем только при первом входящем.
-        """
+        """Обрабатываем только личные сообщения от пользователей."""
+        #logger.info(f"🔔 RAW EVENT RECEIVED: {event}")
         try:
             sender = await event.get_sender()
-            # Игнорируем каналы/чатов, у которых нет id как у User
             if not isinstance(sender, User):
                 return
 
@@ -230,47 +211,137 @@ async def start_userbot():
             )()
 
             if not db_client:
-                # Первый входящий: создаём клиента и ОДИН раз запрашиваем телефон
+                # Создаём клиента (или берём существующего)
                 phone = await get_user_phone(telegram_id)
 
-                db_client = await sync_to_async(Client.objects.create)(
+                db_client, created = await sync_to_async(Client.objects.get_or_create)(
                     telegram_id=telegram_id,
-                    first_name=sender.first_name or "",
-                    last_name=sender.last_name or "",
-                    username=sender.username or "",
-                    phone=phone or "",
-                    status="lead",
-                    last_message_at=timezone.now(),
+                    defaults={
+                        'first_name': sender.first_name or "",
+                        'last_name': sender.last_name or "",
+                        'username': sender.username or "",
+                        'phone': phone or "",
+                        'status': "lead",
+                        'last_message_at': timezone.now(),
+                    }
                 )
-                logger.info(
-                    f"✨ Auto-created client {telegram_id} "
-                    f"with phone {phone}"
-                )
-            else:
-                # Обновляем last_message_at
-                db_client.last_message_at = timezone.now()
-                await sync_to_async(db_client.save)(update_fields=["last_message_at"])
+                
+                if created:
+                    logger.info(f"✨ Created new client {telegram_id} with phone {phone}")
+                else:
+                    logger.info(f"✅ Found existing client {telegram_id}")
 
-                # Если телефона нет, пробуем ОДИН раз добить
-                if not db_client.phone:
-                    phone = await get_user_phone(telegram_id)
-                    if phone:
-                        db_client.phone = phone
-                        await sync_to_async(db_client.save)(update_fields=["phone"])
-                        logger.info(
-                            f"📱 Updated phone for client {telegram_id} to {phone}"
+            # Обновляем last_message_at
+            db_client.last_message_at = timezone.now()
+            await sync_to_async(db_client.save)(update_fields=["last_message_at"])
+
+            # ========= ОБРАБОТКА МЕДИА =========
+            message_type = "text"
+            file_data = None
+            file_name = ""
+            content = event.message.text or ""
+
+            if event.message.media:
+                from telethon.tl.types import (
+                    MessageMediaDocument, MessageMediaPhoto,
+                    DocumentAttributeAudio, DocumentAttributeFilename
+                )
+                from apps.files.s3_utils import upload_file_to_s3
+                from apps.files.models import StoredFile
+
+                media = event.message.media
+
+                if isinstance(media, MessageMediaDocument):
+                    doc = media.document
+                    
+                    is_voice = False
+                    is_audio = False
+                    original_filename = "file"
+                    
+                    for attr in doc.attributes:
+                        if isinstance(attr, DocumentAttributeAudio):
+                            if attr.voice:
+                                is_voice = True
+                                message_type = "voice"
+                                original_filename = "voice.ogg"
+                            else:
+                                is_audio = True
+                                message_type = "audio"
+                                original_filename = attr.title or "audio.mp3"
+                        elif isinstance(attr, DocumentAttributeFilename):
+                            original_filename = attr.file_name
+
+                    if not is_voice and not is_audio:
+                        mime = doc.mime_type or ""
+                        if mime.startswith("video/"):
+                            message_type = "video"
+                            original_filename = "video.mp4"
+                        elif mime.startswith("image/"):
+                            message_type = "image"
+                            original_filename = "image.jpg"
+                        else:
+                            message_type = "document"
+
+                    file_bytes = await client.download_media(event.message, bytes)
+                    
+                    if file_bytes:
+                        bucket, key = await sync_to_async(upload_file_to_s3)(
+                            file_bytes,
+                            prefix="telegram/media",
+                            filename=original_filename
                         )
+                        
+                        stored_file = await sync_to_async(StoredFile.objects.create)(
+                            bucket=bucket,
+                            key=key,
+                            filename=original_filename,
+                            content_type=doc.mime_type or "application/octet-stream",
+                            size=len(file_bytes)
+                        )
+                        
+                        file_data = stored_file
+                        file_name = original_filename
+                        logger.info(f"📎 Downloaded {message_type} file: {original_filename} ({len(file_bytes)} bytes)")
+
+                elif isinstance(media, MessageMediaPhoto):
+                    message_type = "image"
+                    original_filename = "photo.jpg"
+                    
+                    file_bytes = await client.download_media(event.message, bytes)
+                    
+                    if file_bytes:
+                        bucket, key = await sync_to_async(upload_file_to_s3)(
+                            file_bytes,
+                            prefix="telegram/media",
+                            filename=original_filename
+                        )
+                        
+                        stored_file = await sync_to_async(StoredFile.objects.create)(
+                            bucket=bucket,
+                            key=key,
+                            filename=original_filename,
+                            content_type="image/jpeg",
+                            size=len(file_bytes)
+                        )
+                        
+                        file_data = stored_file
+                        file_name = original_filename
+                        logger.info(f"🖼️ Downloaded image: {len(file_bytes)} bytes")
 
             # Сохраняем входящее сообщение
             msg = await sync_to_async(Message.objects.create)(
                 client=db_client,
-                content=event.message.text or "",
-                message_type="text",
+                content=content,
+                message_type=message_type,
                 direction="incoming",
                 telegram_message_id=event.message.id,
+                file=file_data,
+                file_name=file_name,
                 is_sent=True,
                 is_read=True,
             )
+
+            logger.info(f"💬 Incoming {message_type} from {telegram_id}: {content[:50] if content else file_name}")
 
             from apps.realtime.utils import push_chat_message, push_client_toast
 
@@ -285,10 +356,11 @@ async def start_userbot():
 
     logger.info("👂 Userbot is now listening for events...")
     
+    # Бесконечный цикл для поддержания подключения
     while True:
         try:
             await client.run_until_disconnected()
-            break  # Если вышли нормально
+            break
         except (ConnectionError, OSError) as e:
             logger.warning(f"⚠️ Connection lost: {e}. Reconnecting in 5s...")
             await asyncio.sleep(5)

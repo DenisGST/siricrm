@@ -13,7 +13,7 @@ from apps.core.models import Employee, EmployeeLog, Department
 from apps.files.s3_utils import download_file_from_s3
 from apps.telegram.telegram_sender import send_telegram_message
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger('celery')
 
 
 @shared_task
@@ -120,6 +120,8 @@ def send_telegram_message_task(message_id):
     from django.utils import timezone
     import asyncio
     
+    logger.info(f"📤 Starting task: send_telegram_message_task for message_id={message_id}")
+
     # Создаём новый event loop для этой задачи
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)

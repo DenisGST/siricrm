@@ -106,9 +106,25 @@ async def send_telegram_message(
                 random_id=int.from_bytes(os.urandom(8), 'big', signed=True)
             ))
             
-            message = result.updates[0].message
-            logger.info(f"🎤 Voice message sent to {telegram_id}, message_id={message.id}")
-
+            # Извлекаем message_id из ответа
+            message_id = None
+            for update in result.updates:
+                if hasattr(update, 'id'):
+                    message_id = update.id
+                    break
+            
+            # Если не нашли через updates, пробуем через result
+            if not message_id and hasattr(result, 'id'):
+                message_id = result.id
+            
+            logger.info(f"🎤 Voice message sent to {telegram_id}, message_id={message_id}")
+            
+            # Возвращаем результат
+            return {
+                'success': True,
+                'message_id': message_id,
+                'error': None
+            }
 
         elif message_type == "audio":
             # Аудиофайл
