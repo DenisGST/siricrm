@@ -1,3 +1,4 @@
+
 services:
   db:
     image: postgres:16-alpine
@@ -22,7 +23,7 @@ services:
     expose:
       - "6379"
     ports:
-      - "127.0.0.1:6379:6379"
+      - "127.0.0.1:6379:6379"  
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -55,16 +56,17 @@ services:
 
   celery:
     build: .
-    command: celery -A config worker -l info --max-tasks-per-child=100 --time-limit=300 -E
+    command: celery -A config worker -l info --max-tasks-per-child=100 --time-limit=300
+    #user: "1000:1000"
     volumes:
       - .:/app
     environment:
       DEBUG: "False"
       DATABASE_URL: postgresql://crm_user:crm_password_dev@db:5432/crm_db
       REDIS_URL: redis://redis:6379/0
-      TELEGRAM_SESSION_STRING: ${TELEGRAM_SESSION_STRING}
-      TELEGRAM_API_ID: ${TELEGRAM_API_ID}
-      TELEGRAM_API_HASH: ${TELEGRAM_API_HASH}
+      TELEGRAM_SESSION_STRING: ${TELEGRAM_SESSION_STRING}  # ← ДОБАВЬ
+      TELEGRAM_API_ID: ${TELEGRAM_API_ID}  # ← ДОБАВЬ
+      TELEGRAM_API_HASH: ${TELEGRAM_API_HASH}  # ← ДОБАВЬ
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
@@ -83,6 +85,7 @@ services:
   celery-beat:
     build: .
     command: celery -A config beat -l info --scheduler django_celery_beat.schedulers:DatabaseScheduler
+    #user: "1000:1000"
     volumes:
       - .:/app
     environment:
@@ -95,49 +98,6 @@ services:
       - db
       - redis
       - celery
-
-  # Flower - мониторинг Celery
-  flower:
-    build: .
-    command: celery -A config flower --port=5555 --persistent=True --db=/app/flower_data/flower.db
-    volumes:
-      - .:/app
-      - flower_data:/app/flower_data
-    ports:
-      - "127.0.0.1:5555:5555"
-    environment:
-      DEBUG: "False"
-      DATABASE_URL: postgresql://crm_user:crm_password_dev@db:5432/crm_db
-      REDIS_URL: redis://redis:6379/0
-      CELERY_BROKER_URL: redis://redis:6379/0
-      FLOWER_BASIC_AUTH: admin:siricrm2026
-    depends_on:
-      - redis
-      - celery
-    restart: unless-stopped
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-  # Redis Commander - управление Redis
-  redis-commander:
-    image: ghcr.io/joeferner/redis-commander:latest
-    container_name: siricrm_redis-commander
-    environment:
-      - REDIS_HOSTS=local:redis:6379
-      - HTTP_USER=admin
-      - HTTP_PASSWORD=siricrm2026  # Измените пароль
-    ports:
-      - "127.0.0.1:8081:8081"
-    depends_on:
-      - redis
-    restart: unless-stopped
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
 
   userbot:
     build: .
@@ -152,7 +112,7 @@ services:
     environment:
       DATABASE_URL: postgresql://crm_user:crm_password_dev@db:5432/crm_db
       REDIS_URL: redis://redis:6379/0
-      TELEGRAM_SESSION_STRING: ${TELEGRAM_SESSION_STRING}
+      TELEGRAM_SESSION_STRING: ${TELEGRAM_SESSION_STRING}  
     restart: unless-stopped
     logging:
       driver: "json-file"
@@ -162,4 +122,3 @@ services:
 
 volumes:
   postgres_data:
-  flower_data:
