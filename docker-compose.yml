@@ -110,7 +110,7 @@ services:
       DATABASE_URL: postgresql://crm_user:crm_password_dev@db:5432/crm_db
       REDIS_URL: redis://redis:6379/0
       CELERY_BROKER_URL: redis://redis:6379/0
-      FLOWER_BASIC_AUTH: admin:siricrm2026
+      # FLOWER_BASIC_AUTH: admin:siricrm2026
     depends_on:
       - redis
       - celery
@@ -126,8 +126,8 @@ services:
     container_name: siricrm_redis-commander
     environment:
       - REDIS_HOSTS=local:redis:6379
-      - HTTP_USER=admin
-      - HTTP_PASSWORD=siricrm2026  # Измените пароль
+    #  - HTTP_USER=admin
+    #  - HTTP_PASSWORD=siricrm2026  # Измените пароль
     ports:
       - "127.0.0.1:8081:8081"
     depends_on:
