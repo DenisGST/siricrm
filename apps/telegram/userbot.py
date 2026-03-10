@@ -191,6 +191,8 @@ async def start_userbot():
                     await sync_to_async(push_chat_message)(msg)
 
         except Exception as e:
+            from django.db import connection
+            connection.close()  # Сбросим соединение, Django переподключится
             logger.exception("Error handling read receipt: %s", e)
 
     # ========= Обработчик новых входящих сообщений =========
@@ -352,6 +354,8 @@ async def start_userbot():
             )
 
         except Exception as e:
+            from django.db import connection
+            connection.close()  # Сбросим соединение, Django переподключится
             logger.exception("Error in userbot new message handler: %s", e)
 
     logger.info("👂 Userbot is now listening for events...")
