@@ -1,11 +1,12 @@
+// CSRF-утилита — глобальная функция
+function getCookie(name) {
+  const value = `; ${document.cookie}`;
+  const parts = value.split(`; ${name}=`);
+  if (parts.length === 2) return parts.pop().split(";").shift();
+}
+
 // CSRF для всех HTMX-запросов
 (function () {
-  function getCookie(name) {
-    const value = `; ${document.cookie}`;
-    const parts = value.split(`; ${name}=`);
-    if (parts.length === 2) return parts.pop().split(";").shift();
-  }
-
   const csrftoken = getCookie("csrftoken");
 
   document.addEventListener("DOMContentLoaded", function () {
@@ -44,12 +45,10 @@
     const body = document.body;
     if (!body) return;
 
-    // Ошибка ответа сервера (4xx/5xx)
     body.addEventListener("htmx:responseError", function () {
       showToast("Ошибка при запросе к серверу. Попробуйте позже.", "error");
     });
 
-    // Ошибка сети / timeout
     body.addEventListener("htmx:sendError", function () {
       showToast("Проблема с сетью. Проверьте подключение.", "warning");
     });
@@ -126,6 +125,4 @@
       btn.innerHTML = "🕓 История";
     }
   }
-
-  // getCookie уже определён выше в этом файле — переиспользуем
 })();
