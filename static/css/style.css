@@ -277,31 +277,25 @@ textarea:focus {
   display: none !important;
 }
 
-/* ── Спиннер загрузки истории ── */
-.import-spinner {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  vertical-align: middle;
-}
-
+/* ── Спиннер импорта истории ── */
 .import-spinner__wheel {
   position: relative;
   width: 14px;
   height: 14px;
   flex-shrink: 0;
+  display: inline-block;
 }
 
 .import-spinner__wheel span {
   display: block;
   position: absolute;
-  width: 2px;
-  height: 4px;
-  border-radius: 1px;
-  background: currentColor;
+  width: 12%;
+  height: 28%;
+  border-radius: 2px;
+  background: #0079d3;
   left: 50%;
   top: 50%;
-  transform-origin: 0 -4px;
+  transform-origin: 0 -100%;
   opacity: 0.15;
   animation: import-spinner-tick 1s linear infinite;
 }
@@ -323,7 +317,6 @@ textarea:focus {
   0%   { opacity: 0.85; }
   100% { opacity: 0.15; }
 }
-
 .import-spinner__text {
   font-size: 0.75rem;
   color: inherit;

@@ -57,65 +57,61 @@ function getCookie(name) {
 
 // ── Импорт истории Telegram ──
 (function () {
-  const SPINNER_HTML = `
-    <span class="import-spinner">
-      <span class="import-spinner__wheel">
-        <span></span><span></span><span></span><span></span>
-        <span></span><span></span><span></span><span></span>
-        <span></span><span></span><span></span><span></span>
-      </span>
-      <span class="import-spinner__text" id="import-status">Запуск...</span>
-    </span>`;
 
-  window.startImportHistory = function (clientId) {
-    const btn = document.getElementById("btn-import-history");
-    btn.disabled = true;
-    btn.innerHTML = SPINNER_HTML;
+  function showImportOverlay() {
+    let el = document.getElementById("import-loading-toast");
+    if (!el) {
+      el = document.createElement("div");
+      el.id = "import-loading-toast";
+      el.className = "fixed inset-0 z-[9999] flex items-center justify-center bg-black/30";
+      el.innerHTML = `
+        <div class="bg-white rounded-xl shadow-xl px-8 py-6 flex flex-col items-center gap-3">
+          <div class="import-spinner__wheel" style="width:48px;height:48px;">
+            <span></span><span></span><span></span><span></span>
+            <span></span><span></span><span></span><span></span>
+            <span></span><span></span><span></span><span></span>
+          </div>
+          <div class="text-sm text-gray-600 font-medium">Загрузка истории...</div>
+          <div id="import-overlay-counter" class="text-xs text-gray-400"></div>
+        </div>`;
+      document.body.appendChild(el);
+    }
+    el.classList.remove("hidden");
+  }
 
-    fetch(`/telegram/chat/${clientId}/import-history/`, {
-      method: "POST",
-      headers: { "X-CSRFToken": getCookie("csrftoken") },
-    })
-      .then((r) => r.json())
-      .then((data) => {
-        if (data.task_id) {
-          pollImportStatus(data.task_id, clientId, 0);
-        } else {
-          resetImportBtn();
-        }
-      })
-      .catch(resetImportBtn);
-  };
+  function hideImportOverlay() {
+    const el = document.getElementById("import-loading-toast");
+    if (el) el.classList.add("hidden");
+  }
 
   function pollImportStatus(taskId, clientId, attempt) {
     fetch(`/task-status/${taskId}/`)
       .then((r) => r.json())
       .then((data) => {
-        const statusEl = document.getElementById("import-status");
-        if (statusEl) {
-          statusEl.textContent =
-            data.total > 0
-              ? `${data.current} / ${data.total}`
-              : `Загрузка...`;
+        const counter = document.getElementById("import-overlay-counter");
+        if (counter) {
+          counter.textContent = data.total > 0
+            ? `${data.current} / ${data.total}`
+            : "Загрузка...";
         }
 
         if (data.ready) {
+          hideImportOverlay();
+          resetImportBtn();
           const btn = document.getElementById("btn-import-history");
-          if (btn) {
-            btn.innerHTML = `✅ Загружено ${data.current || ""}`;
-            setTimeout(() => {
-              resetImportBtn();
-              htmx.ajax("GET", `/telegram/chat/${clientId}/`, {
-                target: "#telegram-chat-panel-root",
-                swap: "outerHTML",
-              });
-            }, 2000);
-          }
+          if (btn) btn.innerHTML = `✅ Загружено ${data.current || ""}`;
+          setTimeout(() => {
+            resetImportBtn();
+            htmx.ajax("GET", `/telegram/chat/${clientId}/`, {
+              target: "#telegram-chat-panel-root",
+              swap: "outerHTML",
+            });
+          }, 2000);
         } else {
           setTimeout(() => pollImportStatus(taskId, clientId, attempt + 1), 2000);
         }
       })
-      .catch(resetImportBtn);
+      .catch(() => { hideImportOverlay(); resetImportBtn(); });
   }
 
   function resetImportBtn() {
