@@ -285,7 +285,7 @@ def archive_old_messages(days=90):
         return {"error": str(e)}
 
 @shared_task
-def import_telegram_history_task(telegram_id, limit=200):
+def import_telegram_history_task(self, telegram_id, limit=300):
     import asyncio
     import os
     from telethon import TelegramClient
@@ -411,6 +411,10 @@ def import_telegram_history_task(telegram_id, limit=200):
                     telegram_date=msg.date,
                 )
                 imported_count += 1
+                self.update_state(
+                    state='PROGRESS',
+                    meta={'current': imported_count, 'total': len(history)}
+                )
                 logger.info(f"  [{direction}] {message_type} — {msg.id}")
 
             logger.info(f"✅ Imported {imported_count} messages for {telegram_id}")

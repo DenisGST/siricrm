@@ -363,5 +363,17 @@ def telegram_import_history(request, client_id):
     if not db_client.telegram_id:
         return JsonResponse({"error": "Нет telegram_id у клиента"}, status=400)
 
-    import_telegram_history_task.delay(db_client.telegram_id, limit=300)
-    return JsonResponse({"ok": True, "message": "Загрузка истории запущена"})
+    task = import_telegram_history_task.delay(db_client.telegram_id, limit=300)
+    return JsonResponse({"ok": True, "task_id": task.id})
+
+@login_required
+def task_status(request, task_id):
+    from celery.result import AsyncResult
+    result = AsyncResult(task_id)
+    meta = result.info if isinstance(result.info, dict) else {}
+    return JsonResponse({
+        "status": result.status,
+        "ready": result.ready(),
+        "current": meta.get("current", 0),
+        "total": meta.get("total", 0),
+    })

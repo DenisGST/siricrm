@@ -12,22 +12,7 @@
     </div>
     <button
       id="btn-import-history"
-      hx-post="{% url 'telegram_import_history' client.id %}"
-      hx-swap="none"
-      hx-on::before-request="
-        this.disabled=true;
-        this.innerHTML='⏳ Загрузка...';
-      "
-      hx-on::after-request="
-        this.disabled=false;
-        this.innerHTML='🕓 История';
-        setTimeout(function() {
-          htmx.ajax('GET', '/telegram/chat/{{ client.id }}/', {
-            target:'#telegram-chat-panel-root',
-            swap:'outerHTML'
-          });
-        }, 2000);
-      "
+      onclick="startImportHistory('{{ client.id }}')"
       class="btn btn-ghost btn-xs text-gray-400 hover:text-primary"
       title="Загрузить историю сообщений">
       🕓 История
@@ -288,6 +273,7 @@ function playIncomingSound() {
 
 
 <script>
+  // состояние кнопки загрузки истории
   function isNearBottom(container) {
     if (!container) return false;
     const threshold = 200; // px
@@ -322,4 +308,66 @@ function playIncomingSound() {
       scrollTelegramChatBottomIfVisibleForClient(data.client_id);
     }
   });
+</script>
+
+<script>
+function startImportHistory(clientId) {
+  const btn = document.getElementById("btn-import-history");
+  btn.disabled = true;
+  btn.innerHTML = '⏳ <span id="import-status">Запуск...</span>';
+
+  fetch(`/telegram/chat/${clientId}/import-history/`, {
+    method: "POST",
+    headers: {"X-CSRFToken": getCookie("csrftoken")}
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.task_id) {
+      pollTaskStatus(data.task_id, clientId, 0);
+    } else {
+      btn.disabled = false;
+      btn.innerHTML = '🕓 История';
+    }
+  });
+}
+
+function pollTaskStatus(taskId, clientId, attempt) {
+  const statusEl = document.getElementById("import-status");
+  const dots = ".".repeat((attempt % 3) + 1);
+
+  fetch(`/task-status/${taskId}/`)
+    .then(r => r.json())
+    .then(data => {
+      if (data.total > 0 && statusEl) {
+        statusEl.innerHTML = `${data.current} / ${data.total}`;
+      } else if (statusEl) {
+        statusEl.innerHTML = `Загрузка${dots}`;
+      }
+
+      if (data.ready) {
+        const btn = document.getElementById("btn-import-history");
+        btn.innerHTML = `✅ Загружено ${data.current}`;
+        setTimeout(() => {
+          btn.disabled = false;
+          btn.innerHTML = '🕓 История';
+          htmx.ajax('GET', `/telegram/chat/${clientId}/`, {
+            target: '#telegram-chat-panel-root',
+            swap: 'outerHTML'
+          });
+        }, 2000);
+      } else {
+        setTimeout(() => pollTaskStatus(taskId, clientId, attempt + 1), 2000);
+      }
+    })
+    .catch(() => {
+      const btn = document.getElementById("btn-import-history");
+      btn.disabled = false;
+      btn.innerHTML = '🕓 История';
+    });
+}
+
+function getCookie(name) {
+  const v = document.cookie.match('(^|;) ?' + name + '=([^;]*)(;|$)');
+  return v ? v[2] : null;
+}
 </script>
