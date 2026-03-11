@@ -276,3 +276,55 @@ textarea:focus {
 .hidden {
   display: none !important;
 }
+
+/* ── Спиннер загрузки истории ── */
+.import-spinner {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  vertical-align: middle;
+}
+
+.import-spinner__wheel {
+  position: relative;
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+.import-spinner__wheel span {
+  display: block;
+  position: absolute;
+  width: 2px;
+  height: 4px;
+  border-radius: 1px;
+  background: currentColor;
+  left: 50%;
+  top: 50%;
+  transform-origin: 0 -4px;
+  opacity: 0.15;
+  animation: import-spinner-tick 1s linear infinite;
+}
+
+.import-spinner__wheel span:nth-child(1)  { transform: rotate(0deg)   translateX(-50%); animation-delay: 0s; }
+.import-spinner__wheel span:nth-child(2)  { transform: rotate(30deg)  translateX(-50%); animation-delay: -0.917s; }
+.import-spinner__wheel span:nth-child(3)  { transform: rotate(60deg)  translateX(-50%); animation-delay: -0.833s; }
+.import-spinner__wheel span:nth-child(4)  { transform: rotate(90deg)  translateX(-50%); animation-delay: -0.75s; }
+.import-spinner__wheel span:nth-child(5)  { transform: rotate(120deg) translateX(-50%); animation-delay: -0.667s; }
+.import-spinner__wheel span:nth-child(6)  { transform: rotate(150deg) translateX(-50%); animation-delay: -0.583s; }
+.import-spinner__wheel span:nth-child(7)  { transform: rotate(180deg) translateX(-50%); animation-delay: -0.5s; }
+.import-spinner__wheel span:nth-child(8)  { transform: rotate(210deg) translateX(-50%); animation-delay: -0.417s; }
+.import-spinner__wheel span:nth-child(9)  { transform: rotate(240deg) translateX(-50%); animation-delay: -0.333s; }
+.import-spinner__wheel span:nth-child(10) { transform: rotate(270deg) translateX(-50%); animation-delay: -0.25s; }
+.import-spinner__wheel span:nth-child(11) { transform: rotate(300deg) translateX(-50%); animation-delay: -0.167s; }
+.import-spinner__wheel span:nth-child(12) { transform: rotate(330deg) translateX(-50%); animation-delay: -0.083s; }
+
+@keyframes import-spinner-tick {
+  0%   { opacity: 0.85; }
+  100% { opacity: 0.15; }
+}
+
+.import-spinner__text {
+  font-size: 0.75rem;
+  color: inherit;
+}
