@@ -84,6 +84,31 @@ function getCookie(name) {
     if (el) el.classList.add("hidden");
   }
 
+  window.startImportHistory = function (clientId) {
+    const btn = document.getElementById("btn-import-history");
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = "⏳ Загрузка...";
+    }
+
+    showImportOverlay();
+
+    fetch(`/telegram/chat/${clientId}/import-history/`, {
+      method: "POST",
+      headers: { "X-CSRFToken": getCookie("csrftoken") },
+    })
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.task_id) {
+          pollImportStatus(data.task_id, clientId, 0);
+        } else {
+          hideImportOverlay();
+          resetImportBtn();
+        }
+      })
+      .catch(() => { hideImportOverlay(); resetImportBtn(); });
+  };
+
   function pollImportStatus(taskId, clientId, attempt) {
     fetch(`/task-status/${taskId}/`)
       .then((r) => r.json())
