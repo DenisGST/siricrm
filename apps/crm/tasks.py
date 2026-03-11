@@ -283,3 +283,136 @@ def archive_old_messages(days=90):
     except Exception as e:
         logger.error(f"Error archiving messages: {e}")
         return {"error": str(e)}
+
+@shared_task
+def import_telegram_history_task(telegram_id, limit=200):
+    import asyncio
+    import os
+    from telethon import TelegramClient
+    from telethon.sessions import StringSession
+    from telethon.tl.types import PeerUser, MessageMediaPhoto, MessageMediaDocument
+    from telethon.tl.types import DocumentAttributeAudio, DocumentAttributeFilename
+    from asgiref.sync import sync_to_async
+
+    api_id = int(os.environ['TELEGRAM_API_ID'])
+    api_hash = os.environ['TELEGRAM_API_HASH']
+    session_string = os.environ['TELEGRAM_SESSION_STRING']
+
+    async def do_import():
+        from apps.crm.models import Client, Message
+        from apps.files.s3_utils import upload_file_to_s3
+        from apps.files.models import StoredFile
+
+        db_client = await sync_to_async(
+            Client.objects.filter(telegram_id=telegram_id).first
+        )()
+        if not db_client:
+            logger.warning(f"Client {telegram_id} not found")
+            return
+
+        async with TelegramClient(StringSession(session_string), api_id, api_hash) as tg:
+            peer = await tg.get_entity(PeerUser(telegram_id))
+            history = await tg.get_messages(peer, limit=limit)
+
+            imported_count = 0
+            for msg in reversed(history):
+                # пропускаем только полностью пустые (нет текста И нет медиа)
+                if not msg.message and not msg.media:
+                    continue
+
+                exists = await sync_to_async(
+                    Message.objects.filter(telegram_message_id=msg.id).exists
+                )()
+                if exists:
+                    continue
+
+                direction = "outgoing" if msg.out else "incoming"
+                content = msg.message or ""
+                message_type = "text"
+                file_data = None
+                file_name = ""
+
+                # ── Обработка медиа ─────────────────────────────────────
+                if msg.media:
+                    if isinstance(msg.media, MessageMediaDocument):
+                        doc = msg.media.document
+                        is_voice = False
+                        is_audio = False
+                        original_filename = "file"
+
+                        for attr in doc.attributes:
+                            if isinstance(attr, DocumentAttributeAudio):
+                                if attr.voice:
+                                    is_voice = True
+                                    message_type = "audio"
+                                    original_filename = "voice.ogg"
+                                else:
+                                    is_audio = True
+                                    message_type = "audio"
+                                    original_filename = attr.title or "audio.mp3"
+                            elif isinstance(attr, DocumentAttributeFilename):
+                                original_filename = attr.file_name
+
+                        if not is_voice and not is_audio:
+                            mime = doc.mime_type or ""
+                            if mime.startswith("video/"):
+                                message_type = "video"
+                                original_filename = "video.mp4"
+                            elif mime.startswith("image/"):
+                                message_type = "image"
+                                original_filename = "image.jpg"
+                            else:
+                                message_type = "document"
+
+                        file_bytes = await tg.download_media(msg, bytes)
+                        if file_bytes:
+                            bucket, key = await sync_to_async(upload_file_to_s3)(
+                                file_bytes,
+                                prefix="telegram/media",
+                                filename=original_filename
+                            )
+                            file_data = await sync_to_async(StoredFile.objects.create)(
+                                bucket=bucket, key=key,
+                                filename=original_filename,
+                                content_type=doc.mime_type or "application/octet-stream",
+                                size=len(file_bytes)
+                            )
+                            file_name = original_filename
+
+                    elif isinstance(msg.media, MessageMediaPhoto):
+                        message_type = "image"
+                        original_filename = "photo.jpg"
+                        file_bytes = await tg.download_media(msg, bytes)
+                        if file_bytes:
+                            bucket, key = await sync_to_async(upload_file_to_s3)(
+                                file_bytes,
+                                prefix="telegram/media",
+                                filename=original_filename
+                            )
+                            file_data = await sync_to_async(StoredFile.objects.create)(
+                                bucket=bucket, key=key,
+                                filename=original_filename,
+                                content_type="image/jpeg",
+                                size=len(file_bytes)
+                            )
+                            file_name = original_filename
+
+                await sync_to_async(Message.objects.create)(
+                    client=db_client,
+                    employee=None,
+                    content=content,
+                    message_type=message_type,
+                    direction=direction,
+                    telegram_message_id=msg.id,
+                    file=file_data,
+                    file_name=file_name,
+                    is_sent=True,
+                    is_read=True if direction == "incoming" else False,
+                    telegram_date=msg.date,
+                )
+                imported_count += 1
+                logger.info(f"  [{direction}] {message_type} — {msg.id}")
+
+            logger.info(f"✅ Imported {imported_count} messages for {telegram_id}")
+
+    asyncio.run(do_import())

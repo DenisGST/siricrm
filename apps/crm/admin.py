@@ -39,10 +39,10 @@ class MessageAdmin(admin.ModelAdmin):
         "short_content",
         "is_read",
         "created_at",
-        
+        "telegram_date",
     )
-    list_filter = ("direction", "message_type", "is_read",)
-    search_fields = ("content",)
+    list_filter = ("direction", "message_type", "is_read", "client")  # ✅ добавили "client"
+    search_fields = ("content", "client__first_name", "client__last_name", "client__username", "client__phone")  # ✅ расширили поиск
     autocomplete_fields = ("client", "employee",)
     date_hierarchy = "created_at"
     ordering = ("created_at",)

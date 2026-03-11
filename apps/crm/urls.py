@@ -18,6 +18,6 @@ urlpatterns = [
     path("telegram/clients/", views.telegram_clients_list, name="telegram_clients_list"),
     path("telegram/chat/<uuid:client_id>/", views.telegram_chat_for_client, name="telegram_chat_for_client"),
     path("telegram/chat/<uuid:client_id>/send/", views.telegram_send_message, name="telegram_send_message"),
-
+    path("telegram/chat/<uuid:client_id>/import-history/", views.telegram_import_history, name="telegram_import_history"),
 ]
 

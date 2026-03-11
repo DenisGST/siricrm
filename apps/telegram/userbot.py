@@ -57,7 +57,7 @@ async def import_message_history(telegram_id: int, limit: int = 100):
         history = await client.get_messages(peer, limit=limit)
 
         imported_count = 0
-        for msg in history:
+        for msg in reversed(history):
             if not msg.message:
                 continue
 
@@ -69,7 +69,8 @@ async def import_message_history(telegram_id: int, limit: int = 100):
 
             direction = "outgoing" if msg.out else "incoming"
 
-            await sync_to_async(Message.objects.create)(
+            # Создаём и сразу обновляем telegram_date через update()
+            obj = await sync_to_async(Message.objects.create)(
                 client=db_client,
                 employee=None,
                 content=msg.message,
@@ -78,8 +79,9 @@ async def import_message_history(telegram_id: int, limit: int = 100):
                 telegram_message_id=msg.id,
                 is_sent=True,
                 is_read=True if direction == "incoming" else False,
-                created_at=msg.date,
+                telegram_date=msg.date,  # ✅ реальное время из Telegram
             )
+
             imported_count += 1
 
         logger.info(f"Imported {imported_count} messages for client {telegram_id}")
@@ -337,6 +339,7 @@ async def start_userbot():
                 message_type=message_type,
                 direction="incoming",
                 telegram_message_id=event.message.id,
+                telegram_date=event.date,
                 file=file_data,
                 file_name=file_name,
                 is_sent=True,

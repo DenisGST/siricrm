@@ -66,7 +66,7 @@ def telegram_send_message(request, client_id):
 @login_required
 def telegram_chat_for_client(request, client_id):
     client = get_object_or_404(Client, pk=client_id)
-    qs = Message.objects.filter(client=client).select_related("employee").order_by("created_at")
+    qs = Message.objects.filter(client=client).select_related("employee").order_by("telegram_date", "id")
 
     paginator = Paginator(qs, MESSAGES_PER_PAGE)
     page_param = request.GET.get("page")
@@ -127,7 +127,7 @@ def chat(request, client_id):
             "employees",  # M2M поле
             Prefetch(
                 "messages",
-                queryset=Message.objects.select_related("employee").order_by("created_at"),
+                queryset=Message.objects.select_related("employee").order_by("telegram_date", "id"),
             ),
         ),
         id=client_id,
@@ -353,3 +353,15 @@ def messages_new_count(request):
 def lead_count(request):
     count = Client.objects.filter(status='lead').count()
     return HttpResponse(count)
+
+@require_POST
+def telegram_import_history(request, client_id):
+    from apps.crm.tasks import import_telegram_history_task
+
+    db_client = get_object_or_404(Client, id=client_id)
+
+    if not db_client.telegram_id:
+        return JsonResponse({"error": "Нет telegram_id у клиента"}, status=400)
+
+    import_telegram_history_task.delay(db_client.telegram_id, limit=300)
+    return JsonResponse({"ok": True, "message": "Загрузка истории запущена"})

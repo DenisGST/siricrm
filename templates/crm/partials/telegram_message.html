@@ -90,6 +90,6 @@
 
 
   <div class="chat-footer text-[10px] text-base-content/60">
-    {{ msg.created_at|date:"d.m H:i" }}
+    {{ msg.telegram_date|default:msg.created_at|date:"d.m H:i" }}
   </div>
 </div>

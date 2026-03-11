@@ -1,3 +1,5 @@
+#/var/www/projects/siricrm/apps/telegram/management/commands/import_telegram_history.py
+
 from django.core.management.base import BaseCommand
 from apps.telegram.userbot import client, import_message_history
 import asyncio

@@ -10,6 +10,28 @@
       </div>
       {% if client.phone %}<div class="text-xs text-gray-500">{{ client.phone }}</div>{% endif %}
     </div>
+    <button
+      id="btn-import-history"
+      hx-post="{% url 'telegram_import_history' client.id %}"
+      hx-swap="none"
+      hx-on::before-request="
+        this.disabled=true;
+        this.innerHTML='⏳ Загрузка...';
+      "
+      hx-on::after-request="
+        this.disabled=false;
+        this.innerHTML='🕓 История';
+        setTimeout(function() {
+          htmx.ajax('GET', '/telegram/chat/{{ client.id }}/', {
+            target:'#telegram-chat-panel-root',
+            swap:'outerHTML'
+          });
+        }, 2000);
+      "
+      class="btn btn-ghost btn-xs text-gray-400 hover:text-primary"
+      title="Загрузить историю сообщений">
+      🕓 История
+    </button>
   </div>
 
   <!-- Сообщения -->

@@ -1,0 +1,384 @@
+INFO 2026-03-10 18:42:58 userbot 21 136321314055872 📝 Userbot initialized with StringSession
+ERROR 2026-03-10 18:42:58 userbot 21 136321314055872 Error importing history for 5290014975: You cannot submit onto CurrentThreadExecutor from its own thread
+Traceback (most recent call last):
+  File "/app/apps/telegram/userbot.py", line 49, in import_message_history
+    db_client = await sync_to_async(
+                ^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/asgiref/sync.py", line 491, in __call__
+    exec_coro = loop.run_in_executor(
+                ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/asyncio/base_events.py", line 830, in run_in_executor
+    executor.submit(func, *args), loop=self)
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/asgiref/current_thread_executor.py", line 102, in submit
+    raise RuntimeError(
+RuntimeError: You cannot submit onto CurrentThreadExecutor from its own thread
+ERROR 2026-03-10 18:43:25 userbot 21 136320693290688 Error importing history for 8581071622: You cannot submit onto CurrentThreadExecutor from its own thread
+Traceback (most recent call last):
+  File "/app/apps/telegram/userbot.py", line 49, in import_message_history
+    db_client = await sync_to_async(
+                ^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/asgiref/sync.py", line 491, in __call__
+    exec_coro = loop.run_in_executor(
+                ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/asyncio/base_events.py", line 830, in run_in_executor
+    executor.submit(func, *args), loop=self)
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/asgiref/current_thread_executor.py", line 102, in submit
+    raise RuntimeError(
+RuntimeError: You cannot submit onto CurrentThreadExecutor from its own thread
+ERROR 2026-03-10 18:47:39 userbot 21 136321305663168 Error importing history for 1035545758: You cannot submit onto CurrentThreadExecutor from its own thread
+Traceback (most recent call last):
+  File "/app/apps/telegram/userbot.py", line 49, in import_message_history
+    db_client = await sync_to_async(
+                ^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/asgiref/sync.py", line 491, in __call__
+    exec_coro = loop.run_in_executor(
+                ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/asyncio/base_events.py", line 830, in run_in_executor
+    executor.submit(func, *args), loop=self)
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/asgiref/current_thread_executor.py", line 102, in submit
+    raise RuntimeError(
+RuntimeError: You cannot submit onto CurrentThreadExecutor from its own thread
+ERROR 2026-03-10 18:47:43 userbot 21 136321305663168 Error importing history for 1035545758: You cannot submit onto CurrentThreadExecutor from its own thread
+Traceback (most recent call last):
+  File "/app/apps/telegram/userbot.py", line 49, in import_message_history
+    db_client = await sync_to_async(
+                ^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/asgiref/sync.py", line 491, in __call__
+    exec_coro = loop.run_in_executor(
+                ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/asyncio/base_events.py", line 830, in run_in_executor
+    executor.submit(func, *args), loop=self)
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/asgiref/current_thread_executor.py", line 102, in submit
+    raise RuntimeError(
+RuntimeError: You cannot submit onto CurrentThreadExecutor from its own thread
+INFO 2026-03-10 18:53:50 userbot 12 137342236601216 📝 Userbot initialized with StringSession
+ERROR 2026-03-10 18:53:50 userbot 12 137342236601216 Error importing history for 1035545758: Cannot send requests while disconnected
+Traceback (most recent call last):
+  File "/app/apps/telegram/userbot.py", line 56, in import_message_history
+    peer = await client.get_entity(PeerUser(telegram_id))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/telethon/client/users.py", line 298, in get_entity
+    inputs.append(await self.get_input_entity(x))
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/telethon/client/users.py", line 454, in get_input_entity
+    users = await self(functions.users.GetUsersRequest([
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/telethon/client/users.py", line 30, in __call__
+    return await self._call(self._sender, request, ordered=ordered)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/telethon/client/users.py", line 72, in _call
+    future = sender.send(request, ordered=ordered)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/telethon/network/mtprotosender.py", line 178, in send
+    raise ConnectionError('Cannot send requests while disconnected')
+ConnectionError: Cannot send requests while disconnected
+INFO 2026-03-10 19:30:34 userbot 1 125380666166144 💬 Incoming text from 206419497: В общем докладываю, сгорел синий пред, визуально н
+INFO 2026-03-10 19:30:34 userbot 1 125380666166144 🖼️ Downloaded image: 237129 bytes
+INFO 2026-03-10 19:30:34 userbot 1 125380666166144 🖼️ Downloaded image: 155162 bytes
+INFO 2026-03-10 19:30:34 userbot 1 125380666166144 💬 Incoming image from 1049884791: [Дмитрий](tg://user?id=5060693800) @Vasilevskiy_Vl
+INFO 2026-03-10 19:30:34 userbot 1 125380666166144 💬 Incoming image from 206419497: photo.jpg
+INFO 2026-03-10 19:37:25 userbot 1 125380666166144 💬 Incoming text from 1034561144: А мотор если датчик коленвала эфи получается, для 
+INFO 2026-03-10 19:45:17 userbot 1 125380666166144 💬 Incoming text from 5521924353: Купи новую,вот проблему то нашёл из ни чего😁
+INFO 2026-03-10 19:45:58 userbot 1 125380666166144 💬 Incoming text from 1049884791: Так за ней ехать надо. А неохото.
+INFO 2026-03-10 19:46:20 userbot 1 125380666166144 💬 Incoming text from 5521924353: Аа,ну тады ой 😂
+INFO 2026-03-10 20:13:10 userbot 1 125380666166144 💬 Incoming text from 206419497: Да, верно
+INFO 2026-03-10 20:18:22 userbot 1 125380666166144 🖼️ Downloaded image: 60099 bytes
+INFO 2026-03-10 20:18:22 userbot 1 125380666166144 💬 Incoming image from 1153607880: Здравствуйте!Денис Викторович, а у Вас сегодня зво
+INFO 2026-03-10 20:18:49 userbot 1 125380666166144 💬 Incoming text from 1153607880: Если я что-то не так делаю - скажите,пожалуйста,ка
+INFO 2026-03-10 20:24:22 userbot 1 125380666166144 📎 Downloaded document file: ТЕКУЩИЕ260310.xls (35328 bytes)
+INFO 2026-03-10 20:24:22 userbot 1 125380666166144 📎 Downloaded document file: ФИЗ.ЛИЦА260310.xls (31744 bytes)
+INFO 2026-03-10 20:24:22 userbot 1 125380666166144 📎 Downloaded document file: ЮР.ЛИЦА260310.xls (40960 bytes)
+INFO 2026-03-10 20:24:22 userbot 1 125380666166144 💬 Incoming document from 414305741: ТЕКУЩИЕ260310.xls
+INFO 2026-03-10 20:24:22 userbot 1 125380666166144 💬 Incoming document from 414305741: ФИЗ.ЛИЦА260310.xls
+INFO 2026-03-10 20:24:22 userbot 1 125380666166144 💬 Incoming document from 414305741: Добрый день! Ждём согласия по процедурам до 12:00 
+INFO 2026-03-10 20:24:48 userbot 1 125380666166144 📎 Downloaded document file: РАУ - ЮР.ЛИЦА260310.xls (91136 bytes)
+INFO 2026-03-10 20:24:48 userbot 1 125380666166144 💬 Incoming document from 414305741: Ждём согласия по процедурам РАУ до 12:00 11.03
+INFO 2026-03-10 20:26:24 userbot 1 125380666166144 📎 Downloaded document file: Письмо от 04.03.2026_02-14_1-4409.pdf (255127 bytes)
+INFO 2026-03-10 20:26:24 userbot 1 125380666166144 💬 Incoming document from 414305741: Направляем запрос 02-14/1-4409 от 04.03.2026 ППК "
+INFO 2026-03-10 20:30:54 userbot 1 125380666166144 💬 Incoming text from 5508223934: Ребят, помпа фирмы suffix это совсем чухня, надо а
+INFO 2026-03-10 20:31:05 userbot 1 125380666166144 💬 Incoming text from 5508223934: На 6g72
+INFO 2026-03-10 20:31:18 userbot 1 125380666166144 💬 Incoming text from 5508223934: Хочу помпу купить впрок
+INFO 2026-03-10 20:32:55 userbot 1 125380666166144 💬 Incoming text from 5508223934: Или на 90к худо-бедно хватает?
+INFO 2026-03-10 20:33:21 userbot 1 125380666166144 💬 Incoming text from 952746910: Кто переделывал на левый руль булку? Реально это в
+INFO 2026-03-10 20:34:00 userbot 1 125380666166144 💬 Incoming text from 5508223934: Это тебя надо в армянский делика-клуб, там все пер
+INFO 2026-03-10 20:41:52 userbot 1 125380666166144 💬 Incoming text from 1034561144: Такие вещи думаю надо брать что то по лучше🤔
+INFO 2026-03-10 20:56:14 userbot 1 125380666166144 📎 Downloaded document file: Колупаев.pdf (132457 bytes)
+INFO 2026-03-10 20:56:14 userbot 1 125380666166144 💬 Incoming document from 5222228178: Колупаев Владислав Витальевич 7500, новый клиент
+INFO 2026-03-10 20:57:00 userbot 1 125380666166144 💬 Incoming text from 5508223934: Например.. gmb теперь тоже как дешман
+INFO 2026-03-10 20:57:07 userbot 1 125380666166144 💬 Incoming text from 5508223934: Аисин стоит 11
+INFO 2026-03-10 21:04:56 userbot 1 125380666166144 💬 Incoming text from 442607576: Да, знаю таких
+INFO 2026-03-10 21:05:39 userbot 1 125380666166144 💬 Incoming text from 442607576: Надо купить Спейс Гир будет для переделки, а так ж
+INFO 2026-03-10 21:06:13 userbot 1 125380666166144 💬 Incoming text from 7828063650: Паша, тебе это зачем? Я наоборот правый руль искал
+INFO 2026-03-10 21:07:23 userbot 1 125380666166144 💬 Incoming text from 7828063650: И до хуя попутных запчастей. Паша просто не предст
+INFO 2026-03-10 21:07:47 userbot 1 125380666166144 💬 Incoming text from 442607576: Вопрос желания и запроса
+INFO 2026-03-10 21:08:07 userbot 1 125380666166144 💬 Incoming text from 442607576: Как проект ради удовольствия , почему бы и нет.
+Но
+INFO 2026-03-10 21:08:21 userbot 1 125380666166144 💬 Incoming text from 442607576: Засовывать делику в Спейс Гир это плохая идея
+INFO 2026-03-10 21:08:40 userbot 1 125380666166144 💬 Incoming text from 442607576: А вот наоборот ещё можно рассмотреть
+INFO 2026-03-10 21:09:08 userbot 1 125380666166144 💬 Incoming text from 7828063650: В Питере человек переделывал. Одна из проблем была
+INFO 2026-03-10 21:09:40 userbot 1 125380666166144 💬 Incoming text from 442607576: Оставляешь так же слева, но подрезаешь ее.
+INFO 2026-03-10 21:10:01 userbot 1 125380666166144 💬 Incoming text from 7828063650: Кирилл дело не в доках.
+INFO 2026-03-10 21:10:04 userbot 1 125380666166144 💬 Incoming text from 442607576: Проблемы с климатом, панелью рейкой
+INFO 2026-03-10 21:10:41 userbot 1 125380666166144 💬 Incoming text from 7828063650: Ну не знаю. Искали долго рулевую колонку под перед
+INFO 2026-03-10 21:10:41 userbot 1 125380666166144 💬 Incoming text from 442607576: Ну кому как. Если у тебя в доках написано пруль а 
+INFO 2026-03-10 21:11:49 userbot 1 125380666166144 💬 Incoming text from 7828063650: Да там дофига проблем. Не понимаю такую переделку.
+INFO 2026-03-10 21:12:21 userbot 1 125380666166144 💬 Incoming text from 442607576: Кто то не понимает, кому вообще такие древние маши
+INFO 2026-03-10 21:14:54 userbot 1 125380666166144 💬 Incoming text from 7828063650: Кирпичек у меня был с левым рулём и МКПП. Жена ска
+INFO 2026-03-10 21:15:45 userbot 1 125380666166144 💬 Incoming text from 442607576: Ну так можно левый и автомат и 3 литра ) и супер с
+INFO 2026-03-10 21:15:55 userbot 1 125380666166144 💬 Incoming text from 442607576: А если ещё Лонг и Кристал руф
+INFO 2026-03-10 21:16:45 userbot 1 125380666166144 💬 Incoming text from 7828063650: Купил булку Делику. Для души и путешествий. Супруг
+INFO 2026-03-10 21:18:28 userbot 1 125380666166144 💬 Incoming text from 7828063650: В Крыму есть леворукая булка 2WD. АКПП кристал лай
+INFO 2026-03-10 21:20:51 userbot 1 125380666166144 ✨ Created new client 1979149268 with phone None
+INFO 2026-03-10 21:20:51 userbot 1 125380666166144 💬 Incoming text from 1979149268: Есть такая .На неё бы найти Акпп адекватное
+INFO 2026-03-10 21:20:51 userbot 1 125380666166144 💬 Incoming text from 5367866773: ❓ [More](tg://user?id=1979149268) (`1979149268`), 
+INFO 2026-03-10 21:22:28 userbot 1 125380666166144 💬 Incoming text from 442607576: А на ней случайно не от Галанта коробас ?
+INFO 2026-03-10 21:22:33 userbot 1 125380666166144 💬 Incoming text from 1979149268: Нееее
+INFO 2026-03-10 21:22:43 userbot 1 125380666166144 💬 Incoming text from 7828063650: В смысле адекватное? Там заводское. Есть такая ком
+INFO 2026-03-10 21:23:03 userbot 1 125380666166144 💬 Incoming text from 442607576: Тогда можно долго искать
+INFO 2026-03-10 21:23:13 userbot 1 125380666166144 💬 Incoming text from 1979149268: Скажу больше я её владелец
+INFO 2026-03-10 21:24:23 userbot 1 125380666166144 💬 Incoming text from 1979149268: Печку заднюю не найти
+INFO 2026-03-10 21:25:15 userbot 1 125380666166144 💬 Incoming text from 1979149268: Была в Архангельске продавалась но на ручке
+INFO 2026-03-10 21:25:33 userbot 1 125380666166144 💬 Incoming text from 7828063650: Ну да общались с тобой. Был крайне удивлён что ест
+INFO 2026-03-10 21:26:02 userbot 1 125380666166144 💬 Incoming text from 1979149268: Да верно .Заочно мы с Вами знакомы
+INFO 2026-03-10 21:26:45 userbot 1 125380666166144 💬 Incoming text from 1979149268: 95 года машина по электрике все работает
+INFO 2026-03-10 21:28:01 userbot 1 125380666166144 💬 Incoming text from 7828063650: Ни сколько не удивлён. Если косые ручки никуда не 
+INFO 2026-03-10 21:29:25 userbot 1 125380666166144 🖼️ Downloaded image: 215955 bytes
+INFO 2026-03-10 21:29:25 userbot 1 125380666166144 💬 Incoming image from 1979149268: photo.jpg
+INFO 2026-03-10 21:40:19 userbot 1 125380666166144 💬 Incoming text from 952746910: Каеф. Полный?
+INFO 2026-03-10 21:40:41 userbot 1 125380666166144 💬 Incoming text from 1979149268: 2wd
+INFO 2026-03-10 21:44:29 userbot 1 125380666166144 💬 Incoming text from 7828063650: Паша, вот это супер машина. Но не для тебя. Там 2W
+INFO 2026-03-10 21:56:19 userbot 1 125380666166144 ✨ Created new client 5613973448 with phone None
+INFO 2026-03-10 21:56:19 userbot 1 125380666166144 💬 Incoming text from 5613973448: Покупаешь спейс Гир, ищешь спейс с правым, строишь
+INFO 2026-03-10 21:57:01 userbot 1 125380666166144 💬 Incoming text from 5613973448: Сергей, а рычаг я переделал, все отлично😁😁
+INFO 2026-03-10 22:05:10 userbot 1 125380666166144 🖼️ Downloaded image: 329921 bytes
+INFO 2026-03-10 22:05:10 userbot 1 125380666166144 🖼️ Downloaded image: 362018 bytes
+INFO 2026-03-10 22:05:10 userbot 1 125380666166144 💬 Incoming image from 5613973448: photo.jpg
+INFO 2026-03-10 22:05:10 userbot 1 125380666166144 🖼️ Downloaded image: 286514 bytes
+INFO 2026-03-10 22:05:10 userbot 1 125380666166144 💬 Incoming image from 5613973448: photo.jpg
+INFO 2026-03-10 22:05:10 userbot 1 125380666166144 💬 Incoming image from 5613973448: photo.jpg
+INFO 2026-03-10 22:05:30 userbot 1 125380666166144 💬 Incoming text from 5613973448: Результат.
+INFO 2026-03-10 22:32:32 userbot 1 125380666166144 💬 Incoming text from 1034561144: Знаю человека переделывал, геморрой, даже с рычаго
+INFO 2026-03-10 22:36:59 userbot 1 125380666166144 💬 Incoming text from 952746910: Так это в спейс гир делику воткнули? Или делика бы
+INFO 2026-03-10 22:38:22 userbot 1 125380666166144 💬 Incoming text from 5613973448: Это два спейс Гира, один левый 2.0 МКПП, второй 3.
+INFO 2026-03-10 22:42:14 userbot 1 125380666166144 💬 Incoming text from 5613973448: Нет там ни чего особо геморного, берешь и переделы
+INFO 2026-03-10 22:43:53 userbot 1 125380666166144 💬 Incoming text from 5613973448: Геморрой это найти 3.0 спейс, 5 дверей и правый, а
+INFO 2026-03-10 22:50:06 userbot 1 125380666166144 💬 Incoming text from 1034561144: Панель, печка, кпп, руль, рейка, педальный узел. В
+INFO 2026-03-10 22:50:52 userbot 1 125380666166144 💬 Incoming text from 5613973448: Да ладно.
+INFO 2026-03-10 22:57:53 userbot 1 125380666166144 💬 Incoming text from 5473783089: Не было спейсов 3.0.
+INFO 2026-03-10 22:58:12 userbot 1 125380666166144 🖼️ Downloaded image: 98149 bytes
+INFO 2026-03-10 22:58:12 userbot 1 125380666166144 💬 Incoming image from 1034561144: Есть конечно лёгкие варианты👌😅
+INFO 2026-03-10 22:58:23 userbot 1 125380666166144 💬 Incoming text from 7828063650: Объясни что значит Спейс Гир левый 2 литра и Спейс
+INFO 2026-03-10 22:58:31 userbot 1 125380666166144 💬 Incoming text from 5473783089: Попадаются с 2мя сдвижными делики.
+INFO 2026-03-10 23:01:34 userbot 1 125380666166144 💬 Incoming text from 5613973448: Виноват, левый был 4D56, 2,5
+INFO 2026-03-10 23:01:40 userbot 1 125380666166144 💬 Incoming text from 442607576: Зачем козе баян. В правый 3.0 без двух дверей. Зас
+INFO 2026-03-10 23:02:07 userbot 1 125380666166144 💬 Incoming text from 442607576: Либо как то мудрить со старексом, там есть 2.5 авт
+INFO 2026-03-10 23:03:40 userbot 1 125380666166144 💬 Incoming text from 7828063650: Все наши машины Спейс Гир. Но надо понимать. Есть 
+INFO 2026-03-10 23:03:54 userbot 1 125380666166144 💬 Incoming text from 5508223934: Почему бы просто не ездить на пруле и не заморачив
+INFO 2026-03-10 23:04:09 userbot 1 125380666166144 💬 Incoming text from 5508223934: Кому обзора не хватает- на делику можно внедрить п
+INFO 2026-03-10 23:04:56 userbot 1 125380666166144 💬 Incoming text from 7828063650: Ну не хотят люди жить просто. Надо приключений на 
+INFO 2026-03-10 23:10:31 userbot 1 125380666166144 💬 Incoming text from 442607576: Я хочу найти старого вранглера и засунуть туда Пад
+INFO 2026-03-10 23:10:47 userbot 1 125380666166144 💬 Incoming text from 442607576: Так что у всех свои хобби и конструкторы )
+INFO 2026-03-10 23:11:24 userbot 1 125380666166144 💬 Incoming text from 442607576: Мальчики взрослеют и конструктор детский ставится 
+INFO 2026-03-10 23:13:51 userbot 1 125380666166144 💬 Incoming text from 427579214: Сейчас вроде нами переделку руля уже не узаконивае
+INFO 2026-03-10 23:14:20 userbot 1 125380666166144 💬 Incoming text from 442607576: Охотникам от Джина привет ))
+INFO 2026-03-10 23:14:35 userbot 1 125380666166144 💬 Incoming text from 427579214: Привет Кирилл 🤘
+INFO 2026-03-10 23:14:49 userbot 1 125380666166144 💬 Incoming text from 427579214: И Жене тоже
+INFO 2026-03-10 23:15:07 userbot 1 125380666166144 💬 Incoming text from 442607576: Джин отец )
+INFO 2026-03-10 23:15:17 userbot 1 125380666166144 💬 Incoming text from 427579214: Я в курсах 😂
+INFO 2026-03-10 23:15:36 userbot 1 125380666166144 💬 Incoming text from 427579214: Детки выросли 😉
+INFO 2026-03-10 23:15:55 userbot 1 125380666166144 💬 Incoming text from 442607576: Было время - было весело и интересно ))
+INFO 2026-03-10 23:17:05 userbot 1 125380666166144 💬 Incoming text from 427579214: Ничего потихоньку возвращаемся в старые времена, с
+INFO 2026-03-10 23:17:32 userbot 1 125380666166144 💬 Incoming text from 427579214: Где-то у меня пейджер вроде лежал...
+INFO 2026-03-10 23:18:04 userbot 1 125380666166144 💬 Incoming text from 5473783089: Нокию 3310 надо доставать
+INFO 2026-03-10 23:18:19 userbot 1 125380666166144 💬 Incoming text from 427579214: А смысл? Связь то глушат
+INFO 2026-03-10 23:18:25 userbot 1 125380666166144 💬 Incoming text from 5508223934: Переписки в журнале Мурзилка, ага
+INFO 2026-03-10 23:18:48 userbot 1 125380666166144 💬 Incoming text from 427579214: Да не. Форум как раньше, с работы или по вечерам и
+INFO 2026-03-10 23:18:53 userbot 1 125380666166144 💬 Incoming text from 5473783089: Эти ловят лучше в разы. Смс писать
+INFO 2026-03-10 23:19:21 userbot 1 125380666166144 💬 Incoming text from 427579214: Глушат gsm полностью.
+INFO 2026-03-10 23:19:24 userbot 1 125380666166144 💬 Incoming text from 442607576: Голуби, голуби )
+INFO 2026-03-10 23:19:28 userbot 1 125380666166144 💬 Incoming text from 5473783089: А так почтовые голуби
+INFO 2026-03-10 23:19:39 userbot 1 125380666166144 💬 Incoming text from 5473783089: Ездовые собаки, академики
+INFO 2026-03-10 23:19:42 userbot 1 125380666166144 💬 Incoming text from 5473783089: Коты
+INFO 2026-03-10 23:19:45 userbot 1 125380666166144 💬 Incoming text from 427579214: Я сегодня заманался в Москве в разных района народ
+INFO 2026-03-10 23:20:11 userbot 1 125380666166144 💬 Incoming text from 442607576: За ттк провел день, все окей было
+INFO 2026-03-10 23:21:01 userbot 1 125380666166144 💬 Incoming text from 5473783089: Да оно не понятно как. У нас в Тульской, у кого ин
+INFO 2026-03-10 23:21:06 userbot 1 125380666166144 💬 Incoming text from 427579214: Семёновская, Электрозаводская, Бауманская, Курская
+INFO 2026-03-10 23:22:03 userbot 1 125380666166144 💬 Incoming text from 442607576: Специальные отключения. Никаких сбоев точно нет
+INFO 2026-03-10 23:22:20 userbot 1 125380666166144 💬 Incoming text from 427579214: Ага тестируют белые списки
+INFO 2026-03-10 23:22:35 userbot 1 125380666166144 💬 Incoming text from 5473783089: Проводной инет рулит))))
+INFO 2026-03-10 23:22:55 userbot 1 125380666166144 💬 Incoming text from 5508223934: Ну это пока((
+INFO 2026-03-10 23:23:11 userbot 1 125380666166144 💬 Incoming text from 1039336017: Первомайская, Реутов, Новогиреево, Перово, Выхино 
+INFO 2026-03-10 23:23:21 userbot 1 125380666166144 💬 Incoming text from 5473783089: Ну без него и магазам хана придёт.
+INFO 2026-03-10 23:24:14 userbot 1 125380666166144 ✨ Created new client 1030012037 with phone None
+INFO 2026-03-10 23:24:14 userbot 1 125380666166144 💬 Incoming text from 1030012037: Подскажите на счет кузова, я правильно понимаю, чт
+INFO 2026-03-10 23:24:37 userbot 1 125380666166144 💬 Incoming text from 427579214: Ну да, никто не спорит
+INFO 2026-03-10 23:25:10 userbot 1 125380666166144 💬 Incoming text from 5473783089: Вроде высота крыши нигде не регламентируется
+INFO 2026-03-10 23:25:42 userbot 1 125380666166144 💬 Incoming text from 427579214: Лонг низких небыло
+INFO 2026-03-10 23:26:26 userbot 1 125380666166144 💬 Incoming text from 427579214: Низкие только короткие с диваном, тоесть 8мест
+INFO 2026-03-10 23:27:36 userbot 1 125380666166144 💬 Incoming text from 442607576: На то какой кузов всем все равно, не встречал чтоб
+INFO 2026-03-10 23:27:48 userbot 1 125380666166144 💬 Incoming text from 5508223934: Белые списки будут долго и нудно отстраивать что б
+INFO 2026-03-10 23:27:49 userbot 1 125380666166144 💬 Incoming text from 1039336017: L400 низкая, короткая, 7 мест, 6+1
+INFO 2026-03-10 23:28:26 userbot 1 125380666166144 💬 Incoming text from 427579214: Недопривод
+INFO 2026-03-10 23:28:54 userbot 1 125380666166144 💬 Incoming text from 427579214: Если под нее брать с Япии будет 8 мест. Я про это
+INFO 2026-03-10 23:29:06 userbot 1 125380666166144 💬 Incoming text from 5473783089: Так магазы и нужны. Те же сетевые.
+INFO 2026-03-10 23:29:45 userbot 1 125380666166144 💬 Incoming text from 427579214: Не забывайте что за маслом жизни нет и оптика дале
+INFO 2026-03-10 23:30:36 userbot 1 125380666166144 💬 Incoming text from 5473783089: Жизнь есть везде. И сетевики тоже. Если они вой по
+INFO 2026-03-10 23:32:06 userbot 1 125380666166144 💬 Incoming text from 427579214: Все сети всегда выживали за счёт прибыльных проход
+INFO 2026-03-10 23:33:05 userbot 1 125380666166144 💬 Incoming text from 427579214: Да в Москве оптика и всё +- будет работать
+INFO 2026-03-10 23:33:05 userbot 1 125380666166144 💬 Incoming text from 5473783089: Если у них отобрать всю страну им хана.
+INFO 2026-03-10 23:33:25 userbot 1 125380666166144 💬 Incoming text from 427579214: Сельпо! Ура
+INFO 2026-03-10 23:33:40 userbot 1 125380666166144 💬 Incoming text from 5473783089: Если есть инет))))
+INFO 2026-03-10 23:34:22 userbot 1 125380666166144 💬 Incoming text from 427579214: Без терминалов оплаты. Может хоть тогда народ начн
+INFO 2026-03-10 23:34:25 userbot 1 125380666166144 💬 Incoming text from 5473783089: У нас сетевые на каждом углу. . Зря что ли?
+INFO 2026-03-10 23:34:45 userbot 1 125380666166144 💬 Incoming text from 5473783089: В сельпо те же терминалы
+INFO 2026-03-10 23:35:07 userbot 1 125380666166144 💬 Incoming text from 427579214: Ага, и роутер с сим картой за стенкой
+INFO 2026-03-10 23:35:55 userbot 1 125380666166144 💬 Incoming text from 5473783089: К чему они подключены хз. Но те же самые терминалы
+INFO 2026-03-10 23:36:26 userbot 1 125380666166144 💬 Incoming text from 427579214: Я в деревне в 12км от МКАД, у меня дома оптика, а 
+INFO 2026-03-10 23:37:19 userbot 1 125380666166144 💬 Incoming text from 5473783089: У нас Дикси это вообще клоунада, как летом инет пр
+INFO 2026-03-10 23:44:19 userbot 1 125380666166144 💬 Incoming text from 5613973448: Сьездейте пару раз из Питера в Мурманскую на право
+INFO 2026-03-10 23:45:36 userbot 1 125380666166144 💬 Incoming text from 5508223934: Я на праворульных машинах намного больше 100т нака
+INFO 2026-03-10 23:45:55 userbot 1 125380666166144 💬 Incoming text from 427579214: Да ладно я больше 500к на полке проехал от Владиво
+INFO 2026-03-10 23:47:05 userbot 1 125380666166144 💬 Incoming text from 427579214: Если тачка не едет правый или левый руль, не важен
+INFO 2026-03-10 23:47:46 userbot 1 125380666166144 💬 Incoming text from 5367866773: ⛔ [jkenlrnilefrjv](tg://user?id=8366714232), тебя 
+INFO 2026-03-10 23:47:59 userbot 1 125380666166144 💬 Incoming text from 5473783089: А пассажиры на дорогу. )))))
+INFO 2026-03-10 23:48:12 userbot 1 125380666166144 💬 Incoming text from 5508223934: Кому прям очень хочется в дупу дышать впередиидуще
+INFO 2026-03-10 23:48:33 userbot 1 125380666166144 💬 Incoming text from 5508223934: Современные камеры и в темноте и тумане прекрасно 
+INFO 2026-03-10 23:48:45 userbot 1 125380666166144 💬 Incoming text from 427579214: Поэтому нужен экспресс с 2мя боковыми дверьми!
+INFO 2026-03-10 23:49:02 userbot 1 125380666166144 💬 Incoming text from 5473783089: Которых ооочень мало
+INFO 2026-03-10 23:49:07 userbot 1 125380666166144 💬 Incoming text from 5508223934: То их проблемы. Пассажиры со мной иногда, а вот я 
+INFO 2026-03-10 23:49:29 userbot 1 125380666166144 💬 Incoming text from 5508223934: Пусть в заднюю дверь десантируются 😂
+INFO 2026-03-10 23:49:35 userbot 1 125380666166144 💬 Incoming text from 5473783089: То есть семьянин, дети и тд... Это не ваши проблем
+INFO 2026-03-10 23:50:01 userbot 1 125380666166144 💬 Incoming text from 5473783089: Главное чтоб не через лобовое
+INFO 2026-03-10 23:50:12 userbot 1 125380666166144 💬 Incoming text from 5508223934: Теперь нет 🤣
+Ну их всех конем 😊
+INFO 2026-03-10 23:50:40 userbot 1 125380666166144 💬 Incoming text from 5473783089: Все вышли))))
+INFO 2026-03-10 23:51:10 userbot 1 125380666166144 💬 Incoming text from 5508223934: Распрощался и слава Богу)
+INFO 2026-03-10 23:51:25 userbot 1 125380666166144 💬 Incoming text from 5473783089: Ничего хорошего.....
+INFO 2026-03-10 23:52:07 userbot 1 125380666166144 💬 Incoming text from 5508223934: Теперь у меня все хорошо 😊
+INFO 2026-03-10 23:52:26 userbot 1 125380666166144 💬 Incoming text from 5508223934: Никому не навязываю, говорю именно за себя
+INFO 2026-03-10 23:52:33 userbot 1 125380666166144 💬 Incoming text from 5473783089: А у них?
+INFO 2026-03-10 23:52:50 userbot 1 125380666166144 💬 Incoming text from 5508223934: Судя по всему тоже 
+Все довольны
+INFO 2026-03-10 23:53:07 userbot 1 125380666166144 💬 Incoming text from 5473783089: Ну и хорошо
+INFO 2026-03-11 03:00:36 userbot 1 125380666166144 ✨ Created new client 7016938836 with phone None
+INFO 2026-03-11 03:00:36 userbot 1 125380666166144 🖼️ Downloaded image: 73880 bytes
+INFO 2026-03-11 03:00:36 userbot 1 125380666166144 💬 Incoming image from 7016938836: Всем привет, ставил кто? Лучше чем SAT будет?
+INFO 2026-03-11 03:31:56 userbot 1 125380666166144 💬 Incoming text from 6061137277: По поводу турбин, курочил я как то свой 4м40, турб
+INFO 2026-03-11 04:16:59 userbot 1 125380666166144 💬 Incoming text from 5248627247: EFI может запуститься без любого датчика в аварийн
+INFO 2026-03-11 04:26:18 userbot 1 125380666166144 💬 Incoming text from 292028909: Пол Камчатки ездит наверное на них, вроде не жалую
+INFO 2026-03-11 04:34:39 userbot 1 125380666166144 💬 Incoming text from 7016938836: Понял, спасибо
+INFO 2026-03-11 04:44:34 userbot 1 125380666166144 💬 Incoming text from 5590809786: Подскажите с p24 на p35 мост подойдет?
+INFO 2026-03-11 06:26:53 userbot 1 125380666166144 💬 Incoming text from 952746910: Мне просто полностью разобрали авто. Вот я и подум
+INFO 2026-03-11 06:35:33 userbot 1 125380666166144 💬 Incoming text from 8002726655: По любому леворульный донор нужен думаю, хотя бы п
+INFO 2026-03-11 06:36:53 userbot 1 125380666166144 💬 Incoming text from 952746910: Да, одно дверь, темболее на дорогу просто опасно д
+INFO 2026-03-11 08:52:13 userbot 1 125380666166144 💬 Incoming text from 1323933275: По креплениям подойдет, передаточное смотри
+INFO 2026-03-11 08:57:45 userbot 1 125380666166144 🖼️ Downloaded image: 45844 bytes
+INFO 2026-03-11 08:57:45 userbot 1 125380666166144 💬 Incoming image from 1153607880: Морозова Ольга Юрьевна - полный расчёт по договору
+INFO 2026-03-11 09:04:23 userbot 1 125380666166144 💬 Incoming text from 1153607880: Денис Викторович,здравствуйте! Так что со звонками
+INFO 2026-03-11 09:45:38 userbot 1 125380666166144 💬 Incoming text from 1035545758: Доброе утро
+INFO 2026-03-11 09:49:02 userbot 1 125380666166144 💬 Incoming text from 1153607880: У Анны начали звонки сохраняться на гугл диск,кста
+INFO 2026-03-11 10:10:55 userbot 1 125380666166144 💬 Incoming text from 5590809786: Передаточное как у меня, просто на разборки в смут
+INFO 2026-03-11 10:15:40 userbot 1 127255892933504 📝 Userbot initialized with StringSession
+INFO 2026-03-11 10:15:41 userbot 1 127255892933504 ✅ Userbot started and connected
+INFO 2026-03-11 10:15:41 userbot 1 127255892933504 👂 Userbot is now listening for events...
+INFO 2026-03-11 10:26:27 userbot 1 127255892933504 💬 Incoming text from 5527090994: Заявление Сверчковой Елизаветы Васильевны направле
+INFO 2026-03-11 10:26:38 userbot 1 127255892933504 💬 Incoming text from 5527090994: Заявление Сверчковой Елизаветы Васильевны направле
+INFO 2026-03-11 10:52:36 userbot 1 127255892933504 📎 Downloaded image file: image.jpg (154996 bytes)
+INFO 2026-03-11 10:52:36 userbot 1 127255892933504 💬 Incoming image from 547895126: Кузнецов Иван Анатольевич внес оплату
+INFO 2026-03-11 10:52:48 userbot 1 127255892933504 💬 Incoming text from 1413004484: Здравствуйте, отлично, приеду.
+INFO 2026-03-11 10:54:15 userbot 1 127255892933504 💬 Incoming text from 1413004484: Есть у меня такая)
+INFO 2026-03-11 12:37:58 userbot 1 133097402727296 📝 Userbot initialized with StringSession
+INFO 2026-03-11 12:38:00 userbot 1 133097402727296 ✅ Userbot started and connected
+INFO 2026-03-11 12:38:00 userbot 1 133097402727296 👂 Userbot is now listening for events...
+INFO 2026-03-11 12:38:50 userbot 1 133097402727296 📎 Downloaded document file: Курдюков Юрий Викторович.pdf (57751 bytes)
+INFO 2026-03-11 12:38:50 userbot 1 133097402727296 💬 Incoming document from 5222228178: Курдюков Юрий Викторович 65000 полный расчет по до
+INFO 2026-03-11 13:14:12 userbot 1 133097402727296 💬 Incoming text from 1401370881: Привет
+INFO 2026-03-11 13:14:15 userbot 1 133097402727296 💬 Incoming text from 1401370881: 19
+INFO 2026-03-11 13:14:19 userbot 1 133097402727296 💬 Incoming text from 748192400: Друзья, коллеги! 
+Ситуация интересная и не совсем 
+INFO 2026-03-11 13:25:06 userbot 1 133097402727296 💬 Incoming text from 1764912612: Ещё вариант закинь туда - новый за 170 😁🤝
+INFO 2026-03-11 13:25:22 userbot 1 133097402727296 💬 Incoming text from 1764912612: Я сейчас как раз случайно занялся всем тем , что в
+INFO 2026-03-11 13:25:25 userbot 1 133097402727296 💬 Incoming text from 748192400: Корейский или китайски?
+INFO 2026-03-11 13:25:47 userbot 1 133097402727296 💬 Incoming text from 748192400: И к чему пришли? Или в пути еще ?
+INFO 2026-03-11 13:25:55 userbot 1 133097402727296 💬 Incoming text from 1764912612: Но я купил турбину , Гур , цепку, форсунки , ремко
+INFO 2026-03-11 13:26:00 userbot 1 133097402727296 💬 Incoming text from 1764912612: Гбц на расточку
+INFO 2026-03-11 13:26:11 userbot 1 133097402727296 💬 Incoming text from 1764912612: Уже бюджет 70+ пошёл
+INFO 2026-03-11 13:26:15 userbot 1 133097402727296 💬 Incoming text from 748192400: В общем капиталка
+INFO 2026-03-11 13:26:20 userbot 1 133097402727296 💬 Incoming text from 1764912612: Не
+INFO 2026-03-11 13:26:36 userbot 1 133097402727296 💬 Incoming text from 1764912612: Капиталка это когда блок уезжает на расточку или г
+INFO 2026-03-11 13:26:46 userbot 1 133097402727296 💬 Incoming text from 1764912612: Ремонтные поршни и т.д
+INFO 2026-03-11 13:26:48 userbot 1 133097402727296 💬 Incoming text from 748192400: Понял
+INFO 2026-03-11 13:26:56 userbot 1 133097402727296 💬 Incoming text from 1764912612: А тут я просто освежаю его ))
+INFO 2026-03-11 13:27:04 userbot 1 133097402727296 💬 Incoming text from 5521924353: Плунжер в тнвд поменяй. И радуйся
+INFO 2026-03-11 13:27:16 userbot 1 133097402727296 💬 Incoming text from 748192400: Ну это при норм поршневой можно делать
+INFO 2026-03-11 13:27:23 userbot 1 133097402727296 💬 Incoming text from 1764912612: Ну тут от вашего времени и нужды на самом деле зав
+INFO 2026-03-11 13:27:41 userbot 1 133097402727296 💬 Incoming text from 748192400: А что с компрессией ? Нормально не заводится
+INFO 2026-03-11 13:27:43 userbot 1 133097402727296 💬 Incoming text from 1764912612: Капиталка делается как раз при изношенной цпг
+INFO 2026-03-11 13:28:16 userbot 1 133097402727296 💬 Incoming text from 1764912612: Снимайте гбц и делайте умозаключение
+INFO 2026-03-11 13:28:18 userbot 1 133097402727296 💬 Incoming text from 5521924353: И сальник
+INFO 2026-03-11 13:28:22 userbot 1 133097402727296 💬 Incoming text from 748192400: Это то понятно
+INFO 2026-03-11 13:28:36 userbot 1 133097402727296 💬 Incoming text from 1764912612: Как давно обслуживали моторчик-то?)
+INFO 2026-03-11 13:29:39 userbot 1 133097402727296 💬 Incoming text from 748192400: Купил месяц назад, бывший хозяин только лампочки м
+INFO 2026-03-11 13:29:44 userbot 1 133097402727296 💬 Incoming text from 1764912612: Снимите гбц - станет ясно по компрессии . Пока буд
+INFO 2026-03-11 13:30:24 userbot 1 133097402727296 💬 Incoming text from 1764912612: Там и зазоры замерите тепловые , и состояние цпг в
+INFO 2026-03-11 13:30:31 userbot 1 133097402727296 💬 Incoming text from 748192400: Про тнвд тоже думаю в порядке. Компрессия смущает
+INFO 2026-03-11 13:31:12 userbot 1 133097402727296 💬 Incoming text from 748192400: Как вариант
+INFO 2026-03-11 13:31:19 userbot 1 133097402727296 💬 Incoming text from 1764912612: Снимать реально и без сервисменов
+INFO 2026-03-11 13:32:01 userbot 1 133097402727296 💬 Incoming text from 1764912612: Я тоже до этого не на делике ездил , по букварю ес
+INFO 2026-03-11 13:32:22 userbot 1 133097402727296 💬 Incoming text from 1764912612: Букварь в закрепах есть , если нужен совет пишите 
+INFO 2026-03-11 13:32:46 userbot 1 133097402727296 💬 Incoming text from 748192400: Ну этот путь я оставляю на крайний случай
+INFO 2026-03-11 13:33:04 userbot 1 133097402727296 💬 Incoming text from 748192400: У меня есть, печатная, с машиной досталась
+INFO 2026-03-11 13:34:43 userbot 1 133097402727296 💬 Incoming text from 1764912612: 😁 нет желания так заморачиваться
+INFO 2026-03-11 13:35:05 userbot 1 133097402727296 💬 Incoming text from 1764912612: Ну тогда сервисменам отдать и хз че они там вам на
+INFO 2026-03-11 13:35:41 userbot 1 133097402727296 💬 Incoming text from 748192400: Хотелось услышать мнение и опыт кто ставил контрак
+INFO 2026-03-11 13:36:01 userbot 1 133097402727296 💬 Incoming text from 748192400: В поиске хорошего мастера
+INFO 2026-03-11 13:37:38 userbot 1 133097402727296 💬 Incoming text from 1764912612: Чтобы быть уверенным в контракте - с ним на коленк
+INFO 2026-03-11 13:38:13 userbot 1 133097402727296 💬 Incoming text from 1764912612: То есть заменить прокладки - на стенд тнвд и форсы
+INFO 2026-03-11 13:38:49 userbot 1 133097402727296 💬 Incoming text from 1764912612: Ну или кинуть монетку вверх и ждать чудо , что при
+INFO 2026-03-11 13:39:19 userbot 1 133097402727296 💬 Incoming text from 748192400: Ну скажу так, в лотерею не выигрывал 😂
+INFO 2026-03-11 13:39:57 userbot 1 133097402727296 💬 Incoming text from 1764912612: 😁😁😁🤝🤝🤝 я такая же херня . Посему и советую - сними
+INFO 2026-03-11 13:40:12 userbot 1 133097402727296 💬 Incoming text from 1764912612: Есть ли смысл капиталить ваш . Может смысла и нету
+INFO 2026-03-11 13:40:14 userbot 1 133097402727296 💬 Incoming text from 748192400: Я понял, что реанимировать и мой можно а в Иделе с
+INFO 2026-03-11 13:41:07 userbot 1 133097402727296 💬 Incoming text from 748192400: Все может быть
+WARNING 2026-03-11 14:06:47 userbot 1 133097402727296 Could not get phone for user 7577640627: Could not find the input entity for PeerUser(user_id=7577640627) (PeerUser). Please read https://docs.telethon.dev/en/stable/concepts/entities.html to find out more details.
+INFO 2026-03-11 14:06:47 userbot 1 133097402727296 ✨ Created new client 7577640627 with phone None
+INFO 2026-03-11 14:06:47 userbot 1 133097402727296 💬 Incoming text from 7577640627: Выиграл 9.000$ в официальном казике ТГ:
+INFO 2026-03-11 14:06:51 userbot 1 133097402727296 💬 Incoming text from 5367866773: ⛔ [POTS HOPPOTS](tg://user?id=7577640627), тебя за
+INFO 2026-03-11 14:07:42 userbot 1 133097402727296 🖼️ Downloaded image: 35723 bytes
+INFO 2026-03-11 14:07:42 userbot 1 133097402727296 💬 Incoming image from 547895126: Аринушкина Марина Ивановна. Оплату произвела дочь 
+INFO 2026-03-11 14:27:13 userbot 1 133097402727296 🖼️ Downloaded image: 84963 bytes
+INFO 2026-03-11 14:27:13 userbot 1 133097402727296 💬 Incoming image from 650146457: Всем привет
+Кто нибудь сталкивался с данным блоком
+INFO 2026-03-11 14:56:22 userbot 1 133097402727296 💬 Incoming text from 442607576: У меня такой. Прикольно, ретро
+INFO 2026-03-11 14:56:54 userbot 1 133097402727296 💬 Incoming text from 650146457: Не глючит сенсор?
+INFO 2026-03-11 14:57:01 userbot 1 133097402727296 💬 Incoming text from 442607576: Неа, идеально
+INFO 2026-03-11 14:57:26 userbot 1 133097402727296 💬 Incoming text from 650146457: Ну хорошо)
+Просто впервые вижу такой
+Интересно ста
+INFO 2026-03-11 14:58:42 userbot 1 133097402727296 💬 Incoming text from 442607576: Редкость большая, и много места на панели занимает
+INFO 2026-03-11 15:02:33 userbot 1 133097402727296 💬 Incoming text from 650146457: А если кренометр убрать и вместо него поставить ан
+INFO 2026-03-11 15:03:34 userbot 1 133097402727296 💬 Incoming text from 442607576: Вариант. Но не хочу убирать голову. 
+Вешаю туда те
+INFO 2026-03-11 15:03:50 userbot 1 133097402727296 💬 Incoming text from 442607576: И там уже навигатор или фильмы по блютуз
+INFO 2026-03-11 15:05:17 userbot 1 133097402727296 💬 Incoming text from 442607576: Планшет как то попрактичнее чем 2дин магнитола. И 
+INFO 2026-03-11 15:07:35 userbot 1 133097402727296 💬 Incoming text from 650146457: Я тут объявление увидел по Лонг делике
+Не знал что
+INFO 2026-03-11 15:08:03 userbot 1 133097402727296 💬 Incoming text from 442607576: Этого я не видел
+INFO 2026-03-11 15:08:26 userbot 1 133097402727296 💬 Incoming text from 7828063650: То же первый раз слышу про такое.
+INFO 2026-03-11 15:09:11 userbot 1 133097402727296 💬 Incoming text from 7828063650: И в каталогах нет такого. Что то сами делали.
+INFO 2026-03-11 15:09:45 userbot 1 133097402727296 💬 Incoming text from 650146457: https://auto.drom.ru/chita/mitsubishi/delica/45601
+INFO 2026-03-11 15:09:51 userbot 1 133097402727296 💬 Incoming text from 650146457: Надеюсь не выгонят за ссылку
+INFO 2026-03-11 15:09:58 userbot 1 133097402727296 💬 Incoming text from 7828063650: Может быть даже Японский тюнинг. Но не с завода.
+INFO 2026-03-11 15:11:02 userbot 1 133097402727296 💬 Incoming text from 7828063650: Подголовники не от Делики.
+INFO 2026-03-11 15:30:15 userbot 1 133097402727296 💬 Incoming text from 442607576: Точно не родные.
+Руль кайф на ней, симпотно смотри
+INFO 2026-03-11 15:38:50 userbot 1 133097402727296 ✨ Created new client 2109733878 with phone +79020941828
+INFO 2026-03-11 15:38:50 userbot 1 133097402727296 💬 Incoming text from 2109733878: Привет
+INFO 2026-03-11 15:51:49 userbot 1 133097402727296 💬 Incoming text from 139890634: Ден, привет
+INFO 2026-03-11 15:52:48 userbot 1 133097402727296 💬 Incoming text from 139890634: ты упер наш экземпляр по ИП и оставил свой по ООО 
+INFO 2026-03-11 16:05:36 userbot 1 133097402727296 💬 Incoming text from 139890634: я могу отправить по нашей логистике с водило, он з
+INFO 2026-03-11 16:05:54 userbot 1 133097402727296 💬 Incoming text from 650146457: Вроде от 2 паджерика говорят

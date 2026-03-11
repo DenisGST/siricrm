@@ -131,7 +131,7 @@ class Message(TimeStampedModel):
         default='incoming',
         verbose_name='Направление'
     )
-    
+    telegram_date = models.DateTimeField(null=True, blank=True, db_index=True)
     is_read = models.BooleanField(default=False, verbose_name='Прочитано')
     read_at = models.DateTimeField(null=True, blank=True, verbose_name='Время прочтения')
     is_sent = models.BooleanField(default=False)  # отправлено (достигло получателя)
