@@ -362,6 +362,14 @@ async def start_userbot():
             logger.exception("Error in userbot new message handler: %s", e)
 
     logger.info("👂 Userbot is now listening for events...")
+
+    async def heartbeat_loop():
+        from django.core.cache import cache
+        while True:
+            cache.set("userbot_heartbeat", "ok", timeout=60)
+            await asyncio.sleep(30)
+
+    asyncio.ensure_future(heartbeat_loop())
     
     # Бесконечный цикл для поддержания подключения
     while True:
