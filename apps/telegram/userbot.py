@@ -364,13 +364,14 @@ async def start_userbot():
     logger.info("👂 Userbot is now listening for events...")
 
     async def heartbeat_loop():
+        from asgiref.sync import sync_to_async
         from django.core.cache import cache
+        set_cache = sync_to_async(cache.set)
         while True:
-            cache.set("userbot_heartbeat", "ok", timeout=60)
+            await set_cache("userbot_heartbeat", "ok", timeout=60)
             await asyncio.sleep(30)
 
     asyncio.create_task(heartbeat_loop())
-
     
     # Бесконечный цикл для поддержания подключения
     while True:
