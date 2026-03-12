@@ -369,7 +369,8 @@ async def start_userbot():
             cache.set("userbot_heartbeat", "ok", timeout=60)
             await asyncio.sleep(30)
 
-    asyncio.ensure_future(heartbeat_loop())
+    asyncio.create_task(heartbeat_loop())
+
     
     # Бесконечный цикл для поддержания подключения
     while True:
