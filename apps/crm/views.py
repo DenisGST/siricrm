@@ -377,3 +377,19 @@ def task_status(request, task_id):
         "current": meta.get("current", 0),
         "total": meta.get("total", 0),
     })
+
+@login_required
+def dashboard(request):
+    from apps.crm.bot_status import get_bot_status
+
+    telegram_user = getattr(request.user, "telegram_user", None)
+
+    return render(
+        request,
+        "dashboard.html",
+        {
+            "telegram_user": telegram_user,
+            "telegram_bot_username": getattr(settings, "TELEGRAM_BOT_USERNAME", ""),
+            "bot_status": get_bot_status(),
+        },
+    )
