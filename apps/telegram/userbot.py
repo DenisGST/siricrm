@@ -69,7 +69,6 @@ async def import_message_history(telegram_id: int, limit: int = 100):
 
             direction = "outgoing" if msg.out else "incoming"
 
-            # Создаём и сразу обновляем telegram_date через update()
             obj = await sync_to_async(Message.objects.create)(
                 client=db_client,
                 employee=None,
@@ -79,7 +78,7 @@ async def import_message_history(telegram_id: int, limit: int = 100):
                 telegram_message_id=msg.id,
                 is_sent=True,
                 is_read=True if direction == "incoming" else False,
-                telegram_date=msg.date,  # ✅ реальное время из Telegram
+                telegram_date=msg.date,
             )
 
             imported_count += 1
@@ -88,6 +87,39 @@ async def import_message_history(telegram_id: int, limit: int = 100):
 
     except Exception as e:
         logger.exception(f"Error importing history for {telegram_id}: {e}")
+
+
+async def heartbeat_loop():
+    """Каждые 30 секунд пишет heartbeat в Redis."""
+    from django.core.cache import cache
+    logger.info("❤️ Heartbeat loop started")
+    while True:
+        try:
+            await sync_to_async(cache.set)("userbot_heartbeat", "ok", timeout=60)
+            logger.debug("❤️ Heartbeat written to cache")
+        except Exception as e:
+            logger.warning(f"Heartbeat cache error: {e}")
+        await asyncio.sleep(30)
+
+
+async def keep_connected():
+    """Поддерживает подключение к Telegram."""
+    while True:
+        try:
+            await client.run_until_disconnected()
+            break
+        except (ConnectionError, OSError) as e:
+            logger.warning(f"⚠️ Connection lost: {e}. Reconnecting in 5s...")
+            await asyncio.sleep(5)
+            try:
+                if not client.is_connected():
+                    await client.connect()
+            except Exception as conn_err:
+                logger.error(f"Failed to reconnect: {conn_err}")
+                await asyncio.sleep(30)
+        except Exception as e:
+            logger.exception(f"❌ Critical error in event loop: {e}")
+            break
 
 
 async def start_userbot():
@@ -194,14 +226,13 @@ async def start_userbot():
 
         except Exception as e:
             from django.db import connection
-            connection.close()  # Сбросим соединение, Django переподключится
+            connection.close()
             logger.exception("Error handling read receipt: %s", e)
 
     # ========= Обработчик новых входящих сообщений =========
     @client.on(events.NewMessage(incoming=True))
     async def handle_new_message(event):
         """Обрабатываем только личные сообщения от пользователей."""
-        #logger.info(f"🔔 RAW EVENT RECEIVED: {event}")
         try:
             sender = await event.get_sender()
             if not isinstance(sender, User):
@@ -209,13 +240,11 @@ async def start_userbot():
 
             telegram_id = sender.id
 
-            # Пытаемся найти клиента в БД
             db_client = await sync_to_async(
                 Client.objects.filter(telegram_id=telegram_id).first
             )()
 
             if not db_client:
-                # Создаём клиента (или берём существующего)
                 phone = await get_user_phone(telegram_id)
 
                 db_client, created = await sync_to_async(Client.objects.get_or_create)(
@@ -229,13 +258,12 @@ async def start_userbot():
                         'last_message_at': timezone.now(),
                     }
                 )
-                
+
                 if created:
                     logger.info(f"✨ Created new client {telegram_id} with phone {phone}")
                 else:
                     logger.info(f"✅ Found existing client {telegram_id}")
 
-            # Обновляем last_message_at
             db_client.last_message_at = timezone.now()
             await sync_to_async(db_client.save)(update_fields=["last_message_at"])
 
@@ -257,11 +285,11 @@ async def start_userbot():
 
                 if isinstance(media, MessageMediaDocument):
                     doc = media.document
-                    
+
                     is_voice = False
                     is_audio = False
                     original_filename = "file"
-                    
+
                     for attr in doc.attributes:
                         if isinstance(attr, DocumentAttributeAudio):
                             if attr.voice:
@@ -287,14 +315,14 @@ async def start_userbot():
                             message_type = "document"
 
                     file_bytes = await client.download_media(event.message, bytes)
-                    
+
                     if file_bytes:
                         bucket, key = await sync_to_async(upload_file_to_s3)(
                             file_bytes,
                             prefix="telegram/media",
                             filename=original_filename
                         )
-                        
+
                         stored_file = await sync_to_async(StoredFile.objects.create)(
                             bucket=bucket,
                             key=key,
@@ -302,7 +330,7 @@ async def start_userbot():
                             content_type=doc.mime_type or "application/octet-stream",
                             size=len(file_bytes)
                         )
-                        
+
                         file_data = stored_file
                         file_name = original_filename
                         logger.info(f"📎 Downloaded {message_type} file: {original_filename} ({len(file_bytes)} bytes)")
@@ -310,16 +338,16 @@ async def start_userbot():
                 elif isinstance(media, MessageMediaPhoto):
                     message_type = "image"
                     original_filename = "photo.jpg"
-                    
+
                     file_bytes = await client.download_media(event.message, bytes)
-                    
+
                     if file_bytes:
                         bucket, key = await sync_to_async(upload_file_to_s3)(
                             file_bytes,
                             prefix="telegram/media",
                             filename=original_filename
                         )
-                        
+
                         stored_file = await sync_to_async(StoredFile.objects.create)(
                             bucket=bucket,
                             key=key,
@@ -327,12 +355,11 @@ async def start_userbot():
                             content_type="image/jpeg",
                             size=len(file_bytes)
                         )
-                        
+
                         file_data = stored_file
                         file_name = original_filename
                         logger.info(f"🖼️ Downloaded image: {len(file_bytes)} bytes")
 
-            # Сохраняем входящее сообщение
             msg = await sync_to_async(Message.objects.create)(
                 client=db_client,
                 content=content,
@@ -358,38 +385,16 @@ async def start_userbot():
 
         except Exception as e:
             from django.db import connection
-            connection.close()  # Сбросим соединение, Django переподключится
+            connection.close()
             logger.exception("Error in userbot new message handler: %s", e)
 
     logger.info("👂 Userbot is now listening for events...")
 
-    async def heartbeat_loop():
-        from asgiref.sync import sync_to_async
-        from django.core.cache import cache
-        set_cache = sync_to_async(cache.set)
-        while True:
-            await set_cache("userbot_heartbeat", "ok", timeout=60)
-            await asyncio.sleep(30)
-
-    asyncio.create_task(heartbeat_loop())
-    
-    # Бесконечный цикл для поддержания подключения
-    while True:
-        try:
-            await client.run_until_disconnected()
-            break
-        except (ConnectionError, OSError) as e:
-            logger.warning(f"⚠️ Connection lost: {e}. Reconnecting in 5s...")
-            await asyncio.sleep(5)
-            try:
-                if not client.is_connected():
-                    await client.connect()
-            except Exception as conn_err:
-                logger.error(f"Failed to reconnect: {conn_err}")
-                await asyncio.sleep(30)
-        except Exception as e:
-            logger.exception(f"❌ Critical error in event loop: {e}")
-            break
+    # Запускаем heartbeat и подключение параллельно
+    await asyncio.gather(
+        heartbeat_loop(),
+        keep_connected(),
+    )
 
 
 def run_userbot():
