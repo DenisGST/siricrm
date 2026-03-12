@@ -63,25 +63,25 @@ function getCookie(name) {
     if (!el) {
       el = document.createElement("div");
       el.id = "import-loading-toast";
-      el.className = "fixed inset-0 z-[9999] flex items-center justify-center bg-black/30";
+      el.style.cssText = "position:fixed;inset:0;z-index:100000;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.4);";
       el.innerHTML = `
-        <div class="bg-white rounded-xl shadow-xl px-8 py-6 flex flex-col items-center gap-3">
+        <div style="background:white;border-radius:16px;padding:32px 40px;display:flex;flex-direction:column;align-items:center;gap:12px;box-shadow:0 20px 60px rgba(0,0,0,0.3);">
           <div class="import-spinner__wheel" style="width:48px;height:48px;">
             <span></span><span></span><span></span><span></span>
             <span></span><span></span><span></span><span></span>
             <span></span><span></span><span></span><span></span>
           </div>
-          <div class="text-sm text-gray-600 font-medium">Загрузка истории...</div>
-          <div id="import-overlay-counter" class="text-xs text-gray-400"></div>
+          <div style="font-size:14px;color:#4b5563;font-weight:500;">Загрузка истории...</div>
+          <div id="import-overlay-counter" style="font-size:12px;color:#9ca3af;"></div>
         </div>`;
       document.body.appendChild(el);
     }
-    el.classList.remove("hidden");
+    el.style.display = "flex";
   }
 
   function hideImportOverlay() {
     const el = document.getElementById("import-loading-toast");
-    if (el) el.classList.add("hidden");
+    if (el) el.style.display = "none";
   }
 
   window.startImportHistory = function (clientId) {
