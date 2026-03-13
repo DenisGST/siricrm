@@ -95,8 +95,9 @@ async def heartbeat_loop():
     logger.info("❤️ Heartbeat loop started")
     while True:
         try:
+            logger.info("❤️ Trying to write heartbeat...")  # добавь эту строку
             await sync_to_async(cache.set)("userbot_heartbeat", "ok", timeout=60)
-            logger.debug("❤️ Heartbeat written to cache")
+            logger.info("❤️ Heartbeat written to cache")
         except Exception as e:
             logger.warning(f"Heartbeat cache error: {e}")
         await asyncio.sleep(30)
