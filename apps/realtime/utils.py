@@ -18,7 +18,11 @@ def push_toast(user, text: str, level: str = "info"):
 
     html = render_to_string(
         "realtime/partials/toast.html",
-        {"text": text, "level": level},
+        {
+            "text": text,
+            "level": level,
+            "data_attr": 'data-toast="1"',  # <─ важно для фронта
+        },
     )
 
     async_to_sync(channel_layer.group_send)(
@@ -32,7 +36,10 @@ def push_chat_message(msg: Message):
 
     message_html = render_to_string(
         "crm/partials/telegram_message.html",
-        {"msg": msg},
+        {
+            "msg": msg,
+            "data_attr": 'data-chat-message="1"',  # <─ чтобы сработал звук чата
+        },
     )
 
     html = render_to_string(
@@ -70,7 +77,11 @@ def push_client_toast(client: Client, text: str, level: str = "info"):
 
     html = render_to_string(
         "realtime/partials/toast.html",
-        {"text": text, "level": level},
+        {
+            "text": text,
+            "level": level,
+            "data_attr": 'data-toast="1"',  # <─ триггер для playToastSound()
+        },
     )
 
     async_to_sync(channel_layer.group_send)(

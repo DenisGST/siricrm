@@ -379,9 +379,18 @@ async def start_userbot():
             from apps.realtime.utils import push_chat_message, push_client_toast
 
             await sync_to_async(push_chat_message)(msg)
+
+            preview_source = content or file_name or ""
+            preview = (preview_source[:15] + "…") if len(preview_source) > 15 else preview_source
+
+            toast_text = (
+                f"💬 {preview} — новое сообщение от "
+                f"{db_client.first_name or db_client.username or 'клиента'}"
+            )
+
             await sync_to_async(push_client_toast)(
                 db_client,
-                text=f"💬 Новое сообщение от {db_client.first_name or 'клиента'}",
+                text=toast_text,
             )
 
         except Exception as e:
