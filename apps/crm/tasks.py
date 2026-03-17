@@ -12,6 +12,7 @@ from apps.crm.models import Client, Message
 from apps.core.models import Employee, EmployeeLog, Department
 from apps.files.s3_utils import download_file_from_s3
 from apps.telegram.telegram_sender import send_telegram_message
+from apps.maxchat.sender import send_max_message
 
 logger = logging.getLogger('celery')
 
@@ -419,3 +420,29 @@ def import_telegram_history_task(telegram_id, limit=300):
             logger.info(f"✅ Imported {imported_count} messages for {telegram_id}")
 
     asyncio.run(do_import())
+
+@shared_task
+def send_max_message_task(message_id: int):
+    try:
+        message = Message.objects.select_related("client").get(id=message_id)
+    except Message.DoesNotExist:
+        return
+
+    if not message.client.max_user_id:  # поле под MAX в Client
+        return
+
+    try:
+        result = arun(
+            send_max_message(
+                user_id=message.client.max_user_id,
+                text=message.content or "",
+            )
+        )
+        if result.get("success"):
+            message.is_sent = True
+            message.sent_at = timezone.now()
+            message.max_message_id = result.get("id", "")
+            message.save(update_fields=["is_sent", "sent_at", "max_message_id"])
+    except Exception:
+        # тут можно залогировать
+        return

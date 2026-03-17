@@ -21,6 +21,7 @@ class Client(TimeStampedModel):
     """Customer/Client model"""
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     telegram_id = models.BigIntegerField(unique=True, verbose_name='Telegram ID')
+    max_chat_id = models.CharField(max_length=64, blank=True, null=True)
     first_name = models.CharField(max_length=255, verbose_name='Имя')
     last_name = models.CharField(max_length=255, blank=True, verbose_name='Фамилия')
     patronymic = models.CharField(max_length=255, blank=True, verbose_name='Отчество')
@@ -103,6 +104,18 @@ class Message(TimeStampedModel):
         verbose_name='Тип сообщения'
     )
     
+    channel = models.CharField(
+        max_length=16,
+        choices=[("telegram", "Telegram"), ("max", "MAX")],
+        default="telegram",
+    )
+    max_message_id = models.CharField(
+        max_length=128,
+        blank=True,
+        null=True,
+        help_text="ID сообщения в MAX",
+    )
+
     content = models.TextField(verbose_name='Содержание')
     
     # Telegram message ID for reference

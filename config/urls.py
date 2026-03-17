@@ -32,6 +32,7 @@ urlpatterns = [
     
     # API
     path('api/', include(api_router.urls)),
+    path("api/", include("apps.maxchat.urls")),
     path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
     path('api/schema/swagger/', SpectacularSwaggerView.as_view(url_name='schema')),
     

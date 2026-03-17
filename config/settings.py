@@ -224,6 +224,12 @@ LOGGING = {
 }
 os.makedirs(BASE_DIR / 'logs', exist_ok=True)
 
+# MAX bot
+MAX_BOT_TOKEN = config("MAX_BOT_TOKEN", default="")
+MAX_API_BASE_URL = "https://platform-api.max.ru"  # уточни по доке dev.max.ru
+MAX_WEBHOOK_SECRET = config("MAX_WEBHOOK_SECRET", default="siricrm_max_secret_1")
+
+
 LOGIN_URL = "/accounts/login/"
 LOGIN_REDIRECT_URL = "/dashboard/"
 LOGOUT_REDIRECT_URL = LOGIN_URL
