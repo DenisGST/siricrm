@@ -75,10 +75,18 @@ async def import_message_history(telegram_id: int, limit: int = 100):
                 content=msg.message,
                 message_type="text",
                 direction=direction,
+                channel="telegram",
                 telegram_message_id=msg.id,
                 is_sent=True,
                 is_read=True if direction == "incoming" else False,
                 telegram_date=msg.date,
+                raw_payload={
+                    "channel": "telegram",
+                    "message_id": event.message.id,
+                    "peer_id": int(telegram_id),
+                    "date": event.date.isoformat() if event.date else None,
+                    "media": str(type(event.message.media).__name__) if event.message.media else None,
+                },
             )
 
             imported_count += 1
@@ -366,12 +374,20 @@ async def start_userbot():
                 content=content,
                 message_type=message_type,
                 direction="incoming",
+                channel="telegram",
                 telegram_message_id=event.message.id,
                 telegram_date=event.date,
                 file=file_data,
                 file_name=file_name,
                 is_sent=True,
                 is_read=True,
+                raw_payload={
+                    "channel": "telegram",
+                    "message_id": event.message.id,
+                    "peer_id": int(telegram_id),
+                    "date": event.date.isoformat() if event.date else None,
+                    "media": type(event.message.media).__name__ if event.message.media else None,
+                },
             )
 
             logger.info(f"💬 Incoming {message_type} from {telegram_id}: {content[:50] if content else file_name}")
@@ -395,7 +411,6 @@ async def start_userbot():
 
         except Exception as e:
             from django.db import connection
-            connection.close()
             logger.exception("Error in userbot new message handler: %s", e)
 
     logger.info("👂 Userbot is now listening for events...")

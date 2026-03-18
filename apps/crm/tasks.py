@@ -404,12 +404,20 @@ def import_telegram_history_task(telegram_id, limit=300):
                     content=content,
                     message_type=message_type,
                     direction=direction,
+                    channel="telegram",
                     telegram_message_id=msg.id,
                     file=file_data,
                     file_name=file_name,
                     is_sent=True,
                     is_read=True if direction == "incoming" else False,
                     telegram_date=msg.date,
+                    raw_payload={
+                        "channel": "telegram",
+                        "message_id": event.message.id,
+                        "peer_id": int(telegram_id),
+                        "date": event.date.isoformat() if event.date else None,
+                        "media": type(event.message.media).__name__ if event.message.media else None,
+                    },
                 )
                 imported_count += 1
                 from celery import current_task

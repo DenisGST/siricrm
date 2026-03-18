@@ -51,7 +51,7 @@ def push_chat_message(msg: Message):
     payload = {
         "type": "chat_message",
         "html": html,
-        "client_id": msg.client_id,
+        "client_id": str(msg.client_id),
         "client_name": (
             msg.client.first_name
             or msg.client.username

@@ -1,105 +1,172 @@
 # apps/maxchat/views.py
 import json
+import logging
+import mimetypes
+import requests
 
-from django.http import JsonResponse, HttpRequest
+from django.http import JsonResponse
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
-from django.conf import settings
 
 from apps.crm.models import Client, Message
-from apps.realtime.utils import push_chat_message, push_client_toast
+from apps.files.models import StoredFile
+from apps.files.s3_utils import upload_file_to_s3
 
-import logging
-logger = logging.getLogger("django")
+logger = logging.getLogger(__name__)
 
+def _determine_message_type(filename: str | None, content_type: str) -> str:
+    name = filename or ""
+    ext = name.lower().rsplit(".", 1)[-1] if "." in name else ""
+
+    if content_type.startswith("audio/") or ext in ["ogg", "oga", "opus", "mp3", "wav", "m4a"]:
+        if ext in ["ogg", "oga", "opus"] or "ogg" in content_type or "opus" in content_type:
+            return "voice"
+        return "audio"
+    if content_type.startswith("video/") or ext in ["mp4", "avi", "mov", "mkv"]:
+        return "video"
+    if content_type.startswith("image/") or ext in ["jpg", "jpeg", "png", "gif", "webp"]:
+        return "image"
+    return "document"
 
 @csrf_exempt
-def max_webhook(request: HttpRequest):
-    # Разрешаем только POST
-    if request.method != "POST":
-        return JsonResponse({"ok": False, "error": "method_not_allowed"}, status=405)
-
-    # Проверяем секрет из заголовка (если задан)
-    expected_secret = getattr(settings, "MAX_WEBHOOK_SECRET", "")
-    got_secret = request.headers.get("X-Max-Bot-Api-Secret", "")
-    if expected_secret and got_secret != expected_secret:
-        return JsonResponse({"ok": False, "error": "bad_secret"}, status=403)
-
-    # Парсим JSON
+def max_webhook(request):
     try:
-        data = json.loads(request.body.decode("utf-8"))
-    except Exception:
-        logger.exception("MAX webhook: bad json")
-        return JsonResponse({"ok": False, "error": "bad_json"}, status=400)
+        raw_body = request.body.decode("utf-8")
+    except UnicodeDecodeError:
+        raw_body = str(request.body)
 
-    # ---- Разбор Update ----
-    # По доке MAX Update содержит поле type и payload.
-    # Для message_created в payload лежит само сообщение.
-    update_type = data.get("type")
-    payload = data.get("payload") or {}
+    logger.info("MAX webhook raw body: %s", raw_body)
 
-    if update_type != "message_created":
-        # Игнорируем другие типы, но возвращаем 200, чтобы MAX не ретраил
+    try:
+        data = json.loads(raw_body or "{}")
+    except json.JSONDecodeError:
+        logger.exception("MAX webhook: invalid JSON")
+        return JsonResponse({"ok": False, "error": "invalid_json"}, status=400)
+
+    msg = (data.get("message") or {})
+    body = (msg.get("body") or {})
+    sender = (msg.get("sender") or {})
+    recipient = (msg.get("recipient") or {})
+
+    text = body.get("text") or ""
+    attachments = body.get("attachments") or []
+    max_mid = body.get("mid") or ""
+
+    user_id = str(sender.get("user_id") or recipient.get("chat_id") or "")
+    if not user_id:
+        logger.info("MAX webhook: skip, no user_id")
         return JsonResponse({"ok": True})
 
-    message_obj = payload.get("message") or payload
-
-    # Вариант структуры:
-    # {
-    #   "user_id": "...",
-    #   "text": "...",
-    #   "id": "...",
-    #   ...
-    # }
-    user_id = str(message_obj.get("user_id") or "")
-    text = message_obj.get("text") or ""
-    external_message_id = str(
-        message_obj.get("id")
-        or message_obj.get("message_id")
-        or ""
-    )
-
-    if not user_id or not text:
-        # Ничего полезного — просто подтверждаем получение
-        return JsonResponse({"ok": True})
-
-    # ---- Клиент ----
-    client, _ = Client.objects.get_or_create(
-        max_user_id=user_id,
+    client, created = Client.objects.get_or_create(
+        max_chat_id=user_id,
         defaults={
-            "first_name": "",
-            "last_name": "",
-            "username": "",
+            "first_name": sender.get("first_name", ""),
+            "last_name": sender.get("last_name", ""),
+            "username": sender.get("name", ""),
             "status": "lead",
             "last_message_at": timezone.now(),
         },
     )
-    client.last_message_at = timezone.now()
-    client.save(update_fields=["last_message_at"])
+    if created:
+        logger.info("✨ Created MAX client %s (max_chat_id=%s)", client.id, user_id)
+    else:
+        logger.info("✅ Found MAX client %s (max_chat_id=%s)", client.id, user_id)
+        client.last_message_at = timezone.now()
+        client.save(update_fields=["last_message_at"])
 
-    # ---- Сообщение в CRM ----
-    msg = Message.objects.create(
-        client=client,
-        content=text,
-        message_type="text",
-        direction="incoming",
-        channel="max",                 # важно, чтобы отличать от telegram
-        is_sent=True,
-        is_read=True,
-        max_message_id=external_message_id,
-        telegram_message_id=None,
-        telegram_date=timezone.now(),  # можно завести отдельное поле, если хочешь
-    )
+    # текст
+    if text:
+        msg_obj = Message.objects.create(
+            client=client,
+            content=text,
+            direction="incoming",
+            message_type="text",
+            max_message_id=max_mid,
+            raw_payload={
+                "channel": "max",
+                "body": body,
+            },
+        )
 
-    # ---- WebSocket + toast ----
-    # В чат
-    push_chat_message(msg)
+        logger.info("💬 MAX text message %s for client %s", msg_obj.id, client.id)
 
-    # В тост (как сделали для Telegram)
-    preview = (text[:10] + "…") if len(text) > 10 else text
-    push_client_toast(
-        client,
-        text=f"💬 {preview} — новое MAX‑сообщение",
-    )
+    # вложения
+    for att in attachments:
+        att_type = att.get("type")
+        payload = att.get("payload") or {}
+        filename = att.get("filename") or None
+        size = att.get("size")
+
+        url = payload.get("url")
+        if not url:
+            logger.warning("MAX webhook: attachment without url, att=%r", att)
+            continue
+
+        # качаем файл
+        try:
+            resp = requests.get(url, timeout=15)
+            resp.raise_for_status()
+            file_bytes = resp.content
+            content_type = (resp.headers.get("Content-Type") or "").lower()
+        except Exception as e:
+            logger.exception("❌ MAX webhook: failed download from %s: %s", url, e)
+            continue
+
+        if not filename:
+            ext = ""
+            guess_ext = mimetypes.guess_extension(content_type or "") or ""
+            if guess_ext:
+                ext = guess_ext.lstrip(".")
+            else:
+                ext = "bin"
+            filename = f"max_{att_type}_{max_mid}.{ext}"
+
+        message_type = _determine_message_type(filename, content_type)
+
+        # заливаем в S3 (аналогично telegram/media, свой префикс)
+        try:
+            bucket, key = upload_file_to_s3(
+                file_bytes,
+                prefix="max/media",
+                filename=filename,
+            )
+        except Exception as e:
+            logger.exception("❌ MAX webhook: failed upload to S3: %s", e)
+            continue
+
+        stored = StoredFile.objects.create(
+            bucket=bucket,
+            key=key,
+            filename=filename,
+            content_type=content_type or "application/octet-stream",
+            size=len(file_bytes),
+        )
+
+        msg_obj = Message.objects.create(
+            client=client,
+            content="",
+            direction="incoming",
+            message_type=message_type,
+            max_message_id=max_mid,
+            file=stored,
+            file_url="",
+            file_name=filename,
+            raw_payload={
+                "channel": "max",
+                "attachment_type": att_type,
+                "payload": payload,
+                "size": size,
+            },
+        )
+
+
+        logger.info(
+            "📎 MAX incoming %s for client %s: msg=%s, file=%s (%d bytes)",
+            message_type,
+            client.id,
+            msg_obj.id,
+            filename,
+            len(file_bytes),
+        )
 
     return JsonResponse({"ok": True})

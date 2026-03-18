@@ -256,6 +256,7 @@ def create_message_and_store_file(*, client, text=None, file=None, employee=None
         content=text or "",
         message_type=message_type,
         direction="outgoing",
+        channel="telegram",
         telegram_message_id=None,
         file=stored,
         file_url="",
@@ -263,6 +264,12 @@ def create_message_and_store_file(*, client, text=None, file=None, employee=None
         is_sent=False,
         is_delivered=False,
         is_read=False,
+        raw_payload={
+            "channel": "telegram",
+            "direction": "outgoing",
+            "file_name": file_name,
+            "content_type": content_type,
+        },
     )
     
     logger.info(f"📝 Created message {msg.id} for client {client.id}, type={message_type}, file={file_name}")

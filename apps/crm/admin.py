@@ -40,6 +40,7 @@ class MessageAdmin(admin.ModelAdmin):
         "is_read",
         "created_at",
         "telegram_date",
+        "raw_payload",
     )
     list_filter = ("direction", "message_type", "is_read", "client")  # ✅ добавили "client"
     search_fields = ("content", "client__first_name", "client__last_name", "client__username", "client__phone")  # ✅ расширили поиск

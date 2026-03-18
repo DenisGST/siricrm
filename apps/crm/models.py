@@ -6,6 +6,7 @@ from django.utils import timezone
 import uuid
 from apps.files.models import StoredFile
 from apps.core.models import Employee
+from django.contrib.postgres.fields import JSONField
 
 class TimeStampedModel(models.Model):
     """Base model with created_at and updated_at fields"""
@@ -20,7 +21,12 @@ class TimeStampedModel(models.Model):
 class Client(TimeStampedModel):
     """Customer/Client model"""
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    telegram_id = models.BigIntegerField(unique=True, verbose_name='Telegram ID')
+    telegram_id = models.BigIntegerField(
+        blank=True,
+        null=True,
+        unique=True,
+        verbose_name="Telegram ID",
+    )
     max_chat_id = models.CharField(max_length=64, blank=True, null=True)
     first_name = models.CharField(max_length=255, verbose_name='Имя')
     last_name = models.CharField(max_length=255, blank=True, verbose_name='Фамилия')
@@ -109,11 +115,19 @@ class Message(TimeStampedModel):
         choices=[("telegram", "Telegram"), ("max", "MAX")],
         default="telegram",
     )
+    
     max_message_id = models.CharField(
         max_length=128,
         blank=True,
         null=True,
         help_text="ID сообщения в MAX",
+    )
+
+    raw_payload = models.JSONField(
+        blank=True,
+        null=True,
+        verbose_name="Сырой payload канала",
+        help_text="Оригинальные данные от Telegram/MAX и т.п.",
     )
 
     content = models.TextField(verbose_name='Содержание')
