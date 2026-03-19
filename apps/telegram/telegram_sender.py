@@ -9,6 +9,7 @@ from django.conf import settings
 from apps.crm.models import Message
 from apps.files.models import StoredFile
 from apps.files.s3_utils import upload_file_to_s3
+from django.utils import timezone 
 
 logger = logging.getLogger(__name__)
 
@@ -206,6 +207,7 @@ def create_message_and_store_file(*, client, text=None, file=None, employee=None
     stored = None
     file_name = ""
     message_type = "text"
+    content_type = ""
     
     if file:
         content_type = (file.content_type or "").lower()
@@ -261,6 +263,7 @@ def create_message_and_store_file(*, client, text=None, file=None, employee=None
         file=stored,
         file_url="",
         file_name=file_name,
+        telegram_date=timezone.now(),
         is_sent=False,
         is_delivered=False,
         is_read=False,

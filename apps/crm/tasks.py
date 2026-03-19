@@ -157,6 +157,7 @@ def send_telegram_message_task(message_id):
             message.is_sent = True
             message.telegram_message_id = result['message_id']
             message.sent_at = timezone.now()
+            message.telegram_date = timezone.now()
             message.save(update_fields=['is_sent', 'telegram_message_id', 'sent_at'])
             
             logger.info(f"✅ Task: Message {message_id} sent successfully, telegram_id={result['message_id']}")
@@ -413,10 +414,10 @@ def import_telegram_history_task(telegram_id, limit=300):
                     telegram_date=msg.date,
                     raw_payload={
                         "channel": "telegram",
-                        "message_id": event.message.id,
+                        "message_id": msg.id,
                         "peer_id": int(telegram_id),
-                        "date": event.date.isoformat() if event.date else None,
-                        "media": type(event.message.media).__name__ if event.message.media else None,
+                        "date": msg.date.isoformat() if msg.date else None,
+                        "media": type(msg.media).__name__ if msg.media else None,
                     },
                 )
                 imported_count += 1

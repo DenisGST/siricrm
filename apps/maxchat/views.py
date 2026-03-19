@@ -83,6 +83,7 @@ def max_webhook(request):
             message_type="text",
             max_message_id=max_mid,
             channel="max",
+            telegram_date=timezone.now(),
             raw_payload={
                 "channel": "max",
                 "body": body,
@@ -150,6 +151,7 @@ def max_webhook(request):
             message_type=message_type,
             max_message_id=max_mid,
             channel="max",
+            telegram_date=timezone.now(),
             file=stored,
             file_url="",
             file_name=filename,

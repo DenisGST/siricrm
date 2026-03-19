@@ -95,6 +95,7 @@ def max_send_message(request, client_id):
         direction="outgoing",
         channel="max",
         message_type="text",
+        telegram_date=timezone.now(),
         is_sent=False,
     )
 

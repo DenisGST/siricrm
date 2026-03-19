@@ -1,4 +1,5 @@
-<!-- Сообщ/var/www/projects/siricrm/templates/crm/partials/telegram_chat_panel.html -->
+{% load static %}
+<!-- /var/www/projects/siricrm/templates/crm/partials/telegram_chat_panel.html -->
 <div id="telegram-chat-panel-root" class="relative flex flex-col h-full">
   <!-- шапка -->
   <div class="flex items-center justify-between border-b px-4 py-2 shrink-0">
@@ -76,12 +77,9 @@
       id="telegram-send-form"
       class="space-y-2"
       enctype="multipart/form-data"
-      hx-post="{% url 'telegram_send_message' client.id %}"
       hx-target="#telegram-messages-list"
       hx-swap="beforeend"
     >
-      <input type="hidden" name="channel" id="chat-channel" value="telegram">
-
       <textarea
         name="content"
         rows="1"
@@ -91,23 +89,6 @@
 
       <div class="flex items-center justify-between gap-2">
         <div class="flex items-center gap-2">
-          <!-- переключатель канала -->
-          <button
-            type="button"
-            id="btn-channel-telegram"
-            class="btn btn-xs btn-primary"
-          >
-            Telegram
-          </button>
-          <button
-            type="button"
-            id="btn-channel-max"
-            class="btn btn-xs btn-accent"
-            style="background-color:#ec4899;border-color:#ec4899;color:white;"
-          >
-            MAX
-          </button>
-
           <label class="btn btn-ghost btn-xs">
             <input type="file" name="file" class="hidden">
             📎
@@ -117,9 +98,25 @@
           <button type="button" id="btn-cancel" class="btn btn-ghost btn-xs hidden">Отмена</button>
         </div>
 
-        <button type="submit" class="btn btn-primary btn-sm">
-          Отправить
-        </button>
+        <div class="flex items-center gap-2">
+          <button
+            type="submit"
+            id="btn-send-telegram"
+            class="btn btn-primary btn-sm"
+            hx-post="{% url 'telegram_send_message' client.id %}"
+          >
+            Telegram
+          </button>
+          <button
+            type="submit"
+            id="btn-send-max"
+            class="btn btn-sm"
+            style="background-color:#ec4899;border-color:#ec4899;color:white;"
+            hx-post="{% url 'max_send_message' client.id %}"
+          >
+            MAX
+          </button>
+        </div>
       </div>
 
       <div id="telegram-file-preview" class="text-xs text-gray-500"></div>
@@ -194,7 +191,6 @@
         var loader = document.getElementById("messages-loader");
         if (loader) loader.classList.remove("hidden");
 
-        var clientId = list.dataset.clientId;
         var url = "{% url 'telegram_chat_for_client' client.id %}?page=" + prevPage;
 
         try {
@@ -331,39 +327,6 @@
       audio.currentTime = 0;
       audio.play().catch(() => {});
     }
-
-    // переключатель канала (Telegram / MAX)
-    (function () {
-      var form = document.getElementById("telegram-send-form");
-      var channelInput = document.getElementById("chat-channel");
-      var btnTg = document.getElementById("btn-channel-telegram");
-      var btnMax = document.getElementById("btn-channel-max");
-
-      if (!form || !channelInput || !btnTg || !btnMax) return;
-
-      function setChannel(channel) {
-        channelInput.value = channel;
-        if (channel === "telegram") {
-          form.setAttribute("hx-post", "{% url 'telegram_send_message' client.id %}");
-          btnTg.classList.add("btn-primary");
-          btnMax.classList.remove("btn-primary");
-        } else {
-          form.setAttribute("hx-post", "{% url 'max_send_message' client.id %}");
-          btnMax.classList.add("btn-primary");
-          btnTg.classList.remove("btn-primary");
-        }
-      }
-
-      btnTg.addEventListener("click", function () {
-        setChannel("telegram");
-      });
-
-      btnMax.addEventListener("click", function () {
-        setChannel("max");
-      });
-
-      setChannel("telegram");
-    })();
 
     function isNearBottom(container) {
       if (!container) return false;
