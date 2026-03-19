@@ -36,6 +36,7 @@ class MessageAdmin(admin.ModelAdmin):
         "employee",
         "direction",
         "message_type",
+        "channel",
         "short_content",
         "is_read",
         "created_at",

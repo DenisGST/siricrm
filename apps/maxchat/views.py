@@ -82,6 +82,7 @@ def max_webhook(request):
             direction="incoming",
             message_type="text",
             max_message_id=max_mid,
+            channel="max",
             raw_payload={
                 "channel": "max",
                 "body": body,
@@ -148,6 +149,7 @@ def max_webhook(request):
             direction="incoming",
             message_type=message_type,
             max_message_id=max_mid,
+            channel="max",
             file=stored,
             file_url="",
             file_name=filename,

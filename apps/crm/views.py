@@ -9,20 +9,22 @@ from django.template.loader import render_to_string
 
 from apps.crm.models import *
 from django.db import models
-from django.db.models import Q
-from .models import Client
+from django.db.models import Q, Prefetch
+from django.db import transaction
+from django.utils import timezone
+
+from .models import Client, Message
 from .forms import ClientForm
 from apps.core.models import Employee, EmployeeLog
-from .models import Message
-from django.db.models import Prefetch
-from django.db import transaction
 from apps.realtime.utils import push_chat_message, push_toast
 from apps.telegram.telegram_sender import create_message_and_store_file
 from .tasks import send_telegram_message_task
+from apps.maxchat.tasks import send_max_message_task
 
 
 CLIENTS_PER_PAGE = 20
 MESSAGES_PER_PAGE = 50  # сколько сообщений за раз подгружаем в телеграм
+
 
 @login_required
 @require_POST
@@ -47,14 +49,63 @@ def telegram_send_message(request, client_id):
         text=content or None,
         file=up_file,
         employee=employee,
-    )  # создаём Message[file:2663]
+    )  # создаём Message
 
     # БЕЗ push_chat_message, чтобы не было дублей и зависимостей от WS
 
     push_toast(request.user, "Сообщение клиенту отправлено", level="success")
     send_telegram_message_task.delay(str(msg.id))
 
-    
+    html = render_to_string(
+        "crm/partials/telegram_message.html",
+        {"msg": msg},
+        request=request,
+    )
+    return HttpResponse(html)
+
+
+@login_required
+@require_POST
+def max_send_message(request, client_id):
+    """
+    Отправка текстового сообщения в MAX через Celery.
+    Используется тем же HTMX-шаблоном, что и Telegram.
+    """
+    client = get_object_or_404(Client, pk=client_id)
+    content = (request.POST.get("content") or "").strip()
+
+    if not content:
+        return HttpResponseBadRequest("Empty message")
+
+    if not client.max_chat_id:
+        return HttpResponseBadRequest("Client has no max_chat_id")
+
+    try:
+        employee = Employee.objects.get(user=request.user)
+    except Employee.DoesNotExist:
+        employee = None
+
+    client.last_message_at = timezone.now()
+    client.save(update_fields=["last_message_at"])
+
+    msg = Message.objects.create(
+        client=client,
+        employee=employee,
+        content=content,
+        direction="outgoing",
+        channel="max",
+        message_type="text",
+        is_sent=False,
+    )
+
+    # сразу показываем в UI
+    push_chat_message(msg)
+
+    # фоновая отправка в MAX
+    send_max_message_task.delay(str(msg.id))
+
+    push_toast(request.user, "Сообщение в MAX поставлено в очередь", level="success")
+
     html = render_to_string(
         "crm/partials/telegram_message.html",
         {"msg": msg},
@@ -66,7 +117,11 @@ def telegram_send_message(request, client_id):
 @login_required
 def telegram_chat_for_client(request, client_id):
     client = get_object_or_404(Client, pk=client_id)
-    qs = Message.objects.filter(client=client).select_related("employee").order_by("telegram_date", "id")
+    qs = (
+        Message.objects.filter(client=client)
+        .select_related("employee")
+        .order_by("telegram_date", "id")
+    )
 
     paginator = Paginator(qs, MESSAGES_PER_PAGE)
     page_param = request.GET.get("page")
@@ -87,6 +142,7 @@ def telegram_chat_for_client(request, client_id):
         "crm/partials/telegram_chat_panel.html",
         {"client": client, "page_obj": page_obj, "messages": page_obj.object_list},
     )
+
 
 @login_required
 def telegram_clients_list(request):
@@ -114,11 +170,19 @@ def telegram_clients_list(request):
 
     return render(request, "crm/partials/telegram_clients_list.html", context)
 
+
 def dashboard_view(request):
+    from apps.crm.bot_status import get_bot_status
+
     bot_status = get_bot_status()
-    return render(request, "dashboard.html", {
-        "bot_status": bot_status,
-    })
+    return render(
+        request,
+        "dashboard.html",
+        {
+            "bot_status": bot_status,
+        },
+    )
+
 
 @login_required
 def chat(request, client_id):
@@ -127,7 +191,9 @@ def chat(request, client_id):
             "employees",  # M2M поле
             Prefetch(
                 "messages",
-                queryset=Message.objects.select_related("employee").order_by("telegram_date", "id"),
+                queryset=Message.objects.select_related("employee").order_by(
+                    "telegram_date", "id"
+                ),
             ),
         ),
         id=client_id,
@@ -144,8 +210,11 @@ def chat(request, client_id):
         },
     )
 
+
 @login_required
 def dashboard(request):
+    from apps.crm.bot_status import get_bot_status
+
     telegram_user = getattr(request.user, "telegram_user", None)
 
     return render(
@@ -153,15 +222,22 @@ def dashboard(request):
         "dashboard.html",
         {
             "telegram_user": telegram_user,
-            "telegram_bot_username": getattr(settings, "TELEGRAM_BOT_USERNAME", ""),
+            "telegram_bot_username": getattr(
+                settings, "TELEGRAM_BOT_USERNAME", ""
+            ),
+            "bot_status": get_bot_status(),
         },
     )
 
+
 @login_required
 def kanban(request):
+    # версия с четырьмя колонками
     leads = Client.objects.filter(status="lead").select_related("assigned_employee")
     actives = Client.objects.filter(status="active").select_related("assigned_employee")
-    inactives = Client.objects.filter(status="inactive").select_related("assigned_employee")
+    inactives = Client.objects.filter(status="inactive").select_related(
+        "assigned_employee"
+    )
     closeds = Client.objects.filter(status="closed").select_related("assigned_employee")
 
     return render(
@@ -175,28 +251,46 @@ def kanban(request):
         },
     )
 
+
+@login_required
+def kanban_column(request, status):
+    clients = (
+        Client.objects.filter(status=status)
+        .prefetch_related("employees")
+        .order_by("-last_message_at")
+    )
+
+    return render(request, "crm/partials/kanban_column.html", {"clients": clients})
+
+
 @login_required
 def client_create(request):
     """
     Создание клиента с поддержкой HTMX.
     GET:
-      - обычный запрос -> crm/clients/form.html (полная страница в content-area)
+    - обычный запрос -> crm/clients/form.html (полная страница в content-area)
     POST:
-      - HTMX (HX-Request) -> crm/clients/list_partial.html (обновлённая таблица)
-      - обычный POST -> redirect на clients_list
+    - HTMX (HX-Request) -> crm/kanban.html (обновлённый канбан)
+    - обычный POST -> redirect на clients_list
     """
-
     if request.method == "POST":
         form = ClientForm(request.POST)
         if form.is_valid():
             form.save()
 
             if request.headers.get("HX-Request"):
-                # Перерисовать Kanban после создания клиента
-                leads = Client.objects.filter(status="lead").select_related("assigned_employee")
-                actives = Client.objects.filter(status="active").select_related("assigned_employee")
-                inactives = Client.objects.filter(status="inactive").select_related("assigned_employee")
-                closeds = Client.objects.filter(status="closed").select_related("assigned_employee")
+                leads = Client.objects.filter(status="lead").select_related(
+                    "assigned_employee"
+                )
+                actives = Client.objects.filter(status="active").select_related(
+                    "assigned_employee"
+                )
+                inactives = Client.objects.filter(
+                    status="inactive"
+                ).select_related("assigned_employee")
+                closeds = Client.objects.filter(status="closed").select_related(
+                    "assigned_employee"
+                )
 
                 return render(
                     request,
@@ -217,7 +311,8 @@ def client_create(request):
         request,
         "crm/clients/form.html",
         {"form": form},
-    )    
+    )
+
 
 @login_required
 def employees_list(request):
@@ -250,6 +345,7 @@ def employees_list(request):
             "search": search,
         },
     )
+
 
 @login_required
 def logs_list(request):
@@ -285,19 +381,6 @@ def logs_list(request):
         },
     )
 
-@login_required
-def kanban(request):
-    clients = Client.objects.filter(status__in=['lead', 'active'])
-    return render(request, 'crm/kanban.html', {'clients': clients})
-
-@login_required
-def kanban_column(request, status):
-    clients = (
-        Client.objects.filter(status=status)
-        .prefetch_related("employees")         # если нужно подтянуть сотрудников
-        .order_by("-last_message_at")
-    )
-    return render(request, "crm/partials/kanban_column.html", {"clients": clients})
 
 @login_required
 def clients_list(request):
@@ -318,7 +401,6 @@ def clients_list(request):
     page_number = request.GET.get("page") or 1
     page_obj = paginator.get_page(page_number)
 
-    # КЛЮЧЕВОЕ УСЛОВИЕ:
     # partial=1 -> только кусок таблицы
     if request.headers.get("HX-Request") and request.GET.get("partial") == "1":
         template = "crm/clients/list_partial.html"
@@ -334,25 +416,30 @@ def clients_list(request):
         },
     )
 
+
 @login_required
 def employees_online_count(request):
     count = Employee.objects.filter(is_online=True).count()
     return HttpResponse(count)
 
+
 @login_required
 def clients_active_count(request):
-    count = Client.objects.filter(status='active').count()
+    count = Client.objects.filter(status="active").count()
     return HttpResponse(count)
+
 
 @login_required
 def messages_new_count(request):
     count = Message.objects.filter(is_read=False).count()
     return HttpResponse(count)
 
+
 @login_required
 def lead_count(request):
-    count = Client.objects.filter(status='lead').count()
+    count = Client.objects.filter(status="lead").count()
     return HttpResponse(count)
+
 
 @require_POST
 def telegram_import_history(request, client_id):
@@ -366,30 +453,18 @@ def telegram_import_history(request, client_id):
     task = import_telegram_history_task.delay(db_client.telegram_id, limit=300)
     return JsonResponse({"ok": True, "task_id": task.id})
 
+
 @login_required
 def task_status(request, task_id):
     from celery.result import AsyncResult
+
     result = AsyncResult(task_id)
     meta = result.info if isinstance(result.info, dict) else {}
-    return JsonResponse({
-        "status": result.status,
-        "ready": result.ready(),
-        "current": meta.get("current", 0),
-        "total": meta.get("total", 0),
-    })
-
-@login_required
-def dashboard(request):
-    from apps.crm.bot_status import get_bot_status
-
-    telegram_user = getattr(request.user, "telegram_user", None)
-
-    return render(
-        request,
-        "dashboard.html",
+    return JsonResponse(
         {
-            "telegram_user": telegram_user,
-            "telegram_bot_username": getattr(settings, "TELEGRAM_BOT_USERNAME", ""),
-            "bot_status": get_bot_status(),
-        },
+            "status": result.status,
+            "ready": result.ready(),
+            "current": meta.get("current", 0),
+            "total": meta.get("total", 0),
+        }
     )
