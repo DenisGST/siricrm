@@ -21,12 +21,10 @@ def send_max_message_task(self, message_id: str):
     client = msg.client
     if not client.max_chat_id:
         logger.warning("MAX task: client %s has no max_chat_id", client.id)
-        msg.notes = "Нет max_chat_id у клиента"
-        msg.save(update_fields=["notes"])
         return
 
     ok, max_id, err = send_max_message(
-        access_token=settings.MAX_BOT_TOKEN,  # положи токен в настройки [web:102]
+        access_token=settings.MAX_BOT_TOKEN,
         chat_id=client.max_chat_id,
         text=msg.content or "",
     )
@@ -34,11 +32,11 @@ def send_max_message_task(self, message_id: str):
     if ok:
         msg.max_message_id = max_id
         msg.is_sent = True
+        msg.telegram_date = msg.telegram_date  # уже проставлена при создании
         msg.save(update_fields=["max_message_id", "is_sent"])
+        logger.info("MAX task: message %s sent, max_id=%s", msg.id, max_id)
     else:
         logger.error("MAX send error for msg %s: %s", msg.id, err)
-        msg.notes = f"MAX send error: {err}"
-        msg.save(update_fields=["notes"])
         try:
             self.retry(exc=Exception(err))
         except self.MaxRetriesExceededError:
