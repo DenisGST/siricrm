@@ -28,11 +28,6 @@ def _upload_file_to_max(
     filename: str,
     message_type: str,
 ) -> Tuple[bool, Optional[dict], Optional[str]]:
-    """
-    Загружает файл в MAX.
-    Возвращает (success, payload_dict, error).
-    payload_dict — то что идёт в attachments[].payload при отправке сообщения.
-    """
     upload_type = _get_upload_type(message_type)
     headers_auth = {"Authorization": access_token}
 
@@ -51,17 +46,16 @@ def _upload_file_to_max(
         return False, None, str(e)
 
     upload_url = upload_data.get("url")
-    # Для video/audio токен приходит уже здесь
-    pre_token = upload_data.get("token")
+    pre_token = upload_data.get("token")  # для video/audio
 
     if not upload_url:
         return False, None, f"No upload URL in response: {upload_data}"
 
-    # Шаг 2: загружаем файл по URL
+        # Шаг 2: загружаем файл — БЕЗ Authorization заголовка!
     try:
         r2 = requests.post(
             upload_url,
-            files={"data": (filename, file_bytes)},
+            files={"data": (filename, file_bytes)},  # без headers
             timeout=60,
         )
         r2.raise_for_status()
@@ -70,15 +64,34 @@ def _upload_file_to_max(
         logger.exception("MAX upload: failed to upload file: %s", e)
         return False, None, str(e)
 
-    logger.info("MAX upload result: %s", upload_result)
 
-    # image/file — токен приходит в ответе на загрузку
-    # video/audio — токен пришёл на шаге 1
-    token = upload_result.get("token") or pre_token
+    logger.info("MAX upload result type=%s: %s", upload_type, upload_result)
+
+    # Токен может быть в разных местах в зависимости от типа
+    token = upload_result.get("token")
+
+    if not token:
+        # image → {"photos": {"<hash>": {"token": "..."}}}
+        # file  → {"files":  {"<hash>": {"token": "..."}}}
+        # video → {"videos": {"<hash>": {"token": "..."}}}
+        # audio → {"audios": {"<hash>": {"token": "..."}}}
+        for key in ("photos", "files", "videos", "audios"):
+            nested = upload_result.get(key)
+            if nested and isinstance(nested, dict):
+                first = next(iter(nested.values()))
+                token = first.get("token")
+                if token:
+                    break
+
+    # Для video/audio токен мог прийти на шаге 1
+    if not token:
+        token = pre_token
+
     if not token:
         return False, None, f"No token in upload result: {upload_result}"
 
     return True, {"token": token}, None
+
 
 
 def send_max_message(
