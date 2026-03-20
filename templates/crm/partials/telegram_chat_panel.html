@@ -98,25 +98,25 @@
           <button type="button" id="btn-cancel" class="btn btn-ghost btn-xs hidden">Отмена</button>
         </div>
 
-        <div class="flex items-center gap-2">
-          <button
-            type="submit"
-            id="btn-send-telegram"
-            class="btn btn-primary btn-sm"
-            hx-post="{% url 'telegram_send_message' client.id %}"
-          >
-            Telegram
-          </button>
-          <button
-            type="submit"
-            id="btn-send-max"
-            class="btn btn-sm"
-            style="background-color:#ec4899;border-color:#ec4899;color:white;"
-            hx-post="{% url 'max_send_message' client.id %}"
-          >
-            MAX
-          </button>
-        </div>
+        <button
+          type="submit"
+          id="btn-send-telegram"
+          class="btn btn-primary btn-sm"
+          hx-post="{% url 'telegram_send_message' client.id %}"
+          hx-encoding="multipart/form-data"
+        >
+          Telegram
+        </button>
+        <button
+          type="submit"
+          id="btn-send-max"
+          class="btn btn-sm"
+          style="background-color:#ec4899;border-color:#ec4899;color:white;"
+          hx-post="{% url 'max_send_message' client.id %}"
+          hx-encoding="multipart/form-data"
+        >
+          MAX
+        </button>
       </div>
 
       <div id="telegram-file-preview" class="text-xs text-gray-500"></div>
