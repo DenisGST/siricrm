@@ -67,14 +67,11 @@ def telegram_send_message(request, client_id):
 @login_required
 @require_POST
 def max_send_message(request, client_id):
-    """
-    Отправка текстового сообщения в MAX через Celery.
-    Используется тем же HTMX-шаблоном, что и Telegram.
-    """
     client = get_object_or_404(Client, pk=client_id)
     content = (request.POST.get("content") or "").strip()
+    up_file = request.FILES.get("file")
 
-    if not content:
+    if not content and not up_file:
         return HttpResponseBadRequest("Empty message")
 
     if not client.max_chat_id:
@@ -88,31 +85,52 @@ def max_send_message(request, client_id):
     client.last_message_at = timezone.now()
     client.save(update_fields=["last_message_at"])
 
-    msg = Message.objects.create(
-        client=client,
-        employee=employee,
-        content=content,
-        direction="outgoing",
-        channel="max",
-        message_type="text",
-        telegram_date=timezone.now(),
-        is_sent=False,
-    )
+    html_parts = []
 
-    # сразу показываем в UI
-    push_chat_message(msg)
+    # Если есть файл — создаём отдельное сообщение с файлом (текст Caption внутри)
+    if up_file:
+        msg_file = create_message_and_store_file(
+            client=client,
+            text=content or None,  # caption
+            file=up_file,
+            employee=employee,
+        )
+        msg_file.channel = "max"
+        msg_file.telegram_date = timezone.now()
+        msg_file.save(update_fields=["channel", "telegram_date"])
 
-    # фоновая отправка в MAX
-    send_max_message_task.delay(str(msg.id))
+        push_chat_message(msg_file)
+        send_max_message_task.delay(str(msg_file.id))
+
+        html_parts.append(render_to_string(
+            "crm/partials/telegram_message.html",
+            {"msg": msg_file},
+            request=request,
+        ))
+
+    # Если есть текст БЕЗ файла — отдельное текстовое сообщение
+    elif content:
+        msg_text = Message.objects.create(
+            client=client,
+            employee=employee,
+            content=content,
+            direction="outgoing",
+            channel="max",
+            message_type="text",
+            telegram_date=timezone.now(),
+            is_sent=False,
+        )
+        push_chat_message(msg_text)
+        send_max_message_task.delay(str(msg_text.id))
+
+        html_parts.append(render_to_string(
+            "crm/partials/telegram_message.html",
+            {"msg": msg_text},
+            request=request,
+        ))
 
     push_toast(request.user, "Сообщение в MAX поставлено в очередь", level="success")
-
-    html = render_to_string(
-        "crm/partials/telegram_message.html",
-        {"msg": msg},
-        request=request,
-    )
-    return HttpResponse(html)
+    return HttpResponse("".join(html_parts))
 
 
 @login_required
