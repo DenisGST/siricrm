@@ -61,15 +61,21 @@ def _upload_file_to_max(
     try:
         r2 = requests.post(
             upload_url,
-            files={"data": (filename, file_bytes, content_type)},  # ← передаём content_type
+            files={"data": (filename, file_bytes, content_type)},
             timeout=60,
         )
         r2.raise_for_status()
-        upload_result = r2.json()
+        # MAX для audio/voice возвращает пустое тело — это нормально
+        body = r2.text.strip()
+        upload_result = {}
+        if body:
+            try:
+                upload_result = r2.json()
+            except Exception:
+                logger.warning("MAX upload: non-JSON response: %r", body[:200])
     except Exception as e:
         logger.exception("MAX upload: failed to upload file: %s", e)
         return False, None, str(e)
-
 
     logger.info("MAX upload result type=%s: %s", upload_type, upload_result)
 
