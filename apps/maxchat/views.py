@@ -74,24 +74,25 @@ def max_webhook(request):
         client.last_message_at = timezone.now()
         client.save(update_fields=["last_message_at"])
 
-    # текст
+      # текст
     if text:
-        msg_obj = Message.objects.create(
-            client=client,
-            content=text,
-            direction="incoming",
-            message_type="text",
-            max_message_id=max_mid,
-            channel="max",
-            telegram_date=timezone.now(),
-            raw_payload={
-                "channel": "max",
-                "body": body,
-            },
-        )
-
-        logger.info("💬 MAX text message %s for client %s", msg_obj.id, client.id)
-
+        if max_mid and Message.objects.filter(max_message_id=max_mid, channel="max").exists():
+            logger.info("MAX webhook: duplicate text mid=%s, skipping", max_mid)
+        else:
+            msg_obj = Message.objects.create(
+                client=client,
+                content=text,
+                direction="incoming",
+                message_type="text",
+                max_message_id=max_mid,
+                channel="max",
+                telegram_date=timezone.now(),
+                raw_payload={
+                    "channel": "max",
+                    "body": body,
+                },
+            )
+            logger.info("💬 MAX text message %s for client %s", msg_obj.id, client.id)
     # вложения
     for att in attachments:
         att_type = att.get("type")
@@ -102,6 +103,15 @@ def max_webhook(request):
         url = payload.get("url")
         if not url:
             logger.warning("MAX webhook: attachment without url, att=%r", att)
+            continue
+        
+        # Проверка дубликата по mid + channel
+        if max_mid and Message.objects.filter(
+            max_message_id=max_mid,
+            channel="max",
+            message_type__in=["image", "video", "audio", "voice", "document"],
+        ).exists():
+            logger.info("MAX webhook: duplicate attachment mid=%s, skipping", max_mid)
             continue
 
         # качаем файл
