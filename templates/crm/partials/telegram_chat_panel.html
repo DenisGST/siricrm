@@ -353,7 +353,23 @@
     document.body.addEventListener("htmx:wsAfterMessage", function (event) {
       const data = event.detail?.message;
       if (!data) return;
+
       if (data.type === "chat_message") {
+        if (data.direction === "outgoing" && data.is_sent && data.message_id) {
+          // Находим pending-пузырь по message_id и меняем статус
+          const existingBubble = document.querySelector(
+            '[data-msg-id="' + data.message_id + '"] .msg-status'
+          );
+          if (existingBubble) {
+            // Уже есть пузырь — просто обновляем значок
+            existingBubble.textContent = "✓";
+            existingBubble.classList.remove("text-gray-400", "animate-pulse");
+            existingBubble.classList.add("text-green-500");
+            return; // НЕ добавляем дубль
+          }
+        }
+
+        // Новое входящее или первая отрисовка исходящего — вставляем HTML
         scrollTelegramChatBottomIfVisibleForClient(data.client_id);
         if (data.direction === "incoming") {
           playIncomingSound();

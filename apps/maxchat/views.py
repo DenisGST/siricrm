@@ -14,6 +14,7 @@ from apps.files.s3_utils import upload_file_to_s3
 
 logger = logging.getLogger(__name__)
 
+
 def _determine_message_type(filename: str | None, content_type: str) -> str:
     name = filename or ""
     ext = name.lower().rsplit(".", 1)[-1] if "." in name else ""
@@ -27,6 +28,16 @@ def _determine_message_type(filename: str | None, content_type: str) -> str:
     if content_type.startswith("image/") or ext in ["jpg", "jpeg", "png", "gif", "webp"]:
         return "image"
     return "document"
+
+
+def _push(msg_obj):
+    """Безопасный push через WebSocket."""
+    try:
+        from apps.realtime.utils import push_chat_message
+        push_chat_message(msg_obj)
+    except Exception as e:
+        logger.warning("MAX webhook: failed WS push: %s", e)
+
 
 @csrf_exempt
 def max_webhook(request):
@@ -74,9 +85,10 @@ def max_webhook(request):
         client.last_message_at = timezone.now()
         client.save(update_fields=["last_message_at"])
 
-      # текст
+    # текст
     if text:
         if max_mid and Message.objects.filter(max_message_id=max_mid, channel="max").exists():
+            # Это наше исходящее — пуш НЕ делаем, задваивания не будет
             logger.info("MAX webhook: duplicate text mid=%s, skipping", max_mid)
         else:
             msg_obj = Message.objects.create(
@@ -93,6 +105,8 @@ def max_webhook(request):
                 },
             )
             logger.info("💬 MAX text message %s for client %s", msg_obj.id, client.id)
+            _push(msg_obj)  # пушим только входящие
+
     # вложения
     for att in attachments:
         att_type = att.get("type")
@@ -104,8 +118,8 @@ def max_webhook(request):
         if not url:
             logger.warning("MAX webhook: attachment without url, att=%r", att)
             continue
-        
-        # Проверка дубликата по mid + channel
+
+        # Дубликат — это наше исходящее вложение, пуш НЕ делаем
         if max_mid and Message.objects.filter(
             max_message_id=max_mid,
             channel="max",
@@ -125,17 +139,12 @@ def max_webhook(request):
             continue
 
         if not filename:
-            ext = ""
             guess_ext = mimetypes.guess_extension(content_type or "") or ""
-            if guess_ext:
-                ext = guess_ext.lstrip(".")
-            else:
-                ext = "bin"
+            ext = guess_ext.lstrip(".") if guess_ext else "bin"
             filename = f"max_{att_type}_{max_mid}.{ext}"
 
         message_type = _determine_message_type(filename, content_type)
 
-        # заливаем в S3 (аналогично telegram/media, свой префикс)
         try:
             bucket, key = upload_file_to_s3(
                 file_bytes,
@@ -173,7 +182,6 @@ def max_webhook(request):
             },
         )
 
-
         logger.info(
             "📎 MAX incoming %s for client %s: msg=%s, file=%s (%d bytes)",
             message_type,
@@ -182,5 +190,6 @@ def max_webhook(request):
             filename,
             len(file_bytes),
         )
+        _push(msg_obj)  # пушим только входящие
 
     return JsonResponse({"ok": True})

@@ -61,6 +61,8 @@ def push_chat_message(msg: Message):
         "direction": msg.direction,          # incoming / outgoing
         "message_type": msg.message_type,    # text / image / document / voice ...
         "content": msg.content or "",
+        "message_id": str(msg.id),          #
+        "is_sent": msg.is_sent, 
     }
 
     async_to_sync(channel_layer.group_send)(

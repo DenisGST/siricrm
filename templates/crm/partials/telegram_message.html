@@ -3,7 +3,7 @@
 {% if msg.direction == "incoming" %}
   <div class="chat chat-start">
 {% else %}
-  <div class="chat chat-end">
+  <div class="chat chat-end" data-msg-id="{{ msg.id }}">
 {% endif %}
 
   <div class="mb-0.1 text-[8px]">
@@ -26,77 +26,55 @@
     <div class="chat-bubble">
   {% endif %}
 
-    {# текст без файла #}
     {% if msg.message_type == "text" and not msg.file %}
       {{ msg.content|linebreaksbr }}
-
-    {# картинка #}
     {% elif msg.message_type == "image" and msg.file %}
       <a href="{% url 'file_download' msg.file.id %}" target="_blank" class="block">
         <img src="{% url 'file_download' msg.file.id %}"
              alt="{{ msg.file.filename }}"
              class="max-w-xs rounded-lg">
       </a>
-      {% if msg.content %}
-        <div class="mt-1 text-xs opacity-80">{{ msg.content|linebreaksbr }}</div>
-      {% endif %}
-
-    {# документ #}
+      {% if msg.content %}<div class="mt-1 text-xs opacity-80">{{ msg.content|linebreaksbr }}</div>{% endif %}
     {% elif msg.message_type == "document" and msg.file %}
-      <a href="{% url 'file_download' msg.file.id %}" target="_blank"
-         class="flex items-center gap-2">
-        📎 <span class="underline text-xs break-all">
-          {{ msg.file.filename|default:"Файл" }}
-        </span>
+      <a href="{% url 'file_download' msg.file.id %}" target="_blank" class="flex items-center gap-2">
+        📎 <span class="underline text-xs break-all">{{ msg.file.filename|default:"Файл" }}</span>
       </a>
-      {% if msg.content %}
-        <div class="mt-1 text-xs opacity-80">{{ msg.content|linebreaksbr }}</div>
-      {% endif %}
-
-    {# голосовое сообщение (voice) #}
+      {% if msg.content %}<div class="mt-1 text-xs opacity-80">{{ msg.content|linebreaksbr }}</div>{% endif %}
     {% elif msg.message_type == "voice" and msg.file %}
       <div class="flex items-center gap-2">
         🎤
         <audio controls class="w-64">
           <source src="{% url 'file_download' msg.file.id %}" type="audio/ogg">
-          Ваш браузер не поддерживает аудио.
         </audio>
       </div>
-      {% if msg.content %}
-        <div class="mt-1 text-xs opacity-80">{{ msg.content|linebreaksbr }}</div>
-      {% endif %}
-
-    {# аудио (audio) #}
+      {% if msg.content %}<div class="mt-1 text-xs opacity-80">{{ msg.content|linebreaksbr }}</div>{% endif %}
     {% elif msg.message_type == "audio" and msg.file %}
       <div class="flex items-center gap-2">
         🎵
         <audio controls class="w-64">
           <source src="{% url 'file_download' msg.file.id %}">
-          Ваш браузер не поддерживает аудио.
         </audio>
       </div>
       <div class="text-xs opacity-70 mt-1">{{ msg.file.filename|default:"Аудио" }}</div>
-      {% if msg.content %}
-        <div class="mt-1 text-xs opacity-80">{{ msg.content|linebreaksbr }}</div>
-      {% endif %}
-
-    {# видео #}
+      {% if msg.content %}<div class="mt-1 text-xs opacity-80">{{ msg.content|linebreaksbr }}</div>{% endif %}
     {% elif msg.message_type == "video" and msg.file %}
       <video controls class="w-64 rounded-lg">
         <source src="{% url 'file_download' msg.file.id %}">
-        Ваш браузер не поддерживает видео.
       </video>
-      {% if msg.content %}
-        <div class="mt-1 text-xs opacity-80">{{ msg.content|linebreaksbr }}</div>
-      {% endif %}
-
-    {# фолбэк #}
+      {% if msg.content %}<div class="mt-1 text-xs opacity-80">{{ msg.content|linebreaksbr }}</div>{% endif %}
     {% else %}
       {{ msg.content|linebreaksbr }}
     {% endif %}
   </div>
 
-  <div class="chat-footer text-[10px] text-base-content/60">
+  <div class="chat-footer text-[10px] text-base-content/60 flex items-center gap-1">
     {{ msg.telegram_date|default:msg.created_at|date:"d.m H:i" }}
+    {% if msg.direction == "outgoing" %}
+      {% if msg.is_sent %}
+        <span class="msg-status text-green-500" title="Отправлено">✓</span>
+      {% else %}
+        <span class="msg-status text-gray-400 animate-pulse" title="Отправляется">⏳</span>
+      {% endif %}
+    {% endif %}
   </div>
 </div>

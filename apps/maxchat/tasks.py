@@ -51,6 +51,11 @@ def send_max_message_task(self, message_id: str):
         msg.sent_at = timezone.now()
         msg.save(update_fields=["max_message_id", "is_sent", "sent_at"])
         logger.info("MAX task: message %s sent, max_id=%s", msg.id, max_id)
+        try:
+            from apps.realtime.utils import push_chat_message
+            push_chat_message(msg)
+        except Exception as e:
+            logger.warning("MAX task: failed to push WS update: %s", e)
     else:
         logger.error("MAX send error for msg %s: %s", msg.id, err)
         try:
