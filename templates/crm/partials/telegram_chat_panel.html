@@ -102,6 +102,7 @@
           class="btn btn-primary btn-sm"
           hx-post="{% url 'telegram_send_message' client.id %}"
           hx-encoding="multipart/form-data"
+          hx-swap="none"
         >
           Telegram
         </button>
@@ -112,6 +113,7 @@
           style="background-color:#ec4899;border-color:#ec4899;color:white;"
           hx-post="{% url 'max_send_message' client.id %}"
           hx-encoding="multipart/form-data"
+          hx-swap="none"
         >
           MAX
         </button>
@@ -223,13 +225,22 @@
     );
 
     document.addEventListener("htmx:afterRequest", function (e) {
-      if (e.detail.elt && e.detail.elt.id === "telegram-send-form" && e.detail.successful) {
-        e.detail.elt.reset();
-        if (filePreview) filePreview.innerHTML = "";
+      const btn = e.detail.elt;
+      if ((btn.id === "btn-send-telegram" || btn.id === "btn-send-max") && e.detail.successful) {
+        const html = e.detail.xhr.responseText;
+        if (html && html.trim()) {
+          const list = document.getElementById("telegram-messages-list");
+          if (list) {
+            list.insertAdjacentHTML("beforeend", html);
+            setTimeout(scrollBottom, 50);
+          }
+        }
+        // сброс формы
+        document.getElementById("telegram-send-form")?.reset();
+        document.getElementById("telegram-file-preview").innerHTML = "";
         clearVoiceInputs();
         currentMode = null;
         showCancelIfNeeded();
-        setTimeout(scrollBottom, 50);
       }
     });
 
@@ -349,29 +360,36 @@
     }
 
     document.body.addEventListener("htmx:wsAfterMessage", function (event) {
-      const data = event.detail?.message;
-      if (!data) return;
+      let data;
+      try { data = JSON.parse(event.detail.message); } catch(e) { return; }
+      if (!data || data.type !== "chat_message") return;
 
-      if (data.type === "chat_message") {
-        if (data.direction === "outgoing" && data.is_sent && data.message_id) {
-          // Находим pending-пузырь по message_id и меняем статус
-          const existingBubble = document.querySelector(
-            '[data-msg-id="' + data.message_id + '"] .msg-status'
-          );
-          if (existingBubble) {
-            // Уже есть пузырь — просто обновляем значок
-            existingBubble.textContent = "✓";
-            existingBubble.classList.remove("text-gray-400", "animate-pulse");
-            existingBubble.classList.add("text-green-500");
-            return; // НЕ добавляем дубль
+      const list = document.getElementById("telegram-messages-list");
+      if (!list) return;
+
+      // Не наш клиент — игнорируем
+      if (String(list.dataset.clientId) !== String(data.client_id)) return;
+
+      if (data.direction === "outgoing" && data.message_id) {
+        const existingStatus = document.querySelector(
+          '[data-msg-id="' + data.message_id + '"] .msg-status'
+        );
+        if (existingStatus) {
+          // Пузырь уже есть — только обновляем статус если отправлено
+          if (data.is_sent) {
+            existingStatus.textContent = "✓";
+            existingStatus.classList.remove("text-gray-400", "animate-pulse");
+            existingStatus.classList.add("text-green-500");
           }
+          return; // не дублируем
         }
+      }
 
-        // Новое входящее или первая отрисовка исходящего — вставляем HTML
-        scrollTelegramChatBottomIfVisibleForClient(data.client_id);
-        if (data.direction === "incoming") {
-          playIncomingSound();
-        }
+      // Вставляем новый пузырь
+      list.insertAdjacentHTML("beforeend", data.html);
+      scrollTelegramChatBottomIfVisibleForClient(data.client_id);
+      if (data.direction === "incoming") {
+        playIncomingSound();
       }
     });
   })();

@@ -231,7 +231,8 @@ async def start_userbot():
                 )
 
                 for msg in messages:
-                    await sync_to_async(push_chat_message)(msg)
+                    if msg.direction == "incoming":
+                        await sync_to_async(push_chat_message)(msg)
 
         except Exception as e:
             from django.db import connection
@@ -394,7 +395,8 @@ async def start_userbot():
 
             from apps.realtime.utils import push_chat_message, push_client_toast
 
-            await sync_to_async(push_chat_message)(msg)
+            if msg.direction == "incoming":
+                await sync_to_async(push_chat_message)(msg)
 
             preview_source = content or file_name or ""
             preview = (preview_source[:15] + "…") if len(preview_source) > 15 else preview_source
