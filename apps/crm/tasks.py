@@ -153,23 +153,29 @@ def send_telegram_message_task(message_id):
         result = loop.run_until_complete(send_telegram_message(**send_params))
         
         if result['success']:
-            # Обновляем сообщение
             message.is_sent = True
             message.telegram_message_id = result['message_id']
             message.sent_at = timezone.now()
             message.telegram_date = timezone.now()
-            message.save(update_fields=['is_sent', 'telegram_message_id', 'sent_at'])
-            
-            logger.info(f"✅ Task: Message {message_id} sent successfully, telegram_id={result['message_id']}")
-            
-            # Обновляем UI через WebSocket
+            message.save(update_fields=['is_sent', 'telegram_message_id', 'sent_at', 'telegram_date'])
+            logger.info(f"✅ Task: Message {message_id} sent successfully")
+
             try:
-                from apps.realtime.utils import push_chat_message
-                push_chat_message(message)
+                from apps.realtime.utils import push_message_status, push_toast
+                push_message_status(message)
+                if message.employee and message.employee.user:
+                    push_toast(message.employee.user, "Сообщение отправлено", level="success")
             except Exception as e:
-                logger.warning(f"Failed to push websocket update: {e}")
+                logger.warning(f"Failed to push WS update: {e}")
         else:
             logger.error(f"❌ Task: Failed to send message {message_id}: {result['error']}")
+            try:
+                from apps.realtime.utils import push_toast
+                if message.employee and message.employee.user:
+                    push_toast(message.employee.user, f"Ошибка отправки: {result['error']}", level="error")
+            except Exception as e:
+                logger.warning(f"Failed to push toast: {e}")
+
             
     except Message.DoesNotExist:
         logger.error(f"❌ Task: Message {message_id} not found")

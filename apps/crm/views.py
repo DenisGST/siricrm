@@ -16,7 +16,7 @@ from django.utils import timezone
 from .models import Client, Message
 from .forms import ClientForm
 from apps.core.models import Employee, EmployeeLog
-from apps.realtime.utils import push_chat_message, push_toast
+from apps.realtime.utils import  push_toast
 from apps.telegram.telegram_sender import create_message_and_store_file
 from .tasks import send_telegram_message_task
 from apps.maxchat.tasks import send_max_message_task
@@ -51,14 +51,14 @@ def telegram_send_message(request, client_id):
         employee=employee,
     )
 
-    # Сразу пушим в WS с is_sent=False (⏳) — пузырь появится мгновенно
-    push_chat_message(msg)
-
-    push_toast(request.user, "Сообщение отправляется...", level="info")
     send_telegram_message_task.delay(str(msg.id))
 
-    # HTTP-ответ ПУСТОЙ — пузырь уже ушёл через WS
-    return HttpResponse("")
+    html = render_to_string(
+        "crm/partials/telegram_message.html",
+        {"msg": msg},
+        request=request,
+    )
+    return HttpResponse(html)
 
 
 @login_required
@@ -82,30 +82,18 @@ def max_send_message(request, client_id):
     client.last_message_at = timezone.now()
     client.save(update_fields=["last_message_at"])
 
-    html_parts = []
-
     if up_file:
-        msg_file = create_message_and_store_file(
+        msg = create_message_and_store_file(
             client=client,
             text=content or None,
             file=up_file,
             employee=employee,
         )
-        msg_file.channel = "max"
-        msg_file.telegram_date = timezone.now()
-        msg_file.save(update_fields=["channel", "telegram_date"])
-
-        # БЕЗ push_chat_message — пуш будет из tasks после отправки
-        send_max_message_task.delay(str(msg_file.id))
-
-        html_parts.append(render_to_string(
-            "crm/partials/telegram_message.html",
-            {"msg": msg_file},
-            request=request,
-        ))
-
-    elif content:
-        msg_text = Message.objects.create(
+        msg.channel = "max"
+        msg.telegram_date = timezone.now()
+        msg.save(update_fields=["channel", "telegram_date"])
+    else:
+        msg = Message.objects.create(
             client=client,
             employee=employee,
             content=content,
@@ -115,17 +103,15 @@ def max_send_message(request, client_id):
             telegram_date=timezone.now(),
             is_sent=False,
         )
-        # БЕЗ push_chat_message — пуш будет из tasks после отправки
-        send_max_message_task.delay(str(msg_text.id))
 
-        html_parts.append(render_to_string(
-            "crm/partials/telegram_message.html",
-            {"msg": msg_text},
-            request=request,
-        ))
+    send_max_message_task.delay(str(msg.id))
 
-    push_toast(request.user, "Сообщение в MAX поставлено в очередь", level="success")
-    return HttpResponse("".join(html_parts))
+    html = render_to_string(
+        "crm/partials/telegram_message.html",
+        {"msg": msg},
+        request=request,
+    )
+    return HttpResponse(html)
 
 
 @login_required

@@ -24,12 +24,16 @@ class TelegramChatConsumer(AsyncWebsocketConsumer):
         await self.channel_layer.group_discard(self.group_name, self.channel_name)
 
     async def chat_message(self, event):
+        # Входящие сообщения — raw HTML для OOB-вставки через HTMX-WS
+        await self.send(text_data=event["html"])
+
+    async def chat_message_status(self, event):
+        # Обновление статуса исходящего — JSON для JS-обработчика
         import json
         await self.send(text_data=json.dumps({
-            "type": "chat_message",
-            "html": event["html"],
-            "message_id": event.get("message_id", ""),
-            "is_sent": event.get("is_sent", False),
+            "type": "chat_message_status",
+            "message_id": event["message_id"],
+            "is_sent": event["is_sent"],
         }))
 
 

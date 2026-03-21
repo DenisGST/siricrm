@@ -100,3 +100,21 @@ def push_client_toast(client: Client, text: str, level: str = "info"):
 def push_client_status_changed(client: Client, user):
     text = f"Статус клиента {client.first_name or client.id} изменён на «{client.get_status_display()}»"
     push_toast(user, text, level="info")
+
+
+def push_message_status(msg: Message):
+    """
+    Обновляет статус пузыря в чате через WS.
+    Шлёт JSON — не HTML. Обрабатывается отдельным JS-обработчиком.
+    """
+    if channel_layer is None:
+        return
+
+    async_to_sync(channel_layer.group_send)(
+        f"telegram_client_{msg.client_id}",
+        {
+            "type": "chat_message_status",
+            "message_id": str(msg.id),
+            "is_sent": msg.is_sent,
+        },
+    )
