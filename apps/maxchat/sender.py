@@ -27,6 +27,7 @@ def _upload_file_to_max(
     file_bytes: bytes,
     filename: str,
     message_type: str,
+    content_type: str = None,
 ) -> Tuple[bool, Optional[dict], Optional[str]]:
     upload_type = _get_upload_type(message_type)
     headers_auth = {"Authorization": access_token}
