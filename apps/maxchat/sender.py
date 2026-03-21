@@ -51,11 +51,16 @@ def _upload_file_to_max(
     if not upload_url:
         return False, None, f"No upload URL in response: {upload_data}"
 
-        # Шаг 2: загружаем файл — БЕЗ Authorization заголовка!
+    # Шаг 2: загружаем файл — БЕЗ Authorization заголовка!
+    import mimetypes
+    if not content_type:
+        content_type, _ = mimetypes.guess_type(filename)
+        content_type = content_type or "application/octet-stream"
+
     try:
         r2 = requests.post(
             upload_url,
-            files={"data": (filename, file_bytes)},  # без headers
+            files={"data": (filename, file_bytes, content_type)},  # ← передаём content_type
             timeout=60,
         )
         r2.raise_for_status()
@@ -102,6 +107,7 @@ def send_max_message(
     file_bytes: bytes = None,
     filename: str = None,
     message_type: str = "text",
+    content_type: str = None,
 ) -> Tuple[bool, Optional[str], Optional[str]]:
     """
     Отправка сообщения в MAX (текст + медиа).
@@ -120,7 +126,7 @@ def send_max_message(
     # Если есть файл — сначала загружаем
     if file_bytes and message_type != "text":
         ok, att_payload, err = _upload_file_to_max(
-            access_token, file_bytes, filename or "file", message_type
+            access_token, file_bytes, filename or "file", message_type, content_type
         )
         if not ok:
             return False, None, f"Upload failed: {err}"
