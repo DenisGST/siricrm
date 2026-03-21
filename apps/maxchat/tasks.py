@@ -19,6 +19,9 @@ def send_max_message_task(self, message_id: str):
         logger.warning("MAX task: message %s not found", message_id)
         return
 
+    if msg.is_sent:
+        return
+
     client = msg.client
     if not client.max_chat_id:
         logger.warning("MAX task: client %s has no max_chat_id", client.id)

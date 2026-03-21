@@ -228,20 +228,13 @@
     document.addEventListener("htmx:afterRequest", function (e) {
       const btn = e.detail.elt;
       if ((btn.id === "btn-send-telegram" || btn.id === "btn-send-max") && e.detail.successful) {
-        const html = e.detail.xhr.responseText;
-        if (html && html.trim()) {
-          const list = document.getElementById("telegram-messages-list");
-          if (list) {
-            list.insertAdjacentHTML("beforeend", html);
-            setTimeout(scrollBottom, 50);
-          }
-        }
-        // сброс формы
+        // Только сброс формы — пузырь приходит через WS
         document.getElementById("telegram-send-form")?.reset();
-        document.getElementById("telegram-file-preview").innerHTML = "";
+        if (filePreview) filePreview.innerHTML = "";
         clearVoiceInputs();
         currentMode = null;
         showCancelIfNeeded();
+        setTimeout(scrollBottom, 50);
       }
     });
 
