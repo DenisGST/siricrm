@@ -98,6 +98,58 @@ def _upload_file_to_max(
 
     return True, {"token": token}, None
 
+def _wait_attachment_ready(
+    access_token: str,
+    chat_id: str,
+    payload: dict,
+    max_attempts: int = 8,
+    delay: float = 3.0,
+) -> Tuple[bool, Optional[str], Optional[str]]:
+    headers = {
+        "Authorization": access_token,
+        "Content-Type": "application/json",
+    }
+    params = {"user_id": chat_id}
+
+    for attempt in range(1, max_attempts + 1):
+        try:
+            resp = requests.post(
+                f"{MAX_API_BASE_URL}/messages",
+                params=params,
+                json=payload,
+                headers=headers,
+                timeout=15,
+            )
+        except Exception as e:
+            logger.exception("MAX send_message network error: %s", e)
+            return False, None, str(e)
+
+        logger.info("MAX send attempt=%d status=%s body=%s", attempt, resp.status_code, resp.text[:300])
+
+        if resp.status_code == 400:
+            try:
+                err_data = resp.json()
+            except Exception:
+                err_data = {}
+            if err_data.get("code") == "attachment.not.ready":
+                logger.warning("MAX attachment not ready, attempt %d/%d, waiting %.1fs", attempt, max_attempts, delay)
+                time.sleep(delay)
+                continue
+            return False, None, f"HTTP 400: {resp.text}"
+
+        if resp.status_code >= 400:
+            return False, None, f"HTTP {resp.status_code}: {resp.text}"
+
+        try:
+            data = resp.json()
+        except Exception:
+            return False, None, "Invalid JSON from MAX"
+
+        message = data.get("message") or data
+        message_id = message.get("id") or message.get("mid") or data.get("id")
+        return True, str(message_id) if message_id else "unknown", None
+
+    return False, None, f"attachment.not.ready after {max_attempts} attempts"
 
 
 def send_max_message(
@@ -126,24 +178,17 @@ def send_max_message(
 
     # Если есть файл — сначала загружаем
     if file_bytes and message_type != "text":
-        ok, att_payload, err = _upload_file_to_max(
-            access_token, file_bytes, filename or "file", message_type, content_type
-        )
-        if not ok:
-            return False, None, f"Upload failed: {err}"
+            ok, att_payload, err = _upload_file_to_max(
+                access_token, file_bytes, filename or "file", message_type, content_type
+            )
+            if not ok:
+                return False, None, f"Upload failed: {err}"
 
-        upload_type = _get_upload_type(message_type)
+            upload_type = _get_upload_type(message_type)
+            payload["attachments"] = [{"type": upload_type, "payload": att_payload}]
 
-        payload["attachments"] = [
-            {
-                "type": upload_type,
-                "payload": att_payload,
-            }
-        ]
-
-        # Небольшая пауза чтобы сервер обработал файл
-        if message_type in ("video", "audio", "voice"):
-            time.sleep(2)
+            # Polling вместо фиксированного sleep
+            return _wait_attachment_ready(access_token, chat_id, payload)
 
     try:
         resp = requests.post(
