@@ -87,11 +87,10 @@ def max_send_message(request, client_id):
 
     html_parts = []
 
-    # Если есть файл — создаём отдельное сообщение с файлом (текст Caption внутри)
     if up_file:
         msg_file = create_message_and_store_file(
             client=client,
-            text=content or None,  # caption
+            text=content or None,
             file=up_file,
             employee=employee,
         )
@@ -99,7 +98,7 @@ def max_send_message(request, client_id):
         msg_file.telegram_date = timezone.now()
         msg_file.save(update_fields=["channel", "telegram_date"])
 
-        push_chat_message(msg_file)
+        # БЕЗ push_chat_message — пуш будет из tasks после отправки
         send_max_message_task.delay(str(msg_file.id))
 
         html_parts.append(render_to_string(
@@ -108,7 +107,6 @@ def max_send_message(request, client_id):
             request=request,
         ))
 
-    # Если есть текст БЕЗ файла — отдельное текстовое сообщение
     elif content:
         msg_text = Message.objects.create(
             client=client,
@@ -120,7 +118,7 @@ def max_send_message(request, client_id):
             telegram_date=timezone.now(),
             is_sent=False,
         )
-        push_chat_message(msg_text)
+        # БЕЗ push_chat_message — пуш будет из tasks после отправки
         send_max_message_task.delay(str(msg_text.id))
 
         html_parts.append(render_to_string(
