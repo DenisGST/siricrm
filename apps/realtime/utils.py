@@ -67,7 +67,12 @@ def push_chat_message(msg: Message):
 
     async_to_sync(channel_layer.group_send)(
         f"telegram_client_{msg.client_id}",
-        payload,
+        {
+            "type": "chat_message",
+            "html": html,
+            "message_id": str(msg.id),
+            "is_sent": msg.is_sent,
+        },
     )
 
 def push_client_toast(client: Client, text: str, level: str = "info"):

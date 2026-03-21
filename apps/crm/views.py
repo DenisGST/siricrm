@@ -49,19 +49,16 @@ def telegram_send_message(request, client_id):
         text=content or None,
         file=up_file,
         employee=employee,
-    )  # создаём Message
+    )
 
-    # БЕЗ push_chat_message, чтобы не было дублей и зависимостей от WS
+    # Сразу пушим в WS с is_sent=False (⏳) — пузырь появится мгновенно
+    push_chat_message(msg)
 
-    push_toast(request.user, "Сообщение клиенту отправлено", level="success")
+    push_toast(request.user, "Сообщение отправляется...", level="info")
     send_telegram_message_task.delay(str(msg.id))
 
-    html = render_to_string(
-        "crm/partials/telegram_message.html",
-        {"msg": msg},
-        request=request,
-    )
-    return HttpResponse(html)
+    # HTTP-ответ ПУСТОЙ — пузырь уже ушёл через WS
+    return HttpResponse("")
 
 
 @login_required

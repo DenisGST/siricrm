@@ -117,6 +117,7 @@
         >
           MAX
         </button>
+
       </div>
 
       <div id="telegram-file-preview" class="text-xs text-gray-500"></div>
@@ -359,38 +360,31 @@
       }, 50);
     }
 
-    document.body.addEventListener("htmx:wsAfterMessage", function (event) {
-      let data;
-      try { data = JSON.parse(event.detail.message); } catch(e) { return; }
-      if (!data || data.type !== "chat_message") return;
+    document.body.addEventListener("htmx:wsAfterMessage", function (evt) {
+        let data;
+        try { data = JSON.parse(evt.detail.message); } catch(e) { return; }
+        if (!data || data.type !== "chat_message") return;
 
-      const list = document.getElementById("telegram-messages-list");
-      if (!list) return;
+        const msgId = data.message_id;
 
-      // Не наш клиент — игнорируем
-      if (String(list.dataset.clientId) !== String(data.client_id)) return;
-
-      if (data.direction === "outgoing" && data.message_id) {
-        const existingStatus = document.querySelector(
-          '[data-msg-id="' + data.message_id + '"] .msg-status'
-        );
-        if (existingStatus) {
-          // Пузырь уже есть — только обновляем статус если отправлено
-          if (data.is_sent) {
-            existingStatus.textContent = "✓";
-            existingStatus.classList.remove("text-gray-400", "animate-pulse");
-            existingStatus.classList.add("text-green-500");
-          }
-          return; // не дублируем
+        // Если пузырь уже есть — только обновляем статус
+        if (msgId) {
+            const existing = document.querySelector('[data-msg-id="' + msgId + '"]');
+            if (existing) {
+                if (data.is_sent) {
+                    const badge = existing.querySelector(".msg-status");
+                    if (badge) {
+                        badge.textContent = "✓";
+                        badge.classList.remove("text-gray-400", "animate-pulse");
+                        badge.classList.add("text-green-500");
+                        badge.title = "Отправлено";
+                    }
+                }
+                return; // не вставляем дубль
+            }
         }
-      }
-
-      // Вставляем новый пузырь
-      list.insertAdjacentHTML("beforeend", data.html);
-      scrollTelegramChatBottomIfVisibleForClient(data.client_id);
-      if (data.direction === "incoming") {
-        playIncomingSound();
-      }
+        // OOB сам вставит — ничего не делаем
     });
+
   })();
 </script>
