@@ -79,16 +79,17 @@
       enctype="multipart/form-data"
     >
       <textarea
+        id="chat-textarea"
         name="content"
         rows="1"
         class="w-full textarea textarea-bordered resize-none"
         placeholder="Напишите сообщение..."
       ></textarea>
 
-      <div class="flex items-center justify-between gap-2">
+      <div class="flex items-center gap-2">
         <div class="flex items-center gap-2">
           <label class="btn btn-ghost btn-xs">
-            <input type="file" name="file" class="hidden">
+            <input type="file" name="file" id="chat-file-input" class="hidden">
             📎
           </label>
           <button type="button" id="btn-record" class="btn btn-ghost btn-xs">🎙</button>
@@ -96,28 +97,35 @@
           <button type="button" id="btn-cancel" class="btn btn-ghost btn-xs hidden">Отмена</button>
         </div>
 
-        <button
-          type="submit"
-          id="btn-send-telegram"
-          class="btn btn-primary btn-sm"
-          hx-post="{% url 'telegram_send_message' client.id %}"
-          hx-encoding="multipart/form-data"
-          hx-swap="none"
-        >
-          Telegram
-        </button>
-        <button
-          type="submit"
-          id="btn-send-max"
-          class="btn btn-sm"
-          style="background-color:#ec4899;border-color:#ec4899;color:white;"
-          hx-post="{% url 'max_send_message' client.id %}"
-          hx-encoding="multipart/form-data"
-          hx-swap="none"
-        >
-          MAX
-        </button>
-
+        <div class="ml-auto flex items-center gap-2">
+          {% if client.telegram_id %}
+          <button
+            type="submit"
+            id="btn-send-telegram"
+            class="btn btn-primary btn-sm"
+            hx-post="{% url 'telegram_send_message' client.id %}"
+            hx-encoding="multipart/form-data"
+            hx-swap="none"
+            disabled
+          >
+            Telegram
+          </button>
+          {% endif %}
+          {% if client.max_chat_id %}
+          <button
+            type="submit"
+            id="btn-send-max"
+            class="btn btn-sm"
+            style="background-color:#ec4899;border-color:#ec4899;color:white;"
+            hx-post="{% url 'max_send_message' client.id %}"
+            hx-encoding="multipart/form-data"
+            hx-swap="none"
+            disabled
+          >
+            MAX
+          </button>
+          {% endif %}
+        </div>
       </div>
 
       <div id="telegram-file-preview" class="text-xs text-gray-500"></div>
@@ -140,10 +148,26 @@
     var list = document.getElementById("telegram-messages-list");
     if (!container || !list) return;
 
-    var btnCancel = document.getElementById("btn-cancel");
+    var textarea   = document.getElementById("chat-textarea");       // ← ДОБАВЛЕНО
+    var btnCancel  = document.getElementById("btn-cancel");
     var filePreview = document.getElementById("telegram-file-preview");
-    var sendForm = document.getElementById("telegram-send-form");
+    var sendForm   = document.getElementById("telegram-send-form");
     var currentMode = null; // 'file' | 'voice' | null
+
+    // ── Активность кнопок отправки ─────────────────────────────────────────
+    function updateSendButtons() {
+      var hasText = textarea && textarea.value.trim().length > 0;
+      var hasFile = currentMode === "file" || currentMode === "voice";
+      var canSend = hasText || hasFile;
+      var btnTg  = document.getElementById("btn-send-telegram");
+      var btnMax = document.getElementById("btn-send-max");
+      if (btnTg)  btnTg.disabled  = !canSend;
+      if (btnMax) btnMax.disabled = !canSend;
+    }
+
+    if (textarea) textarea.addEventListener("input", updateSendButtons); // ← ДОБАВЛЕНО
+    updateSendButtons(); // ← начальное состояние (disabled)
+    // ───────────────────────────────────────────────────────────────────────
 
     function showCancelIfNeeded() {
       if (!btnCancel) return;
@@ -157,9 +181,7 @@
     function clearVoiceInputs() {
       if (!sendForm) return;
       var extraInputs = sendForm.querySelectorAll('input[name="file"].voice-generated');
-      extraInputs.forEach(function (inp) {
-        inp.remove();
-      });
+      extraInputs.forEach(function (inp) { inp.remove(); });
     }
 
     function scrollBottom() {
@@ -173,10 +195,7 @@
 
     var loading = false;
     var scrollReady = false;
-
-    setTimeout(function () {
-      scrollReady = true;
-    }, 300);
+    setTimeout(function () { scrollReady = true; }, 300);
 
     container.addEventListener(
       "scroll",
@@ -196,10 +215,7 @@
 
         try {
           var resp = await fetch(url, { headers: { "HX-Request": "true" } });
-          if (!resp.ok) {
-            loading = false;
-            return;
-          }
+          if (!resp.ok) { loading = false; return; }
           var html = await resp.text();
           var oldH = container.scrollHeight;
 
@@ -217,28 +233,27 @@
           console.error("scroll-up error", e);
         } finally {
           if (loader) loader.classList.add("hidden");
-          setTimeout(function () {
-            loading = false;
-          }, 200);
+          setTimeout(function () { loading = false; }, 200);
         }
       },
       { passive: true }
     );
 
     document.addEventListener("htmx:afterRequest", function (e) {
-        const btn = e.detail.elt;
-        if ((btn.id === "btn-send-telegram" || btn.id === "btn-send-max") && e.detail.successful) {
-            const html = e.detail.xhr.responseText;
-            if (html && html.trim()) {
-                list.insertAdjacentHTML("beforeend", html);
-                setTimeout(scrollBottom, 50);
-            }
-            document.getElementById("telegram-send-form")?.reset();
-            if (filePreview) filePreview.innerHTML = "";
-            clearVoiceInputs();
-            currentMode = null;
-            showCancelIfNeeded();
+      var btn = e.detail.elt;
+      if ((btn.id === "btn-send-telegram" || btn.id === "btn-send-max") && e.detail.successful) {
+        var html = e.detail.xhr.responseText;
+        if (html && html.trim()) {
+          list.insertAdjacentHTML("beforeend", html);
+          setTimeout(scrollBottom, 50);
         }
+        document.getElementById("telegram-send-form")?.reset();
+        if (filePreview) filePreview.innerHTML = "";
+        clearVoiceInputs();
+        currentMode = null;
+        showCancelIfNeeded();
+        updateSendButtons(); // ← ДОБАВЛЕНО: сброс в disabled после отправки
+      }
     });
 
     document.addEventListener("htmx:afterSwap", function (e) {
@@ -258,6 +273,7 @@
         currentMode = null;
       }
       showCancelIfNeeded();
+      updateSendButtons(); // ← ДОБАВЛЕНО
     });
 
     var rec, chunks;
@@ -266,13 +282,9 @@
         var stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         chunks = [];
         rec = new MediaRecorder(stream, { mimeType: "audio/webm;codecs=opus" });
-        rec.ondataavailable = function (e) {
-          chunks.push(e.data);
-        };
+        rec.ondataavailable = function (e) { chunks.push(e.data); };
         rec.onstop = function () {
-          stream.getTracks().forEach(function (t) {
-            t.stop();
-          });
+          stream.getTracks().forEach(function (t) { t.stop(); });
 
           var blob = new Blob(chunks, { type: "audio/ogg;codecs=opus" });
           var f = new File([blob], "voice.ogg", { type: "audio/ogg" });
@@ -296,6 +308,7 @@
           }
           currentMode = "voice";
           showCancelIfNeeded();
+          updateSendButtons(); // ← ДОБАВЛЕНО
         };
 
         rec.start();
@@ -324,15 +337,9 @@
       if (filePreview) filePreview.innerHTML = "";
       currentMode = null;
       showCancelIfNeeded();
+      updateSendButtons(); // ← ДОБАВЛЕНО
       setTimeout(scrollBottom, 100);
     });
-
-    function playIncomingSound() {
-      const audio = document.getElementById("incoming-sound");
-      if (!audio) return;
-      audio.currentTime = 0;
-      audio.play().catch(() => {});
-    }
 
     function isNearBottom(container) {
       if (!container) return false;
@@ -342,37 +349,23 @@
 
     window.crmIsNearBottom = isNearBottom;
 
-    function scrollTelegramChatBottomIfVisibleForClient(clientId) {
-      const list = document.getElementById("telegram-messages-list");
-      const container = document.getElementById("telegram-messages-container");
-      if (!list || !container) return;
-
-      const currentClientId = list.dataset.clientId;
-      if (String(currentClientId) !== String(clientId)) return;
-      if (!isNearBottom(container)) return;
-
-      setTimeout(function () {
-        container.scrollTop = container.scrollHeight;
-      }, 50);
-    }
-
     document.body.addEventListener("htmx:wsAfterMessage", function (evt) {
-        let data;
-        try { data = JSON.parse(evt.detail.message); } catch(e) { return; }
-        if (!data || data.type !== "chat_message_status") return;
+      let data;
+      try { data = JSON.parse(evt.detail.message); } catch(e) { return; }
+      if (!data || data.type !== "chat_message_status") return;
 
-        const el = document.querySelector('[data-msg-id="' + data.message_id + '"]');
-        if (!el) return;
+      const el = document.querySelector('[data-msg-id="' + data.message_id + '"]');
+      if (!el) return;
 
-        const badge = el.querySelector(".msg-status");
-        if (!badge) return;
+      const badge = el.querySelector(".msg-status");
+      if (!badge) return;
 
-        if (data.is_sent) {
-            badge.textContent = "✓";
-            badge.classList.remove("text-gray-400", "animate-pulse");
-            badge.classList.add("text-green-500");
-            badge.title = "Отправлено";
-        }
+      if (data.is_sent) {
+        badge.textContent = "✓";
+        badge.classList.remove("text-gray-400", "animate-pulse");
+        badge.classList.add("text-green-500");
+        badge.title = "Отправлено";
+      }
     });
 
   })();

@@ -98,17 +98,17 @@ async def import_message_history(telegram_id: int, limit: int = 100):
 
 
 async def heartbeat_loop():
-    """Каждые 30 секунд пишет heartbeat в Redis."""
+    """Каждые 120 секунд пишет heartbeat в Redis."""
     from django.core.cache import cache
     logger.info("❤️ Heartbeat loop started")
     while True:
         try:
             logger.info("❤️ Trying to write heartbeat...")  # добавь эту строку
-            await sync_to_async(cache.set)("userbot_heartbeat", "ok", timeout=60)
+            await sync_to_async(cache.set)("userbot_heartbeat", "ok", timeout=240)
             logger.info("❤️ Heartbeat written to cache")
         except Exception as e:
             logger.warning(f"Heartbeat cache error: {e}")
-        await asyncio.sleep(30)
+        await asyncio.sleep(120)
 
 
 async def keep_connected():

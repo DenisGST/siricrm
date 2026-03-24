@@ -52,24 +52,25 @@ class NotificationsConsumer(AsyncWebsocketConsumer):
 
         self.groups_list = []
 
-        # находим Employee по user
+        # Личная группа пользователя — для push_toast
+        personal_group = f"user_notifications_{user.id}"
+        await self.channel_layer.group_add(personal_group, self.channel_name)
+        self.groups_list.append(personal_group)
+
+        # Группы клиентов сотрудника — для push_client_toast
         try:
             employee = await sync_to_async(Employee.objects.get)(user=user)
+            client_ids = await sync_to_async(
+                lambda: list(
+                    Client.objects.filter(employees=employee).values_list("id", flat=True)
+                )
+            )()
+            for cid in client_ids:
+                group_name = f"client_ops_{cid}"
+                await self.channel_layer.group_add(group_name, self.channel_name)
+                self.groups_list.append(group_name)
         except Employee.DoesNotExist:
-            await self.accept()
-            return
-
-        # группы клиентов, с которыми он работает
-        client_ids = await sync_to_async(
-            lambda: list(
-                Client.objects.filter(employees=employee).values_list("id", flat=True)
-            )
-        )()
-
-        for cid in client_ids:
-            group_name = f"client_ops_{cid}"
-            await self.channel_layer.group_add(group_name, self.channel_name)
-            self.groups_list.append(group_name)
+            pass
 
         await self.accept()
 
