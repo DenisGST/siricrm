@@ -23,11 +23,24 @@ class ClientForm(forms.ModelForm):
         fields = [
             "first_name",
             "last_name",
+            "patronymic",
             "username",
             "telegram_id",
             "phone",
             "email",
-            "employees",  # вместо assigned_employee
+            "birth_date",
+            "birth_place",
+            "passport_series",
+            "passport_number",
+            "passport_issued_by",
+            "passport_issued_date",
+            "inn",
+            "snils",
+            "employees",
             "status",
             "notes",
         ]
+        widgets = {
+            "birth_date": forms.DateInput(attrs={"type": "date", "class": "input input-bordered w-full"}),
+            "passport_issued_date": forms.DateInput(attrs={"type": "date", "class": "input input-bordered w-full"}),
+        }

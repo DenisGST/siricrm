@@ -31,9 +31,21 @@ class Client(TimeStampedModel):
     first_name = models.CharField(max_length=255, verbose_name='Имя')
     last_name = models.CharField(max_length=255, blank=True, verbose_name='Фамилия')
     patronymic = models.CharField(max_length=255, blank=True, verbose_name='Отчество')
+    birth_date = models.DateField(null=True, blank=True, verbose_name='Дата рождения')
+    birth_place = models.CharField(max_length=500, blank=True, verbose_name='Место рождения')
+    # Паспортные данные
+    passport_series = models.CharField(max_length=4, blank=True, verbose_name='Серия паспорта')
+    passport_number = models.CharField(max_length=6, blank=True, verbose_name='Номер паспорта')
+    passport_issued_by = models.CharField(max_length=500, blank=True, verbose_name='Кем выдан')
+    passport_issued_date = models.DateField(null=True, blank=True, verbose_name='Дата выдачи')
+    # Документы
+    inn = models.CharField(max_length=12, blank=True, verbose_name='ИНН')
+    snils = models.CharField(max_length=14, blank=True, verbose_name='СНИЛС')
+    # идентификация
     username = models.CharField(max_length=255, blank=True, verbose_name='Username')
     phone = models.CharField(max_length=20, blank=True, null=True, verbose_name='Телефон')
     email = models.EmailField(blank=True, verbose_name='Email')
+    # дополнительно
     notes = models.TextField(blank=True, verbose_name='Заметки')
     last_message_at = models.DateTimeField(null=True, blank=True, verbose_name='Последнее сообщение')
     contacts_confirmed = models.BooleanField(default=False, verbose_name='Контакты подтверждены')

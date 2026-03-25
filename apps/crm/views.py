@@ -468,3 +468,28 @@ def task_status(request, task_id):
             "total": meta.get("total", 0),
         }
     )
+
+@login_required
+def client_edit(request, client_id):
+    client = get_object_or_404(Client, pk=client_id)
+    if request.method == "POST":
+        form = ClientForm(request.POST, instance=client)
+        if form.is_valid():
+            form.save()
+            if request.headers.get("HX-Request"):
+                return HttpResponse(
+                    '<div id="client-edit-success" class="alert alert-success text-sm">✅ Сохранено</div>',
+                    headers={"HX-Trigger": "clientUpdated"},
+                )
+            return redirect("chat", client_id=client_id)
+        else:
+            if request.headers.get("HX-Request"):
+                return render(request, "crm/partials/client_edit_modal.html", {
+                    "form": form, "client": client
+                })
+    else:
+        form = ClientForm(instance=client)
+
+    return render(request, "crm/partials/client_edit_modal.html", {
+        "form": form, "client": client
+    })

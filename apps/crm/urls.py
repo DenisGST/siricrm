@@ -11,6 +11,7 @@ urlpatterns = [
     path('clients/<uuid:client_id>/chat/', views.chat, name='chat'),
     path("clients/new/", views.client_create, name="client_create"),
     path("clients/<uuid:client_id>/max/send/", views.max_send_message, name="max_send_message"),
+    path("clients/<uuid:client_id>/edit/", views.client_edit, name="client_edit"),
     path('logs/', views.logs_list, name='logs_list'),
     path("dashboard/stats/employee-online/", employees_online_count, name="employees_online_count"),
     path("dashboard/stats/client-active/", clients_active_count, name="clients_active_count"),

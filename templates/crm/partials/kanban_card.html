@@ -28,6 +28,15 @@
           {{ client.last_message_at|date:"d.m H:i" }}
         </span>
       {% endif %}
+      <button
+        class="btn btn-ghost btn-xs text-gray-400 hover:text-primary"
+        hx-get="{% url 'client_edit' client.id %}"
+        hx-target="body"
+        hx-swap="beforeend"
+        title="Редактировать клиента"
+      >
+        ✏️ Изменить
+      </button>
     </div>
   </div>
 </div>
