@@ -248,3 +248,2618 @@ INFO 2026-03-25 14:29:27 userbot 1 131843831280384 ❤️ Trying to write heartb
 INFO 2026-03-25 14:29:27 userbot 1 131843831280384 ❤️ Heartbeat written to cache
 INFO 2026-03-25 14:31:27 userbot 1 131843831280384 ❤️ Trying to write heartbeat...
 INFO 2026-03-25 14:31:27 userbot 1 131843831280384 ❤️ Heartbeat written to cache
+INFO 2026-03-25 14:33:27 userbot 1 131843831280384 ❤️ Trying to write heartbeat...
+INFO 2026-03-25 14:33:27 userbot 1 131843831280384 ❤️ Heartbeat written to cache
+INFO 2026-03-25 14:35:27 userbot 1 131843831280384 ❤️ Trying to write heartbeat...
+INFO 2026-03-25 14:35:27 userbot 1 131843831280384 ❤️ Heartbeat written to cache
+INFO 2026-03-25 14:37:27 userbot 1 131843831280384 ❤️ Trying to write heartbeat...
+INFO 2026-03-25 14:37:27 userbot 1 131843831280384 ❤️ Heartbeat written to cache
+INFO 2026-03-25 14:39:27 userbot 1 131843831280384 ❤️ Trying to write heartbeat...
+INFO 2026-03-25 14:39:27 userbot 1 131843831280384 ❤️ Heartbeat written to cache
+INFO 2026-03-25 14:41:27 userbot 1 131843831280384 ❤️ Trying to write heartbeat...
+INFO 2026-03-25 14:41:27 userbot 1 131843831280384 ❤️ Heartbeat written to cache
+ERROR 2026-03-25 14:42:08 userbot 1 131843831280384 Error in userbot new message handler: null value in column "birth_place" of relation "crm_client" violates not-null constraint
+DETAIL:  Failing row contains (2026-03-25 11:42:08.643979+00, 2026-03-25 11:42:08.644017+00, b2032366-7433-4689-928f-b14957c93b69, 5238459641, Виктория Александровна, Костикова, Viktoria_Alekcandrovna, +79105629155, , lead, , 2026-03-25 11:42:08.641099+00, , f, null, null, null, null, null, null, null, null, null).
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 948, in get_or_create
+    return self.get(**kwargs), False
+           ^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 635, in get
+    raise self.model.DoesNotExist(
+apps.crm.models.Client.DoesNotExist: Client matching query does not exist.
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 105, in _execute
+    return self.cursor.execute(sql, params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+psycopg2.errors.NotNullViolation: null value in column "birth_place" of relation "crm_client" violates not-null constraint
+DETAIL:  Failing row contains (2026-03-25 11:42:08.643979+00, 2026-03-25 11:42:08.644017+00, b2032366-7433-4689-928f-b14957c93b69, 5238459641, Виктория Александровна, Костикова, Viktoria_Alekcandrovna, +79105629155, , lead, , 2026-03-25 11:42:08.641099+00, , f, null, null, null, null, null, null, null, null, null).
+
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/app/apps/telegram/userbot.py", line 260, in handle_new_message
+    db_client, created = await sync_to_async(Client.objects.get_or_create)(
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/asgiref/sync.py", line 504, in __call__
+    ret = await asyncio.shield(exec_coro)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/concurrent/futures/thread.py", line 58, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/asgiref/sync.py", line 559, in thread_handler
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/manager.py", line 87, in manager_method
+    return getattr(self.get_queryset(), name)(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 955, in get_or_create
+    return self.create(**params), True
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 665, in create
+    obj.save(force_insert=True, using=self.db)
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 902, in save
+    self.save_base(
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 1008, in save_base
+    updated = self._save_table(
+              ^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 1169, in _save_table
+    results = self._do_insert(
+              ^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 1210, in _do_insert
+    return manager._insert(
+           ^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/manager.py", line 87, in manager_method
+    return getattr(self.get_queryset(), name)(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 1873, in _insert
+    return query.get_compiler(using=using).execute_sql(returning_fields)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/sql/compiler.py", line 1882, in execute_sql
+    cursor.execute(sql, params)
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 122, in execute
+    return super().execute(sql, params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 79, in execute
+    return self._execute_with_wrappers(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 92, in _execute_with_wrappers
+    return executor(sql, params, many, context)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 100, in _execute
+    with self.db.wrap_database_errors:
+  File "/usr/local/lib/python3.11/site-packages/django/db/utils.py", line 91, in __exit__
+    raise dj_exc_value.with_traceback(traceback) from exc_value
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 105, in _execute
+    return self.cursor.execute(sql, params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+django.db.utils.IntegrityError: null value in column "birth_place" of relation "crm_client" violates not-null constraint
+DETAIL:  Failing row contains (2026-03-25 11:42:08.643979+00, 2026-03-25 11:42:08.644017+00, b2032366-7433-4689-928f-b14957c93b69, 5238459641, Виктория Александровна, Костикова, Viktoria_Alekcandrovna, +79105629155, , lead, , 2026-03-25 11:42:08.641099+00, , f, null, null, null, null, null, null, null, null, null).
+
+INFO 2026-03-25 14:43:27 userbot 1 131843831280384 ❤️ Trying to write heartbeat...
+INFO 2026-03-25 14:43:27 userbot 1 131843831280384 ❤️ Heartbeat written to cache
+INFO 2026-03-25 14:44:23 userbot 1 131843831280384 💬 Incoming text from 5814204246: Да да
+ERROR 2026-03-25 14:44:39 userbot 1 131843831280384 Error in userbot new message handler: null value in column "birth_place" of relation "crm_client" violates not-null constraint
+DETAIL:  Failing row contains (2026-03-25 11:44:39.724187+00, 2026-03-25 11:44:39.724203+00, 4422e4aa-4460-456f-8541-c4e0918e6e5a, 5238459641, Виктория Александровна, Костикова, Viktoria_Alekcandrovna, +79105629155, , lead, , 2026-03-25 11:44:39.722115+00, , f, null, null, null, null, null, null, null, null, null).
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 948, in get_or_create
+    return self.get(**kwargs), False
+           ^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 635, in get
+    raise self.model.DoesNotExist(
+apps.crm.models.Client.DoesNotExist: Client matching query does not exist.
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 105, in _execute
+    return self.cursor.execute(sql, params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+psycopg2.errors.NotNullViolation: null value in column "birth_place" of relation "crm_client" violates not-null constraint
+DETAIL:  Failing row contains (2026-03-25 11:44:39.724187+00, 2026-03-25 11:44:39.724203+00, 4422e4aa-4460-456f-8541-c4e0918e6e5a, 5238459641, Виктория Александровна, Костикова, Viktoria_Alekcandrovna, +79105629155, , lead, , 2026-03-25 11:44:39.722115+00, , f, null, null, null, null, null, null, null, null, null).
+
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/app/apps/telegram/userbot.py", line 260, in handle_new_message
+    db_client, created = await sync_to_async(Client.objects.get_or_create)(
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/asgiref/sync.py", line 504, in __call__
+    ret = await asyncio.shield(exec_coro)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/concurrent/futures/thread.py", line 58, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/asgiref/sync.py", line 559, in thread_handler
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/manager.py", line 87, in manager_method
+    return getattr(self.get_queryset(), name)(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 955, in get_or_create
+    return self.create(**params), True
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 665, in create
+    obj.save(force_insert=True, using=self.db)
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 902, in save
+    self.save_base(
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 1008, in save_base
+    updated = self._save_table(
+              ^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 1169, in _save_table
+    results = self._do_insert(
+              ^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 1210, in _do_insert
+    return manager._insert(
+           ^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/manager.py", line 87, in manager_method
+    return getattr(self.get_queryset(), name)(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 1873, in _insert
+    return query.get_compiler(using=using).execute_sql(returning_fields)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/sql/compiler.py", line 1882, in execute_sql
+    cursor.execute(sql, params)
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 122, in execute
+    return super().execute(sql, params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 79, in execute
+    return self._execute_with_wrappers(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 92, in _execute_with_wrappers
+    return executor(sql, params, many, context)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 100, in _execute
+    with self.db.wrap_database_errors:
+  File "/usr/local/lib/python3.11/site-packages/django/db/utils.py", line 91, in __exit__
+    raise dj_exc_value.with_traceback(traceback) from exc_value
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 105, in _execute
+    return self.cursor.execute(sql, params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+django.db.utils.IntegrityError: null value in column "birth_place" of relation "crm_client" violates not-null constraint
+DETAIL:  Failing row contains (2026-03-25 11:44:39.724187+00, 2026-03-25 11:44:39.724203+00, 4422e4aa-4460-456f-8541-c4e0918e6e5a, 5238459641, Виктория Александровна, Костикова, Viktoria_Alekcandrovna, +79105629155, , lead, , 2026-03-25 11:44:39.722115+00, , f, null, null, null, null, null, null, null, null, null).
+
+INFO 2026-03-25 14:45:09 userbot 1 131843831280384 💬 Incoming text from 928612597: Да
+INFO 2026-03-25 14:45:24 userbot 1 131843831280384 💬 Incoming text from 928612597: Спасибо
+INFO 2026-03-25 14:45:27 userbot 1 131843831280384 ❤️ Trying to write heartbeat...
+INFO 2026-03-25 14:45:27 userbot 1 131843831280384 ❤️ Heartbeat written to cache
+INFO 2026-03-25 14:45:36 userbot 1 131843831280384 💬 Incoming text from 928612597: Интересно сколько сейчас там набежало?
+INFO 2026-03-25 14:45:45 userbot 1 131843831280384 💬 Incoming text from 928612597: Нет такой информации?
+INFO 2026-03-25 14:47:27 userbot 1 131843831280384 ❤️ Trying to write heartbeat...
+INFO 2026-03-25 14:47:27 userbot 1 131843831280384 ❤️ Heartbeat written to cache
+INFO 2026-03-25 14:47:47 userbot 1 131843831280384 💬 Incoming text from 5814204246: Да все понятно, 15 числа внесу платеж и сразу скин
+ERROR 2026-03-25 14:47:50 userbot 1 131843831280384 Error in userbot new message handler: null value in column "birth_place" of relation "crm_client" violates not-null constraint
+DETAIL:  Failing row contains (2026-03-25 11:47:50.278188+00, 2026-03-25 11:47:50.278212+00, 6b90cced-bdd7-4d94-8831-443b871cac60, 5549196995, Никишина Марина Владимировна, , nMarina13, +79208883308, , lead, , 2026-03-25 11:47:50.275371+00, , f, null, null, null, null, null, null, null, null, null).
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 948, in get_or_create
+    return self.get(**kwargs), False
+           ^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 635, in get
+    raise self.model.DoesNotExist(
+apps.crm.models.Client.DoesNotExist: Client matching query does not exist.
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 105, in _execute
+    return self.cursor.execute(sql, params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+psycopg2.errors.NotNullViolation: null value in column "birth_place" of relation "crm_client" violates not-null constraint
+DETAIL:  Failing row contains (2026-03-25 11:47:50.278188+00, 2026-03-25 11:47:50.278212+00, 6b90cced-bdd7-4d94-8831-443b871cac60, 5549196995, Никишина Марина Владимировна, , nMarina13, +79208883308, , lead, , 2026-03-25 11:47:50.275371+00, , f, null, null, null, null, null, null, null, null, null).
+
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/app/apps/telegram/userbot.py", line 260, in handle_new_message
+    db_client, created = await sync_to_async(Client.objects.get_or_create)(
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/asgiref/sync.py", line 504, in __call__
+    ret = await asyncio.shield(exec_coro)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/concurrent/futures/thread.py", line 58, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/asgiref/sync.py", line 559, in thread_handler
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/manager.py", line 87, in manager_method
+    return getattr(self.get_queryset(), name)(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 955, in get_or_create
+    return self.create(**params), True
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 665, in create
+    obj.save(force_insert=True, using=self.db)
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 902, in save
+    self.save_base(
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 1008, in save_base
+    updated = self._save_table(
+              ^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 1169, in _save_table
+    results = self._do_insert(
+              ^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 1210, in _do_insert
+    return manager._insert(
+           ^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/manager.py", line 87, in manager_method
+    return getattr(self.get_queryset(), name)(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 1873, in _insert
+    return query.get_compiler(using=using).execute_sql(returning_fields)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/sql/compiler.py", line 1882, in execute_sql
+    cursor.execute(sql, params)
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 122, in execute
+    return super().execute(sql, params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 79, in execute
+    return self._execute_with_wrappers(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 92, in _execute_with_wrappers
+    return executor(sql, params, many, context)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 100, in _execute
+    with self.db.wrap_database_errors:
+  File "/usr/local/lib/python3.11/site-packages/django/db/utils.py", line 91, in __exit__
+    raise dj_exc_value.with_traceback(traceback) from exc_value
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 105, in _execute
+    return self.cursor.execute(sql, params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+django.db.utils.IntegrityError: null value in column "birth_place" of relation "crm_client" violates not-null constraint
+DETAIL:  Failing row contains (2026-03-25 11:47:50.278188+00, 2026-03-25 11:47:50.278212+00, 6b90cced-bdd7-4d94-8831-443b871cac60, 5549196995, Никишина Марина Владимировна, , nMarina13, +79208883308, , lead, , 2026-03-25 11:47:50.275371+00, , f, null, null, null, null, null, null, null, null, null).
+
+INFO 2026-03-25 14:47:56 userbot 1 131843831280384 💬 Incoming text from 5814204246: Спасибо ща понимаеие
+ERROR 2026-03-25 14:48:08 userbot 1 131843831280384 Error in userbot new message handler: null value in column "birth_place" of relation "crm_client" violates not-null constraint
+DETAIL:  Failing row contains (2026-03-25 11:48:08.274083+00, 2026-03-25 11:48:08.274157+00, 83cc505c-f17b-46d3-bf39-c815ef1e0325, 5549196995, Никишина Марина Владимировна, , nMarina13, +79208883308, , lead, , 2026-03-25 11:48:08.272413+00, , f, null, null, null, null, null, null, null, null, null).
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 948, in get_or_create
+    return self.get(**kwargs), False
+           ^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 635, in get
+    raise self.model.DoesNotExist(
+apps.crm.models.Client.DoesNotExist: Client matching query does not exist.
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 105, in _execute
+    return self.cursor.execute(sql, params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+psycopg2.errors.NotNullViolation: null value in column "birth_place" of relation "crm_client" violates not-null constraint
+DETAIL:  Failing row contains (2026-03-25 11:48:08.274083+00, 2026-03-25 11:48:08.274157+00, 83cc505c-f17b-46d3-bf39-c815ef1e0325, 5549196995, Никишина Марина Владимировна, , nMarina13, +79208883308, , lead, , 2026-03-25 11:48:08.272413+00, , f, null, null, null, null, null, null, null, null, null).
+
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/app/apps/telegram/userbot.py", line 260, in handle_new_message
+    db_client, created = await sync_to_async(Client.objects.get_or_create)(
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/asgiref/sync.py", line 504, in __call__
+    ret = await asyncio.shield(exec_coro)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/concurrent/futures/thread.py", line 58, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/asgiref/sync.py", line 559, in thread_handler
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/manager.py", line 87, in manager_method
+    return getattr(self.get_queryset(), name)(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 955, in get_or_create
+    return self.create(**params), True
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 665, in create
+    obj.save(force_insert=True, using=self.db)
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 902, in save
+    self.save_base(
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 1008, in save_base
+    updated = self._save_table(
+              ^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 1169, in _save_table
+    results = self._do_insert(
+              ^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 1210, in _do_insert
+    return manager._insert(
+           ^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/manager.py", line 87, in manager_method
+    return getattr(self.get_queryset(), name)(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 1873, in _insert
+    return query.get_compiler(using=using).execute_sql(returning_fields)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/sql/compiler.py", line 1882, in execute_sql
+    cursor.execute(sql, params)
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 122, in execute
+    return super().execute(sql, params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 79, in execute
+    return self._execute_with_wrappers(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 92, in _execute_with_wrappers
+    return executor(sql, params, many, context)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 100, in _execute
+    with self.db.wrap_database_errors:
+  File "/usr/local/lib/python3.11/site-packages/django/db/utils.py", line 91, in __exit__
+    raise dj_exc_value.with_traceback(traceback) from exc_value
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 105, in _execute
+    return self.cursor.execute(sql, params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+django.db.utils.IntegrityError: null value in column "birth_place" of relation "crm_client" violates not-null constraint
+DETAIL:  Failing row contains (2026-03-25 11:48:08.274083+00, 2026-03-25 11:48:08.274157+00, 83cc505c-f17b-46d3-bf39-c815ef1e0325, 5549196995, Никишина Марина Владимировна, , nMarina13, +79208883308, , lead, , 2026-03-25 11:48:08.272413+00, , f, null, null, null, null, null, null, null, null, null).
+
+INFO 2026-03-25 14:49:27 userbot 1 131843831280384 ❤️ Trying to write heartbeat...
+INFO 2026-03-25 14:49:27 userbot 1 131843831280384 ❤️ Heartbeat written to cache
+INFO 2026-03-25 14:51:27 userbot 1 131843831280384 ❤️ Trying to write heartbeat...
+INFO 2026-03-25 14:51:27 userbot 1 131843831280384 ❤️ Heartbeat written to cache
+INFO 2026-03-25 14:53:27 userbot 1 131843831280384 ❤️ Trying to write heartbeat...
+INFO 2026-03-25 14:53:27 userbot 1 131843831280384 ❤️ Heartbeat written to cache
+INFO 2026-03-25 14:55:27 userbot 1 131843831280384 ❤️ Trying to write heartbeat...
+INFO 2026-03-25 14:55:27 userbot 1 131843831280384 ❤️ Heartbeat written to cache
+INFO 2026-03-25 14:57:27 userbot 1 131843831280384 ❤️ Trying to write heartbeat...
+INFO 2026-03-25 14:57:27 userbot 1 131843831280384 ❤️ Heartbeat written to cache
+INFO 2026-03-25 14:59:27 userbot 1 131843831280384 ❤️ Trying to write heartbeat...
+INFO 2026-03-25 14:59:27 userbot 1 131843831280384 ❤️ Heartbeat written to cache
+INFO 2026-03-25 15:00:33 userbot 1 131843831280384 💬 Incoming text from 928612597: Ок
+INFO 2026-03-25 15:00:35 userbot 1 131843831280384 💬 Incoming text from 928612597: Спасибо
+INFO 2026-03-25 15:01:27 userbot 1 131843831280384 ❤️ Trying to write heartbeat...
+INFO 2026-03-25 15:01:27 userbot 1 131843831280384 ❤️ Heartbeat written to cache
+INFO 2026-03-25 15:03:27 userbot 1 131843831280384 ❤️ Trying to write heartbeat...
+INFO 2026-03-25 15:03:27 userbot 1 131843831280384 ❤️ Heartbeat written to cache
+INFO 2026-03-25 15:05:27 userbot 1 131843831280384 ❤️ Trying to write heartbeat...
+INFO 2026-03-25 15:05:27 userbot 1 131843831280384 ❤️ Heartbeat written to cache
+INFO 2026-03-25 15:07:27 userbot 1 131843831280384 ❤️ Trying to write heartbeat...
+INFO 2026-03-25 15:07:27 userbot 1 131843831280384 ❤️ Heartbeat written to cache
+INFO 2026-03-25 15:09:27 userbot 1 131843831280384 ❤️ Trying to write heartbeat...
+INFO 2026-03-25 15:09:27 userbot 1 131843831280384 ❤️ Heartbeat written to cache
+INFO 2026-03-25 15:11:27 userbot 1 131843831280384 ❤️ Trying to write heartbeat...
+INFO 2026-03-25 15:11:27 userbot 1 131843831280384 ❤️ Heartbeat written to cache
+INFO 2026-03-25 15:13:27 userbot 1 131843831280384 ❤️ Trying to write heartbeat...
+INFO 2026-03-25 15:13:27 userbot 1 131843831280384 ❤️ Heartbeat written to cache
+INFO 2026-03-25 15:15:27 userbot 1 131843831280384 ❤️ Trying to write heartbeat...
+INFO 2026-03-25 15:15:27 userbot 1 131843831280384 ❤️ Heartbeat written to cache
+INFO 2026-03-25 15:17:27 userbot 1 131843831280384 ❤️ Trying to write heartbeat...
+INFO 2026-03-25 15:17:27 userbot 1 131843831280384 ❤️ Heartbeat written to cache
+INFO 2026-03-25 15:19:27 userbot 1 131843831280384 ❤️ Trying to write heartbeat...
+INFO 2026-03-25 15:19:27 userbot 1 131843831280384 ❤️ Heartbeat written to cache
+INFO 2026-03-25 15:21:27 userbot 1 131843831280384 ❤️ Trying to write heartbeat...
+INFO 2026-03-25 15:21:27 userbot 1 131843831280384 ❤️ Heartbeat written to cache
+INFO 2026-03-25 15:23:27 userbot 1 131843831280384 ❤️ Trying to write heartbeat...
+INFO 2026-03-25 15:23:27 userbot 1 131843831280384 ❤️ Heartbeat written to cache
+ERROR 2026-03-25 15:25:08 userbot 1 131843831280384 Error in userbot new message handler: null value in column "birth_place" of relation "crm_client" violates not-null constraint
+DETAIL:  Failing row contains (2026-03-25 12:25:08.572051+00, 2026-03-25 12:25:08.572101+00, 3d670f09-456f-4b61-acb2-1ae555159435, 8568082381, Олеся Сергеевна, Черняева, , +79953389280, , lead, , 2026-03-25 12:25:08.569047+00, , f, null, null, null, null, null, null, null, null, null).
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 948, in get_or_create
+    return self.get(**kwargs), False
+           ^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 635, in get
+    raise self.model.DoesNotExist(
+apps.crm.models.Client.DoesNotExist: Client matching query does not exist.
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 105, in _execute
+    return self.cursor.execute(sql, params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+psycopg2.errors.NotNullViolation: null value in column "birth_place" of relation "crm_client" violates not-null constraint
+DETAIL:  Failing row contains (2026-03-25 12:25:08.572051+00, 2026-03-25 12:25:08.572101+00, 3d670f09-456f-4b61-acb2-1ae555159435, 8568082381, Олеся Сергеевна, Черняева, , +79953389280, , lead, , 2026-03-25 12:25:08.569047+00, , f, null, null, null, null, null, null, null, null, null).
+
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/app/apps/telegram/userbot.py", line 260, in handle_new_message
+    db_client, created = await sync_to_async(Client.objects.get_or_create)(
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/asgiref/sync.py", line 504, in __call__
+    ret = await asyncio.shield(exec_coro)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/concurrent/futures/thread.py", line 58, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/asgiref/sync.py", line 559, in thread_handler
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/manager.py", line 87, in manager_method
+    return getattr(self.get_queryset(), name)(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 955, in get_or_create
+    return self.create(**params), True
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 665, in create
+    obj.save(force_insert=True, using=self.db)
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 902, in save
+    self.save_base(
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 1008, in save_base
+    updated = self._save_table(
+              ^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 1169, in _save_table
+    results = self._do_insert(
+              ^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 1210, in _do_insert
+    return manager._insert(
+           ^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/manager.py", line 87, in manager_method
+    return getattr(self.get_queryset(), name)(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 1873, in _insert
+    return query.get_compiler(using=using).execute_sql(returning_fields)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/sql/compiler.py", line 1882, in execute_sql
+    cursor.execute(sql, params)
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 122, in execute
+    return super().execute(sql, params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 79, in execute
+    return self._execute_with_wrappers(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 92, in _execute_with_wrappers
+    return executor(sql, params, many, context)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 100, in _execute
+    with self.db.wrap_database_errors:
+  File "/usr/local/lib/python3.11/site-packages/django/db/utils.py", line 91, in __exit__
+    raise dj_exc_value.with_traceback(traceback) from exc_value
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 105, in _execute
+    return self.cursor.execute(sql, params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+django.db.utils.IntegrityError: null value in column "birth_place" of relation "crm_client" violates not-null constraint
+DETAIL:  Failing row contains (2026-03-25 12:25:08.572051+00, 2026-03-25 12:25:08.572101+00, 3d670f09-456f-4b61-acb2-1ae555159435, 8568082381, Олеся Сергеевна, Черняева, , +79953389280, , lead, , 2026-03-25 12:25:08.569047+00, , f, null, null, null, null, null, null, null, null, null).
+
+INFO 2026-03-25 15:25:27 userbot 1 131843831280384 ❤️ Trying to write heartbeat...
+INFO 2026-03-25 15:25:27 userbot 1 131843831280384 ❤️ Heartbeat written to cache
+ERROR 2026-03-25 15:25:29 userbot 1 131843831280384 Error in userbot new message handler: null value in column "birth_place" of relation "crm_client" violates not-null constraint
+DETAIL:  Failing row contains (2026-03-25 12:25:29.750302+00, 2026-03-25 12:25:29.750329+00, 14aecdd2-7c30-4cde-ac82-00aaad7ddd7b, 8568082381, Олеся Сергеевна, Черняева, , +79953389280, , lead, , 2026-03-25 12:25:29.74737+00, , f, null, null, null, null, null, null, null, null, null).
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 948, in get_or_create
+    return self.get(**kwargs), False
+           ^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 635, in get
+    raise self.model.DoesNotExist(
+apps.crm.models.Client.DoesNotExist: Client matching query does not exist.
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 105, in _execute
+    return self.cursor.execute(sql, params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+psycopg2.errors.NotNullViolation: null value in column "birth_place" of relation "crm_client" violates not-null constraint
+DETAIL:  Failing row contains (2026-03-25 12:25:29.750302+00, 2026-03-25 12:25:29.750329+00, 14aecdd2-7c30-4cde-ac82-00aaad7ddd7b, 8568082381, Олеся Сергеевна, Черняева, , +79953389280, , lead, , 2026-03-25 12:25:29.74737+00, , f, null, null, null, null, null, null, null, null, null).
+
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/app/apps/telegram/userbot.py", line 260, in handle_new_message
+    db_client, created = await sync_to_async(Client.objects.get_or_create)(
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/asgiref/sync.py", line 504, in __call__
+    ret = await asyncio.shield(exec_coro)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/concurrent/futures/thread.py", line 58, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/asgiref/sync.py", line 559, in thread_handler
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/manager.py", line 87, in manager_method
+    return getattr(self.get_queryset(), name)(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 955, in get_or_create
+    return self.create(**params), True
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 665, in create
+    obj.save(force_insert=True, using=self.db)
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 902, in save
+    self.save_base(
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 1008, in save_base
+    updated = self._save_table(
+              ^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 1169, in _save_table
+    results = self._do_insert(
+              ^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 1210, in _do_insert
+    return manager._insert(
+           ^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/manager.py", line 87, in manager_method
+    return getattr(self.get_queryset(), name)(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 1873, in _insert
+    return query.get_compiler(using=using).execute_sql(returning_fields)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/sql/compiler.py", line 1882, in execute_sql
+    cursor.execute(sql, params)
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 122, in execute
+    return super().execute(sql, params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 79, in execute
+    return self._execute_with_wrappers(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 92, in _execute_with_wrappers
+    return executor(sql, params, many, context)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 100, in _execute
+    with self.db.wrap_database_errors:
+  File "/usr/local/lib/python3.11/site-packages/django/db/utils.py", line 91, in __exit__
+    raise dj_exc_value.with_traceback(traceback) from exc_value
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 105, in _execute
+    return self.cursor.execute(sql, params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+django.db.utils.IntegrityError: null value in column "birth_place" of relation "crm_client" violates not-null constraint
+DETAIL:  Failing row contains (2026-03-25 12:25:29.750302+00, 2026-03-25 12:25:29.750329+00, 14aecdd2-7c30-4cde-ac82-00aaad7ddd7b, 8568082381, Олеся Сергеевна, Черняева, , +79953389280, , lead, , 2026-03-25 12:25:29.74737+00, , f, null, null, null, null, null, null, null, null, null).
+
+INFO 2026-03-25 15:27:27 userbot 1 131843831280384 ❤️ Trying to write heartbeat...
+INFO 2026-03-25 15:27:27 userbot 1 131843831280384 ❤️ Heartbeat written to cache
+ERROR 2026-03-25 15:29:12 userbot 1 131843831280384 Error in userbot new message handler: null value in column "birth_place" of relation "crm_client" violates not-null constraint
+DETAIL:  Failing row contains (2026-03-25 12:29:12.202903+00, 2026-03-25 12:29:12.202951+00, b318e56e-6702-4df4-991d-f8fa9bc33ecd, 5142918137, Лусине Саргисовна, Гюлбекян, , +79268663457, , lead, , 2026-03-25 12:29:12.199665+00, , f, null, null, null, null, null, null, null, null, null).
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 948, in get_or_create
+    return self.get(**kwargs), False
+           ^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 635, in get
+    raise self.model.DoesNotExist(
+apps.crm.models.Client.DoesNotExist: Client matching query does not exist.
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 105, in _execute
+    return self.cursor.execute(sql, params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+psycopg2.errors.NotNullViolation: null value in column "birth_place" of relation "crm_client" violates not-null constraint
+DETAIL:  Failing row contains (2026-03-25 12:29:12.202903+00, 2026-03-25 12:29:12.202951+00, b318e56e-6702-4df4-991d-f8fa9bc33ecd, 5142918137, Лусине Саргисовна, Гюлбекян, , +79268663457, , lead, , 2026-03-25 12:29:12.199665+00, , f, null, null, null, null, null, null, null, null, null).
+
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/app/apps/telegram/userbot.py", line 260, in handle_new_message
+    db_client, created = await sync_to_async(Client.objects.get_or_create)(
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/asgiref/sync.py", line 504, in __call__
+    ret = await asyncio.shield(exec_coro)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/concurrent/futures/thread.py", line 58, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/asgiref/sync.py", line 559, in thread_handler
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/manager.py", line 87, in manager_method
+    return getattr(self.get_queryset(), name)(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 955, in get_or_create
+    return self.create(**params), True
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 665, in create
+    obj.save(force_insert=True, using=self.db)
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 902, in save
+    self.save_base(
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 1008, in save_base
+    updated = self._save_table(
+              ^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 1169, in _save_table
+    results = self._do_insert(
+              ^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 1210, in _do_insert
+    return manager._insert(
+           ^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/manager.py", line 87, in manager_method
+    return getattr(self.get_queryset(), name)(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 1873, in _insert
+    return query.get_compiler(using=using).execute_sql(returning_fields)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/sql/compiler.py", line 1882, in execute_sql
+    cursor.execute(sql, params)
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 122, in execute
+    return super().execute(sql, params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 79, in execute
+    return self._execute_with_wrappers(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 92, in _execute_with_wrappers
+    return executor(sql, params, many, context)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 100, in _execute
+    with self.db.wrap_database_errors:
+  File "/usr/local/lib/python3.11/site-packages/django/db/utils.py", line 91, in __exit__
+    raise dj_exc_value.with_traceback(traceback) from exc_value
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 105, in _execute
+    return self.cursor.execute(sql, params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+django.db.utils.IntegrityError: null value in column "birth_place" of relation "crm_client" violates not-null constraint
+DETAIL:  Failing row contains (2026-03-25 12:29:12.202903+00, 2026-03-25 12:29:12.202951+00, b318e56e-6702-4df4-991d-f8fa9bc33ecd, 5142918137, Лусине Саргисовна, Гюлбекян, , +79268663457, , lead, , 2026-03-25 12:29:12.199665+00, , f, null, null, null, null, null, null, null, null, null).
+
+INFO 2026-03-25 15:29:27 userbot 1 131843831280384 ❤️ Trying to write heartbeat...
+INFO 2026-03-25 15:29:27 userbot 1 131843831280384 ❤️ Heartbeat written to cache
+ERROR 2026-03-25 15:29:50 userbot 1 131843831280384 Error in userbot new message handler: null value in column "birth_place" of relation "crm_client" violates not-null constraint
+DETAIL:  Failing row contains (2026-03-25 12:29:50.967163+00, 2026-03-25 12:29:50.967196+00, 8077eae7-9644-42e4-af7b-7512f6813163, 5142918137, Лусине Саргисовна, Гюлбекян, , +79268663457, , lead, , 2026-03-25 12:29:50.96525+00, , f, null, null, null, null, null, null, null, null, null).
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 948, in get_or_create
+    return self.get(**kwargs), False
+           ^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 635, in get
+    raise self.model.DoesNotExist(
+apps.crm.models.Client.DoesNotExist: Client matching query does not exist.
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 105, in _execute
+    return self.cursor.execute(sql, params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+psycopg2.errors.NotNullViolation: null value in column "birth_place" of relation "crm_client" violates not-null constraint
+DETAIL:  Failing row contains (2026-03-25 12:29:50.967163+00, 2026-03-25 12:29:50.967196+00, 8077eae7-9644-42e4-af7b-7512f6813163, 5142918137, Лусине Саргисовна, Гюлбекян, , +79268663457, , lead, , 2026-03-25 12:29:50.96525+00, , f, null, null, null, null, null, null, null, null, null).
+
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/app/apps/telegram/userbot.py", line 260, in handle_new_message
+    db_client, created = await sync_to_async(Client.objects.get_or_create)(
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/asgiref/sync.py", line 504, in __call__
+    ret = await asyncio.shield(exec_coro)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/concurrent/futures/thread.py", line 58, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/asgiref/sync.py", line 559, in thread_handler
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/manager.py", line 87, in manager_method
+    return getattr(self.get_queryset(), name)(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 955, in get_or_create
+    return self.create(**params), True
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 665, in create
+    obj.save(force_insert=True, using=self.db)
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 902, in save
+    self.save_base(
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 1008, in save_base
+    updated = self._save_table(
+              ^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 1169, in _save_table
+    results = self._do_insert(
+              ^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 1210, in _do_insert
+    return manager._insert(
+           ^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/manager.py", line 87, in manager_method
+    return getattr(self.get_queryset(), name)(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 1873, in _insert
+    return query.get_compiler(using=using).execute_sql(returning_fields)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/sql/compiler.py", line 1882, in execute_sql
+    cursor.execute(sql, params)
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 122, in execute
+    return super().execute(sql, params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 79, in execute
+    return self._execute_with_wrappers(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 92, in _execute_with_wrappers
+    return executor(sql, params, many, context)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 100, in _execute
+    with self.db.wrap_database_errors:
+  File "/usr/local/lib/python3.11/site-packages/django/db/utils.py", line 91, in __exit__
+    raise dj_exc_value.with_traceback(traceback) from exc_value
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 105, in _execute
+    return self.cursor.execute(sql, params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+django.db.utils.IntegrityError: null value in column "birth_place" of relation "crm_client" violates not-null constraint
+DETAIL:  Failing row contains (2026-03-25 12:29:50.967163+00, 2026-03-25 12:29:50.967196+00, 8077eae7-9644-42e4-af7b-7512f6813163, 5142918137, Лусине Саргисовна, Гюлбекян, , +79268663457, , lead, , 2026-03-25 12:29:50.96525+00, , f, null, null, null, null, null, null, null, null, null).
+
+ERROR 2026-03-25 15:30:26 userbot 1 131843831280384 Error in userbot new message handler: null value in column "birth_place" of relation "crm_client" violates not-null constraint
+DETAIL:  Failing row contains (2026-03-25 12:30:26.170775+00, 2026-03-25 12:30:26.170794+00, 01ad0db3-164e-450f-9e95-553b80c4445c, 8568082381, Олеся Сергеевна, Черняева, , +79953389280, , lead, , 2026-03-25 12:30:26.166417+00, , f, null, null, null, null, null, null, null, null, null).
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 948, in get_or_create
+    return self.get(**kwargs), False
+           ^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 635, in get
+    raise self.model.DoesNotExist(
+apps.crm.models.Client.DoesNotExist: Client matching query does not exist.
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 105, in _execute
+    return self.cursor.execute(sql, params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+psycopg2.errors.NotNullViolation: null value in column "birth_place" of relation "crm_client" violates not-null constraint
+DETAIL:  Failing row contains (2026-03-25 12:30:26.170775+00, 2026-03-25 12:30:26.170794+00, 01ad0db3-164e-450f-9e95-553b80c4445c, 8568082381, Олеся Сергеевна, Черняева, , +79953389280, , lead, , 2026-03-25 12:30:26.166417+00, , f, null, null, null, null, null, null, null, null, null).
+
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/app/apps/telegram/userbot.py", line 260, in handle_new_message
+    db_client, created = await sync_to_async(Client.objects.get_or_create)(
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/asgiref/sync.py", line 504, in __call__
+    ret = await asyncio.shield(exec_coro)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/concurrent/futures/thread.py", line 58, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/asgiref/sync.py", line 559, in thread_handler
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/manager.py", line 87, in manager_method
+    return getattr(self.get_queryset(), name)(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 955, in get_or_create
+    return self.create(**params), True
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 665, in create
+    obj.save(force_insert=True, using=self.db)
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 902, in save
+    self.save_base(
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 1008, in save_base
+    updated = self._save_table(
+              ^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 1169, in _save_table
+    results = self._do_insert(
+              ^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 1210, in _do_insert
+    return manager._insert(
+           ^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/manager.py", line 87, in manager_method
+    return getattr(self.get_queryset(), name)(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 1873, in _insert
+    return query.get_compiler(using=using).execute_sql(returning_fields)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/sql/compiler.py", line 1882, in execute_sql
+    cursor.execute(sql, params)
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 122, in execute
+    return super().execute(sql, params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 79, in execute
+    return self._execute_with_wrappers(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 92, in _execute_with_wrappers
+    return executor(sql, params, many, context)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 100, in _execute
+    with self.db.wrap_database_errors:
+  File "/usr/local/lib/python3.11/site-packages/django/db/utils.py", line 91, in __exit__
+    raise dj_exc_value.with_traceback(traceback) from exc_value
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 105, in _execute
+    return self.cursor.execute(sql, params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+django.db.utils.IntegrityError: null value in column "birth_place" of relation "crm_client" violates not-null constraint
+DETAIL:  Failing row contains (2026-03-25 12:30:26.170775+00, 2026-03-25 12:30:26.170794+00, 01ad0db3-164e-450f-9e95-553b80c4445c, 8568082381, Олеся Сергеевна, Черняева, , +79953389280, , lead, , 2026-03-25 12:30:26.166417+00, , f, null, null, null, null, null, null, null, null, null).
+
+INFO 2026-03-25 15:31:27 userbot 1 131843831280384 ❤️ Trying to write heartbeat...
+INFO 2026-03-25 15:31:27 userbot 1 131843831280384 ❤️ Heartbeat written to cache
+ERROR 2026-03-25 15:31:57 userbot 1 131843831280384 Error in userbot new message handler: null value in column "birth_place" of relation "crm_client" violates not-null constraint
+DETAIL:  Failing row contains (2026-03-25 12:31:57.400661+00, 2026-03-25 12:31:57.400695+00, 992be8a9-e1e8-4286-9f8a-032bdb1d3f6c, 5142918137, Лусине Саргисовна, Гюлбекян, , +79268663457, , lead, , 2026-03-25 12:31:57.398825+00, , f, null, null, null, null, null, null, null, null, null).
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 948, in get_or_create
+    return self.get(**kwargs), False
+           ^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 635, in get
+    raise self.model.DoesNotExist(
+apps.crm.models.Client.DoesNotExist: Client matching query does not exist.
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 105, in _execute
+    return self.cursor.execute(sql, params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+psycopg2.errors.NotNullViolation: null value in column "birth_place" of relation "crm_client" violates not-null constraint
+DETAIL:  Failing row contains (2026-03-25 12:31:57.400661+00, 2026-03-25 12:31:57.400695+00, 992be8a9-e1e8-4286-9f8a-032bdb1d3f6c, 5142918137, Лусине Саргисовна, Гюлбекян, , +79268663457, , lead, , 2026-03-25 12:31:57.398825+00, , f, null, null, null, null, null, null, null, null, null).
+
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/app/apps/telegram/userbot.py", line 260, in handle_new_message
+    db_client, created = await sync_to_async(Client.objects.get_or_create)(
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/asgiref/sync.py", line 504, in __call__
+    ret = await asyncio.shield(exec_coro)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/concurrent/futures/thread.py", line 58, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/asgiref/sync.py", line 559, in thread_handler
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/manager.py", line 87, in manager_method
+    return getattr(self.get_queryset(), name)(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 955, in get_or_create
+    return self.create(**params), True
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 665, in create
+    obj.save(force_insert=True, using=self.db)
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 902, in save
+    self.save_base(
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 1008, in save_base
+    updated = self._save_table(
+              ^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 1169, in _save_table
+    results = self._do_insert(
+              ^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 1210, in _do_insert
+    return manager._insert(
+           ^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/manager.py", line 87, in manager_method
+    return getattr(self.get_queryset(), name)(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 1873, in _insert
+    return query.get_compiler(using=using).execute_sql(returning_fields)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/sql/compiler.py", line 1882, in execute_sql
+    cursor.execute(sql, params)
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 122, in execute
+    return super().execute(sql, params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 79, in execute
+    return self._execute_with_wrappers(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 92, in _execute_with_wrappers
+    return executor(sql, params, many, context)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 100, in _execute
+    with self.db.wrap_database_errors:
+  File "/usr/local/lib/python3.11/site-packages/django/db/utils.py", line 91, in __exit__
+    raise dj_exc_value.with_traceback(traceback) from exc_value
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 105, in _execute
+    return self.cursor.execute(sql, params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+django.db.utils.IntegrityError: null value in column "birth_place" of relation "crm_client" violates not-null constraint
+DETAIL:  Failing row contains (2026-03-25 12:31:57.400661+00, 2026-03-25 12:31:57.400695+00, 992be8a9-e1e8-4286-9f8a-032bdb1d3f6c, 5142918137, Лусине Саргисовна, Гюлбекян, , +79268663457, , lead, , 2026-03-25 12:31:57.398825+00, , f, null, null, null, null, null, null, null, null, null).
+
+ERROR 2026-03-25 15:32:02 userbot 1 131843831280384 Error in userbot new message handler: null value in column "birth_place" of relation "crm_client" violates not-null constraint
+DETAIL:  Failing row contains (2026-03-25 12:32:02.880378+00, 2026-03-25 12:32:02.880393+00, 68b63c3c-7614-4c03-a9ce-4f30000f7161, 866141551, Роман Игоревич, Сокотущенко, Roman_299992, +79293299992, , lead, , 2026-03-25 12:32:02.87874+00, , f, null, null, null, null, null, null, null, null, null).
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 948, in get_or_create
+    return self.get(**kwargs), False
+           ^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 635, in get
+    raise self.model.DoesNotExist(
+apps.crm.models.Client.DoesNotExist: Client matching query does not exist.
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 105, in _execute
+    return self.cursor.execute(sql, params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+psycopg2.errors.NotNullViolation: null value in column "birth_place" of relation "crm_client" violates not-null constraint
+DETAIL:  Failing row contains (2026-03-25 12:32:02.880378+00, 2026-03-25 12:32:02.880393+00, 68b63c3c-7614-4c03-a9ce-4f30000f7161, 866141551, Роман Игоревич, Сокотущенко, Roman_299992, +79293299992, , lead, , 2026-03-25 12:32:02.87874+00, , f, null, null, null, null, null, null, null, null, null).
+
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/app/apps/telegram/userbot.py", line 260, in handle_new_message
+    db_client, created = await sync_to_async(Client.objects.get_or_create)(
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/asgiref/sync.py", line 504, in __call__
+    ret = await asyncio.shield(exec_coro)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/concurrent/futures/thread.py", line 58, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/asgiref/sync.py", line 559, in thread_handler
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/manager.py", line 87, in manager_method
+    return getattr(self.get_queryset(), name)(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 955, in get_or_create
+    return self.create(**params), True
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 665, in create
+    obj.save(force_insert=True, using=self.db)
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 902, in save
+    self.save_base(
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 1008, in save_base
+    updated = self._save_table(
+              ^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 1169, in _save_table
+    results = self._do_insert(
+              ^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 1210, in _do_insert
+    return manager._insert(
+           ^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/manager.py", line 87, in manager_method
+    return getattr(self.get_queryset(), name)(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 1873, in _insert
+    return query.get_compiler(using=using).execute_sql(returning_fields)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/sql/compiler.py", line 1882, in execute_sql
+    cursor.execute(sql, params)
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 122, in execute
+    return super().execute(sql, params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 79, in execute
+    return self._execute_with_wrappers(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 92, in _execute_with_wrappers
+    return executor(sql, params, many, context)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 100, in _execute
+    with self.db.wrap_database_errors:
+  File "/usr/local/lib/python3.11/site-packages/django/db/utils.py", line 91, in __exit__
+    raise dj_exc_value.with_traceback(traceback) from exc_value
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 105, in _execute
+    return self.cursor.execute(sql, params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+django.db.utils.IntegrityError: null value in column "birth_place" of relation "crm_client" violates not-null constraint
+DETAIL:  Failing row contains (2026-03-25 12:32:02.880378+00, 2026-03-25 12:32:02.880393+00, 68b63c3c-7614-4c03-a9ce-4f30000f7161, 866141551, Роман Игоревич, Сокотущенко, Roman_299992, +79293299992, , lead, , 2026-03-25 12:32:02.87874+00, , f, null, null, null, null, null, null, null, null, null).
+
+ERROR 2026-03-25 15:32:02 userbot 1 131843831280384 Error in userbot new message handler: null value in column "birth_place" of relation "crm_client" violates not-null constraint
+DETAIL:  Failing row contains (2026-03-25 12:32:02.921356+00, 2026-03-25 12:32:02.92137+00, 00b04546-dc24-4545-bb3f-a6a83786c711, 866141551, Роман Игоревич, Сокотущенко, Roman_299992, +79293299992, , lead, , 2026-03-25 12:32:02.920063+00, , f, null, null, null, null, null, null, null, null, null).
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 948, in get_or_create
+    return self.get(**kwargs), False
+           ^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 635, in get
+    raise self.model.DoesNotExist(
+apps.crm.models.Client.DoesNotExist: Client matching query does not exist.
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 105, in _execute
+    return self.cursor.execute(sql, params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+psycopg2.errors.NotNullViolation: null value in column "birth_place" of relation "crm_client" violates not-null constraint
+DETAIL:  Failing row contains (2026-03-25 12:32:02.921356+00, 2026-03-25 12:32:02.92137+00, 00b04546-dc24-4545-bb3f-a6a83786c711, 866141551, Роман Игоревич, Сокотущенко, Roman_299992, +79293299992, , lead, , 2026-03-25 12:32:02.920063+00, , f, null, null, null, null, null, null, null, null, null).
+
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/app/apps/telegram/userbot.py", line 260, in handle_new_message
+    db_client, created = await sync_to_async(Client.objects.get_or_create)(
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/asgiref/sync.py", line 504, in __call__
+    ret = await asyncio.shield(exec_coro)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/concurrent/futures/thread.py", line 58, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/asgiref/sync.py", line 559, in thread_handler
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/manager.py", line 87, in manager_method
+    return getattr(self.get_queryset(), name)(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 955, in get_or_create
+    return self.create(**params), True
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 665, in create
+    obj.save(force_insert=True, using=self.db)
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 902, in save
+    self.save_base(
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 1008, in save_base
+    updated = self._save_table(
+              ^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 1169, in _save_table
+    results = self._do_insert(
+              ^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 1210, in _do_insert
+    return manager._insert(
+           ^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/manager.py", line 87, in manager_method
+    return getattr(self.get_queryset(), name)(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 1873, in _insert
+    return query.get_compiler(using=using).execute_sql(returning_fields)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/sql/compiler.py", line 1882, in execute_sql
+    cursor.execute(sql, params)
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 122, in execute
+    return super().execute(sql, params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 79, in execute
+    return self._execute_with_wrappers(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 92, in _execute_with_wrappers
+    return executor(sql, params, many, context)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 100, in _execute
+    with self.db.wrap_database_errors:
+  File "/usr/local/lib/python3.11/site-packages/django/db/utils.py", line 91, in __exit__
+    raise dj_exc_value.with_traceback(traceback) from exc_value
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 105, in _execute
+    return self.cursor.execute(sql, params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+django.db.utils.IntegrityError: null value in column "birth_place" of relation "crm_client" violates not-null constraint
+DETAIL:  Failing row contains (2026-03-25 12:32:02.921356+00, 2026-03-25 12:32:02.92137+00, 00b04546-dc24-4545-bb3f-a6a83786c711, 866141551, Роман Игоревич, Сокотущенко, Roman_299992, +79293299992, , lead, , 2026-03-25 12:32:02.920063+00, , f, null, null, null, null, null, null, null, null, null).
+
+ERROR 2026-03-25 15:32:05 userbot 1 131843831280384 Error in userbot new message handler: null value in column "birth_place" of relation "crm_client" violates not-null constraint
+DETAIL:  Failing row contains (2026-03-25 12:32:05.94094+00, 2026-03-25 12:32:05.940957+00, 035460cd-986e-4ae7-baa1-e14959cf61d0, 866141551, Роман Игоревич, Сокотущенко, Roman_299992, +79293299992, , lead, , 2026-03-25 12:32:05.939017+00, , f, null, null, null, null, null, null, null, null, null).
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 948, in get_or_create
+    return self.get(**kwargs), False
+           ^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 635, in get
+    raise self.model.DoesNotExist(
+apps.crm.models.Client.DoesNotExist: Client matching query does not exist.
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 105, in _execute
+    return self.cursor.execute(sql, params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+psycopg2.errors.NotNullViolation: null value in column "birth_place" of relation "crm_client" violates not-null constraint
+DETAIL:  Failing row contains (2026-03-25 12:32:05.94094+00, 2026-03-25 12:32:05.940957+00, 035460cd-986e-4ae7-baa1-e14959cf61d0, 866141551, Роман Игоревич, Сокотущенко, Roman_299992, +79293299992, , lead, , 2026-03-25 12:32:05.939017+00, , f, null, null, null, null, null, null, null, null, null).
+
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/app/apps/telegram/userbot.py", line 260, in handle_new_message
+    db_client, created = await sync_to_async(Client.objects.get_or_create)(
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/asgiref/sync.py", line 504, in __call__
+    ret = await asyncio.shield(exec_coro)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/concurrent/futures/thread.py", line 58, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/asgiref/sync.py", line 559, in thread_handler
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/manager.py", line 87, in manager_method
+    return getattr(self.get_queryset(), name)(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 955, in get_or_create
+    return self.create(**params), True
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 665, in create
+    obj.save(force_insert=True, using=self.db)
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 902, in save
+    self.save_base(
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 1008, in save_base
+    updated = self._save_table(
+              ^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 1169, in _save_table
+    results = self._do_insert(
+              ^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 1210, in _do_insert
+    return manager._insert(
+           ^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/manager.py", line 87, in manager_method
+    return getattr(self.get_queryset(), name)(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 1873, in _insert
+    return query.get_compiler(using=using).execute_sql(returning_fields)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/sql/compiler.py", line 1882, in execute_sql
+    cursor.execute(sql, params)
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 122, in execute
+    return super().execute(sql, params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 79, in execute
+    return self._execute_with_wrappers(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 92, in _execute_with_wrappers
+    return executor(sql, params, many, context)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 100, in _execute
+    with self.db.wrap_database_errors:
+  File "/usr/local/lib/python3.11/site-packages/django/db/utils.py", line 91, in __exit__
+    raise dj_exc_value.with_traceback(traceback) from exc_value
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 105, in _execute
+    return self.cursor.execute(sql, params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+django.db.utils.IntegrityError: null value in column "birth_place" of relation "crm_client" violates not-null constraint
+DETAIL:  Failing row contains (2026-03-25 12:32:05.94094+00, 2026-03-25 12:32:05.940957+00, 035460cd-986e-4ae7-baa1-e14959cf61d0, 866141551, Роман Игоревич, Сокотущенко, Roman_299992, +79293299992, , lead, , 2026-03-25 12:32:05.939017+00, , f, null, null, null, null, null, null, null, null, null).
+
+INFO 2026-03-25 15:33:27 userbot 1 131843831280384 ❤️ Trying to write heartbeat...
+INFO 2026-03-25 15:33:27 userbot 1 131843831280384 ❤️ Heartbeat written to cache
+INFO 2026-03-25 15:35:27 userbot 1 131843831280384 ❤️ Trying to write heartbeat...
+INFO 2026-03-25 15:35:27 userbot 1 131843831280384 ❤️ Heartbeat written to cache
+INFO 2026-03-25 15:37:27 userbot 1 131843831280384 ❤️ Trying to write heartbeat...
+INFO 2026-03-25 15:37:27 userbot 1 131843831280384 ❤️ Heartbeat written to cache
+ERROR 2026-03-25 15:38:23 userbot 1 131843831280384 Error in userbot new message handler: null value in column "birth_place" of relation "crm_client" violates not-null constraint
+DETAIL:  Failing row contains (2026-03-25 12:38:23.547182+00, 2026-03-25 12:38:23.547225+00, d5a27d5d-5823-42c1-aa8f-bca711900ece, 8568082381, Олеся Сергеевна, Черняева, , +79953389280, , lead, , 2026-03-25 12:38:23.544351+00, , f, null, null, null, null, null, null, null, null, null).
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 948, in get_or_create
+    return self.get(**kwargs), False
+           ^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 635, in get
+    raise self.model.DoesNotExist(
+apps.crm.models.Client.DoesNotExist: Client matching query does not exist.
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 105, in _execute
+    return self.cursor.execute(sql, params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+psycopg2.errors.NotNullViolation: null value in column "birth_place" of relation "crm_client" violates not-null constraint
+DETAIL:  Failing row contains (2026-03-25 12:38:23.547182+00, 2026-03-25 12:38:23.547225+00, d5a27d5d-5823-42c1-aa8f-bca711900ece, 8568082381, Олеся Сергеевна, Черняева, , +79953389280, , lead, , 2026-03-25 12:38:23.544351+00, , f, null, null, null, null, null, null, null, null, null).
+
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/app/apps/telegram/userbot.py", line 260, in handle_new_message
+    db_client, created = await sync_to_async(Client.objects.get_or_create)(
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/asgiref/sync.py", line 504, in __call__
+    ret = await asyncio.shield(exec_coro)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/concurrent/futures/thread.py", line 58, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/asgiref/sync.py", line 559, in thread_handler
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/manager.py", line 87, in manager_method
+    return getattr(self.get_queryset(), name)(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 955, in get_or_create
+    return self.create(**params), True
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 665, in create
+    obj.save(force_insert=True, using=self.db)
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 902, in save
+    self.save_base(
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 1008, in save_base
+    updated = self._save_table(
+              ^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 1169, in _save_table
+    results = self._do_insert(
+              ^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 1210, in _do_insert
+    return manager._insert(
+           ^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/manager.py", line 87, in manager_method
+    return getattr(self.get_queryset(), name)(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 1873, in _insert
+    return query.get_compiler(using=using).execute_sql(returning_fields)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/sql/compiler.py", line 1882, in execute_sql
+    cursor.execute(sql, params)
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 122, in execute
+    return super().execute(sql, params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 79, in execute
+    return self._execute_with_wrappers(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 92, in _execute_with_wrappers
+    return executor(sql, params, many, context)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 100, in _execute
+    with self.db.wrap_database_errors:
+  File "/usr/local/lib/python3.11/site-packages/django/db/utils.py", line 91, in __exit__
+    raise dj_exc_value.with_traceback(traceback) from exc_value
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 105, in _execute
+    return self.cursor.execute(sql, params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+django.db.utils.IntegrityError: null value in column "birth_place" of relation "crm_client" violates not-null constraint
+DETAIL:  Failing row contains (2026-03-25 12:38:23.547182+00, 2026-03-25 12:38:23.547225+00, d5a27d5d-5823-42c1-aa8f-bca711900ece, 8568082381, Олеся Сергеевна, Черняева, , +79953389280, , lead, , 2026-03-25 12:38:23.544351+00, , f, null, null, null, null, null, null, null, null, null).
+
+INFO 2026-03-25 15:39:27 userbot 1 131843831280384 ❤️ Trying to write heartbeat...
+INFO 2026-03-25 15:39:27 userbot 1 131843831280384 ❤️ Heartbeat written to cache
+INFO 2026-03-25 15:41:27 userbot 1 131843831280384 ❤️ Trying to write heartbeat...
+INFO 2026-03-25 15:41:27 userbot 1 131843831280384 ❤️ Heartbeat written to cache
+ERROR 2026-03-25 15:42:56 userbot 1 131843831280384 Error in userbot new message handler: null value in column "birth_place" of relation "crm_client" violates not-null constraint
+DETAIL:  Failing row contains (2026-03-25 12:42:56.120399+00, 2026-03-25 12:42:56.12042+00, 386896f8-b3ca-4ece-a881-b5a11a6be3a9, 830779861, Анна Денисовна, Емец, , +79685969694, , lead, , 2026-03-25 12:42:56.117823+00, , f, null, null, null, null, null, null, null, null, null).
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 948, in get_or_create
+    return self.get(**kwargs), False
+           ^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 635, in get
+    raise self.model.DoesNotExist(
+apps.crm.models.Client.DoesNotExist: Client matching query does not exist.
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 105, in _execute
+    return self.cursor.execute(sql, params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+psycopg2.errors.NotNullViolation: null value in column "birth_place" of relation "crm_client" violates not-null constraint
+DETAIL:  Failing row contains (2026-03-25 12:42:56.120399+00, 2026-03-25 12:42:56.12042+00, 386896f8-b3ca-4ece-a881-b5a11a6be3a9, 830779861, Анна Денисовна, Емец, , +79685969694, , lead, , 2026-03-25 12:42:56.117823+00, , f, null, null, null, null, null, null, null, null, null).
+
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/app/apps/telegram/userbot.py", line 260, in handle_new_message
+    db_client, created = await sync_to_async(Client.objects.get_or_create)(
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/asgiref/sync.py", line 504, in __call__
+    ret = await asyncio.shield(exec_coro)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/concurrent/futures/thread.py", line 58, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/asgiref/sync.py", line 559, in thread_handler
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/manager.py", line 87, in manager_method
+    return getattr(self.get_queryset(), name)(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 955, in get_or_create
+    return self.create(**params), True
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 665, in create
+    obj.save(force_insert=True, using=self.db)
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 902, in save
+    self.save_base(
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 1008, in save_base
+    updated = self._save_table(
+              ^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 1169, in _save_table
+    results = self._do_insert(
+              ^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 1210, in _do_insert
+    return manager._insert(
+           ^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/manager.py", line 87, in manager_method
+    return getattr(self.get_queryset(), name)(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 1873, in _insert
+    return query.get_compiler(using=using).execute_sql(returning_fields)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/sql/compiler.py", line 1882, in execute_sql
+    cursor.execute(sql, params)
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 122, in execute
+    return super().execute(sql, params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 79, in execute
+    return self._execute_with_wrappers(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 92, in _execute_with_wrappers
+    return executor(sql, params, many, context)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 100, in _execute
+    with self.db.wrap_database_errors:
+  File "/usr/local/lib/python3.11/site-packages/django/db/utils.py", line 91, in __exit__
+    raise dj_exc_value.with_traceback(traceback) from exc_value
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 105, in _execute
+    return self.cursor.execute(sql, params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+django.db.utils.IntegrityError: null value in column "birth_place" of relation "crm_client" violates not-null constraint
+DETAIL:  Failing row contains (2026-03-25 12:42:56.120399+00, 2026-03-25 12:42:56.12042+00, 386896f8-b3ca-4ece-a881-b5a11a6be3a9, 830779861, Анна Денисовна, Емец, , +79685969694, , lead, , 2026-03-25 12:42:56.117823+00, , f, null, null, null, null, null, null, null, null, null).
+
+INFO 2026-03-25 15:43:27 userbot 1 131843831280384 ❤️ Trying to write heartbeat...
+INFO 2026-03-25 15:43:27 userbot 1 131843831280384 ❤️ Heartbeat written to cache
+INFO 2026-03-25 15:45:27 userbot 1 131843831280384 ❤️ Trying to write heartbeat...
+INFO 2026-03-25 15:45:27 userbot 1 131843831280384 ❤️ Heartbeat written to cache
+INFO 2026-03-25 15:47:27 userbot 1 131843831280384 ❤️ Trying to write heartbeat...
+INFO 2026-03-25 15:47:27 userbot 1 131843831280384 ❤️ Heartbeat written to cache
+INFO 2026-03-25 15:48:56 userbot 1 131843831280384 💬 Incoming text from 5222228178: (917) 925-5540 - Марат, доброго дня. В продолжение
+INFO 2026-03-25 15:49:27 userbot 1 131843831280384 ❤️ Trying to write heartbeat...
+INFO 2026-03-25 15:49:27 userbot 1 131843831280384 ❤️ Heartbeat written to cache
+INFO 2026-03-25 15:50:25 userbot 1 131843831280384 💬 Incoming text from 5222228178: https://fo-y.ru/index.php/blog/vybor-yuridicheskoj
+ERROR 2026-03-25 15:51:06 userbot 1 131843831280384 Error in userbot new message handler: null value in column "birth_place" of relation "crm_client" violates not-null constraint
+DETAIL:  Failing row contains (2026-03-25 12:51:06.980171+00, 2026-03-25 12:51:06.980218+00, 074ca599-76f0-4cec-bbda-fe081d43ad85, 1068028248, Екатерина Сергеевна, Юлгушева, kanfetka28, +79379949861, , lead, , 2026-03-25 12:51:06.976847+00, , f, null, null, null, null, null, null, null, null, null).
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 948, in get_or_create
+    return self.get(**kwargs), False
+           ^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 635, in get
+    raise self.model.DoesNotExist(
+apps.crm.models.Client.DoesNotExist: Client matching query does not exist.
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 105, in _execute
+    return self.cursor.execute(sql, params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+psycopg2.errors.NotNullViolation: null value in column "birth_place" of relation "crm_client" violates not-null constraint
+DETAIL:  Failing row contains (2026-03-25 12:51:06.980171+00, 2026-03-25 12:51:06.980218+00, 074ca599-76f0-4cec-bbda-fe081d43ad85, 1068028248, Екатерина Сергеевна, Юлгушева, kanfetka28, +79379949861, , lead, , 2026-03-25 12:51:06.976847+00, , f, null, null, null, null, null, null, null, null, null).
+
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/app/apps/telegram/userbot.py", line 260, in handle_new_message
+    db_client, created = await sync_to_async(Client.objects.get_or_create)(
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/asgiref/sync.py", line 504, in __call__
+    ret = await asyncio.shield(exec_coro)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/concurrent/futures/thread.py", line 58, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/asgiref/sync.py", line 559, in thread_handler
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/manager.py", line 87, in manager_method
+    return getattr(self.get_queryset(), name)(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 955, in get_or_create
+    return self.create(**params), True
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 665, in create
+    obj.save(force_insert=True, using=self.db)
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 902, in save
+    self.save_base(
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 1008, in save_base
+    updated = self._save_table(
+              ^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 1169, in _save_table
+    results = self._do_insert(
+              ^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 1210, in _do_insert
+    return manager._insert(
+           ^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/manager.py", line 87, in manager_method
+    return getattr(self.get_queryset(), name)(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 1873, in _insert
+    return query.get_compiler(using=using).execute_sql(returning_fields)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/sql/compiler.py", line 1882, in execute_sql
+    cursor.execute(sql, params)
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 122, in execute
+    return super().execute(sql, params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 79, in execute
+    return self._execute_with_wrappers(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 92, in _execute_with_wrappers
+    return executor(sql, params, many, context)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 100, in _execute
+    with self.db.wrap_database_errors:
+  File "/usr/local/lib/python3.11/site-packages/django/db/utils.py", line 91, in __exit__
+    raise dj_exc_value.with_traceback(traceback) from exc_value
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 105, in _execute
+    return self.cursor.execute(sql, params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+django.db.utils.IntegrityError: null value in column "birth_place" of relation "crm_client" violates not-null constraint
+DETAIL:  Failing row contains (2026-03-25 12:51:06.980171+00, 2026-03-25 12:51:06.980218+00, 074ca599-76f0-4cec-bbda-fe081d43ad85, 1068028248, Екатерина Сергеевна, Юлгушева, kanfetka28, +79379949861, , lead, , 2026-03-25 12:51:06.976847+00, , f, null, null, null, null, null, null, null, null, null).
+
+INFO 2026-03-25 15:51:27 userbot 1 131843831280384 ❤️ Trying to write heartbeat...
+INFO 2026-03-25 15:51:27 userbot 1 131843831280384 ❤️ Heartbeat written to cache
+ERROR 2026-03-25 15:52:31 userbot 1 131843831280384 Error in userbot new message handler: null value in column "birth_place" of relation "crm_client" violates not-null constraint
+DETAIL:  Failing row contains (2026-03-25 12:52:31.376053+00, 2026-03-25 12:52:31.376071+00, e74c2d84-23cf-4f0e-983f-c31aefb7f86f, 5238459641, Виктория Александровна, Костикова, Viktoria_Alekcandrovna, +79105629155, , lead, , 2026-03-25 12:52:31.374049+00, , f, null, null, null, null, null, null, null, null, null).
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 948, in get_or_create
+    return self.get(**kwargs), False
+           ^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 635, in get
+    raise self.model.DoesNotExist(
+apps.crm.models.Client.DoesNotExist: Client matching query does not exist.
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 105, in _execute
+    return self.cursor.execute(sql, params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+psycopg2.errors.NotNullViolation: null value in column "birth_place" of relation "crm_client" violates not-null constraint
+DETAIL:  Failing row contains (2026-03-25 12:52:31.376053+00, 2026-03-25 12:52:31.376071+00, e74c2d84-23cf-4f0e-983f-c31aefb7f86f, 5238459641, Виктория Александровна, Костикова, Viktoria_Alekcandrovna, +79105629155, , lead, , 2026-03-25 12:52:31.374049+00, , f, null, null, null, null, null, null, null, null, null).
+
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/app/apps/telegram/userbot.py", line 260, in handle_new_message
+    db_client, created = await sync_to_async(Client.objects.get_or_create)(
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/asgiref/sync.py", line 504, in __call__
+    ret = await asyncio.shield(exec_coro)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/concurrent/futures/thread.py", line 58, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/asgiref/sync.py", line 559, in thread_handler
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/manager.py", line 87, in manager_method
+    return getattr(self.get_queryset(), name)(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 955, in get_or_create
+    return self.create(**params), True
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 665, in create
+    obj.save(force_insert=True, using=self.db)
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 902, in save
+    self.save_base(
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 1008, in save_base
+    updated = self._save_table(
+              ^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 1169, in _save_table
+    results = self._do_insert(
+              ^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 1210, in _do_insert
+    return manager._insert(
+           ^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/manager.py", line 87, in manager_method
+    return getattr(self.get_queryset(), name)(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 1873, in _insert
+    return query.get_compiler(using=using).execute_sql(returning_fields)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/sql/compiler.py", line 1882, in execute_sql
+    cursor.execute(sql, params)
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 122, in execute
+    return super().execute(sql, params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 79, in execute
+    return self._execute_with_wrappers(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 92, in _execute_with_wrappers
+    return executor(sql, params, many, context)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 100, in _execute
+    with self.db.wrap_database_errors:
+  File "/usr/local/lib/python3.11/site-packages/django/db/utils.py", line 91, in __exit__
+    raise dj_exc_value.with_traceback(traceback) from exc_value
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 105, in _execute
+    return self.cursor.execute(sql, params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+django.db.utils.IntegrityError: null value in column "birth_place" of relation "crm_client" violates not-null constraint
+DETAIL:  Failing row contains (2026-03-25 12:52:31.376053+00, 2026-03-25 12:52:31.376071+00, e74c2d84-23cf-4f0e-983f-c31aefb7f86f, 5238459641, Виктория Александровна, Костикова, Viktoria_Alekcandrovna, +79105629155, , lead, , 2026-03-25 12:52:31.374049+00, , f, null, null, null, null, null, null, null, null, null).
+
+ERROR 2026-03-25 15:52:31 userbot 1 131843831280384 Error in userbot new message handler: null value in column "birth_place" of relation "crm_client" violates not-null constraint
+DETAIL:  Failing row contains (2026-03-25 12:52:31.379783+00, 2026-03-25 12:52:31.379795+00, 4e9882ff-50f9-4cd7-be17-37812296b531, 5238459641, Виктория Александровна, Костикова, Viktoria_Alekcandrovna, +79105629155, , lead, , 2026-03-25 12:52:31.375286+00, , f, null, null, null, null, null, null, null, null, null).
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 948, in get_or_create
+    return self.get(**kwargs), False
+           ^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 635, in get
+    raise self.model.DoesNotExist(
+apps.crm.models.Client.DoesNotExist: Client matching query does not exist.
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 105, in _execute
+    return self.cursor.execute(sql, params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+psycopg2.errors.NotNullViolation: null value in column "birth_place" of relation "crm_client" violates not-null constraint
+DETAIL:  Failing row contains (2026-03-25 12:52:31.379783+00, 2026-03-25 12:52:31.379795+00, 4e9882ff-50f9-4cd7-be17-37812296b531, 5238459641, Виктория Александровна, Костикова, Viktoria_Alekcandrovna, +79105629155, , lead, , 2026-03-25 12:52:31.375286+00, , f, null, null, null, null, null, null, null, null, null).
+
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/app/apps/telegram/userbot.py", line 260, in handle_new_message
+    db_client, created = await sync_to_async(Client.objects.get_or_create)(
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/asgiref/sync.py", line 504, in __call__
+    ret = await asyncio.shield(exec_coro)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/concurrent/futures/thread.py", line 58, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/asgiref/sync.py", line 559, in thread_handler
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/manager.py", line 87, in manager_method
+    return getattr(self.get_queryset(), name)(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 955, in get_or_create
+    return self.create(**params), True
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 665, in create
+    obj.save(force_insert=True, using=self.db)
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 902, in save
+    self.save_base(
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 1008, in save_base
+    updated = self._save_table(
+              ^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 1169, in _save_table
+    results = self._do_insert(
+              ^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 1210, in _do_insert
+    return manager._insert(
+           ^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/manager.py", line 87, in manager_method
+    return getattr(self.get_queryset(), name)(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 1873, in _insert
+    return query.get_compiler(using=using).execute_sql(returning_fields)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/sql/compiler.py", line 1882, in execute_sql
+    cursor.execute(sql, params)
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 122, in execute
+    return super().execute(sql, params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 79, in execute
+    return self._execute_with_wrappers(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 92, in _execute_with_wrappers
+    return executor(sql, params, many, context)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 100, in _execute
+    with self.db.wrap_database_errors:
+  File "/usr/local/lib/python3.11/site-packages/django/db/utils.py", line 91, in __exit__
+    raise dj_exc_value.with_traceback(traceback) from exc_value
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 105, in _execute
+    return self.cursor.execute(sql, params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+django.db.utils.IntegrityError: null value in column "birth_place" of relation "crm_client" violates not-null constraint
+DETAIL:  Failing row contains (2026-03-25 12:52:31.379783+00, 2026-03-25 12:52:31.379795+00, 4e9882ff-50f9-4cd7-be17-37812296b531, 5238459641, Виктория Александровна, Костикова, Viktoria_Alekcandrovna, +79105629155, , lead, , 2026-03-25 12:52:31.375286+00, , f, null, null, null, null, null, null, null, null, null).
+
+ERROR 2026-03-25 15:52:43 userbot 1 131843831280384 Error in userbot new message handler: null value in column "birth_place" of relation "crm_client" violates not-null constraint
+DETAIL:  Failing row contains (2026-03-25 12:52:43.551402+00, 2026-03-25 12:52:43.551442+00, 53f5e8d8-0a56-4f12-9c59-91c434db7013, 5238459641, Виктория Александровна, Костикова, Viktoria_Alekcandrovna, +79105629155, , lead, , 2026-03-25 12:52:43.548665+00, , f, null, null, null, null, null, null, null, null, null).
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 948, in get_or_create
+    return self.get(**kwargs), False
+           ^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 635, in get
+    raise self.model.DoesNotExist(
+apps.crm.models.Client.DoesNotExist: Client matching query does not exist.
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 105, in _execute
+    return self.cursor.execute(sql, params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+psycopg2.errors.NotNullViolation: null value in column "birth_place" of relation "crm_client" violates not-null constraint
+DETAIL:  Failing row contains (2026-03-25 12:52:43.551402+00, 2026-03-25 12:52:43.551442+00, 53f5e8d8-0a56-4f12-9c59-91c434db7013, 5238459641, Виктория Александровна, Костикова, Viktoria_Alekcandrovna, +79105629155, , lead, , 2026-03-25 12:52:43.548665+00, , f, null, null, null, null, null, null, null, null, null).
+
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/app/apps/telegram/userbot.py", line 260, in handle_new_message
+    db_client, created = await sync_to_async(Client.objects.get_or_create)(
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/asgiref/sync.py", line 504, in __call__
+    ret = await asyncio.shield(exec_coro)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/concurrent/futures/thread.py", line 58, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/asgiref/sync.py", line 559, in thread_handler
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/manager.py", line 87, in manager_method
+    return getattr(self.get_queryset(), name)(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 955, in get_or_create
+    return self.create(**params), True
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 665, in create
+    obj.save(force_insert=True, using=self.db)
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 902, in save
+    self.save_base(
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 1008, in save_base
+    updated = self._save_table(
+              ^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 1169, in _save_table
+    results = self._do_insert(
+              ^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 1210, in _do_insert
+    return manager._insert(
+           ^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/manager.py", line 87, in manager_method
+    return getattr(self.get_queryset(), name)(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 1873, in _insert
+    return query.get_compiler(using=using).execute_sql(returning_fields)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/sql/compiler.py", line 1882, in execute_sql
+    cursor.execute(sql, params)
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 122, in execute
+    return super().execute(sql, params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 79, in execute
+    return self._execute_with_wrappers(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 92, in _execute_with_wrappers
+    return executor(sql, params, many, context)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 100, in _execute
+    with self.db.wrap_database_errors:
+  File "/usr/local/lib/python3.11/site-packages/django/db/utils.py", line 91, in __exit__
+    raise dj_exc_value.with_traceback(traceback) from exc_value
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 105, in _execute
+    return self.cursor.execute(sql, params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+django.db.utils.IntegrityError: null value in column "birth_place" of relation "crm_client" violates not-null constraint
+DETAIL:  Failing row contains (2026-03-25 12:52:43.551402+00, 2026-03-25 12:52:43.551442+00, 53f5e8d8-0a56-4f12-9c59-91c434db7013, 5238459641, Виктория Александровна, Костикова, Viktoria_Alekcandrovna, +79105629155, , lead, , 2026-03-25 12:52:43.548665+00, , f, null, null, null, null, null, null, null, null, null).
+
+INFO 2026-03-25 15:53:27 userbot 1 131843831280384 ❤️ Trying to write heartbeat...
+INFO 2026-03-25 15:53:27 userbot 1 131843831280384 ❤️ Heartbeat written to cache
+ERROR 2026-03-25 15:55:11 userbot 1 131843831280384 Error in userbot new message handler: null value in column "birth_place" of relation "crm_client" violates not-null constraint
+DETAIL:  Failing row contains (2026-03-25 12:55:11.598669+00, 2026-03-25 12:55:11.598703+00, ef347c0d-c313-4852-9b73-acf8c4842827, 866141551, Роман Игоревич, Сокотущенко, Roman_299992, +79293299992, , lead, , 2026-03-25 12:55:11.596074+00, , f, null, null, null, null, null, null, null, null, null).
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 948, in get_or_create
+    return self.get(**kwargs), False
+           ^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 635, in get
+    raise self.model.DoesNotExist(
+apps.crm.models.Client.DoesNotExist: Client matching query does not exist.
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 105, in _execute
+    return self.cursor.execute(sql, params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+psycopg2.errors.NotNullViolation: null value in column "birth_place" of relation "crm_client" violates not-null constraint
+DETAIL:  Failing row contains (2026-03-25 12:55:11.598669+00, 2026-03-25 12:55:11.598703+00, ef347c0d-c313-4852-9b73-acf8c4842827, 866141551, Роман Игоревич, Сокотущенко, Roman_299992, +79293299992, , lead, , 2026-03-25 12:55:11.596074+00, , f, null, null, null, null, null, null, null, null, null).
+
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/app/apps/telegram/userbot.py", line 260, in handle_new_message
+    db_client, created = await sync_to_async(Client.objects.get_or_create)(
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/asgiref/sync.py", line 504, in __call__
+    ret = await asyncio.shield(exec_coro)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/concurrent/futures/thread.py", line 58, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/asgiref/sync.py", line 559, in thread_handler
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/manager.py", line 87, in manager_method
+    return getattr(self.get_queryset(), name)(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 955, in get_or_create
+    return self.create(**params), True
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 665, in create
+    obj.save(force_insert=True, using=self.db)
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 902, in save
+    self.save_base(
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 1008, in save_base
+    updated = self._save_table(
+              ^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 1169, in _save_table
+    results = self._do_insert(
+              ^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 1210, in _do_insert
+    return manager._insert(
+           ^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/manager.py", line 87, in manager_method
+    return getattr(self.get_queryset(), name)(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 1873, in _insert
+    return query.get_compiler(using=using).execute_sql(returning_fields)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/sql/compiler.py", line 1882, in execute_sql
+    cursor.execute(sql, params)
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 122, in execute
+    return super().execute(sql, params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 79, in execute
+    return self._execute_with_wrappers(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 92, in _execute_with_wrappers
+    return executor(sql, params, many, context)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 100, in _execute
+    with self.db.wrap_database_errors:
+  File "/usr/local/lib/python3.11/site-packages/django/db/utils.py", line 91, in __exit__
+    raise dj_exc_value.with_traceback(traceback) from exc_value
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 105, in _execute
+    return self.cursor.execute(sql, params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+django.db.utils.IntegrityError: null value in column "birth_place" of relation "crm_client" violates not-null constraint
+DETAIL:  Failing row contains (2026-03-25 12:55:11.598669+00, 2026-03-25 12:55:11.598703+00, ef347c0d-c313-4852-9b73-acf8c4842827, 866141551, Роман Игоревич, Сокотущенко, Roman_299992, +79293299992, , lead, , 2026-03-25 12:55:11.596074+00, , f, null, null, null, null, null, null, null, null, null).
+
+INFO 2026-03-25 15:55:27 userbot 1 131843831280384 ❤️ Trying to write heartbeat...
+INFO 2026-03-25 15:55:27 userbot 1 131843831280384 ❤️ Heartbeat written to cache
+ERROR 2026-03-25 15:55:44 userbot 1 131843831280384 Error in userbot new message handler: null value in column "birth_place" of relation "crm_client" violates not-null constraint
+DETAIL:  Failing row contains (2026-03-25 12:55:44.276266+00, 2026-03-25 12:55:44.276284+00, 964d8ff9-371e-4d41-a5e2-2bf0dd9c69c2, 1068028248, Екатерина Сергеевна, Юлгушева, kanfetka28, +79379949861, , lead, , 2026-03-25 12:55:44.273881+00, , f, null, null, null, null, null, null, null, null, null).
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 948, in get_or_create
+    return self.get(**kwargs), False
+           ^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 635, in get
+    raise self.model.DoesNotExist(
+apps.crm.models.Client.DoesNotExist: Client matching query does not exist.
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 105, in _execute
+    return self.cursor.execute(sql, params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+psycopg2.errors.NotNullViolation: null value in column "birth_place" of relation "crm_client" violates not-null constraint
+DETAIL:  Failing row contains (2026-03-25 12:55:44.276266+00, 2026-03-25 12:55:44.276284+00, 964d8ff9-371e-4d41-a5e2-2bf0dd9c69c2, 1068028248, Екатерина Сергеевна, Юлгушева, kanfetka28, +79379949861, , lead, , 2026-03-25 12:55:44.273881+00, , f, null, null, null, null, null, null, null, null, null).
+
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/app/apps/telegram/userbot.py", line 260, in handle_new_message
+    db_client, created = await sync_to_async(Client.objects.get_or_create)(
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/asgiref/sync.py", line 504, in __call__
+    ret = await asyncio.shield(exec_coro)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/concurrent/futures/thread.py", line 58, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/asgiref/sync.py", line 559, in thread_handler
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/manager.py", line 87, in manager_method
+    return getattr(self.get_queryset(), name)(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 955, in get_or_create
+    return self.create(**params), True
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 665, in create
+    obj.save(force_insert=True, using=self.db)
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 902, in save
+    self.save_base(
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 1008, in save_base
+    updated = self._save_table(
+              ^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 1169, in _save_table
+    results = self._do_insert(
+              ^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 1210, in _do_insert
+    return manager._insert(
+           ^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/manager.py", line 87, in manager_method
+    return getattr(self.get_queryset(), name)(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 1873, in _insert
+    return query.get_compiler(using=using).execute_sql(returning_fields)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/sql/compiler.py", line 1882, in execute_sql
+    cursor.execute(sql, params)
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 122, in execute
+    return super().execute(sql, params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 79, in execute
+    return self._execute_with_wrappers(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 92, in _execute_with_wrappers
+    return executor(sql, params, many, context)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 100, in _execute
+    with self.db.wrap_database_errors:
+  File "/usr/local/lib/python3.11/site-packages/django/db/utils.py", line 91, in __exit__
+    raise dj_exc_value.with_traceback(traceback) from exc_value
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 105, in _execute
+    return self.cursor.execute(sql, params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+django.db.utils.IntegrityError: null value in column "birth_place" of relation "crm_client" violates not-null constraint
+DETAIL:  Failing row contains (2026-03-25 12:55:44.276266+00, 2026-03-25 12:55:44.276284+00, 964d8ff9-371e-4d41-a5e2-2bf0dd9c69c2, 1068028248, Екатерина Сергеевна, Юлгушева, kanfetka28, +79379949861, , lead, , 2026-03-25 12:55:44.273881+00, , f, null, null, null, null, null, null, null, null, null).
+
+INFO 2026-03-25 15:57:27 userbot 1 131843831280384 ❤️ Trying to write heartbeat...
+INFO 2026-03-25 15:57:27 userbot 1 131843831280384 ❤️ Heartbeat written to cache
+INFO 2026-03-25 15:59:27 userbot 1 131843831280384 ❤️ Trying to write heartbeat...
+INFO 2026-03-25 15:59:27 userbot 1 131843831280384 ❤️ Heartbeat written to cache
+INFO 2026-03-25 16:01:27 userbot 1 131843831280384 ❤️ Trying to write heartbeat...
+INFO 2026-03-25 16:01:27 userbot 1 131843831280384 ❤️ Heartbeat written to cache
+INFO 2026-03-25 16:03:27 userbot 1 131843831280384 ❤️ Trying to write heartbeat...
+INFO 2026-03-25 16:03:27 userbot 1 131843831280384 ❤️ Heartbeat written to cache
+INFO 2026-03-25 16:05:27 userbot 1 131843831280384 ❤️ Trying to write heartbeat...
+INFO 2026-03-25 16:05:27 userbot 1 131843831280384 ❤️ Heartbeat written to cache
+INFO 2026-03-25 16:07:27 userbot 1 131843831280384 ❤️ Trying to write heartbeat...
+INFO 2026-03-25 16:07:27 userbot 1 131843831280384 ❤️ Heartbeat written to cache
+ERROR 2026-03-25 16:08:00 userbot 1 131843831280384 Error in userbot new message handler: null value in column "birth_place" of relation "crm_client" violates not-null constraint
+DETAIL:  Failing row contains (2026-03-25 13:08:00.773387+00, 2026-03-25 13:08:00.773426+00, 37217eca-ea33-4bbc-b5c5-a5ca58b124ab, 5142918137, Лусине Саргисовна, Гюлбекян, , +79268663457, , lead, , 2026-03-25 13:08:00.77058+00, , f, null, null, null, null, null, null, null, null, null).
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 948, in get_or_create
+    return self.get(**kwargs), False
+           ^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 635, in get
+    raise self.model.DoesNotExist(
+apps.crm.models.Client.DoesNotExist: Client matching query does not exist.
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 105, in _execute
+    return self.cursor.execute(sql, params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+psycopg2.errors.NotNullViolation: null value in column "birth_place" of relation "crm_client" violates not-null constraint
+DETAIL:  Failing row contains (2026-03-25 13:08:00.773387+00, 2026-03-25 13:08:00.773426+00, 37217eca-ea33-4bbc-b5c5-a5ca58b124ab, 5142918137, Лусине Саргисовна, Гюлбекян, , +79268663457, , lead, , 2026-03-25 13:08:00.77058+00, , f, null, null, null, null, null, null, null, null, null).
+
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/app/apps/telegram/userbot.py", line 260, in handle_new_message
+    db_client, created = await sync_to_async(Client.objects.get_or_create)(
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/asgiref/sync.py", line 504, in __call__
+    ret = await asyncio.shield(exec_coro)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/concurrent/futures/thread.py", line 58, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/asgiref/sync.py", line 559, in thread_handler
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/manager.py", line 87, in manager_method
+    return getattr(self.get_queryset(), name)(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 955, in get_or_create
+    return self.create(**params), True
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 665, in create
+    obj.save(force_insert=True, using=self.db)
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 902, in save
+    self.save_base(
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 1008, in save_base
+    updated = self._save_table(
+              ^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 1169, in _save_table
+    results = self._do_insert(
+              ^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 1210, in _do_insert
+    return manager._insert(
+           ^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/manager.py", line 87, in manager_method
+    return getattr(self.get_queryset(), name)(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 1873, in _insert
+    return query.get_compiler(using=using).execute_sql(returning_fields)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/sql/compiler.py", line 1882, in execute_sql
+    cursor.execute(sql, params)
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 122, in execute
+    return super().execute(sql, params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 79, in execute
+    return self._execute_with_wrappers(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 92, in _execute_with_wrappers
+    return executor(sql, params, many, context)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 100, in _execute
+    with self.db.wrap_database_errors:
+  File "/usr/local/lib/python3.11/site-packages/django/db/utils.py", line 91, in __exit__
+    raise dj_exc_value.with_traceback(traceback) from exc_value
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 105, in _execute
+    return self.cursor.execute(sql, params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+django.db.utils.IntegrityError: null value in column "birth_place" of relation "crm_client" violates not-null constraint
+DETAIL:  Failing row contains (2026-03-25 13:08:00.773387+00, 2026-03-25 13:08:00.773426+00, 37217eca-ea33-4bbc-b5c5-a5ca58b124ab, 5142918137, Лусине Саргисовна, Гюлбекян, , +79268663457, , lead, , 2026-03-25 13:08:00.77058+00, , f, null, null, null, null, null, null, null, null, null).
+
+ERROR 2026-03-25 16:09:14 userbot 1 131843831280384 Error in userbot new message handler: null value in column "birth_place" of relation "crm_client" violates not-null constraint
+DETAIL:  Failing row contains (2026-03-25 13:09:14.924147+00, 2026-03-25 13:09:14.924184+00, 4bf23c9c-d482-44b8-9a77-1c97ce8a3da7, 5142918137, Лусине Саргисовна, Гюлбекян, , +79268663457, , lead, , 2026-03-25 13:09:14.921832+00, , f, null, null, null, null, null, null, null, null, null).
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 948, in get_or_create
+    return self.get(**kwargs), False
+           ^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 635, in get
+    raise self.model.DoesNotExist(
+apps.crm.models.Client.DoesNotExist: Client matching query does not exist.
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 105, in _execute
+    return self.cursor.execute(sql, params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+psycopg2.errors.NotNullViolation: null value in column "birth_place" of relation "crm_client" violates not-null constraint
+DETAIL:  Failing row contains (2026-03-25 13:09:14.924147+00, 2026-03-25 13:09:14.924184+00, 4bf23c9c-d482-44b8-9a77-1c97ce8a3da7, 5142918137, Лусине Саргисовна, Гюлбекян, , +79268663457, , lead, , 2026-03-25 13:09:14.921832+00, , f, null, null, null, null, null, null, null, null, null).
+
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/app/apps/telegram/userbot.py", line 260, in handle_new_message
+    db_client, created = await sync_to_async(Client.objects.get_or_create)(
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/asgiref/sync.py", line 504, in __call__
+    ret = await asyncio.shield(exec_coro)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/concurrent/futures/thread.py", line 58, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/asgiref/sync.py", line 559, in thread_handler
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/manager.py", line 87, in manager_method
+    return getattr(self.get_queryset(), name)(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 955, in get_or_create
+    return self.create(**params), True
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 665, in create
+    obj.save(force_insert=True, using=self.db)
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 902, in save
+    self.save_base(
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 1008, in save_base
+    updated = self._save_table(
+              ^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 1169, in _save_table
+    results = self._do_insert(
+              ^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 1210, in _do_insert
+    return manager._insert(
+           ^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/manager.py", line 87, in manager_method
+    return getattr(self.get_queryset(), name)(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 1873, in _insert
+    return query.get_compiler(using=using).execute_sql(returning_fields)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/sql/compiler.py", line 1882, in execute_sql
+    cursor.execute(sql, params)
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 122, in execute
+    return super().execute(sql, params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 79, in execute
+    return self._execute_with_wrappers(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 92, in _execute_with_wrappers
+    return executor(sql, params, many, context)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 100, in _execute
+    with self.db.wrap_database_errors:
+  File "/usr/local/lib/python3.11/site-packages/django/db/utils.py", line 91, in __exit__
+    raise dj_exc_value.with_traceback(traceback) from exc_value
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 105, in _execute
+    return self.cursor.execute(sql, params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+django.db.utils.IntegrityError: null value in column "birth_place" of relation "crm_client" violates not-null constraint
+DETAIL:  Failing row contains (2026-03-25 13:09:14.924147+00, 2026-03-25 13:09:14.924184+00, 4bf23c9c-d482-44b8-9a77-1c97ce8a3da7, 5142918137, Лусине Саргисовна, Гюлбекян, , +79268663457, , lead, , 2026-03-25 13:09:14.921832+00, , f, null, null, null, null, null, null, null, null, null).
+
+INFO 2026-03-25 16:09:27 userbot 1 131843831280384 ❤️ Trying to write heartbeat...
+INFO 2026-03-25 16:09:27 userbot 1 131843831280384 ❤️ Heartbeat written to cache
+INFO 2026-03-25 16:11:27 userbot 1 131843831280384 ❤️ Trying to write heartbeat...
+INFO 2026-03-25 16:11:27 userbot 1 131843831280384 ❤️ Heartbeat written to cache
+INFO 2026-03-25 16:13:27 userbot 1 131843831280384 ❤️ Trying to write heartbeat...
+INFO 2026-03-25 16:13:27 userbot 1 131843831280384 ❤️ Heartbeat written to cache
+INFO 2026-03-25 16:15:27 userbot 1 131843831280384 ❤️ Trying to write heartbeat...
+INFO 2026-03-25 16:15:27 userbot 1 131843831280384 ❤️ Heartbeat written to cache
+INFO 2026-03-25 16:17:27 userbot 1 131843831280384 ❤️ Trying to write heartbeat...
+INFO 2026-03-25 16:17:27 userbot 1 131843831280384 ❤️ Heartbeat written to cache
+INFO 2026-03-25 16:19:27 userbot 1 131843831280384 ❤️ Trying to write heartbeat...
+INFO 2026-03-25 16:19:27 userbot 1 131843831280384 ❤️ Heartbeat written to cache
+INFO 2026-03-25 16:21:27 userbot 1 131843831280384 ❤️ Trying to write heartbeat...
+INFO 2026-03-25 16:21:27 userbot 1 131843831280384 ❤️ Heartbeat written to cache
+INFO 2026-03-25 16:23:27 userbot 1 131843831280384 ❤️ Trying to write heartbeat...
+INFO 2026-03-25 16:23:27 userbot 1 131843831280384 ❤️ Heartbeat written to cache
+INFO 2026-03-25 16:25:27 userbot 1 131843831280384 ❤️ Trying to write heartbeat...
+INFO 2026-03-25 16:25:27 userbot 1 131843831280384 ❤️ Heartbeat written to cache
+INFO 2026-03-25 16:27:27 userbot 1 131843831280384 ❤️ Trying to write heartbeat...
+INFO 2026-03-25 16:27:27 userbot 1 131843831280384 ❤️ Heartbeat written to cache
+ERROR 2026-03-25 16:27:49 userbot 1 131843831280384 Error in userbot new message handler: null value in column "birth_place" of relation "crm_client" violates not-null constraint
+DETAIL:  Failing row contains (2026-03-25 13:27:49.427822+00, 2026-03-25 13:27:49.427861+00, f0811820-d580-4abd-bca1-2e431d24e214, 5115627628, Магомед Арсланханович, Умалатов, , +79285082215, , lead, , 2026-03-25 13:27:49.425418+00, , f, null, null, null, null, null, null, null, null, null).
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 948, in get_or_create
+    return self.get(**kwargs), False
+           ^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 635, in get
+    raise self.model.DoesNotExist(
+apps.crm.models.Client.DoesNotExist: Client matching query does not exist.
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 105, in _execute
+    return self.cursor.execute(sql, params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+psycopg2.errors.NotNullViolation: null value in column "birth_place" of relation "crm_client" violates not-null constraint
+DETAIL:  Failing row contains (2026-03-25 13:27:49.427822+00, 2026-03-25 13:27:49.427861+00, f0811820-d580-4abd-bca1-2e431d24e214, 5115627628, Магомед Арсланханович, Умалатов, , +79285082215, , lead, , 2026-03-25 13:27:49.425418+00, , f, null, null, null, null, null, null, null, null, null).
+
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/app/apps/telegram/userbot.py", line 260, in handle_new_message
+    db_client, created = await sync_to_async(Client.objects.get_or_create)(
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/asgiref/sync.py", line 504, in __call__
+    ret = await asyncio.shield(exec_coro)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/concurrent/futures/thread.py", line 58, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/asgiref/sync.py", line 559, in thread_handler
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/manager.py", line 87, in manager_method
+    return getattr(self.get_queryset(), name)(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 955, in get_or_create
+    return self.create(**params), True
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 665, in create
+    obj.save(force_insert=True, using=self.db)
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 902, in save
+    self.save_base(
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 1008, in save_base
+    updated = self._save_table(
+              ^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 1169, in _save_table
+    results = self._do_insert(
+              ^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 1210, in _do_insert
+    return manager._insert(
+           ^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/manager.py", line 87, in manager_method
+    return getattr(self.get_queryset(), name)(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 1873, in _insert
+    return query.get_compiler(using=using).execute_sql(returning_fields)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/sql/compiler.py", line 1882, in execute_sql
+    cursor.execute(sql, params)
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 122, in execute
+    return super().execute(sql, params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 79, in execute
+    return self._execute_with_wrappers(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 92, in _execute_with_wrappers
+    return executor(sql, params, many, context)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 100, in _execute
+    with self.db.wrap_database_errors:
+  File "/usr/local/lib/python3.11/site-packages/django/db/utils.py", line 91, in __exit__
+    raise dj_exc_value.with_traceback(traceback) from exc_value
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 105, in _execute
+    return self.cursor.execute(sql, params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+django.db.utils.IntegrityError: null value in column "birth_place" of relation "crm_client" violates not-null constraint
+DETAIL:  Failing row contains (2026-03-25 13:27:49.427822+00, 2026-03-25 13:27:49.427861+00, f0811820-d580-4abd-bca1-2e431d24e214, 5115627628, Магомед Арсланханович, Умалатов, , +79285082215, , lead, , 2026-03-25 13:27:49.425418+00, , f, null, null, null, null, null, null, null, null, null).
+
+ERROR 2026-03-25 16:28:49 userbot 1 131843831280384 Error in userbot new message handler: null value in column "birth_place" of relation "crm_client" violates not-null constraint
+DETAIL:  Failing row contains (2026-03-25 13:28:49.032481+00, 2026-03-25 13:28:49.03251+00, 49a47eaa-8931-4b84-959f-6a8ce11c8ad3, 5115627628, Магомед Арсланханович, Умалатов, , +79285082215, , lead, , 2026-03-25 13:28:49.028694+00, , f, null, null, null, null, null, null, null, null, null).
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 948, in get_or_create
+    return self.get(**kwargs), False
+           ^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 635, in get
+    raise self.model.DoesNotExist(
+apps.crm.models.Client.DoesNotExist: Client matching query does not exist.
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 105, in _execute
+    return self.cursor.execute(sql, params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+psycopg2.errors.NotNullViolation: null value in column "birth_place" of relation "crm_client" violates not-null constraint
+DETAIL:  Failing row contains (2026-03-25 13:28:49.032481+00, 2026-03-25 13:28:49.03251+00, 49a47eaa-8931-4b84-959f-6a8ce11c8ad3, 5115627628, Магомед Арсланханович, Умалатов, , +79285082215, , lead, , 2026-03-25 13:28:49.028694+00, , f, null, null, null, null, null, null, null, null, null).
+
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/app/apps/telegram/userbot.py", line 260, in handle_new_message
+    db_client, created = await sync_to_async(Client.objects.get_or_create)(
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/asgiref/sync.py", line 504, in __call__
+    ret = await asyncio.shield(exec_coro)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/concurrent/futures/thread.py", line 58, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/asgiref/sync.py", line 559, in thread_handler
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/manager.py", line 87, in manager_method
+    return getattr(self.get_queryset(), name)(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 955, in get_or_create
+    return self.create(**params), True
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 665, in create
+    obj.save(force_insert=True, using=self.db)
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 902, in save
+    self.save_base(
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 1008, in save_base
+    updated = self._save_table(
+              ^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 1169, in _save_table
+    results = self._do_insert(
+              ^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 1210, in _do_insert
+    return manager._insert(
+           ^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/manager.py", line 87, in manager_method
+    return getattr(self.get_queryset(), name)(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 1873, in _insert
+    return query.get_compiler(using=using).execute_sql(returning_fields)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/sql/compiler.py", line 1882, in execute_sql
+    cursor.execute(sql, params)
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 122, in execute
+    return super().execute(sql, params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 79, in execute
+    return self._execute_with_wrappers(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 92, in _execute_with_wrappers
+    return executor(sql, params, many, context)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 100, in _execute
+    with self.db.wrap_database_errors:
+  File "/usr/local/lib/python3.11/site-packages/django/db/utils.py", line 91, in __exit__
+    raise dj_exc_value.with_traceback(traceback) from exc_value
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 105, in _execute
+    return self.cursor.execute(sql, params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+django.db.utils.IntegrityError: null value in column "birth_place" of relation "crm_client" violates not-null constraint
+DETAIL:  Failing row contains (2026-03-25 13:28:49.032481+00, 2026-03-25 13:28:49.03251+00, 49a47eaa-8931-4b84-959f-6a8ce11c8ad3, 5115627628, Магомед Арсланханович, Умалатов, , +79285082215, , lead, , 2026-03-25 13:28:49.028694+00, , f, null, null, null, null, null, null, null, null, null).
+
+ERROR 2026-03-25 16:29:13 userbot 1 131843831280384 Error in userbot new message handler: null value in column "birth_place" of relation "crm_client" violates not-null constraint
+DETAIL:  Failing row contains (2026-03-25 13:29:13.540478+00, 2026-03-25 13:29:13.540493+00, c9f6056a-7e77-4af6-96ce-188d1795da75, 5115627628, Магомед Арсланханович, Умалатов, , +79285082215, , lead, , 2026-03-25 13:29:13.538923+00, , f, null, null, null, null, null, null, null, null, null).
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 948, in get_or_create
+    return self.get(**kwargs), False
+           ^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 635, in get
+    raise self.model.DoesNotExist(
+apps.crm.models.Client.DoesNotExist: Client matching query does not exist.
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 105, in _execute
+    return self.cursor.execute(sql, params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+psycopg2.errors.NotNullViolation: null value in column "birth_place" of relation "crm_client" violates not-null constraint
+DETAIL:  Failing row contains (2026-03-25 13:29:13.540478+00, 2026-03-25 13:29:13.540493+00, c9f6056a-7e77-4af6-96ce-188d1795da75, 5115627628, Магомед Арсланханович, Умалатов, , +79285082215, , lead, , 2026-03-25 13:29:13.538923+00, , f, null, null, null, null, null, null, null, null, null).
+
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/app/apps/telegram/userbot.py", line 260, in handle_new_message
+    db_client, created = await sync_to_async(Client.objects.get_or_create)(
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/asgiref/sync.py", line 504, in __call__
+    ret = await asyncio.shield(exec_coro)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/concurrent/futures/thread.py", line 58, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/asgiref/sync.py", line 559, in thread_handler
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/manager.py", line 87, in manager_method
+    return getattr(self.get_queryset(), name)(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 955, in get_or_create
+    return self.create(**params), True
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 665, in create
+    obj.save(force_insert=True, using=self.db)
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 902, in save
+    self.save_base(
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 1008, in save_base
+    updated = self._save_table(
+              ^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 1169, in _save_table
+    results = self._do_insert(
+              ^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 1210, in _do_insert
+    return manager._insert(
+           ^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/manager.py", line 87, in manager_method
+    return getattr(self.get_queryset(), name)(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 1873, in _insert
+    return query.get_compiler(using=using).execute_sql(returning_fields)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/sql/compiler.py", line 1882, in execute_sql
+    cursor.execute(sql, params)
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 122, in execute
+    return super().execute(sql, params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 79, in execute
+    return self._execute_with_wrappers(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 92, in _execute_with_wrappers
+    return executor(sql, params, many, context)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 100, in _execute
+    with self.db.wrap_database_errors:
+  File "/usr/local/lib/python3.11/site-packages/django/db/utils.py", line 91, in __exit__
+    raise dj_exc_value.with_traceback(traceback) from exc_value
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 105, in _execute
+    return self.cursor.execute(sql, params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+django.db.utils.IntegrityError: null value in column "birth_place" of relation "crm_client" violates not-null constraint
+DETAIL:  Failing row contains (2026-03-25 13:29:13.540478+00, 2026-03-25 13:29:13.540493+00, c9f6056a-7e77-4af6-96ce-188d1795da75, 5115627628, Магомед Арсланханович, Умалатов, , +79285082215, , lead, , 2026-03-25 13:29:13.538923+00, , f, null, null, null, null, null, null, null, null, null).
+
+INFO 2026-03-25 16:29:27 userbot 1 131843831280384 ❤️ Trying to write heartbeat...
+INFO 2026-03-25 16:29:27 userbot 1 131843831280384 ❤️ Heartbeat written to cache
+INFO 2026-03-25 16:31:28 userbot 1 131843831280384 ❤️ Trying to write heartbeat...
+INFO 2026-03-25 16:31:28 userbot 1 131843831280384 ❤️ Heartbeat written to cache
+INFO 2026-03-25 16:33:28 userbot 1 131843831280384 ❤️ Trying to write heartbeat...
+INFO 2026-03-25 16:33:28 userbot 1 131843831280384 ❤️ Heartbeat written to cache
+INFO 2026-03-25 16:35:28 userbot 1 131843831280384 ❤️ Trying to write heartbeat...
+INFO 2026-03-25 16:35:28 userbot 1 131843831280384 ❤️ Heartbeat written to cache
+ERROR 2026-03-25 16:37:19 userbot 1 131843831280384 Error in userbot new message handler: null value in column "birth_place" of relation "crm_client" violates not-null constraint
+DETAIL:  Failing row contains (2026-03-25 13:37:19.72196+00, 2026-03-25 13:37:19.722001+00, 93352b9e-485f-4831-9b74-803f6e8a2517, 1453111870, Мария Алексеевна, Гаранина, ri_loey, +79991014860, , lead, , 2026-03-25 13:37:19.719335+00, , f, null, null, null, null, null, null, null, null, null).
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 948, in get_or_create
+    return self.get(**kwargs), False
+           ^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 635, in get
+    raise self.model.DoesNotExist(
+apps.crm.models.Client.DoesNotExist: Client matching query does not exist.
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 105, in _execute
+    return self.cursor.execute(sql, params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+psycopg2.errors.NotNullViolation: null value in column "birth_place" of relation "crm_client" violates not-null constraint
+DETAIL:  Failing row contains (2026-03-25 13:37:19.72196+00, 2026-03-25 13:37:19.722001+00, 93352b9e-485f-4831-9b74-803f6e8a2517, 1453111870, Мария Алексеевна, Гаранина, ri_loey, +79991014860, , lead, , 2026-03-25 13:37:19.719335+00, , f, null, null, null, null, null, null, null, null, null).
+
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/app/apps/telegram/userbot.py", line 260, in handle_new_message
+    db_client, created = await sync_to_async(Client.objects.get_or_create)(
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/asgiref/sync.py", line 504, in __call__
+    ret = await asyncio.shield(exec_coro)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/concurrent/futures/thread.py", line 58, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/asgiref/sync.py", line 559, in thread_handler
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/manager.py", line 87, in manager_method
+    return getattr(self.get_queryset(), name)(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 955, in get_or_create
+    return self.create(**params), True
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 665, in create
+    obj.save(force_insert=True, using=self.db)
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 902, in save
+    self.save_base(
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 1008, in save_base
+    updated = self._save_table(
+              ^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 1169, in _save_table
+    results = self._do_insert(
+              ^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 1210, in _do_insert
+    return manager._insert(
+           ^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/manager.py", line 87, in manager_method
+    return getattr(self.get_queryset(), name)(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 1873, in _insert
+    return query.get_compiler(using=using).execute_sql(returning_fields)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/sql/compiler.py", line 1882, in execute_sql
+    cursor.execute(sql, params)
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 122, in execute
+    return super().execute(sql, params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 79, in execute
+    return self._execute_with_wrappers(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 92, in _execute_with_wrappers
+    return executor(sql, params, many, context)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 100, in _execute
+    with self.db.wrap_database_errors:
+  File "/usr/local/lib/python3.11/site-packages/django/db/utils.py", line 91, in __exit__
+    raise dj_exc_value.with_traceback(traceback) from exc_value
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 105, in _execute
+    return self.cursor.execute(sql, params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+django.db.utils.IntegrityError: null value in column "birth_place" of relation "crm_client" violates not-null constraint
+DETAIL:  Failing row contains (2026-03-25 13:37:19.72196+00, 2026-03-25 13:37:19.722001+00, 93352b9e-485f-4831-9b74-803f6e8a2517, 1453111870, Мария Алексеевна, Гаранина, ri_loey, +79991014860, , lead, , 2026-03-25 13:37:19.719335+00, , f, null, null, null, null, null, null, null, null, null).
+
+INFO 2026-03-25 16:37:28 userbot 1 131843831280384 ❤️ Trying to write heartbeat...
+INFO 2026-03-25 16:37:28 userbot 1 131843831280384 ❤️ Heartbeat written to cache
+ERROR 2026-03-25 16:38:02 userbot 1 131843831280384 Error in userbot new message handler: null value in column "birth_place" of relation "crm_client" violates not-null constraint
+DETAIL:  Failing row contains (2026-03-25 13:38:02.485742+00, 2026-03-25 13:38:02.485759+00, f9708d46-7181-4f61-a970-eb68bbd4428a, 1453111870, Мария Алексеевна, Гаранина, ri_loey, +79991014860, , lead, , 2026-03-25 13:38:02.483817+00, , f, null, null, null, null, null, null, null, null, null).
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 948, in get_or_create
+    return self.get(**kwargs), False
+           ^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 635, in get
+    raise self.model.DoesNotExist(
+apps.crm.models.Client.DoesNotExist: Client matching query does not exist.
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 105, in _execute
+    return self.cursor.execute(sql, params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+psycopg2.errors.NotNullViolation: null value in column "birth_place" of relation "crm_client" violates not-null constraint
+DETAIL:  Failing row contains (2026-03-25 13:38:02.485742+00, 2026-03-25 13:38:02.485759+00, f9708d46-7181-4f61-a970-eb68bbd4428a, 1453111870, Мария Алексеевна, Гаранина, ri_loey, +79991014860, , lead, , 2026-03-25 13:38:02.483817+00, , f, null, null, null, null, null, null, null, null, null).
+
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/app/apps/telegram/userbot.py", line 260, in handle_new_message
+    db_client, created = await sync_to_async(Client.objects.get_or_create)(
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/asgiref/sync.py", line 504, in __call__
+    ret = await asyncio.shield(exec_coro)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/concurrent/futures/thread.py", line 58, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/asgiref/sync.py", line 559, in thread_handler
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/manager.py", line 87, in manager_method
+    return getattr(self.get_queryset(), name)(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 955, in get_or_create
+    return self.create(**params), True
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 665, in create
+    obj.save(force_insert=True, using=self.db)
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 902, in save
+    self.save_base(
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 1008, in save_base
+    updated = self._save_table(
+              ^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 1169, in _save_table
+    results = self._do_insert(
+              ^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 1210, in _do_insert
+    return manager._insert(
+           ^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/manager.py", line 87, in manager_method
+    return getattr(self.get_queryset(), name)(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 1873, in _insert
+    return query.get_compiler(using=using).execute_sql(returning_fields)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/sql/compiler.py", line 1882, in execute_sql
+    cursor.execute(sql, params)
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 122, in execute
+    return super().execute(sql, params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 79, in execute
+    return self._execute_with_wrappers(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 92, in _execute_with_wrappers
+    return executor(sql, params, many, context)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 100, in _execute
+    with self.db.wrap_database_errors:
+  File "/usr/local/lib/python3.11/site-packages/django/db/utils.py", line 91, in __exit__
+    raise dj_exc_value.with_traceback(traceback) from exc_value
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 105, in _execute
+    return self.cursor.execute(sql, params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+django.db.utils.IntegrityError: null value in column "birth_place" of relation "crm_client" violates not-null constraint
+DETAIL:  Failing row contains (2026-03-25 13:38:02.485742+00, 2026-03-25 13:38:02.485759+00, f9708d46-7181-4f61-a970-eb68bbd4428a, 1453111870, Мария Алексеевна, Гаранина, ri_loey, +79991014860, , lead, , 2026-03-25 13:38:02.483817+00, , f, null, null, null, null, null, null, null, null, null).
+
+INFO 2026-03-25 16:39:28 userbot 1 131843831280384 ❤️ Trying to write heartbeat...
+INFO 2026-03-25 16:39:28 userbot 1 131843831280384 ❤️ Heartbeat written to cache
+INFO 2026-03-25 16:41:28 userbot 1 131843831280384 ❤️ Trying to write heartbeat...
+INFO 2026-03-25 16:41:28 userbot 1 131843831280384 ❤️ Heartbeat written to cache
+ERROR 2026-03-25 16:42:05 userbot 1 131843831280384 Error in userbot new message handler: null value in column "birth_place" of relation "crm_client" violates not-null constraint
+DETAIL:  Failing row contains (2026-03-25 13:42:05.778971+00, 2026-03-25 13:42:05.779004+00, 83328632-0b01-4df8-ac1e-46e56f9a71be, 1453111870, Мария Алексеевна, Гаранина, ri_loey, +79991014860, , lead, , 2026-03-25 13:42:05.775992+00, , f, null, null, null, null, null, null, null, null, null).
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 948, in get_or_create
+    return self.get(**kwargs), False
+           ^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 635, in get
+    raise self.model.DoesNotExist(
+apps.crm.models.Client.DoesNotExist: Client matching query does not exist.
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 105, in _execute
+    return self.cursor.execute(sql, params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+psycopg2.errors.NotNullViolation: null value in column "birth_place" of relation "crm_client" violates not-null constraint
+DETAIL:  Failing row contains (2026-03-25 13:42:05.778971+00, 2026-03-25 13:42:05.779004+00, 83328632-0b01-4df8-ac1e-46e56f9a71be, 1453111870, Мария Алексеевна, Гаранина, ri_loey, +79991014860, , lead, , 2026-03-25 13:42:05.775992+00, , f, null, null, null, null, null, null, null, null, null).
+
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/app/apps/telegram/userbot.py", line 260, in handle_new_message
+    db_client, created = await sync_to_async(Client.objects.get_or_create)(
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/asgiref/sync.py", line 504, in __call__
+    ret = await asyncio.shield(exec_coro)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/concurrent/futures/thread.py", line 58, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/asgiref/sync.py", line 559, in thread_handler
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/manager.py", line 87, in manager_method
+    return getattr(self.get_queryset(), name)(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 955, in get_or_create
+    return self.create(**params), True
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 665, in create
+    obj.save(force_insert=True, using=self.db)
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 902, in save
+    self.save_base(
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 1008, in save_base
+    updated = self._save_table(
+              ^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 1169, in _save_table
+    results = self._do_insert(
+              ^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 1210, in _do_insert
+    return manager._insert(
+           ^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/manager.py", line 87, in manager_method
+    return getattr(self.get_queryset(), name)(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 1873, in _insert
+    return query.get_compiler(using=using).execute_sql(returning_fields)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/sql/compiler.py", line 1882, in execute_sql
+    cursor.execute(sql, params)
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 122, in execute
+    return super().execute(sql, params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 79, in execute
+    return self._execute_with_wrappers(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 92, in _execute_with_wrappers
+    return executor(sql, params, many, context)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 100, in _execute
+    with self.db.wrap_database_errors:
+  File "/usr/local/lib/python3.11/site-packages/django/db/utils.py", line 91, in __exit__
+    raise dj_exc_value.with_traceback(traceback) from exc_value
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 105, in _execute
+    return self.cursor.execute(sql, params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+django.db.utils.IntegrityError: null value in column "birth_place" of relation "crm_client" violates not-null constraint
+DETAIL:  Failing row contains (2026-03-25 13:42:05.778971+00, 2026-03-25 13:42:05.779004+00, 83328632-0b01-4df8-ac1e-46e56f9a71be, 1453111870, Мария Алексеевна, Гаранина, ri_loey, +79991014860, , lead, , 2026-03-25 13:42:05.775992+00, , f, null, null, null, null, null, null, null, null, null).
+
+INFO 2026-03-25 16:43:28 userbot 1 131843831280384 ❤️ Trying to write heartbeat...
+INFO 2026-03-25 16:43:28 userbot 1 131843831280384 ❤️ Heartbeat written to cache
+INFO 2026-03-25 16:43:55 userbot 1 131843831280384 💬 Incoming text from 928612597: Можем
+INFO 2026-03-25 16:44:26 userbot 1 131843831280384 💬 Incoming text from 928612597: 290331
+ERROR 2026-03-25 16:45:27 userbot 1 131843831280384 Error in userbot new message handler: null value in column "birth_place" of relation "crm_client" violates not-null constraint
+DETAIL:  Failing row contains (2026-03-25 13:45:27.303301+00, 2026-03-25 13:45:27.303334+00, a3e532b8-9472-4daf-ac35-5fc1d0bde796, 5115627628, Магомед Арсланханович, Умалатов, , +79285082215, , lead, , 2026-03-25 13:45:27.300481+00, , f, null, null, null, null, null, null, null, null, null).
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 948, in get_or_create
+    return self.get(**kwargs), False
+           ^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 635, in get
+    raise self.model.DoesNotExist(
+apps.crm.models.Client.DoesNotExist: Client matching query does not exist.
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 105, in _execute
+    return self.cursor.execute(sql, params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+psycopg2.errors.NotNullViolation: null value in column "birth_place" of relation "crm_client" violates not-null constraint
+DETAIL:  Failing row contains (2026-03-25 13:45:27.303301+00, 2026-03-25 13:45:27.303334+00, a3e532b8-9472-4daf-ac35-5fc1d0bde796, 5115627628, Магомед Арсланханович, Умалатов, , +79285082215, , lead, , 2026-03-25 13:45:27.300481+00, , f, null, null, null, null, null, null, null, null, null).
+
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/app/apps/telegram/userbot.py", line 260, in handle_new_message
+    db_client, created = await sync_to_async(Client.objects.get_or_create)(
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/asgiref/sync.py", line 504, in __call__
+    ret = await asyncio.shield(exec_coro)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/concurrent/futures/thread.py", line 58, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/asgiref/sync.py", line 559, in thread_handler
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/manager.py", line 87, in manager_method
+    return getattr(self.get_queryset(), name)(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 955, in get_or_create
+    return self.create(**params), True
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 665, in create
+    obj.save(force_insert=True, using=self.db)
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 902, in save
+    self.save_base(
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 1008, in save_base
+    updated = self._save_table(
+              ^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 1169, in _save_table
+    results = self._do_insert(
+              ^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/base.py", line 1210, in _do_insert
+    return manager._insert(
+           ^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/manager.py", line 87, in manager_method
+    return getattr(self.get_queryset(), name)(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/query.py", line 1873, in _insert
+    return query.get_compiler(using=using).execute_sql(returning_fields)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/sql/compiler.py", line 1882, in execute_sql
+    cursor.execute(sql, params)
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 122, in execute
+    return super().execute(sql, params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 79, in execute
+    return self._execute_with_wrappers(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 92, in _execute_with_wrappers
+    return executor(sql, params, many, context)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 100, in _execute
+    with self.db.wrap_database_errors:
+  File "/usr/local/lib/python3.11/site-packages/django/db/utils.py", line 91, in __exit__
+    raise dj_exc_value.with_traceback(traceback) from exc_value
+  File "/usr/local/lib/python3.11/site-packages/django/db/backends/utils.py", line 105, in _execute
+    return self.cursor.execute(sql, params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+django.db.utils.IntegrityError: null value in column "birth_place" of relation "crm_client" violates not-null constraint
+DETAIL:  Failing row contains (2026-03-25 13:45:27.303301+00, 2026-03-25 13:45:27.303334+00, a3e532b8-9472-4daf-ac35-5fc1d0bde796, 5115627628, Магомед Арсланханович, Умалатов, , +79285082215, , lead, , 2026-03-25 13:45:27.300481+00, , f, null, null, null, null, null, null, null, null, null).
+
+INFO 2026-03-25 16:45:28 userbot 1 131843831280384 ❤️ Trying to write heartbeat...
+INFO 2026-03-25 16:45:28 userbot 1 131843831280384 ❤️ Heartbeat written to cache
+INFO 2026-03-25 16:47:28 userbot 1 131843831280384 ❤️ Trying to write heartbeat...
+INFO 2026-03-25 16:47:28 userbot 1 131843831280384 ❤️ Heartbeat written to cache
+INFO 2026-03-25 16:49:28 userbot 1 131843831280384 ❤️ Trying to write heartbeat...
+INFO 2026-03-25 16:49:28 userbot 1 131843831280384 ❤️ Heartbeat written to cache
+INFO 2026-03-25 16:51:28 userbot 1 131843831280384 ❤️ Trying to write heartbeat...
+INFO 2026-03-25 16:51:28 userbot 1 131843831280384 ❤️ Heartbeat written to cache
+INFO 2026-03-25 16:53:28 userbot 1 131843831280384 ❤️ Trying to write heartbeat...
+INFO 2026-03-25 16:53:28 userbot 1 131843831280384 ❤️ Heartbeat written to cache
+INFO 2026-03-25 16:55:28 userbot 1 131843831280384 ❤️ Trying to write heartbeat...
+INFO 2026-03-25 16:55:28 userbot 1 131843831280384 ❤️ Heartbeat written to cache
+INFO 2026-03-25 16:57:28 userbot 1 131843831280384 ❤️ Trying to write heartbeat...
+INFO 2026-03-25 16:57:28 userbot 1 131843831280384 ❤️ Heartbeat written to cache
+INFO 2026-03-25 16:59:28 userbot 1 131843831280384 ❤️ Trying to write heartbeat...
+INFO 2026-03-25 16:59:28 userbot 1 131843831280384 ❤️ Heartbeat written to cache
+INFO 2026-03-25 17:01:28 userbot 1 131843831280384 ❤️ Trying to write heartbeat...
+INFO 2026-03-25 17:01:28 userbot 1 131843831280384 ❤️ Heartbeat written to cache
+INFO 2026-03-25 17:03:28 userbot 1 131843831280384 ❤️ Trying to write heartbeat...
+INFO 2026-03-25 17:03:28 userbot 1 131843831280384 ❤️ Heartbeat written to cache
+INFO 2026-03-25 17:05:28 userbot 1 131843831280384 ❤️ Trying to write heartbeat...
+INFO 2026-03-25 17:05:28 userbot 1 131843831280384 ❤️ Heartbeat written to cache
+INFO 2026-03-25 17:07:28 userbot 1 131843831280384 ❤️ Trying to write heartbeat...
+INFO 2026-03-25 17:07:28 userbot 1 131843831280384 ❤️ Heartbeat written to cache
+INFO 2026-03-25 17:09:28 userbot 1 131843831280384 ❤️ Trying to write heartbeat...
+INFO 2026-03-25 17:09:28 userbot 1 131843831280384 ❤️ Heartbeat written to cache
+INFO 2026-03-25 17:11:28 userbot 1 131843831280384 ❤️ Trying to write heartbeat...
+INFO 2026-03-25 17:11:28 userbot 1 131843831280384 ❤️ Heartbeat written to cache
+INFO 2026-03-25 17:13:28 userbot 1 131843831280384 ❤️ Trying to write heartbeat...
+INFO 2026-03-25 17:13:28 userbot 1 131843831280384 ❤️ Heartbeat written to cache
+INFO 2026-03-25 17:15:28 userbot 1 131843831280384 ❤️ Trying to write heartbeat...
+INFO 2026-03-25 17:15:28 userbot 1 131843831280384 ❤️ Heartbeat written to cache
+INFO 2026-03-25 17:17:28 userbot 1 131843831280384 ❤️ Trying to write heartbeat...
+INFO 2026-03-25 17:17:28 userbot 1 131843831280384 ❤️ Heartbeat written to cache
+INFO 2026-03-25 17:19:28 userbot 1 131843831280384 ❤️ Trying to write heartbeat...
+INFO 2026-03-25 17:19:28 userbot 1 131843831280384 ❤️ Heartbeat written to cache
+INFO 2026-03-25 17:21:28 userbot 1 131843831280384 ❤️ Trying to write heartbeat...
+INFO 2026-03-25 17:21:28 userbot 1 131843831280384 ❤️ Heartbeat written to cache
+INFO 2026-03-25 17:23:28 userbot 1 131843831280384 ❤️ Trying to write heartbeat...
+INFO 2026-03-25 17:23:28 userbot 1 131843831280384 ❤️ Heartbeat written to cache

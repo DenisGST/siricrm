@@ -75,7 +75,7 @@ class NotificationsConsumer(AsyncWebsocketConsumer):
         await self.accept()
 
     async def disconnect(self, code):
-        for group in self.groups_list:
+        for group in getattr(self, "groups_list", []):
             await self.channel_layer.group_discard(group, self.channel_name)
 
     async def notify(self, event):

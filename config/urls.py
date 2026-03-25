@@ -2,6 +2,8 @@ from django.contrib import admin
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
+from django.views.static import serve
+from django.conf import settings
 
 from apps.crm.api import (
     ClientViewSet,
@@ -47,4 +49,5 @@ urlpatterns = [
     
     #??????????
     path("", include("apps.core.urls")),
+    path("robots.txt", serve, {"document_root": settings.STATIC_ROOT, "path": "robots.txt"}),
 ]
