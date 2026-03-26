@@ -692,5 +692,18 @@ document.body.addEventListener('htmx:afterSwap', (e) => {
   });
 </script>
 <audio id="incoming-sound" src="{% static 'sounds/incoming.mp3' %}" preload="auto"></audio>
+
+<script>
+  document.body.addEventListener("htmx:afterSwap", function (e) {
+    // реагируем только на вставку в body (hx-target="body")
+    if (e.detail.target === document.body) {
+      var dlg = document.getElementById("client-edit-modal");
+      if (dlg && typeof dlg.showModal === "function" && !dlg.open) {
+        dlg.showModal();
+      }
+    }
+  });
+</script>
+
 </body>
 </html>

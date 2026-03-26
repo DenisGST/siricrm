@@ -32,7 +32,7 @@ class Client(TimeStampedModel):
     last_name = models.CharField(max_length=255, blank=True, verbose_name='Фамилия')
     patronymic = models.CharField(max_length=255, blank=True, verbose_name='Отчество')
     birth_date = models.DateField(null=True, blank=True, verbose_name='Дата рождения')
-    birth_place = models.CharField(max_length=500, blank=True, verbose_name='Место рождения')
+    birth_place = models.CharField(max_length=500, blank=True,  null=True, verbose_name='Место рождения')
     # Паспортные данные
     passport_series = models.CharField(max_length=4, blank=True, verbose_name='Серия паспорта')
     passport_number = models.CharField(max_length=6, blank=True, verbose_name='Номер паспорта')
