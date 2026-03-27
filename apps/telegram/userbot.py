@@ -370,6 +370,16 @@ async def start_userbot():
                         file_name = original_filename
                         logger.info(f"🖼️ Downloaded image: {len(file_bytes)} bytes")
 
+            # ── Цитата: ищем в БД по telegram_message_id ──
+            reply_to_msg = None
+            reply_to_id = getattr(event.message.reply_to, 'reply_to_msg_id', None)
+            if reply_to_id:
+                reply_to_msg = await sync_to_async(
+                    Message.objects.filter(telegram_message_id=reply_to_id).first
+                )()
+                if reply_to_msg:
+                    logger.info(f"↩ Reply to telegram_message_id={reply_to_id} → db msg={reply_to_msg.id}")
+            
             msg = await sync_to_async(Message.objects.create)(
                 client=db_client,
                 content=content,
@@ -382,6 +392,7 @@ async def start_userbot():
                 file_name=file_name,
                 is_sent=True,
                 is_read=True,
+                reply_to=reply_to_msg,
                 raw_payload={
                     "channel": "telegram",
                     "message_id": event.message.id,

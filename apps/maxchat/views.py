@@ -91,6 +91,19 @@ def max_webhook(request):
             # Это наше исходящее — пуш НЕ делаем, задваивания не будет
             logger.info("MAX webhook: duplicate text mid=%s, skipping", max_mid)
         else:
+            # ── Цитата: MAX передаёт link-вложение со ссылкой на mid ──
+            reply_to_msg = None
+            for att in attachments:
+                if att.get("type") == "link":
+                    linked_mid = (att.get("payload") or {}).get("mid") or att.get("mid")
+                    if linked_mid:
+                        reply_to_msg = Message.objects.filter(
+                            max_message_id=linked_mid, channel="max"
+                        ).first()
+                        if reply_to_msg:
+                            logger.info("↩ MAX reply to mid=%s → db msg=%s", linked_mid, reply_to_msg.id)
+                        break
+
             msg_obj = Message.objects.create(
                 client=client,
                 content=text,
@@ -99,6 +112,7 @@ def max_webhook(request):
                 max_message_id=max_mid,
                 channel="max",
                 telegram_date=timezone.now(),
+                reply_to=reply_to_msg,
                 raw_payload={
                     "channel": "max",
                     "body": body,
