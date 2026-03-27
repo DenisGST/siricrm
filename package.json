@@ -1,0 +1,12 @@
+{
+  "name": "siricrm",
+  "version": "1.0.0",
+  "scripts": {
+    "build": "tailwindcss -i ./assets/input.css -o ./static/css/tailwind.css --minify",
+    "watch": "tailwindcss -i ./assets/input.css -o ./static/css/tailwind.css --watch"
+  },
+  "devDependencies": {
+    "tailwindcss": "^3.4.0",
+    "daisyui": "^4.12.0"
+  }
+}

@@ -1,237 +1,66 @@
-/* Базовый фон страницы – светло‑серый, как у Reddit */
+/* /var/www/projects/siricrm/static/css/style.css */
+
 html {
-  font-size: 14px; /* было 16px по умолчанию */
+  font-size: 14px;
 }
 
 body {
-  font-size: 1rem;
-  background-color: #6890b9; /* reddit-like */
+  background-color: #6890b9;
 }
 
-/* Навбар – белый, с тонкой тенью */
-.navbar,
-.bg-base-100 {
-  background-color: #ffffff;
-}
-
-/* Карточки/контент – белые, с мягким скруглением */
-.card,
-.stat,
-#content-area {
-  border-radius: 0.5rem;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
-}
-
-/* Заголовки – тёмно‑серый */
-h1 {
-  font-size: 1.5rem;
-}
-h2 {
-  font-size: 1.2rem;
-}
-h3 {
-  font-size: 1.1rem;
-}
-
-
-h1,
-h2,
-h3,
-.stat-title {
-  color: #1a1a1b; /* reddit text */
-  font-size: 1rem;
-}
-.stat-value {
-  font-size: 1rem;
-}
-
-/* Основной текст */
-body,
-.text-base-content {
-  color: #1a1a1b;
-}
-
-/* Ссылки – синий Reddit */
-a,
-a:visited {
-  color: #0079d3;
-}
-a:hover {
-  color: #005999;
-}
-
-/* Кнопки primary – синие */
-.btn-primary {
-  background-color: #0079d3;
-  border-color: #0079d3;
-}
-.btn-primary:hover {
-  background-color: #005999;
-  border-color: #005999;
-}
-
-/* Кнопки outline – серые, как на Reddit */
-.btn-outline {
-  border-color: #d7dfe3;
-  color: #1a1a1b;
-}
-.btn-outline:hover {
-  background-color: #f6f7f8;
-}
-
-/* Карточки‑статы ближе к Reddit */
-.stat {
-  background-color: #ffffff;
-  border: 1px solid #edeff1;
-}
-
-/* Сайдбар – чуть темнее, как левая колонка Reddit */
+/* Сайдбар */
 .drawer-side .menu {
   background-color: #f6f7f8;
   border-right: 1px solid #edeff1;
 }
 
-/* Табы */
-.tabs-boxed {
-  background-color: #ffffff;
-  border: 1px solid #edeff1;
-}
-.tab {
-  color: #878a8c;
-}
-.tab.tab-active {
-  background-color: #ffffff;
-  border-bottom: 2px solid #0079d3;
-  color: #1a1a1b;
-}
-
-/* Алёрты чуть мягче */
-.alert-info {
-  background-color: #e9f5ff;
-  border-color: #cde7ff;
-}
-
-/* Toast */
-#toast-container .alert {
-  background-color: #ffffff;
-  border: 1px solid #edeff1;
-}
-
-/* Кнопки чуть меньше */
-.btn,
-button,
-input,
-select,
-textarea {
-  font-size: 1rem;
-}
-/* Чтобы меню выглядело аккуратно в узком режиме */
-/* Узкий режим сайдбара */
+/* Узкий сайдбар */
 #sidebar.sidebar-collapsed {
-  width: 3.2rem; /* только иконки */
+  width: 3.2rem;
 }
-
-
-
 #sidebar.sidebar-collapsed .menu > li > a {
   justify-content: center;
   padding-left: 0.5rem;
   padding-right: 0.5rem;
 }
 
-/* Заголовки (menu-title) прячем через класс sidebar-label — JS уже управляет display */
+.telegram-icon { display: none; }
+#sidebar.sidebar-collapsed .telegram-block { display: none; }
+#sidebar.sidebar-collapsed .telegram-icon { display: flex; }
 
-/* по умолчанию показываем полный блок, иконку прячем */
-.telegram-icon {
-  display: none;
-}
-
-/* когда sidebar свёрнут (есть класс sidebar-collapsed на #sidebar) */
-#sidebar.sidebar-collapsed .telegram-block {
-  display: none;
-}
-
-#sidebar.sidebar-collapsed .telegram-icon {
-  display: flex;
-}
-
-/* Светлый tooltip только для этой подсказки */
+/* Tooltip */
 .tooltip.tooltip-left.tooltip-bot-status::before {
-  background-color: rgba(153, 206, 249, 0.385) !important; /* фон */
-  color: rgb(15 23 42) !important;               /* текст */
-  border-color: rgb(19, 2, 250) !important;     /* треугольник-стрелка */
+  background-color: rgba(153, 206, 249, 0.385) !important;
+  color: rgb(15 23 42) !important;
+  border-color: rgb(19, 2, 250) !important;
 }
 
+/* Кнопки */
 .btn-glow:hover {
-  box-shadow:
-  0 0 0 1px rgba(50, 140, 250, 0.6),
-  0 0 10px rgba(50, 190, 240, 0.6);
+  box-shadow: 0 0 0 1px rgba(50, 140, 250, 0.6), 0 0 10px rgba(50, 190, 240, 0.6);
 }
 
+/* Пульсация */
 @keyframes telegram-red-pulse {
-  0% {
-    transform: scale(1);
-    box-shadow:
-      0 0 0 0 rgba(248, 113, 113, 0.7),   /* светло‑красный ободок */
-      0 0 0 0 rgba(248, 113, 113, 0.4);   /* мягкое внутреннее свечение */
-  }
-
-  50% {
-    transform: scale(1.06);
-    box-shadow:
-      0 0 0 4px rgba(248, 113, 113, 0),   /* ободок расширяется и исчезает */
-      0 0 18px 0 rgba(248, 113, 113, 0.9);/* яркий красный ореол */
-  }
-
-  100% {
-    transform: scale(1);
-    box-shadow:
-      0 0 0 0 rgba(248, 113, 113, 0),
-      0 0 0 0 rgba(248, 113, 113, 0);
-  }
+  0%   { transform: scale(1);    box-shadow: 0 0 0 0 rgba(248,113,113,0.7), 0 0 0 0 rgba(248,113,113,0.4); }
+  50%  { transform: scale(1.06); box-shadow: 0 0 0 4px rgba(248,113,113,0), 0 0 18px 0 rgba(248,113,113,0.9); }
+  100% { transform: scale(1);    box-shadow: 0 0 0 0 rgba(248,113,113,0), 0 0 0 0 rgba(248,113,113,0); }
 }
-
-/* класс для красной кнопки с постоянным пульсом */
-.btn-telegram-red-pulse {
-  animation: telegram-red-pulse 1.3s ease-out infinite;
-}
+.btn-telegram-red-pulse { animation: telegram-red-pulse 1.3s ease-out infinite; }
 
 @keyframes telegram-blue-pulse {
-  0% {
-    transform: scale(1);
-    box-shadow:
-      0 0 0 0 rgba(121, 117, 255, 0.7),   /* светло‑красный ободок */
-      0 0 0 0 rgba(111, 178, 255, 0.4);   /* мягкое внутреннее свечение */
-  }
-
-  50% {
-    transform: scale(1.06);
-    box-shadow:
-      0 0 0 4px rgba(100, 155, 251, 0),   /* ободок расширяется и исчезает */
-      0 0 18px 0 rgba(95, 138, 245, 0.9);/* яркий красный ореол */
-  }
-
-  100% {
-    transform: scale(1);
-    box-shadow:
-      0 0 0 0 rgba(122, 113, 248, 0),
-      0 0 0 0 rgba(127, 113, 248, 0);
-  }
+  0%   { transform: scale(1);    box-shadow: 0 0 0 0 rgba(121,117,255,0.7), 0 0 0 0 rgba(111,178,255,0.4); }
+  50%  { transform: scale(1.06); box-shadow: 0 0 0 4px rgba(100,155,251,0), 0 0 18px 0 rgba(95,138,245,0.9); }
+  100% { transform: scale(1);    box-shadow: 0 0 0 0 rgba(122,113,248,0), 0 0 0 0 rgba(127,113,248,0); }
 }
+.btn-telegram-blue-pulse { animation: telegram-blue-pulse 1.3s ease-out infinite; }
 
-/* класс для синей кнопки с постоянным пульсом */
-.btn-telegram-blue-pulse {
-  animation: telegram-blue-pulse 1.3s ease-out infinite;
-}
-
+/* Telegram */
 .tg-client-item.active {
   background-color: hsl(var(--b3)) !important;
   border-color: hsl(var(--p)) !important;
 }
-
-#telegram-clients-list {
-  background-color: hsl(var(--b1));
-}
+#telegram-clients-list { background-color: hsl(var(--b1)); }
 
 #tg_emoji_popover .emoji-grid {
   display: grid;
@@ -239,19 +68,14 @@ textarea {
 }
 
 #tg_message_input {
-  border-width: 1px;
-  border-style: solid;
-  border-color: hsl(var(--b3)); /* или var(--b2)/--bc по вкусу */
+  border: 1px solid hsl(var(--b3));
 }
 #tg_message_input:focus {
   outline: none;
-  border-color: hsl(var(--p));  /* подсветка при фокусе */
+  border-color: hsl(var(--p));
 }
 
-
-/* глобально снимаем дефолтный фокус для всех инпутов */
-input:focus,
-textarea:focus {
+input:focus, textarea:focus {
   outline: none !important;
   box-shadow: none !important;
 }
@@ -261,45 +85,26 @@ textarea:focus {
   box-shadow: none !important;
   border-color: #d4d4d8;
 }
-
 #telegram-search:focus {
-  outline: none !important;
-  /* Снимаем любые тени, которые могли прилететь из daisyUI/Tailwind */
-  box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.35) !important;
+  box-shadow: 0 0 0 1px rgba(59,130,246,0.35) !important;
   border-color: #0545acd0 !important;
 }
 
-#telegram-chat-messages {
-  scroll-behavior: smooth;
-}
+#telegram-chat-messages { scroll-behavior: smooth; }
+.hidden { display: none !important; }
 
-.hidden {
-  display: none !important;
-}
-
-/* ── Спиннер импорта истории ── */
+/* Спиннер импорта */
 .import-spinner__wheel {
-  position: relative;
-  width: 14px;
-  height: 14px;
-  flex-shrink: 0;
-  display: inline-block;
+  position: relative; width: 14px; height: 14px;
+  flex-shrink: 0; display: inline-block;
 }
-
 .import-spinner__wheel span {
-  display: block;
-  position: absolute;
-  width: 12%;
-  height: 28%;
-  border-radius: 2px;
-  background: #0079d3;
-  left: 50%;
-  top: 50%;
-  transform-origin: 0 -100%;
-  opacity: 0.15;
+  display: block; position: absolute;
+  width: 12%; height: 28%; border-radius: 2px;
+  background: #0079d3; left: 50%; top: 50%;
+  transform-origin: 0 -100%; opacity: 0.15;
   animation: import-spinner-tick 1s linear infinite;
 }
-
 .import-spinner__wheel span:nth-child(1)  { transform: rotate(0deg)   translateX(-50%); animation-delay: 0s; }
 .import-spinner__wheel span:nth-child(2)  { transform: rotate(30deg)  translateX(-50%); animation-delay: -0.917s; }
 .import-spinner__wheel span:nth-child(3)  { transform: rotate(60deg)  translateX(-50%); animation-delay: -0.833s; }
@@ -312,12 +117,8 @@ textarea:focus {
 .import-spinner__wheel span:nth-child(10) { transform: rotate(270deg) translateX(-50%); animation-delay: -0.25s; }
 .import-spinner__wheel span:nth-child(11) { transform: rotate(300deg) translateX(-50%); animation-delay: -0.167s; }
 .import-spinner__wheel span:nth-child(12) { transform: rotate(330deg) translateX(-50%); animation-delay: -0.083s; }
-
 @keyframes import-spinner-tick {
   0%   { opacity: 0.85; }
   100% { opacity: 0.15; }
 }
-.import-spinner__text {
-  font-size: 0.75rem;
-  color: inherit;
-}
+.import-spinner__text { font-size: 0.75rem; color: inherit; }

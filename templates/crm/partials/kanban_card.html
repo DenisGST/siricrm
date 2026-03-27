@@ -29,14 +29,19 @@
         </span>
       {% endif %}
       <button
+        type="button"
         class="btn btn-ghost btn-xs text-gray-400 hover:text-primary"
         hx-get="{% url 'client_edit' client.id %}"
         hx-target="body"
         hx-swap="beforeend"
         title="Редактировать клиента"
+        onclick="event.stopPropagation()"
+        hx-on:click="event.stopPropagation()"
+        hx-on::after-request="document.getElementById('client-edit-modal')?.showModal()"
       >
         ✏️ Изменить
       </button>
+
     </div>
   </div>
 </div>
