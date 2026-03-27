@@ -32,6 +32,13 @@ def telegram_send_message(request, client_id):
     client = get_object_or_404(Client, pk=client_id)
     content = (request.POST.get("content") or "").strip()
     up_file = request.FILES.get("file")
+    reply_to_id = request.POST.get("reply_to_id")
+    reply_to_msg = None
+    if reply_to_id:
+        try:
+            reply_to_msg = Message.objects.get(id=reply_to_id)
+        except Message.DoesNotExist:
+            pass
 
     if not content and not up_file:
         return HttpResponseBadRequest("Empty message")
@@ -51,6 +58,10 @@ def telegram_send_message(request, client_id):
         employee=employee,
     )
 
+    if reply_to_msg:
+        msg.reply_to = reply_to_msg
+        msg.save(update_fields=['reply_to'])
+
     send_telegram_message_task.delay(str(msg.id))
 
     html = render_to_string(
@@ -67,6 +78,13 @@ def max_send_message(request, client_id):
     client = get_object_or_404(Client, pk=client_id)
     content = (request.POST.get("content") or "").strip()
     up_file = request.FILES.get("file")
+    reply_to_id = request.POST.get("reply_to_id")
+    reply_to_msg = None
+    if reply_to_id:
+        try:
+            reply_to_msg = Message.objects.get(id=reply_to_id)
+        except Message.DoesNotExist:
+            pass
 
     if not content and not up_file:
         return HttpResponseBadRequest("Empty message")
@@ -91,7 +109,8 @@ def max_send_message(request, client_id):
         )
         msg.channel = "max"
         msg.telegram_date = timezone.now()
-        msg.save(update_fields=["channel", "telegram_date"])
+        msg.reply_to = reply_to_msg
+        msg.save(update_fields=["channel", "telegram_date", "reply_to"])
     else:
         msg = Message.objects.create(
             client=client,
@@ -102,6 +121,7 @@ def max_send_message(request, client_id):
             message_type="text",
             telegram_date=timezone.now(),
             is_sent=False,
+            reply_to=reply_to_msg,
         )
 
     send_max_message_task.delay(str(msg.id))
@@ -119,7 +139,7 @@ def telegram_chat_for_client(request, client_id):
     client = get_object_or_404(Client, pk=client_id)
     qs = (
         Message.objects.filter(client=client)
-        .select_related("employee")
+        .select_related("employee", "reply_to", "reply_to__client")
         .order_by("telegram_date", "id")
     )
 

@@ -43,7 +43,8 @@ async def send_telegram_message(
     file_bytes: bytes = None,
     file_name: str = None,
     message_type: str = "text",
-    parse_mode: str = 'html'
+    parse_mode: str = 'html',
+    reply_to_msg_id: int = None,
 ) -> dict:
     """
     Отправка сообщения через userbot с поддержкой медиа
@@ -72,7 +73,8 @@ async def send_telegram_message(
             message = await client.send_message(
                 peer,
                 text or "",
-                parse_mode='html' if parse_mode == 'html' else 'md'
+                parse_mode='html' if parse_mode == 'html' else 'md',
+                reply_to=reply_to_msg_id,
             )
             logger.info(f"✅ Text message sent to {telegram_id}, message_id={message.id}")
             return {
@@ -133,6 +135,7 @@ async def send_telegram_message(
                 peer,
                 file_to_send,
                 caption=text or "",
+                reply_to=reply_to_msg_id,
                 attributes=[DocumentAttributeAudio(
                     duration=0,
                     voice=False,
@@ -146,7 +149,8 @@ async def send_telegram_message(
             message = await client.send_file(
                 peer,
                 file_to_send,
-                caption=text or ""
+                caption=text or "",
+                reply_to=reply_to_msg_id,
             )
             logger.info(f"🖼️ Image sent to {telegram_id}, message_id={message.id}")
         
@@ -155,7 +159,8 @@ async def send_telegram_message(
             message = await client.send_file(
                 peer,
                 file_to_send,
-                caption=text or ""
+                caption=text or "",
+                reply_to=reply_to_msg_id,
             )
             logger.info(f"🎬 Video sent to {telegram_id}, message_id={message.id}")
         
@@ -169,6 +174,7 @@ async def send_telegram_message(
                 peer,
                 file_to_send,
                 caption=text or "",
+                reply_to=reply_to_msg_id,
                 attributes=attributes
             )
             logger.info(f"📎 Document sent to {telegram_id}, message_id={message.id}")

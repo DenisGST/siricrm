@@ -142,6 +142,14 @@ class Message(TimeStampedModel):
         help_text="Оригинальные данные от Telegram/MAX и т.п.",
     )
 
+    reply_to = models.ForeignKey(
+        'self',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='replies',
+        verbose_name='Ответ на сообщение',
+    )
+
     content = models.TextField(verbose_name='Содержание')
     
     # Telegram message ID for reference

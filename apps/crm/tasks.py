@@ -128,7 +128,7 @@ def send_telegram_message_task(message_id):
     asyncio.set_event_loop(loop)
     
     try:
-        message = Message.objects.select_related('client', 'file').get(id=message_id)
+        message = Message.objects.select_related('client', 'file', 'reply_to').get(id=message_id)
         
         # Подготовка параметров для отправки
         send_params = {
@@ -148,6 +148,9 @@ def send_telegram_message_task(message_id):
             send_params['file_name'] = message.file.filename
             
             logger.info(f"📦 Downloaded file {message.file.filename} from S3 for message {message_id}")
+        
+        if message.reply_to_id and message.reply_to and message.reply_to.telegram_message_id:
+            send_params['reply_to_msg_id'] = int(message.reply_to.telegram_message_id)
         
         # Отправляем через userbot в новом event loop
         result = loop.run_until_complete(send_telegram_message(**send_params))
@@ -438,26 +441,61 @@ def import_telegram_history_task(telegram_id, limit=300):
 
 @shared_task
 def send_max_message_task(message_id: int):
+    from apps.maxchat.sender import send_max_message
+    from django.conf import settings
+
     try:
-        message = Message.objects.select_related("client").get(id=message_id)
+        message = Message.objects.select_related('client', 'reply_to').get(id=message_id)
     except Message.DoesNotExist:
         return
 
-    if not message.client.max_user_id:  # поле под MAX в Client
+    if not message.client.max_chat_id:
         return
 
+    access_token = settings.MAX_ACCESS_TOKEN
+    chat_id = str(message.client.max_chat_id)
+
+    # Для MAX нет нативного reply, вставляем цитату в текст
+    text_to_send = message.content or ""
+    if message.reply_to_id and message.reply_to:
+        quoted = (message.reply_to.content or "")[:100]
+        text_to_send = f"💬 «{quoted}»\n\n{text_to_send}"
+
+    file_bytes = None
+    filename = None
+    content_type = None
+
+    if message.file:
+        try:
+            file_bytes = download_file_from_s3(message.file.bucket, message.file.key)
+            filename = message.file.filename
+            content_type = message.file.content_type
+        except Exception as e:
+            logger.exception(f"MAX: failed to download file for message {message_id}: {e}")
+
     try:
-        result = arun(
-            send_max_message(
-                user_id=message.client.max_user_id,
-                text=message.content or "",
-            )
+        ok, msg_id, err = send_max_message(
+            access_token=access_token,
+            chat_id=chat_id,
+            text=text_to_send,
+            file_bytes=file_bytes,
+            filename=filename,
+            message_type=message.message_type,
+            content_type=content_type,
         )
-        if result.get("success"):
+        if ok:
             message.is_sent = True
             message.sent_at = timezone.now()
-            message.max_message_id = result.get("id", "")
+            message.max_message_id = msg_id or ""
             message.save(update_fields=["is_sent", "sent_at", "max_message_id"])
-    except Exception:
-        # тут можно залогировать
-        return
+            logger.info(f"✅ MAX message {message_id} sent, max_id={msg_id}")
+        else:
+            logger.error(f"❌ MAX message {message_id} failed: {err}")
+            try:
+                from apps.realtime.utils import push_toast
+                if message.employee and message.employee.user:
+                    push_toast(message.employee.user, f"Ошибка MAX: {err}", level="error")
+            except Exception:
+                pass
+    except Exception as e:
+        logger.exception(f"❌ MAX task error for message {message_id}: {e}")
