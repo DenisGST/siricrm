@@ -8,6 +8,38 @@ from apps.files.models import StoredFile
 from apps.core.models import Employee
 from django.contrib.postgres.fields import JSONField
 
+
+
+class Region(models.Model):
+    """Справочник регионов с данными суда для госпошлины"""
+    number = models.PositiveIntegerField(
+        unique=True,
+        verbose_name='Номер региона'
+    )
+    name = models.CharField(
+        max_length=255,
+        verbose_name='Наименование региона'
+    )
+    court_name = models.CharField(
+        max_length=500,
+        verbose_name='Наименование суда'
+    )
+    court_address = models.TextField(
+        verbose_name='Адрес суда'
+    )
+    court_payment_details = models.TextField(
+        verbose_name='Реквизиты суда для госпошлины',
+        help_text='БИК, расчётный счёт, получатель, КБК и прочие реквизиты'
+    )
+
+    def __str__(self):
+        return f'{self.number} — {self.name}'
+
+    class Meta:
+        verbose_name = 'Регион'
+        verbose_name_plural = 'Регионы'
+        ordering = ['number']
+
 class TimeStampedModel(models.Model):
     """Base model with created_at and updated_at fields"""
     created_at = models.DateTimeField(auto_now_add=True)

@@ -12,7 +12,7 @@ from apps.crm.models import Client, Message
 from apps.files.models import StoredFile
 from apps.files.s3_utils import upload_file_to_s3
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger('maxbot')
 
 
 def _determine_message_type(filename: str | None, content_type: str) -> str:

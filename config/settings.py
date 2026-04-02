@@ -203,6 +203,15 @@ LOGGING = {
             'backupCount': 5,
             'formatter': 'verbose',
         },
+        'maxbot_file': {
+            'level': 'INFO',
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': BASE_DIR / 'logs' / 'maxbot.log',
+            'maxBytes': 1024 * 1024 * 10,  # 10 MB
+            'backupCount': 5,
+            'formatter': 'verbose',
+            'encoding': 'utf-8',
+        },
     },
     'loggers': {
         'django': {
@@ -217,6 +226,11 @@ LOGGING = {
         },
         'userbot': {
             'handlers': ['console', 'userbot_file'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+         'maxbot': {
+            'handlers': ['maxbot_file'],
             'level': 'INFO',
             'propagate': False,
         },

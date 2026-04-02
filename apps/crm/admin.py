@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Client, Message, Service
+from .models import Client, Message, Service, Region
 
 
 @admin.register(Client)
@@ -90,3 +90,9 @@ class ServiceAdmin(admin.ModelAdmin):
     def get_service_name(self, obj):
         return obj.get_name_display()
     get_service_name.short_description = "Услуга"
+
+@admin.register(Region)
+class RegionAdmin(admin.ModelAdmin):
+    list_display = ('number', 'name', 'court_name')
+    search_fields = ('number', 'name', 'court_name', 'court_address')
+    ordering = ('number',)

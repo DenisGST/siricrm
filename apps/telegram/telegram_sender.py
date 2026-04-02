@@ -11,7 +11,7 @@ from apps.files.models import StoredFile
 from apps.files.s3_utils import upload_file_to_s3
 from django.utils import timezone 
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger('userbot')
 
 
 async def get_telegram_client():
