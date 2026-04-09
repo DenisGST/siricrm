@@ -28,6 +28,7 @@ static_collected/
 .env
 *.local.py
 settings_local.py
+*.session*
 
 # IDE / Editor
 .vscode/
