@@ -1,4 +1,3 @@
-import boto3
 from django.conf import settings
 from django.core.paginator import Paginator
 from django.shortcuts import render, get_object_or_404, redirect
@@ -10,13 +9,11 @@ from django.template.loader import render_to_string
 from apps.crm.models import *
 from django.db import models
 from django.db.models import Q, Prefetch
-from django.db import transaction
 from django.utils import timezone
 
 from .models import Client, Message
 from .forms import ClientForm
-from apps.core.models import Employee, EmployeeLog
-from apps.realtime.utils import  push_toast
+from apps.core.models import Employee, EmployeeLog, Department
 from apps.telegram.telegram_sender import create_message_and_store_file
 from .tasks import send_telegram_message_task
 from apps.maxchat.tasks import send_max_message_task
@@ -253,12 +250,12 @@ def dashboard(request):
 @login_required
 def kanban(request):
     # версия с четырьмя колонками
-    leads = Client.objects.filter(status="lead").select_related("assigned_employee")
-    actives = Client.objects.filter(status="active").select_related("assigned_employee")
+    leads = Client.objects.filter(status="lead").prefetch_related("employees")
+    actives = Client.objects.filter(status="active").prefetch_related("employees")
     inactives = Client.objects.filter(status="inactive").select_related(
         "assigned_employee"
     )
-    closeds = Client.objects.filter(status="closed").select_related("assigned_employee")
+    closeds = Client.objects.filter(status="closed").prefetch_related("employees")
 
     return render(
         request,
@@ -307,7 +304,7 @@ def client_create(request):
                 )
                 inactives = Client.objects.filter(
                     status="inactive"
-                ).select_related("assigned_employee")
+                ).prefetch_related("employees")
                 closeds = Client.objects.filter(status="closed").select_related(
                     "assigned_employee"
                 )
@@ -336,35 +333,63 @@ def client_create(request):
 
 @login_required
 def employees_list(request):
+    from django.db.models import Count, Q as DQ
     search = request.GET.get("search", "").strip()
-    qs = Employee.objects.select_related("user", "department")
+    # partial=1 ставит поисковый input → возвращаем только результаты
+    is_partial = request.GET.get("partial") == "1"
+
+    # Базовый queryset со статистикой
+    emp_qs = (
+        Employee.objects.select_related("user", "department")
+        .annotate(
+            messages_sent=Count(
+                "sent_messages",
+                filter=DQ(sent_messages__direction="outgoing"),
+                distinct=True,
+            ),
+            files_sent=Count(
+                "sent_messages",
+                filter=DQ(
+                    sent_messages__direction="outgoing",
+                    sent_messages__file__isnull=False,
+                ),
+                distinct=True,
+            ),
+        )
+        .order_by("user__last_name", "user__first_name")
+    )
 
     if search:
-        qs = qs.filter(
+        emp_qs = emp_qs.filter(
             models.Q(user__first_name__icontains=search)
             | models.Q(user__last_name__icontains=search)
-            | models.Q(telegram_username__icontains=search)
             | models.Q(department__name__icontains=search)
         )
+        departments_with_employees = None
+        no_dept_employees = None
+    else:
+        departments_with_employees = (
+            Department.objects.prefetch_related(
+                Prefetch("employees", queryset=emp_qs)
+            )
+            .filter(is_active=True)
+            .order_by("name")
+        )
+        no_dept_employees = emp_qs.filter(department__isnull=True)
+        emp_qs = None  # не нужен при отсутствии поиска
 
-    paginator = Paginator(qs.order_by("-last_seen"), 25)
-    page_number = request.GET.get("page") or 1
-    page_obj = paginator.get_page(page_number)
+    ctx = {
+        "departments_with_employees": departments_with_employees,
+        "no_dept_employees": no_dept_employees,
+        "search_employees": emp_qs,
+        "search": search,
+    }
 
-    template = (
-        "crm/employees/list_partial.html"
-        if request.headers.get("HX-Request")
-        else "crm/employees/list.html"
-    )
-
-    return render(
-        request,
-        template,
-        {
-            "page_obj": page_obj,
-            "search": search,
-        },
-    )
+    if request.headers.get("HX-Request") and is_partial:
+        return render(request, "crm/employees/list_results.html", ctx)
+    if request.headers.get("HX-Request"):
+        return render(request, "crm/employees/list_partial.html", ctx)
+    return render(request, "crm/employees/list.html", ctx)
 
 
 @login_required
@@ -512,4 +537,90 @@ def client_edit(request, client_id):
 
     return render(request, "crm/partials/client_edit_modal.html", {
         "form": form, "client": client
+    })
+
+
+@login_required
+def client_merge_search(request):
+    """HTMX: search clients to merge with (excludes the source client)."""
+    source_id = request.GET.get("source")
+    query = request.GET.get("merge_q", "").strip()
+
+    clients = Client.objects.none()
+    if query and len(query) >= 2:
+        clients = (
+            Client.objects
+            .filter(
+                Q(first_name__icontains=query)
+                | Q(last_name__icontains=query)
+                | Q(patronymic__icontains=query)
+                | Q(phone__icontains=query)
+                | Q(username__icontains=query)
+            )
+            .exclude(pk=source_id)
+            .order_by("last_name", "first_name")[:20]
+        )
+
+    return render(request, "crm/partials/client_merge_results.html", {
+        "clients": clients,
+        "source_id": source_id,
+        "query": query,
+    })
+
+
+@login_required
+@require_POST
+def client_merge(request, client_id):
+    """Merge target client into source (client_id).
+    All messages, services and employees from target are moved/merged into source.
+    Target client is then deleted.
+    """
+    source = get_object_or_404(Client, pk=client_id)
+    target_id = request.POST.get("target_id")
+    target = get_object_or_404(Client, pk=target_id)
+
+    # Transfer channel IDs (only if source is missing them)
+    if not source.telegram_id and target.telegram_id:
+        source.telegram_id = target.telegram_id
+    if not source.max_chat_id and target.max_chat_id:
+        source.max_chat_id = target.max_chat_id
+
+    # Fill in missing contact info from target
+    for field in ("phone", "email", "username", "last_name", "patronymic",
+                  "birth_date", "birth_place", "passport_series", "passport_number",
+                  "passport_issued_by", "passport_issued_date", "inn", "snils", "notes"):
+        if not getattr(source, field) and getattr(target, field):
+            setattr(source, field, getattr(target, field))
+
+    source.save()
+
+    # Move messages
+    Message.objects.filter(client=target).update(client=source)
+
+    # Move services
+    Service.objects.filter(client=target).update(client=source)
+
+    # Merge employees M2M
+    for emp in target.employees.all():
+        source.employees.add(emp)
+
+    # Delete duplicate
+    target.delete()
+
+    # Re-render the chat panel with the updated source client
+    qs = (
+        Message.objects
+        .filter(client=source)
+        .select_related("employee", "reply_to", "reply_to__client")
+        .order_by("telegram_date", "id")
+    )
+    paginator = Paginator(qs, MESSAGES_PER_PAGE)
+    page_number = paginator.num_pages or 1
+    page_obj = paginator.get_page(page_number)
+
+    return render(request, "crm/partials/telegram_chat_panel.html", {
+        "client": source,
+        "messages": page_obj.object_list,
+        "page_obj": page_obj,
+        "merge_success": True,
     })

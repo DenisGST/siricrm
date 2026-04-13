@@ -18,6 +18,16 @@
     </div>
 
     <div class="flex items-center gap-2">
+      {% if merge_success %}
+        <span class="text-xs text-success font-medium">✅ Объединено</span>
+      {% endif %}
+      <button
+        onclick="document.getElementById('client-merge-modal').showModal(); document.getElementById('merge-search-input').focus()"
+        class="btn btn-ghost btn-xs text-gray-400 hover:text-warning"
+        title="Объединить с другим клиентом"
+      >
+        Объединить
+      </button>
       <button
         id="btn-import-history"
         onclick="startImportHistory('{{ client.id }}')"
@@ -28,6 +38,8 @@
       </button>
     </div>
   </div>
+
+  {% include "crm/partials/client_merge_modal.html" %}
 
   <!-- список сообщений -->
   <div
@@ -364,21 +376,35 @@
     window.crmIsNearBottom = isNearBottom;
 
     document.body.addEventListener("htmx:wsAfterMessage", function (evt) {
-      let data;
-      try { data = JSON.parse(evt.detail.message); } catch(e) { return; }
-      if (!data || data.type !== "chat_message_status") return;
+      var raw = evt.detail.message;
 
-      const el = document.querySelector('[data-msg-id="' + data.message_id + '"]');
-      if (!el) return;
+      // Попытка обработать JSON (статус отправки)
+      var data = null;
+      try { data = JSON.parse(raw); } catch(e) {}
 
-      const badge = el.querySelector(".msg-status");
-      if (!badge) return;
+      if (data && data.type === "chat_message_status") {
+        const el = document.querySelector('[data-msg-id="' + data.message_id + '"]');
+        if (!el) return;
+        const badge = el.querySelector(".msg-status");
+        if (!badge) return;
+        if (data.is_sent) {
+          badge.textContent = "✓";
+          badge.classList.remove("text-gray-400", "animate-pulse");
+          badge.classList.add("text-green-500");
+          badge.title = "Отправлено";
+        }
+        return;
+      }
 
-      if (data.is_sent) {
-        badge.textContent = "✓";
-        badge.classList.remove("text-gray-400", "animate-pulse");
-        badge.classList.add("text-green-500");
-        badge.title = "Отправлено";
+      // Входящее HTML-сообщение (OOB-своп уже выполнен HTMX)
+      if (raw.indexOf('data-chat-message') !== -1) {
+        // Звук
+        var sound = document.getElementById("incoming-sound");
+        if (sound) { sound.currentTime = 0; sound.play().catch(function(){}); }
+        // Скролл вниз (только если уже внизу или близко)
+        if (isNearBottom(container)) {
+          setTimeout(scrollBottom, 50);
+        }
       }
     });
     

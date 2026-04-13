@@ -1,11 +1,18 @@
 /* /var/www/projects/siricrm/static/css/style.css */
 
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&display=swap');
+
 html {
   font-size: 14px;
 }
 
 body {
   background-color: #6890b9;
+  font-family: 'DM Sans', ui-sans-serif, system-ui, sans-serif !important;
+  font-feature-settings: "kern" 1, "liga" 1;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  letter-spacing: -0.01em;
 }
 
 /* Сайдбар */

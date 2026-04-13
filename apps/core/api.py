@@ -15,7 +15,6 @@ from apps.core.serializers import (
     DepartmentSerializer,
 )
 
-from .models import Employee
 from apps.crm.models import Client, Message
 
 class DepartmentViewSet(viewsets.ModelViewSet):
@@ -41,26 +40,26 @@ class DepartmentViewSet(viewsets.ModelViewSet):
     def employees(self, request, pk=None):
         """Get all employees in this department"""
         department = self.get_object()
-        employees = department.employee.filter(is_active=True)
+        employees = department.employees.filter(is_active=True)
         serializer = EmployeeSerializer(employees, many=True)
         return Response(serializer.data)
-    
+
     @action(detail=True, methods=['get'])
     def stats(self, request, pk=None):
         """Get department statistics"""
         department = self.get_object()
-        employees = department.employee.all()
-        
+        employees = department.employees.all()
+
         stats = {
             'department': department.name,
             'employees_count': employees.count(),
             'active_employees': employees.filter(is_active=True).count(),
             'online_employees': employees.filter(is_online=True).count(),
             'total_clients': Client.objects.filter(
-                assigned_employees__department=department
+                employees__department=department
             ).count(),
             'active_clients': Client.objects.filter(
-                assigned_employees__department=department,
+                employees__department=department,
                 status='active'
             ).count(),
         }
@@ -86,7 +85,7 @@ class EmployeeViewSet(viewsets.ModelViewSet):
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     filterset_fields = ['department', 'is_active', 'is_online']
     search_fields = ['user__first_name', 'user__last_name']
-    ordering_fields = ['last_seen', 'clients_count']
+    ordering_fields = ['joined_at', 'is_online']
     
     @action(detail=True, methods=['get'])
     def clients(self, request, pk=None):

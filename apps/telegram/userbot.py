@@ -16,18 +16,80 @@ logger = logging.getLogger('userbot')
 
 session_string = os.getenv('TELEGRAM_SESSION_STRING', '')
 
+
+def _build_proxy():
+    """
+    Читает настройки прокси из переменных окружения.
+
+    TELEGRAM_PROXY_TYPE  — тип прокси: socks5 | socks4 | http | mtproto
+    TELEGRAM_PROXY_HOST  — хост/IP прокси-сервера
+    TELEGRAM_PROXY_PORT  — порт (число)
+    TELEGRAM_PROXY_SECRET — секрет для MTProto-прокси (dd... строка)
+    TELEGRAM_PROXY_USER  — логин для SOCKS5 (опционально)
+    TELEGRAM_PROXY_PASS  — пароль для SOCKS5 (опционально)
+    """
+    proxy_type = os.getenv('TELEGRAM_PROXY_TYPE', '').strip().lower()
+    proxy_host = os.getenv('TELEGRAM_PROXY_HOST', '').strip()
+    proxy_port_str = os.getenv('TELEGRAM_PROXY_PORT', '').strip()
+
+    if not proxy_type or not proxy_host or not proxy_port_str:
+        return None, {}
+
+    try:
+        proxy_port = int(proxy_port_str)
+    except ValueError:
+        logger.error(f"⚠️ TELEGRAM_PROXY_PORT must be a number, got: {proxy_port_str!r}")
+        return None, {}
+
+    if proxy_type == 'mtproto':
+        secret = os.getenv('TELEGRAM_PROXY_SECRET', '').strip()
+        if not secret:
+            logger.error("⚠️ TELEGRAM_PROXY_SECRET is required for MTProto proxy")
+            return None, {}
+        from telethon.network.connection.tcpmtproxy import ConnectionTcpMTProxyRandomizedIntermediate
+        proxy = (proxy_host, proxy_port, secret)
+        logger.info(f"🔒 MTProto proxy configured: {proxy_host}:{proxy_port}")
+        return proxy, {'connection': ConnectionTcpMTProxyRandomizedIntermediate}
+
+    # SOCKS4 / SOCKS5 / HTTP
+    try:
+        import socks
+    except ImportError:
+        logger.error("⚠️ PySocks not installed. Run: pip install PySocks")
+        return None, {}
+
+    type_map = {'socks5': socks.SOCKS5, 'socks4': socks.SOCKS4, 'http': socks.HTTP}
+    socks_type = type_map.get(proxy_type)
+    if not socks_type:
+        logger.error(f"⚠️ Unknown proxy type: {proxy_type!r}. Use: socks5 | socks4 | http | mtproto")
+        return None, {}
+
+    user = os.getenv('TELEGRAM_PROXY_USER', '') or None
+    pwd  = os.getenv('TELEGRAM_PROXY_PASS', '') or None
+    proxy = (socks_type, proxy_host, proxy_port, True, user, pwd)
+    logger.info(f"🔒 {proxy_type.upper()} proxy configured: {proxy_host}:{proxy_port}")
+    return proxy, {}
+
+
+_proxy, _extra_kwargs = _build_proxy()
+_client_kwargs = {**_extra_kwargs}
+if _proxy:
+    _client_kwargs['proxy'] = _proxy
+
 if session_string:
     client = TelegramClient(
         StringSession(session_string),
         settings.TELEGRAM_API_ID,
-        settings.TELEGRAM_API_HASH
+        settings.TELEGRAM_API_HASH,
+        **_client_kwargs
     )
     logger.info("📝 Userbot initialized with StringSession")
 else:
     client = TelegramClient(
         'userbot_session',
         settings.TELEGRAM_API_ID,
-        settings.TELEGRAM_API_HASH
+        settings.TELEGRAM_API_HASH,
+        **_client_kwargs
     )
     logger.warning("⚠️ Using file session (TELEGRAM_SESSION_STRING not set)")
 
@@ -82,10 +144,10 @@ async def import_message_history(telegram_id: int, limit: int = 100):
                 telegram_date=msg.date,
                 raw_payload={
                     "channel": "telegram",
-                    "message_id": event.message.id,
+                    "message_id": msg.id,
                     "peer_id": int(telegram_id),
-                    "date": event.date.isoformat() if event.date else None,
-                    "media": str(type(event.message.media).__name__) if event.message.media else None,
+                    "date": msg.date.isoformat() if msg.date else None,
+                    "media": str(type(msg.media).__name__) if msg.media else None,
                 },
             )
 

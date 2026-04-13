@@ -23,11 +23,6 @@ from apps.crm.serializers import (
     MessageSerializer,
 )
 
-from .models import Employee, Client, Message
-
-
-
-
 class ClientViewSet(viewsets.ModelViewSet):
     """
     API ViewSet for Client management
@@ -41,11 +36,11 @@ class ClientViewSet(viewsets.ModelViewSet):
     - GET /api/clients/{id}/messages/ - Get client conversation
     - POST /api/clients/{id}/assign_employee/ - Assign employee
     """
-    queryset = Client.objects.select_related('assigned_employee')
+    queryset = Client.objects.prefetch_related('employees')
     serializer_class = ClientSerializer
     permission_classes = [IsAuthenticated]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
-    filterset_fields = ['status', 'assigned_employee']
+    filterset_fields = ['status']
     search_fields = ['first_name', 'last_name', 'username', 'phone', 'email']
     ordering_fields = ['last_message_at', 'created_at']
     
@@ -71,9 +66,8 @@ class ClientViewSet(viewsets.ModelViewSet):
         try:
             from apps.core.models import Employee
             employee = Employee.objects.get(id=employee_id)
-            client.assigned_employee = employee
-            client.save(update_fields=['assigned_employee'])
-            
+            client.employees.add(employee)
+
             return Response({
                 'status': 'success',
                 'message': f'Client assigned to {employee}'

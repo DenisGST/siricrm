@@ -159,6 +159,16 @@ services:
       DATABASE_URL: postgresql://crm_user:crm_password_dev@db:5432/crm_db
       REDIS_URL: redis://redis:6379/0
       TELEGRAM_SESSION_STRING: ${TELEGRAM_SESSION_STRING}
+      # Прокси для обхода блокировок Telegram (опционально)
+      # socks5 / socks4 / http / mtproto
+      TELEGRAM_PROXY_TYPE: ${TELEGRAM_PROXY_TYPE:-}
+      TELEGRAM_PROXY_HOST: ${TELEGRAM_PROXY_HOST:-}
+      TELEGRAM_PROXY_PORT: ${TELEGRAM_PROXY_PORT:-}
+      # Для MTProto — секрет вида dd<hex> или ee<hex>
+      TELEGRAM_PROXY_SECRET: ${TELEGRAM_PROXY_SECRET:-}
+      # Для SOCKS5 с авторизацией
+      TELEGRAM_PROXY_USER: ${TELEGRAM_PROXY_USER:-}
+      TELEGRAM_PROXY_PASS: ${TELEGRAM_PROXY_PASS:-}
     restart: unless-stopped
     logging:
       driver: "json-file"

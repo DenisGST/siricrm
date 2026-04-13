@@ -57,6 +57,10 @@ class NotificationsConsumer(AsyncWebsocketConsumer):
         await self.channel_layer.group_add(personal_group, self.channel_name)
         self.groups_list.append(personal_group)
 
+        # Глобальный канал — все сотрудники получают уведомления о новых клиентах
+        await self.channel_layer.group_add("all_employees_notifications", self.channel_name)
+        self.groups_list.append("all_employees_notifications")
+
         # Группы клиентов сотрудника — для push_client_toast
         try:
             employee = await sync_to_async(Employee.objects.get)(user=user)

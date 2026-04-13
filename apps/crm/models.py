@@ -81,7 +81,6 @@ class Client(TimeStampedModel):
     notes = models.TextField(blank=True, verbose_name='Заметки')
     last_message_at = models.DateTimeField(null=True, blank=True, verbose_name='Последнее сообщение')
     contacts_confirmed = models.BooleanField(default=False, verbose_name='Контакты подтверждены')
-    last_message_at = models.DateTimeField(null=True, blank=True, verbose_name='Последнее сообщение')
     employees = models.ManyToManyField(
         Employee,
         related_name="clients",

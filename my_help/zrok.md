@@ -5,7 +5,7 @@ curl -sSf https://get.openziti.io/install.bash | sudo bash -s zrok
 zrok share public http://localhost:8000/api/telegram/webhook/
 
 # Изменить адрес вебхук в телеге
-https://api.telegram.org/bot8446931203:AAEInJ7kDzNWoZATy0lO0xvA-yM2qkanmHM/setWebhook?url=https://sf805yylreea.share.zrok.io
+https://api.telegram.org/bot8446931203:XXXXXXXXXXXXXXXXXXXXXX-yM2qkanmHM/setWebhook?url=https://sf805yylreea.share.zrok.io
 
 # Изменить ALLOWED HOST
 

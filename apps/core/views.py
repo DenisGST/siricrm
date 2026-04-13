@@ -1,14 +1,23 @@
-from django.shortcuts import render, redirect
-from django.contrib.admin.views.decorators import staff_member_required
+from django.shortcuts import render
 from django.contrib.auth.decorators import user_passes_test
 from django.http import JsonResponse
+from django.views.decorators.http import require_POST
+from django.core.cache import cache
 from apps.crm.models import Message, Client
 from apps.core.models import Employee
 from django.utils import timezone
-from datetime import timedelta
+from datetime import datetime, timedelta
 import psutil
 import os
 import re
+
+
+LOG_FILES = {
+    'django':   '/app/logs/crm.log',
+    'userbot':  '/app/logs/userbot.log',
+    'celery':   '/app/logs/celery.log',
+    'maxbot':   '/app/logs/maxbot.log',
+}
 
 
 def is_superuser(user):
@@ -17,10 +26,7 @@ def is_superuser(user):
 
 @user_passes_test(is_superuser)
 def monitoring_dashboard(request):
-    """Панель мониторинга для администраторов"""
-    context = {
-        'page_title': 'Мониторинг системы',
-    }
+    context = {'page_title': 'Мониторинг системы'}
     return render(request, 'monitoring/dashboard.html', context)
 
 
@@ -28,43 +34,41 @@ def monitoring_dashboard(request):
 def monitoring_api(request):
     """API для получения данных мониторинга"""
     try:
-        # Системные метрики
-        cpu_percent = psutil.cpu_percent(interval=0.5)
+        # Системные метрики — cpu_percent(interval=None) не блокирует поток
+        cpu_percent = psutil.cpu_percent(interval=None)
         memory = psutil.virtual_memory()
         disk = psutil.disk_usage('/')
-        
-        # Сетевые метрики
         net_io = psutil.net_io_counters()
-        
-        # Бизнес-метрики
+
+        # Бизнес-метрики — кэшируем на 30 секунд
         now = timezone.now()
-        hour_ago = now - timedelta(hours=1)
-        day_ago = now - timedelta(days=1)
-        
-        active_clients = Client.objects.filter(status='active').count()
-        total_clients = Client.objects.count()
-        leads_count = Client.objects.filter(status='lead').count()
-        
-        unread_messages = Message.objects.filter(
-            is_read=False, 
-            direction='incoming'
-        ).count()
-        
-        messages_last_hour = Message.objects.filter(
-            created_at__gte=hour_ago
-        ).count()
-        
-        messages_last_day = Message.objects.filter(
-            created_at__gte=day_ago
-        ).count()
-        
-        online_employees = Employee.objects.filter(is_online=True).count()
-        total_employees = Employee.objects.count()
-        
-        # Последние ошибки из логов
-        errors = parse_last_errors('/app/logs/crm.log', limit=30)
-        userbot_errors = parse_last_errors('/app/logs/userbot.log', limit=30)
-        
+        business = cache.get('monitoring_business')
+        if business is None:
+            hour_ago = now - timedelta(hours=1)
+            day_ago = now - timedelta(days=1)
+            business = {
+                'active_clients': Client.objects.filter(status='active').count(),
+                'total_clients': Client.objects.count(),
+                'leads_count': Client.objects.filter(status='lead').count(),
+                'unread_messages': Message.objects.filter(is_read=False, direction='incoming').count(),
+                'messages_last_hour': Message.objects.filter(created_at__gte=hour_ago).count(),
+                'messages_last_day': Message.objects.filter(created_at__gte=day_ago).count(),
+                'online_employees': Employee.objects.filter(is_online=True).count(),
+                'total_employees': Employee.objects.count(),
+            }
+            cache.set('monitoring_business', business, 30)
+
+        # Логи — кэшируем на 60 секунд, парсинг файлов дорогой
+        errors = {}
+        for log_key, log_path in LOG_FILES.items():
+            cache_key = f'monitoring_errors_{log_key}'
+            result = cache.get(cache_key)
+            if result is None:
+                cleared_at = cache.get(f'monitoring_cleared_{log_key}')
+                result = parse_last_errors(log_path, limit=30, cleared_at=cleared_at)
+                cache.set(cache_key, result, 60)
+            errors[log_key] = result
+
         data = {
             'system': {
                 'cpu_percent': round(cpu_percent, 1),
@@ -77,79 +81,98 @@ def monitoring_api(request):
                 'network_sent_mb': round(net_io.bytes_sent / (1024**2), 2),
                 'network_recv_mb': round(net_io.bytes_recv / (1024**2), 2),
             },
-            'business': {
-                'active_clients': active_clients,
-                'total_clients': total_clients,
-                'leads_count': leads_count,
-                'unread_messages': unread_messages,
-                'messages_last_hour': messages_last_hour,
-                'messages_last_day': messages_last_day,
-                'online_employees': online_employees,
-                'total_employees': total_employees,
-            },
-            'errors': {
-                'django': errors,
-                'userbot': userbot_errors,
-            },
+            'business': business,
+            'errors': errors,
             'timestamp': now.isoformat(),
         }
-        
+
         return JsonResponse(data)
-        
+
     except Exception as e:
-        return JsonResponse({
-            'error': str(e)
-        }, status=500)
+        return JsonResponse({'error': str(e)}, status=500)
 
 
-def parse_last_errors(log_file, limit=30):
-    """Парсинг последних ошибок из лог-файла"""
+@require_POST
+@user_passes_test(is_superuser)
+def monitoring_clear_log(request):
+    """Отмечает все текущие ошибки лога как прочитанные (не удаляет файл)"""
+    log_key = request.POST.get('log')
+    if log_key not in LOG_FILES:
+        return JsonResponse({'error': 'Unknown log'}, status=400)
+
+    cleared_at = timezone.now().strftime('%Y-%m-%d %H:%M:%S')
+    cache.set(f'monitoring_cleared_{log_key}', cleared_at, 86400 * 30)
+    # Сбрасываем кэш ошибок чтобы при следующем запросе применился новый cleared_at
+    cache.delete(f'monitoring_errors_{log_key}')
+
+    return JsonResponse({'ok': True, 'cleared_at': cleared_at})
+
+
+def parse_last_errors(log_file, limit=30, cleared_at=None):
+    """Парсинг последних ошибок из лог-файла.
+
+    cleared_at — строка 'YYYY-MM-DD HH:MM:SS'; ошибки старше неё скрываются.
+    """
     errors = []
-    
+
     if not os.path.exists(log_file):
         return errors
-    
+
+    cleared_dt = None
+    if cleared_at:
+        try:
+            cleared_dt = datetime.strptime(cleared_at, '%Y-%m-%d %H:%M:%S')
+        except ValueError:
+            pass
+
     try:
-        with open(log_file, 'r', encoding='utf-8') as f:
+        with open(log_file, 'r', encoding='utf-8', errors='replace') as f:
             lines = f.readlines()
-            
-        # Ищем строки с ERROR или CRITICAL
+
         error_pattern = re.compile(r'(ERROR|CRITICAL|Exception|Traceback)')
-        
+        ts_pattern = re.compile(r'(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})')
+
         current_error = None
         for line in reversed(lines):
             if error_pattern.search(line):
                 if current_error is None:
-                    current_error = {'lines': [], 'timestamp': None}
-                
+                    current_error = {'lines': [], 'timestamp': None, 'dt': None}
+
                 current_error['lines'].insert(0, line.strip())
-                
-                # Пытаемся извлечь timestamp
-                timestamp_match = re.match(r'\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})', line)
-                if timestamp_match:
-                    current_error['timestamp'] = timestamp_match.group(1)
+
+                ts_match = ts_pattern.search(line)
+                if ts_match and current_error['timestamp'] is None:
+                    current_error['timestamp'] = ts_match.group(1)
+                    try:
+                        current_error['dt'] = datetime.strptime(ts_match.group(1), '%Y-%m-%d %H:%M:%S')
+                    except ValueError:
+                        pass
             else:
                 if current_error:
+                    dt = current_error.get('dt')
+                    # Пропускаем ошибки до момента очистки
+                    if cleared_dt and dt and dt <= cleared_dt:
+                        current_error = None
+                        continue
+
                     errors.append({
                         'text': '\n'.join(current_error['lines']),
                         'timestamp': current_error['timestamp'] or 'Unknown',
                     })
                     current_error = None
-                    
+
                     if len(errors) >= limit:
                         break
-        
-        # Добавляем последнюю ошибку если есть
+
         if current_error:
-            errors.append({
-                'text': '\n'.join(current_error['lines']),
-                'timestamp': current_error['timestamp'] or 'Unknown',
-            })
-        
+            dt = current_error.get('dt')
+            if not (cleared_dt and dt and dt <= cleared_dt):
+                errors.append({
+                    'text': '\n'.join(current_error['lines']),
+                    'timestamp': current_error['timestamp'] or 'Unknown',
+                })
+
     except Exception as e:
-        errors.append({
-            'text': f'Error reading log file: {str(e)}',
-            'timestamp': 'Unknown',
-        })
-    
+        errors.append({'text': f'Error reading log file: {str(e)}', 'timestamp': 'Unknown'})
+
     return errors[:limit]

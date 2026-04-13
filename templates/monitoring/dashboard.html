@@ -11,22 +11,25 @@
   <link rel="stylesheet" href="{% static 'css/daisyui.css' %}">
   <link rel="stylesheet" href="{% static 'css/style.css' %}">
 
-  <!-- Chart.js для графиков -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
   <style>
-    .metric-card {
-      transition: transform 0.2s;
-    }
-    .metric-card:hover {
-      transform: translateY(-2px);
-    }
+    body { font-family: 'DM Sans', ui-sans-serif, system-ui, sans-serif !important;
+           -webkit-font-smoothing: antialiased; letter-spacing: -0.01em; }
+  </style>
+  <style>
+    .metric-card { transition: transform 0.2s; }
+    .metric-card:hover { transform: translateY(-2px); }
     .status-ok { color: #10b981; }
     .status-warning { color: #f59e0b; }
     .status-critical { color: #ef4444; }
     .log-entry {
       font-family: 'Courier New', monospace;
-      font-size: 0.75rem;
+      font-size: 0.72rem;
       background: #1e293b;
       color: #e2e8f0;
       padding: 0.5rem;
@@ -40,6 +43,7 @@
 <body data-theme="winter" class="bg-base-200">
 
 <div class="min-h-screen p-4">
+
   <!-- Шапка -->
   <div class="flex justify-between items-center mb-6">
     <div>
@@ -52,11 +56,11 @@
     </div>
   </div>
 
-<!-- Системные метрики -->
+  <!-- Системные метрики -->
   <div class="mb-4">
     <h2 class="text-xl font-semibold mb-3">💻 Системные ресурсы</h2>
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-      <!-- CPU -->
+
       <div class="metric-card bg-base-100 rounded-lg shadow-md p-3 border border-base-300">
         <div class="flex items-center justify-between mb-1">
           <span class="text-xs font-medium text-base-content/70">CPU</span>
@@ -64,14 +68,11 @@
         </div>
         <div class="flex items-end justify-between">
           <div class="text-2xl font-bold" id="cpu-value">-</div>
-          <div class="w-20 h-10">
-            <canvas id="cpu-chart"></canvas>
-          </div>
+          <div class="w-20 h-10"><canvas id="cpu-chart"></canvas></div>
         </div>
         <div class="text-[0.68rem] text-base-content/60 mt-1">Использование процессора</div>
       </div>
 
-      <!-- Memory -->
       <div class="metric-card bg-base-100 rounded-lg shadow-md p-3 border border-base-300">
         <div class="flex items-center justify-between mb-1">
           <span class="text-xs font-medium text-base-content/70">RAM</span>
@@ -82,14 +83,11 @@
             <div class="text-2xl font-bold" id="memory-value">-</div>
             <div class="text-[0.68rem] text-base-content/60" id="memory-detail">-</div>
           </div>
-          <div class="w-20 h-10">
-            <canvas id="memory-chart"></canvas>
-          </div>
+          <div class="w-20 h-10"><canvas id="memory-chart"></canvas></div>
         </div>
         <div class="text-[0.68rem] text-base-content/60 mt-1">Использование памяти</div>
       </div>
 
-      <!-- Disk -->
       <div class="metric-card bg-base-100 rounded-lg shadow-md p-3 border border-base-300">
         <div class="flex items-center justify-between mb-1">
           <span class="text-xs font-medium text-base-content/70">Диск</span>
@@ -99,7 +97,6 @@
         <div class="text-[0.68rem] text-base-content/60" id="disk-detail">-</div>
       </div>
 
-      <!-- Network -->
       <div class="metric-card bg-base-100 rounded-lg shadow-md p-3 border border-base-300">
         <div class="flex items-center justify-between mb-1">
           <span class="text-xs font-medium text-base-content/70">Сеть</span>
@@ -109,12 +106,15 @@
         <div class="text-xs font-bold" id="network-recv">↓ -</div>
         <div class="text-[0.68rem] text-base-content/60 mt-1">Всего за сеанс</div>
       </div>
+
     </div>
   </div>
+
   <!-- Бизнес-метрики -->
   <div class="mb-6">
     <h2 class="text-xl font-semibold mb-3">📈 CRM Метрики</h2>
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+
       <div class="bg-base-100 rounded-lg shadow-md p-4 border border-base-300">
         <div class="text-sm text-base-content/70">Активные клиенты</div>
         <div class="text-2xl font-bold" id="active-clients">-</div>
@@ -138,6 +138,7 @@
         <div class="text-2xl font-bold" id="online-employees">-</div>
         <div class="text-xs text-base-content/60">из <span id="total-employees">-</span> сотрудников</div>
       </div>
+
     </div>
   </div>
 
@@ -157,214 +158,219 @@
   </div>
 
   <!-- Логи ошибок -->
-  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-    <!-- Django Errors -->
-    <div>
-      <h2 class="text-xl font-semibold mb-3">❌ Ошибки Django</h2>
-      <div class="bg-base-100 rounded-lg shadow-md border border-base-300 p-4 max-h-96 overflow-y-auto">
-        <div id="django-errors" class="space-y-2">
-          <p class="text-sm text-base-content/60">Загрузка...</p>
-        </div>
-      </div>
-    </div>
+  <div>
+    <h2 class="text-xl font-semibold mb-3">🪲 Логи ошибок</h2>
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
 
-    <!-- Userbot Errors -->
-    <div>
-      <h2 class="text-xl font-semibold mb-3">⚠️ Ошибки Userbot</h2>
-      <div class="bg-base-100 rounded-lg shadow-md border border-base-300 p-4 max-h-96 overflow-y-auto">
-        <div id="userbot-errors" class="space-y-2">
-          <p class="text-sm text-base-content/60">Загрузка...</p>
+      <!-- Django -->
+      <div class="bg-base-100 rounded-lg shadow-md border border-base-300 flex flex-col">
+        <div class="flex items-center justify-between px-4 pt-4 pb-2 border-b border-base-300">
+          <h3 class="font-semibold text-sm">❌ Django <span id="django-count" class="badge badge-error badge-sm ml-1"></span></h3>
+          <button onclick="clearLog('django')" class="btn btn-xs btn-ghost text-error hover:bg-error/10" title="Скрыть все текущие ошибки">
+            🗑 Стереть
+          </button>
+        </div>
+        <div class="p-4 max-h-80 overflow-y-auto">
+          <div id="django-errors" class="space-y-2">
+            <p class="text-sm text-base-content/60">Загрузка...</p>
+          </div>
         </div>
       </div>
+
+      <!-- Userbot -->
+      <div class="bg-base-100 rounded-lg shadow-md border border-base-300 flex flex-col">
+        <div class="flex items-center justify-between px-4 pt-4 pb-2 border-b border-base-300">
+          <h3 class="font-semibold text-sm">🤖 Userbot <span id="userbot-count" class="badge badge-error badge-sm ml-1"></span></h3>
+          <button onclick="clearLog('userbot')" class="btn btn-xs btn-ghost text-error hover:bg-error/10" title="Скрыть все текущие ошибки">
+            🗑 Стереть
+          </button>
+        </div>
+        <div class="p-4 max-h-80 overflow-y-auto">
+          <div id="userbot-errors" class="space-y-2">
+            <p class="text-sm text-base-content/60">Загрузка...</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Celery -->
+      <div class="bg-base-100 rounded-lg shadow-md border border-base-300 flex flex-col">
+        <div class="flex items-center justify-between px-4 pt-4 pb-2 border-b border-base-300">
+          <h3 class="font-semibold text-sm">⚙️ Celery <span id="celery-count" class="badge badge-error badge-sm ml-1"></span></h3>
+          <button onclick="clearLog('celery')" class="btn btn-xs btn-ghost text-error hover:bg-error/10" title="Скрыть все текущие ошибки">
+            🗑 Стереть
+          </button>
+        </div>
+        <div class="p-4 max-h-80 overflow-y-auto">
+          <div id="celery-errors" class="space-y-2">
+            <p class="text-sm text-base-content/60">Загрузка...</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Maxbot -->
+      <div class="bg-base-100 rounded-lg shadow-md border border-base-300 flex flex-col">
+        <div class="flex items-center justify-between px-4 pt-4 pb-2 border-b border-base-300">
+          <h3 class="font-semibold text-sm">💬 Maxbot <span id="maxbot-count" class="badge badge-error badge-sm ml-1"></span></h3>
+          <button onclick="clearLog('maxbot')" class="btn btn-xs btn-ghost text-error hover:bg-error/10" title="Скрыть все текущие ошибки">
+            🗑 Стереть
+          </button>
+        </div>
+        <div class="p-4 max-h-80 overflow-y-auto">
+          <div id="maxbot-errors" class="space-y-2">
+            <p class="text-sm text-base-content/60">Загрузка...</p>
+          </div>
+        </div>
+      </div>
+
     </div>
   </div>
-</div>
+
+</div><!-- /min-h-screen -->
 
 <script>
-  const MAX_POINTS = 60; // 60 * 10s = 10 минут
-  const cpuData = [];
-  const memoryData = [];
-  const labels = [];
-
+  const MAX_POINTS = 60;
+  const cpuData = [], memoryData = [], labels = [];
   let cpuChart, memoryChart;
 
-  function getStatusEmoji(value, type) {
-    if (type === 'cpu' || type === 'memory' || type === 'disk') {
-      if (value < 70) return '✅';
-      if (value < 85) return '⚠️';
-      return '🔴';
-    }
-    return '✅';
+  const CSRF_TOKEN = '{{ csrf_token }}';
+
+  function getStatusEmoji(value) {
+    if (value < 70) return '✅';
+    if (value < 85) return '⚠️';
+    return '🔴';
   }
 
-  function getStatusClass(value, type) {
-    if (type === 'cpu' || type === 'memory' || type === 'disk') {
-      if (value < 70) return 'status-ok';
-      if (value < 85) return 'status-warning';
-      return 'status-critical';
-    }
-    return 'status-ok';
+  function getStatusClass(value) {
+    if (value < 70) return 'text-2xl font-bold status-ok';
+    if (value < 85) return 'text-2xl font-bold status-warning';
+    return 'text-2xl font-bold status-critical';
   }
 
   function initCharts() {
-    const cpuCtx = document.getElementById('cpu-chart').getContext('2d');
-    const memCtx = document.getElementById('memory-chart').getContext('2d');
-
-    cpuChart = new Chart(cpuCtx, {
+    const chartOpts = (color) => ({
       type: 'line',
-      data: {
-        labels: labels,
-        datasets: [{
-          label: 'CPU',
-          data: cpuData,
-          borderColor: 'rgb(59,130,246)',
-          borderWidth: 1,
-          pointRadius: 0,
-          tension: 0.3,
-          fill: false,
-        }]
-      },
+      data: { labels, datasets: [{ data: color === 'blue' ? cpuData : memoryData,
+        borderColor: color === 'blue' ? 'rgb(59,130,246)' : 'rgb(16,185,129)',
+        borderWidth: 1, pointRadius: 0, tension: 0.3, fill: false }] },
       options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        animation: false,
+        responsive: true, maintainAspectRatio: false, animation: false,
         plugins: { legend: { display: false } },
-        scales: {
-          x: { display: false },
-          y: {
-            display: false,
-            suggestedMin: 0,
-            suggestedMax: 100,
-          }
-        }
+        scales: { x: { display: false }, y: { display: false, suggestedMin: 0, suggestedMax: 100 } }
       }
     });
 
-    memoryChart = new Chart(memCtx, {
-      type: 'line',
-      data: {
-        labels: labels,
-        datasets: [{
-          label: 'RAM',
-          data: memoryData,
-          borderColor: 'rgb(16,185,129)',
-          borderWidth: 1,
-          pointRadius: 0,
-          tension: 0.3,
-          fill: false,
-        }]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        animation: false,
-        plugins: { legend: { display: false } },
-        scales: {
-          x: { display: false },
-          y: {
-            display: false,
-            suggestedMin: 0,
-            suggestedMax: 100,
-          }
-        }
-      }
-    });
+    cpuChart    = new Chart(document.getElementById('cpu-chart').getContext('2d'), chartOpts('blue'));
+    memoryChart = new Chart(document.getElementById('memory-chart').getContext('2d'), chartOpts('green'));
   }
-  
-  function updateCharts(sys) {
-    const nowLabel = new Date().toLocaleTimeString('ru-RU');
 
-    labels.push(nowLabel);
+  function updateCharts(sys) {
+    labels.push(new Date().toLocaleTimeString('ru-RU'));
     cpuData.push(sys.cpu_percent);
     memoryData.push(sys.memory_percent);
-
-    if (labels.length > MAX_POINTS) {
-      labels.shift();
-      cpuData.shift();
-      memoryData.shift();
-    }
-
-    if (cpuChart) cpuChart.update();
-    if (memoryChart) memoryChart.update();
+    if (labels.length > MAX_POINTS) { labels.shift(); cpuData.shift(); memoryData.shift(); }
+    cpuChart?.update();
+    memoryChart?.update();
   }
 
   async function loadData() {
     try {
-      const response = await fetch('/monitoring/api/');
-      const data = await response.json();
+      const resp = await fetch('/monitoring/api/');
+      const data = await resp.json();
+      if (data.error) { console.error('API Error:', data.error); return; }
 
-      if (data.error) {
-        console.error('API Error:', data.error);
-        return;
-      }
-
-      // Системные метрики
       const sys = data.system;
-
       document.getElementById('cpu-value').textContent = sys.cpu_percent + '%';
-      document.getElementById('cpu-value').className = 'text-3xl font-bold ' + getStatusClass(sys.cpu_percent, 'cpu');
-      document.getElementById('cpu-status').textContent = getStatusEmoji(sys.cpu_percent, 'cpu');
+      document.getElementById('cpu-value').className = getStatusClass(sys.cpu_percent);
+      document.getElementById('cpu-status').textContent = getStatusEmoji(sys.cpu_percent);
 
       document.getElementById('memory-value').textContent = sys.memory_percent + '%';
-      document.getElementById('memory-value').className = 'text-3xl font-bold ' + getStatusClass(sys.memory_percent, 'memory');
-      document.getElementById('memory-status').textContent = getStatusEmoji(sys.memory_percent, 'memory');
+      document.getElementById('memory-value').className = getStatusClass(sys.memory_percent);
+      document.getElementById('memory-status').textContent = getStatusEmoji(sys.memory_percent);
       document.getElementById('memory-detail').textContent = `${sys.memory_used_gb} GB / ${sys.memory_total_gb} GB`;
 
       document.getElementById('disk-value').textContent = sys.disk_percent + '%';
-      document.getElementById('disk-value').className = 'text-3xl font-bold ' + getStatusClass(sys.disk_percent, 'disk');
-      document.getElementById('disk-status').textContent = getStatusEmoji(sys.disk_percent, 'disk');
+      document.getElementById('disk-value').className = getStatusClass(sys.disk_percent);
+      document.getElementById('disk-status').textContent = getStatusEmoji(sys.disk_percent);
       document.getElementById('disk-detail').textContent = `${sys.disk_used_gb} GB / ${sys.disk_total_gb} GB`;
 
       document.getElementById('network-sent').textContent = `↑ ${sys.network_sent_mb} MB`;
       document.getElementById('network-recv').textContent = `↓ ${sys.network_recv_mb} MB`;
-
-      // Обновляем графики
       updateCharts(sys);
 
-      // Бизнес-метрики
       const biz = data.business;
-      document.getElementById('active-clients').textContent = biz.active_clients;
-      document.getElementById('total-clients').textContent = biz.total_clients;
-      document.getElementById('leads-count').textContent = biz.leads_count;
-      document.getElementById('unread-messages').textContent = biz.unread_messages;
+      document.getElementById('active-clients').textContent   = biz.active_clients;
+      document.getElementById('total-clients').textContent    = biz.total_clients;
+      document.getElementById('leads-count').textContent      = biz.leads_count;
+      document.getElementById('unread-messages').textContent  = biz.unread_messages;
       document.getElementById('online-employees').textContent = biz.online_employees;
-      document.getElementById('total-employees').textContent = biz.total_employees;
-      document.getElementById('messages-hour').textContent = biz.messages_last_hour;
-      document.getElementById('messages-day').textContent = biz.messages_last_day;
+      document.getElementById('total-employees').textContent  = biz.total_employees;
+      document.getElementById('messages-hour').textContent    = biz.messages_last_hour;
+      document.getElementById('messages-day').textContent     = biz.messages_last_day;
 
-      // Ошибки
-      renderErrors('django-errors', data.errors.django);
-      renderErrors('userbot-errors', data.errors.userbot);
+      renderErrors('django-errors',  'django-count',  data.errors.django);
+      renderErrors('userbot-errors', 'userbot-count', data.errors.userbot);
+      renderErrors('celery-errors',  'celery-count',  data.errors.celery);
+      renderErrors('maxbot-errors',  'maxbot-count',  data.errors.maxbot);
 
-      // Обновляем время
-      const now = new Date();
-      document.getElementById('last-update').textContent = now.toLocaleTimeString('ru-RU');
+      document.getElementById('last-update').textContent = new Date().toLocaleTimeString('ru-RU');
 
-    } catch (error) {
-      console.error('Failed to load monitoring data:', error);
+    } catch (err) {
+      console.error('Failed to load monitoring data:', err);
     }
   }
 
-  function renderErrors(containerId, errors) {
+  function renderErrors(containerId, countId, errors) {
     const container = document.getElementById(containerId);
+    const badge     = document.getElementById(countId);
 
     if (!errors || errors.length === 0) {
       container.innerHTML = '<p class="text-sm text-base-content/60">✅ Ошибок не найдено</p>';
+      badge.textContent = '';
+      badge.style.display = 'none';
       return;
     }
 
+    badge.textContent = errors.length;
+    badge.style.display = 'inline-flex';
+
     container.innerHTML = errors.map(err => `
-      <div class="border-l-4 border-error pl-3 py-2">
-        <div class="text-xs text-base-content/60 mb-1">${err.timestamp}</div>
+      <div class="border-l-4 border-error pl-3 py-1">
+        <div class="text-[0.68rem] text-base-content/50 mb-1">${err.timestamp}</div>
         <div class="log-entry">${escapeHtml(err.text)}</div>
       </div>
     `).join('');
   }
 
+  async function clearLog(logKey) {
+    const btn = event.currentTarget;
+    btn.disabled = true;
+    btn.textContent = '⏳';
+
+    try {
+      const resp = await fetch('/monitoring/clear-log/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-CSRFToken': CSRF_TOKEN },
+        body: `log=${logKey}`,
+      });
+      const data = await resp.json();
+      if (data.ok) {
+        // Сразу очищаем блок, не дожидаясь следующего poll-а
+        const map = { django: 'django-errors', userbot: 'userbot-errors', celery: 'celery-errors', maxbot: 'maxbot-errors' };
+        const cntMap = { django: 'django-count', userbot: 'userbot-count', celery: 'celery-count', maxbot: 'maxbot-count' };
+        renderErrors(map[logKey], cntMap[logKey], []);
+      }
+    } catch (err) {
+      console.error('Clear log error:', err);
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = '🗑 Стереть';
+    }
+  }
+
   function escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
+    const d = document.createElement('div');
+    d.textContent = text;
+    return d.innerHTML;
   }
 
   document.addEventListener('DOMContentLoaded', () => {

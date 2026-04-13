@@ -47,7 +47,6 @@ urlpatterns = [
     # files view
     path("files/", include("apps.files.urls")),
     
-    #??????????
     path("", include("apps.core.urls")),
     path("robots.txt", serve, {"document_root": settings.STATIC_ROOT, "path": "robots.txt"}),
 ]

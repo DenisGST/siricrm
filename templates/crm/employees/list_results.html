@@ -1,0 +1,177 @@
+{% if search %}
+  {# ── Результаты поиска: плоский список ── #}
+  {% if search_employees %}
+    <div class="overflow-x-auto">
+      <table class="table table-sm w-full">
+        <thead class="text-xs">
+          <tr>
+            <th>Сотрудник</th>
+            <th>Отдел / роль</th>
+            <th>Статус</th>
+            <th class="text-center">Клиентов</th>
+            <th class="text-center">Сообщений</th>
+            <th class="text-center">Файлов</th>
+            <th>Последний вход</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for emp in search_employees %}
+          <tr class="hover">
+            <td>
+              <div class="flex items-center gap-2">
+                <div class="w-8 h-8 rounded-full bg-primary/20 text-primary flex items-center justify-center text-xs font-bold flex-shrink-0">
+                  {{ emp.user.first_name|first|upper }}{{ emp.user.last_name|first|upper }}
+                </div>
+                <div>
+                  <div class="font-medium text-sm leading-tight">{{ emp.user.get_full_name|default:emp.user.username }}</div>
+                  <div class="text-[11px] text-base-content/50">{{ emp.user.email }}</div>
+                </div>
+              </div>
+            </td>
+            <td class="text-xs">
+              <div>{{ emp.department.name|default:"—" }}</div>
+              <div class="text-base-content/50">{{ emp.get_role_display }}</div>
+            </td>
+            <td>{% include "crm/employees/_status_badges.html" with emp=emp %}</td>
+            <td class="text-center"><span class="badge badge-outline badge-sm">{{ emp.clients.count }}</span></td>
+            <td class="text-center text-sm">{{ emp.messages_sent }}</td>
+            <td class="text-center text-sm">{{ emp.files_sent }}</td>
+            <td class="text-xs text-base-content/60">
+              {% if emp.user.last_login %}{{ emp.user.last_login|date:"d.m.Y H:i" }}{% else %}<span class="text-base-content/40">не входил</span>{% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <p class="text-sm text-base-content/60 py-6 text-center">Ничего не найдено по запросу «{{ search }}»</p>
+  {% endif %}
+
+{% else %}
+  {# ── Древовидный список по отделам ── #}
+  <div class="space-y-1">
+
+    {% for dept in departments_with_employees %}
+    <div class="select-none">
+      {# Заголовок отдела #}
+      <div class="flex items-center gap-2 px-2 py-2 rounded-lg hover:bg-base-200 cursor-pointer font-semibold text-sm group"
+           onclick="this.nextElementSibling.classList.toggle('hidden')">
+        <span class="text-base-content/50 w-4 text-center transition-transform group-[.open]:rotate-90">▶</span>
+        <span class="text-base">🏢</span>
+        <span>{{ dept.name }}</span>
+        <span class="badge badge-neutral badge-sm">{{ dept.employees.count }}</span>
+        {% if dept.manager %}
+          <span class="ml-auto text-xs font-normal text-base-content/50 hidden md:block">
+            рук.: {{ dept.manager.get_full_name|default:dept.manager.username }}
+          </span>
+        {% endif %}
+      </div>
+
+      {# Сотрудники отдела #}
+      <div class="ml-4 border-l-2 border-base-300 pl-2 mb-1">
+        {% for emp in dept.employees.all %}
+        {% with is_last=forloop.last %}
+        <div class="flex items-start gap-0 py-1 group/emp">
+          {# Символ ветки #}
+          <span class="text-base-content/30 text-xs leading-6 w-4 flex-shrink-0 font-mono">
+            {% if is_last %}└{% else %}├{% endif %}
+          </span>
+          {# Карточка сотрудника #}
+          <div class="flex-1 flex flex-wrap items-center gap-x-3 gap-y-1 px-2 py-1 rounded-lg hover:bg-base-200 text-sm min-w-0">
+            {# Аватар + имя #}
+            <div class="flex items-center gap-2 min-w-[180px]">
+              <div class="w-7 h-7 rounded-full bg-primary/20 text-primary flex items-center justify-center text-xs font-bold flex-shrink-0 leading-none">
+                {{ emp.user.first_name|first|upper }}{{ emp.user.last_name|first|upper }}
+              </div>
+              <div>
+                <div class="font-medium leading-tight">{{ emp.user.get_full_name|default:emp.user.username }}</div>
+                <div class="text-[11px] text-base-content/50">{{ emp.get_role_display }}</div>
+              </div>
+            </div>
+
+            {# Статус #}
+            <div class="flex items-center gap-1">
+              {% include "crm/employees/_status_badges.html" with emp=emp %}
+            </div>
+
+            {# Статистика #}
+            <div class="flex items-center gap-3 text-xs text-base-content/70 ml-auto flex-wrap">
+              <span title="Клиентов">
+                👥 <span class="font-medium text-base-content">{{ emp.clients.count }}</span>
+              </span>
+              <span title="Отправлено сообщений">
+                💬 <span class="font-medium text-base-content">{{ emp.messages_sent }}</span>
+              </span>
+              <span title="Отправлено файлов">
+                📎 <span class="font-medium text-base-content">{{ emp.files_sent }}</span>
+              </span>
+              <span title="Последний вход" class="text-base-content/50">
+                🕐
+                {% if emp.user.last_login %}
+                  {{ emp.user.last_login|date:"d.m H:i" }}
+                {% else %}
+                  <span class="italic">не входил</span>
+                {% endif %}
+              </span>
+            </div>
+          </div>
+        </div>
+        {% endwith %}
+        {% empty %}
+          <div class="flex items-center gap-2 py-1 text-xs text-base-content/40 pl-4">
+            <span class="font-mono">└</span> нет сотрудников
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endfor %}
+
+    {# Без отдела #}
+    {% if no_dept_employees %}
+    <div class="select-none">
+      <div class="flex items-center gap-2 px-2 py-2 rounded-lg hover:bg-base-200 cursor-pointer font-semibold text-sm text-warning"
+           onclick="this.nextElementSibling.classList.toggle('hidden')">
+        <span class="text-base-content/50 w-4 text-center">▶</span>
+        <span class="text-base">📂</span>
+        <span>Без отдела</span>
+        <span class="badge badge-warning badge-sm">{{ no_dept_employees|length }}</span>
+      </div>
+      <div class="ml-4 border-l-2 border-warning/30 pl-2 mb-1">
+        {% for emp in no_dept_employees %}
+        <div class="flex items-start gap-0 py-1">
+          <span class="text-base-content/30 text-xs leading-6 w-4 flex-shrink-0 font-mono">
+            {% if forloop.last %}└{% else %}├{% endif %}
+          </span>
+          <div class="flex-1 flex flex-wrap items-center gap-x-3 gap-y-1 px-2 py-1 rounded-lg hover:bg-base-200 text-sm">
+            <div class="flex items-center gap-2 min-w-[180px]">
+              <div class="w-7 h-7 rounded-full bg-warning/20 text-warning flex items-center justify-center text-xs font-bold flex-shrink-0">
+                {{ emp.user.first_name|first|upper }}{{ emp.user.last_name|first|upper }}
+              </div>
+              <div>
+                <div class="font-medium leading-tight">{{ emp.user.get_full_name|default:emp.user.username }}</div>
+                <div class="text-[11px] text-base-content/50">{{ emp.get_role_display }}</div>
+              </div>
+            </div>
+            {% include "crm/employees/_status_badges.html" with emp=emp %}
+            <div class="flex items-center gap-3 text-xs text-base-content/70 ml-auto">
+              <span>👥 {{ emp.clients.count }}</span>
+              <span>💬 {{ emp.messages_sent }}</span>
+              <span>📎 {{ emp.files_sent }}</span>
+              <span class="text-base-content/50">🕐
+                {% if emp.user.last_login %}{{ emp.user.last_login|date:"d.m H:i" }}{% else %}<span class="italic">не входил</span>{% endif %}
+              </span>
+            </div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    {% if not departments_with_employees and not no_dept_employees %}
+      <p class="text-sm text-base-content/60 py-6 text-center">Сотрудников нет</p>
+    {% endif %}
+
+  </div>
+{% endif %}

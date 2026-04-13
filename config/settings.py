@@ -33,7 +33,8 @@ INSTALLED_APPS = [
     'apps.crm',
     'apps.files',
     'apps.realtime',
-    'apps.telegram'
+    'apps.telegram',
+    'apps.maxchat',
 
 ]
 
