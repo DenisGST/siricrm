@@ -144,7 +144,7 @@ class Message(TimeStampedModel):
         ('system', 'Системное'),
         ('audio', 'Аудио'),
         ('video', 'Видео'),
-
+        ('voice', 'Голосовое'),
     ]
     message_type = models.CharField(
         max_length=20,
@@ -216,7 +216,14 @@ class Message(TimeStampedModel):
     sent_at = models.DateTimeField(null=True, blank=True)
     is_delivered = models.BooleanField(default=False)
     delivered_at = models.DateTimeField(null=True, blank=True)
-    
+
+    reactions = models.JSONField(
+        default=dict,
+        blank=True,
+        verbose_name="Реакции",
+        help_text='Реакции на сообщение, например: {"👍": 3, "❤️": 1}',
+    )
+
     def __str__(self):
         return f"Message from {self.employee} to {self.client} at {self.created_at}"
 

@@ -134,11 +134,16 @@ def max_send_message(request, client_id):
 @login_required
 def telegram_chat_for_client(request, client_id):
     client = get_object_or_404(Client, pk=client_id)
+    search_q = (request.GET.get("q") or "").strip()
+
     qs = (
         Message.objects.filter(client=client)
-        .select_related("employee", "reply_to", "reply_to__client")
+        .select_related("employee", "employee__user", "file", "reply_to", "reply_to__client", "reply_to__file")
         .order_by("telegram_date", "id")
     )
+
+    if search_q:
+        qs = qs.filter(content__icontains=search_q)
 
     paginator = Paginator(qs, MESSAGES_PER_PAGE)
     page_param = request.GET.get("page")
@@ -157,7 +162,7 @@ def telegram_chat_for_client(request, client_id):
     return render(
         request,
         "crm/partials/telegram_chat_panel.html",
-        {"client": client, "page_obj": page_obj, "messages": page_obj.object_list},
+        {"client": client, "page_obj": page_obj, "messages": page_obj.object_list, "search_q": search_q},
     )
 
 
@@ -570,6 +575,32 @@ def client_merge_search(request):
 
 @login_required
 @require_POST
+def message_react(request, msg_id):
+    """Поставить реакцию на сообщение (Telegram или MAX)."""
+    from .tasks import send_reaction_task
+
+    msg = get_object_or_404(Message, pk=msg_id)
+    emoji = (request.POST.get("emoji") or "").strip()
+
+    ALLOWED = {"👍", "❤️", "🔥", "🥰", "👏", "😁", "🎉", "🤔", "😢", "👎", "😮", "🤯"}
+    if emoji not in ALLOWED:
+        return HttpResponseBadRequest("Invalid emoji")
+
+    if msg.channel == "telegram":
+        if not msg.telegram_message_id or not msg.client.telegram_id:
+            return HttpResponseBadRequest("Message is not linked to Telegram")
+    elif msg.channel == "max":
+        if not msg.max_message_id or not msg.client.max_chat_id:
+            return HttpResponseBadRequest("Message is not linked to MAX")
+    else:
+        return HttpResponseBadRequest("Unknown channel")
+
+    send_reaction_task.delay(str(msg.id), emoji)
+    return HttpResponse(status=204)
+
+
+@login_required
+@require_POST
 def client_merge(request, client_id):
     """Merge target client into source (client_id).
     All messages, services and employees from target are moved/merged into source.
@@ -586,7 +617,7 @@ def client_merge(request, client_id):
         source.max_chat_id = target.max_chat_id
 
     # Fill in missing contact info from target
-    for field in ("phone", "email", "username", "last_name", "patronymic",
+    for field in ("first_name", "phone", "email", "username", "last_name", "patronymic",
                   "birth_date", "birth_place", "passport_series", "passport_number",
                   "passport_issued_by", "passport_issued_date", "inn", "snils", "notes"):
         if not getattr(source, field) and getattr(target, field):
@@ -611,7 +642,7 @@ def client_merge(request, client_id):
     qs = (
         Message.objects
         .filter(client=source)
-        .select_related("employee", "reply_to", "reply_to__client")
+        .select_related("employee", "employee__user", "file", "reply_to", "reply_to__client")
         .order_by("telegram_date", "id")
     )
     paginator = Paginator(qs, MESSAGES_PER_PAGE)

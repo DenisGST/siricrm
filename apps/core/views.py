@@ -95,17 +95,23 @@ def monitoring_api(request):
 @require_POST
 @user_passes_test(is_superuser)
 def monitoring_clear_log(request):
-    """Отмечает все текущие ошибки лога как прочитанные (не удаляет файл)"""
+    """Очищает файл лога (truncate) и сбрасывает кэш."""
     log_key = request.POST.get('log')
     if log_key not in LOG_FILES:
         return JsonResponse({'error': 'Unknown log'}, status=400)
 
-    cleared_at = timezone.now().strftime('%Y-%m-%d %H:%M:%S')
-    cache.set(f'monitoring_cleared_{log_key}', cleared_at, 86400 * 30)
-    # Сбрасываем кэш ошибок чтобы при следующем запросе применился новый cleared_at
-    cache.delete(f'monitoring_errors_{log_key}')
+    log_path = LOG_FILES[log_key]
+    try:
+        if os.path.exists(log_path):
+            with open(log_path, 'w', encoding='utf-8') as f:
+                f.truncate(0)
+    except Exception as e:
+        return JsonResponse({'error': f'Failed to clear: {e}'}, status=500)
 
-    return JsonResponse({'ok': True, 'cleared_at': cleared_at})
+    cache.delete(f'monitoring_errors_{log_key}')
+    cache.delete(f'monitoring_cleared_{log_key}')
+
+    return JsonResponse({'ok': True})
 
 
 def parse_last_errors(log_file, limit=30, cleared_at=None):

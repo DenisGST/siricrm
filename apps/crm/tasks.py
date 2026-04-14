@@ -440,6 +440,83 @@ def import_telegram_history_task(telegram_id, limit=300):
     asyncio.run(do_import())
 
 @shared_task
+def send_reaction_task(message_uuid: str, emoji: str):
+    """
+    Отправить реакцию на сообщение: Telegram (через MTProto) или MAX (локально в БД).
+    """
+    try:
+        msg = Message.objects.select_related('client').get(id=message_uuid)
+    except Message.DoesNotExist:
+        logger.error(f"send_reaction_task: message {message_uuid} not found")
+        return
+
+    if msg.channel == "telegram":
+        _send_telegram_reaction(msg, emoji)
+    elif msg.channel == "max":
+        _send_max_reaction(msg, emoji)
+    else:
+        logger.warning(f"send_reaction_task: unknown channel {msg.channel}")
+
+
+def _send_telegram_reaction(msg, emoji):
+    """Отправляет реакцию через отдельный TelegramClient и сохраняет в БД."""
+    if not msg.telegram_message_id or not msg.client.telegram_id:
+        logger.warning(f"_send_telegram_reaction: no IDs for msg {msg.id}")
+        return
+
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        from apps.telegram.telegram_sender import get_telegram_client
+        from telethon.tl.functions.messages import SendReactionRequest
+        from telethon.tl.types import ReactionEmoji, PeerUser
+
+        async def _send():
+            client = await get_telegram_client()
+            try:
+                await client(SendReactionRequest(
+                    peer=PeerUser(msg.client.telegram_id),
+                    msg_id=int(msg.telegram_message_id),
+                    reaction=[ReactionEmoji(emoticon=emoji)],
+                ))
+            finally:
+                await client.disconnect()
+
+        loop.run_until_complete(_send())
+        logger.info(f"✅ TG reaction {emoji} sent for {msg.id}")
+
+        # Telegram не шлёт echo для собственных реакций — обновляем БД сами
+        _save_reaction_locally(msg, emoji)
+
+    except Exception as e:
+        logger.exception(f"TG reaction error for {msg.id}: {e}")
+    finally:
+        loop.close()
+
+
+def _save_reaction_locally(msg, emoji):
+    """Сохраняет реакцию в БД и пушит обновление через WS."""
+    msg.refresh_from_db(fields=["reactions"])
+    reactions = msg.reactions.copy() if msg.reactions else {}
+    reactions[emoji] = reactions.get(emoji, 0) + 1
+    msg.reactions = reactions
+    msg.save(update_fields=["reactions"])
+
+    try:
+        from apps.realtime.utils import push_message_reactions
+        push_message_reactions(msg)
+    except Exception as e:
+        logger.warning(f"Reaction WS push error: {e}")
+
+    logger.info(f"💟 Reaction {emoji} saved for {msg.id}: {reactions}")
+
+
+def _send_max_reaction(msg, emoji):
+    """MAX бот-API не поддерживает нативные реакции — сохраняем локально."""
+    _save_reaction_locally(msg, emoji)
+
+
+@shared_task
 def send_max_message_task(message_id: int):
     from apps.maxchat.sender import send_max_message
     from django.conf import settings

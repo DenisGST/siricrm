@@ -94,6 +94,32 @@ else:
     logger.warning("⚠️ Using file session (TELEGRAM_SESSION_STRING not set)")
 
 
+async def _get_or_create_sirius_bot_employee():
+    """
+    Возвращает Employee для системного пользователя «Бот Сириус».
+    Создаёт User + Employee, если они ещё не существуют.
+    """
+    from django.contrib.auth.models import User
+    from apps.core.models import Employee
+
+    def _create():
+        user, _ = User.objects.get_or_create(
+            username="sirius_bot",
+            defaults={
+                "first_name": "Бот",
+                "last_name": "Сириус",
+                "is_active": False,  # системный, без входа
+            },
+        )
+        emp, _ = Employee.objects.get_or_create(
+            user=user,
+            defaults={"role": "operator", "department": None},
+        )
+        return emp
+
+    return await sync_to_async(_create)()
+
+
 async def get_user_phone(user_id: int) -> str | None:
     """Получить номер телефона пользователя по его ID."""
     try:
@@ -160,16 +186,28 @@ async def import_message_history(telegram_id: int, limit: int = 100):
 
 
 async def heartbeat_loop():
-    """Каждые 120 секунд пишет heartbeat в Redis."""
+    """Каждые 120 секунд пишет heartbeat в Redis и каждые 5 минут делает catch_up."""
     from django.core.cache import cache
     logger.info("❤️ Heartbeat loop started")
+    ticks = 0
     while True:
         try:
-            logger.info("❤️ Trying to write heartbeat...")  # добавь эту строку
             await sync_to_async(cache.set)("userbot_heartbeat", "ok", timeout=240)
             logger.info("❤️ Heartbeat written to cache")
         except Exception as e:
             logger.warning(f"Heartbeat cache error: {e}")
+
+        ticks += 1
+        # Каждые 5 тиков (10 минут) принудительно синхронизируем очередь обновлений.
+        # Это предотвращает "замерзание" update stream в Telethon.
+        if ticks % 5 == 0:
+            try:
+                if client.is_connected():
+                    await client.catch_up()
+                    logger.info("🔄 catch_up выполнен")
+            except Exception as e:
+                logger.warning(f"catch_up error: {e}")
+
         await asyncio.sleep(120)
 
 
@@ -195,111 +233,209 @@ async def keep_connected():
 
 async def start_userbot():
     """Запускает userbot для отслеживания прочтений и входящих сообщений."""
-    MAX_RETRIES = 10
-    retry_count = 0
-    base_delay = 60
 
-    while retry_count < MAX_RETRIES:
-        try:
-            await client.start(phone=settings.TELEGRAM_PHONE)
-            client.flood_sleep_threshold = 60
-            logger.info("✅ Userbot started and connected")
-            break
+    # ========= Инициализация системного бота =========
+    sirius_bot_employee = await _get_or_create_sirius_bot_employee()
+    logger.info(f"🤖 Sirius Bot employee initialized (id={sirius_bot_employee.pk})")
 
-        except FloodWaitError as e:
-            retry_count += 1
-            wait_time = e.seconds if hasattr(e, 'seconds') else base_delay * (2 ** retry_count)
-            logger.warning(
-                f"⏳ FloodWaitError: Telegram requires wait of {wait_time}s. "
-                f"Retry {retry_count}/{MAX_RETRIES} in {wait_time}s..."
-            )
-            if retry_count >= MAX_RETRIES:
-                logger.error("❌ Max retries reached. Stopping userbot.")
-                raise
-            await asyncio.sleep(wait_time)
-
-        except (AuthKeyError, PhoneCodeExpiredError) as e:
-            logger.error(
-                f"❌ Auth error: {e}. Session may be invalid. "
-                "Delete 'userbot_session.session' and re-authorize."
-            )
-            raise
-
-        except EOFError:
-            retry_count += 1
-            delay = base_delay * (2 ** (retry_count - 1))
-            logger.warning(
-                f"⏳ EOFError (no interactive terminal). "
-                f"Retry {retry_count}/{MAX_RETRIES} in {delay}s..."
-            )
-            if retry_count >= MAX_RETRIES:
-                logger.error(
-                    "❌ Max retries reached. Run 'python manage.py run_userbot' "
-                    "locally to authorize first."
-                )
-                raise
-            await asyncio.sleep(delay)
-
-        except Exception as e:
-            retry_count += 1
-            delay = base_delay * (2 ** (retry_count - 1))
-            logger.exception(
-                f"❌ Unexpected error during userbot start: {e}. "
-                f"Retry {retry_count}/{MAX_RETRIES} in {delay}s..."
-            )
-            if retry_count >= MAX_RETRIES:
-                logger.error("❌ Max retries reached. Stopping userbot.")
-                raise
-            await asyncio.sleep(delay)
-
-    # ========= Обработчик прочтений =========
+    # ========= Обработчик прочтений и реакций =========
+    # ВАЖНО: хендлеры регистрируются ДО client.start(), чтобы Telethon мог
+    # доставить пропущенные во время рестарта сообщения через эти же хендлеры.
     @client.on(events.Raw)
     async def handle_read(event):
-        """Обработка прочтений."""
-        from telethon.tl.types import UpdateReadHistoryInbox
+        """Обработка прочтений и реакций."""
+        from telethon.tl.types import UpdateReadHistoryInbox, UpdateMessageReactions, ReactionEmoji
 
-        if not isinstance(event, UpdateReadHistoryInbox):
-            return
+        # ── Прочтения ──
+        if isinstance(event, UpdateReadHistoryInbox):
+            try:
+                peer = event.peer
+                max_id = event.max_id
 
-        try:
-            peer = event.peer
-            max_id = event.max_id
+                telegram_id = getattr(peer, "user_id", None)
+                if not telegram_id:
+                    return
 
-            telegram_id = getattr(peer, "user_id", None)
-            if not telegram_id:
-                return
-
-            updated = await sync_to_async(
-                Message.objects.filter(
-                    client__telegram_id=telegram_id,
-                    direction="outgoing",
-                    telegram_message_id__lte=max_id,
-                    is_read=False,
-                ).update
-            )(is_read=True, read_at=timezone.now())
-
-            if updated > 0:
-                logger.info(f"📖 Marked {updated} messages as read for client {telegram_id}")
-
-                from apps.realtime.utils import push_chat_message
-
-                messages = await sync_to_async(list)(
+                updated = await sync_to_async(
                     Message.objects.filter(
                         client__telegram_id=telegram_id,
                         direction="outgoing",
                         telegram_message_id__lte=max_id,
-                        is_read=True,
-                    ).order_by("-telegram_message_id")[:updated]
-                )
+                        is_read=False,
+                    ).update
+                )(is_read=True, read_at=timezone.now())
 
-                for msg in messages:
-                    if msg.direction == "incoming":
-                        await sync_to_async(push_chat_message)(msg)
+                if updated > 0:
+                    logger.info(f"📖 Marked {updated} messages as read for client {telegram_id}")
+
+                    messages = await sync_to_async(list)(
+                        Message.objects.filter(
+                            client__telegram_id=telegram_id,
+                            direction="outgoing",
+                            telegram_message_id__lte=max_id,
+                            is_read=True,
+                        ).order_by("-telegram_message_id")[:updated]
+                    )
+
+                    for msg in messages:
+                        if msg.direction == "incoming":
+                            from apps.realtime.utils import push_chat_message
+                            await sync_to_async(push_chat_message)(msg)
+
+            except Exception as e:
+                from django.db import connection
+                connection.close()
+                logger.exception("Error handling read receipt: %s", e)
+
+        # ── Реакции ──
+        elif isinstance(event, UpdateMessageReactions):
+            try:
+                msg_id = event.msg_id
+                reactions_dict = {}
+                if event.reactions and event.reactions.results:
+                    for rc in event.reactions.results:
+                        if isinstance(rc.reaction, ReactionEmoji):
+                            reactions_dict[rc.reaction.emoticon] = rc.count
+
+                updated = await sync_to_async(
+                    Message.objects.filter(telegram_message_id=msg_id).update
+                )(reactions=reactions_dict)
+
+                if updated > 0:
+                    msg = await sync_to_async(
+                        Message.objects.filter(telegram_message_id=msg_id).first
+                    )()
+                    if msg:
+                        from apps.realtime.utils import push_message_reactions
+                        await sync_to_async(push_message_reactions)(msg)
+                        logger.info(f"💟 Reactions updated for msg_id={msg_id}: {reactions_dict}")
+
+            except Exception as e:
+                logger.exception("Error handling reactions: %s", e)
+        return
+
+    # ========= Обработчик исходящих сообщений (из приложения Telegram) =========
+    @client.on(events.NewMessage(outgoing=True))
+    async def handle_outgoing_message(event):
+        """Сохраняем сообщения, отправленные из приложения Telegram (не из CRM)."""
+        try:
+            # Работаем только с личными сообщениями
+            if not event.is_private:
+                return
+
+            # Ждём, чтобы Celery-задача успела сохранить telegram_message_id
+            await asyncio.sleep(3)
+
+            # Если это сообщение уже создано CRM — пропускаем
+            already_exists = await sync_to_async(
+                Message.objects.filter(telegram_message_id=event.message.id).exists
+            )()
+            if already_exists:
+                return
+
+            # Получаем получателя (кому отправили)
+            peer = await event.get_chat()
+            if not isinstance(peer, User):
+                return
+
+            recipient_id = peer.id
+            db_client = await sync_to_async(
+                Client.objects.filter(telegram_id=recipient_id).first
+            )()
+
+            if not db_client:
+                # Не сохраняем, если клиент не найден (неизвестный контакт)
+                return
+
+            content = event.message.text or ""
+            message_type = "text"
+            file_data = None
+            file_name = ""
+
+            if event.message.media:
+                from telethon.tl.types import (
+                    MessageMediaDocument, MessageMediaPhoto,
+                    DocumentAttributeAudio, DocumentAttributeFilename,
+                )
+                from apps.files.s3_utils import upload_file_to_s3
+                from apps.files.models import StoredFile
+
+                media = event.message.media
+                if isinstance(media, MessageMediaDocument):
+                    doc = media.document
+                    is_voice = False
+                    original_filename = "file"
+                    for attr in doc.attributes:
+                        if isinstance(attr, DocumentAttributeAudio):
+                            if attr.voice:
+                                is_voice = True
+                                message_type = "voice"
+                                original_filename = "voice.ogg"
+                            else:
+                                message_type = "audio"
+                                original_filename = attr.title or "audio.mp3"
+                        elif isinstance(attr, DocumentAttributeFilename):
+                            original_filename = attr.file_name
+                    if not is_voice and message_type == "text":
+                        mime = doc.mime_type or ""
+                        if mime.startswith("video/"):
+                            message_type = "video"
+                            original_filename = "video.mp4"
+                        elif mime.startswith("image/"):
+                            message_type = "image"
+                            original_filename = "image.jpg"
+                        else:
+                            message_type = "document"
+                    file_bytes = await client.download_media(event.message, bytes)
+                    if file_bytes:
+                        bucket, key = await sync_to_async(upload_file_to_s3)(
+                            file_bytes, prefix="telegram/media", filename=original_filename
+                        )
+                        file_data = await sync_to_async(StoredFile.objects.create)(
+                            bucket=bucket, key=key, filename=original_filename,
+                            content_type=doc.mime_type or "application/octet-stream",
+                            size=len(file_bytes),
+                        )
+                        file_name = original_filename
+                elif isinstance(media, MessageMediaPhoto):
+                    message_type = "image"
+                    original_filename = "photo.jpg"
+                    file_bytes = await client.download_media(event.message, bytes)
+                    if file_bytes:
+                        bucket, key = await sync_to_async(upload_file_to_s3)(
+                            file_bytes, prefix="telegram/media", filename=original_filename
+                        )
+                        file_data = await sync_to_async(StoredFile.objects.create)(
+                            bucket=bucket, key=key, filename=original_filename,
+                            content_type="image/jpeg", size=len(file_bytes),
+                        )
+                        file_name = original_filename
+
+            msg = await sync_to_async(Message.objects.create)(
+                client=db_client,
+                employee=sirius_bot_employee,
+                content=content,
+                message_type=message_type,
+                direction="outgoing",
+                channel="telegram",
+                telegram_message_id=event.message.id,
+                telegram_date=event.date,
+                file=file_data,
+                file_name=file_name,
+                is_sent=True,
+                is_read=False,
+            )
+
+            db_client.last_message_at = timezone.now()
+            await sync_to_async(db_client.save)(update_fields=["last_message_at"])
+
+            logger.info(f"📤 Outgoing TG app message saved for client {recipient_id}: {content[:50] or file_name}")
+
+            from apps.realtime.utils import push_chat_message
+            await sync_to_async(push_chat_message)(msg)
 
         except Exception as e:
-            from django.db import connection
-            connection.close()
-            logger.exception("Error handling read receipt: %s", e)
+            logger.exception("Error in outgoing message handler: %s", e)
 
     # ========= Обработчик новых входящих сообщений =========
     @client.on(events.NewMessage(incoming=True))
@@ -488,7 +624,72 @@ async def start_userbot():
             from django.db import connection
             logger.exception("Error in userbot new message handler: %s", e)
 
+    # ========= Подключение с retry-логикой =========
+    MAX_RETRIES = 10
+    retry_count = 0
+    base_delay = 60
+
+    while retry_count < MAX_RETRIES:
+        try:
+            await client.start(phone=settings.TELEGRAM_PHONE)
+            client.flood_sleep_threshold = 60
+            logger.info("✅ Userbot started and connected")
+            break
+
+        except FloodWaitError as e:
+            retry_count += 1
+            wait_time = e.seconds if hasattr(e, 'seconds') else base_delay * (2 ** retry_count)
+            logger.warning(
+                f"⏳ FloodWaitError: Telegram requires wait of {wait_time}s. "
+                f"Retry {retry_count}/{MAX_RETRIES} in {wait_time}s..."
+            )
+            if retry_count >= MAX_RETRIES:
+                logger.error("❌ Max retries reached. Stopping userbot.")
+                raise
+            await asyncio.sleep(wait_time)
+
+        except (AuthKeyError, PhoneCodeExpiredError) as e:
+            logger.error(
+                f"❌ Auth error: {e}. Session may be invalid. "
+                "Delete 'userbot_session.session' and re-authorize."
+            )
+            raise
+
+        except EOFError:
+            retry_count += 1
+            delay = base_delay * (2 ** (retry_count - 1))
+            logger.warning(
+                f"⏳ EOFError (no interactive terminal). "
+                f"Retry {retry_count}/{MAX_RETRIES} in {delay}s..."
+            )
+            if retry_count >= MAX_RETRIES:
+                logger.error(
+                    "❌ Max retries reached. Run 'python manage.py run_userbot' "
+                    "locally to authorize first."
+                )
+                raise
+            await asyncio.sleep(delay)
+
+        except Exception as e:
+            retry_count += 1
+            delay = base_delay * (2 ** (retry_count - 1))
+            logger.exception(
+                f"❌ Unexpected error during userbot start: {e}. "
+                f"Retry {retry_count}/{MAX_RETRIES} in {delay}s..."
+            )
+            if retry_count >= MAX_RETRIES:
+                logger.error("❌ Max retries reached. Stopping userbot.")
+                raise
+            await asyncio.sleep(delay)
+
     logger.info("👂 Userbot is now listening for events...")
+
+    # catch_up после start() — доставит пропущенные сообщения через зарегистрированные хендлеры
+    try:
+        await client.catch_up()
+        logger.info("🔄 Initial catch_up выполнен")
+    except Exception as e:
+        logger.warning(f"Initial catch_up error: {e}")
 
     # Запускаем heartbeat и подключение параллельно
     await asyncio.gather(

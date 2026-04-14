@@ -272,28 +272,6 @@
         </div>
       </div>
 
-      <!-- Tabs -->
-      <div class="border-b border-base-300 mb-4">
-        <div class="tabs -mb-px text-xs">
-          <a class="tab tab-bordered tab-active px-3"
-             hx-get="/kanban/"
-             hx-target="#content-area"
-             hx-swap="innerHTML">Kanban</a>
-          <a class="tab tab-bordered px-3"
-             hx-get="/clients/"
-             hx-target="#content-area"
-             hx-swap="innerHTML">Клиенты</a>
-          <a class="tab tab-bordered px-3"
-             hx-get="/employees/"
-             hx-target="#content-area"
-             hx-swap="innerHTML">Сотрудники</a>
-          <a class="tab tab-bordered px-3"
-             hx-get="{% url 'logs_list' %}"
-             hx-target="#content-area"
-             hx-swap="innerHTML">Логи</a>
-        </div>
-      </div>
-
       <!-- Основная зона контента -->
       <div id="content-area" class="bg-base-100 rounded-lg shadow-md border border-base-300 p-3">
         {% include "crm/kanban.html" %}

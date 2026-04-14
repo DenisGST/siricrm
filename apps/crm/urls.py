@@ -25,6 +25,6 @@ urlpatterns = [
     path("task-status/<str:task_id>/", views.task_status, name="task_status"),
     path("clients/merge-search/", views.client_merge_search, name="client_merge_search"),
     path("clients/<uuid:client_id>/merge/", views.client_merge, name="client_merge"),
-
+    path("message/<uuid:msg_id>/react/", views.message_react, name="message_react"),
 ]
 

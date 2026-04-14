@@ -36,6 +36,15 @@ class TelegramChatConsumer(AsyncWebsocketConsumer):
             "is_sent": event["is_sent"],
         }))
 
+    async def chat_message_reactions(self, event):
+        # Обновление реакций — JSON для JS-обработчика
+        import json
+        await self.send(text_data=json.dumps({
+            "type": "chat_message_reactions",
+            "message_id": event["message_id"],
+            "reactions": event["reactions"],
+        }))
+
 
 class NotificationsConsumer(AsyncWebsocketConsumer):
     async def connect(self):

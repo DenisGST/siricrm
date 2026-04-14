@@ -112,6 +112,24 @@ def push_client_status_changed(client: Client, user):
     push_toast(user, text, level="info")
 
 
+def push_message_reactions(msg: Message):
+    """
+    Обновляет реакции на сообщение через WS.
+    Шлёт JSON — не HTML. Обрабатывается JS-обработчиком.
+    """
+    if channel_layer is None:
+        return
+
+    async_to_sync(channel_layer.group_send)(
+        f"telegram_client_{msg.client_id}",
+        {
+            "type": "chat_message_reactions",
+            "message_id": str(msg.id),
+            "reactions": msg.reactions,
+        },
+    )
+
+
 def push_message_status(msg: Message):
     """
     Обновляет статус пузыря в чате через WS.

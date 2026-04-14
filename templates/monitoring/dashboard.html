@@ -166,8 +166,8 @@
       <div class="bg-base-100 rounded-lg shadow-md border border-base-300 flex flex-col">
         <div class="flex items-center justify-between px-4 pt-4 pb-2 border-b border-base-300">
           <h3 class="font-semibold text-sm">❌ Django <span id="django-count" class="badge badge-error badge-sm ml-1"></span></h3>
-          <button onclick="clearLog('django')" class="btn btn-xs btn-ghost text-error hover:bg-error/10" title="Скрыть все текущие ошибки">
-            🗑 Стереть
+          <button onclick="clearLog('django')" class="btn btn-xs btn-ghost text-error hover:bg-error/10" title="Очистить файл лога">
+            🗑 Очистить лог
           </button>
         </div>
         <div class="p-4 max-h-80 overflow-y-auto">
@@ -181,8 +181,8 @@
       <div class="bg-base-100 rounded-lg shadow-md border border-base-300 flex flex-col">
         <div class="flex items-center justify-between px-4 pt-4 pb-2 border-b border-base-300">
           <h3 class="font-semibold text-sm">🤖 Userbot <span id="userbot-count" class="badge badge-error badge-sm ml-1"></span></h3>
-          <button onclick="clearLog('userbot')" class="btn btn-xs btn-ghost text-error hover:bg-error/10" title="Скрыть все текущие ошибки">
-            🗑 Стереть
+          <button onclick="clearLog('userbot')" class="btn btn-xs btn-ghost text-error hover:bg-error/10" title="Очистить файл лога">
+            🗑 Очистить лог
           </button>
         </div>
         <div class="p-4 max-h-80 overflow-y-auto">
@@ -196,8 +196,8 @@
       <div class="bg-base-100 rounded-lg shadow-md border border-base-300 flex flex-col">
         <div class="flex items-center justify-between px-4 pt-4 pb-2 border-b border-base-300">
           <h3 class="font-semibold text-sm">⚙️ Celery <span id="celery-count" class="badge badge-error badge-sm ml-1"></span></h3>
-          <button onclick="clearLog('celery')" class="btn btn-xs btn-ghost text-error hover:bg-error/10" title="Скрыть все текущие ошибки">
-            🗑 Стереть
+          <button onclick="clearLog('celery')" class="btn btn-xs btn-ghost text-error hover:bg-error/10" title="Очистить файл лога">
+            🗑 Очистить лог
           </button>
         </div>
         <div class="p-4 max-h-80 overflow-y-auto">
@@ -211,8 +211,8 @@
       <div class="bg-base-100 rounded-lg shadow-md border border-base-300 flex flex-col">
         <div class="flex items-center justify-between px-4 pt-4 pb-2 border-b border-base-300">
           <h3 class="font-semibold text-sm">💬 Maxbot <span id="maxbot-count" class="badge badge-error badge-sm ml-1"></span></h3>
-          <button onclick="clearLog('maxbot')" class="btn btn-xs btn-ghost text-error hover:bg-error/10" title="Скрыть все текущие ошибки">
-            🗑 Стереть
+          <button onclick="clearLog('maxbot')" class="btn btn-xs btn-ghost text-error hover:bg-error/10" title="Очистить файл лога">
+            🗑 Очистить лог
           </button>
         </div>
         <div class="p-4 max-h-80 overflow-y-auto">
@@ -363,7 +363,7 @@
       console.error('Clear log error:', err);
     } finally {
       btn.disabled = false;
-      btn.innerHTML = '🗑 Стереть';
+      btn.innerHTML = '🗑 Очистить лог';
     }
   }
 

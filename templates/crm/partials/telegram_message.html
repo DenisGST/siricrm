@@ -6,8 +6,8 @@
   <div class="chat chat-end" id="msg-{{ msg.id }}" data-msg-id="{{ msg.id }}">
 {% endif %}
 
-  {# ── Бейдж канала (TLG / MAX) ── #}
-  <div class="mb-0.1 text-[8px]">
+  {# ── Бейдж канала ── #}
+  <div class="mb-0.5 text-[8px]">
     {% if msg.channel == "telegram" %}
       <span class="message-badge message-badge-telegram-in">TLG</span>
     {% elif msg.channel == "max" %}
@@ -15,22 +15,22 @@
     {% endif %}
   </div>
 
-  {# ── Пузырь сообщения ── #}
+  {# ── Пузырь сообщения (position:relative — для overlay кнопок) ── #}
   {% if msg.channel == "telegram" and msg.direction == "incoming" %}
-    <div class="chat-bubble bubble-telegram-in">
+    <div class="chat-bubble bubble-telegram-in msg-bubble">
   {% elif msg.channel == "telegram" and msg.direction == "outgoing" %}
-    <div class="chat-bubble bubble-telegram-out">
+    <div class="chat-bubble bubble-telegram-out msg-bubble">
   {% elif msg.channel == "max" and msg.direction == "incoming" %}
-    <div class="chat-bubble bubble-max-in">
+    <div class="chat-bubble bubble-max-in msg-bubble">
   {% elif msg.channel == "max" and msg.direction == "outgoing" %}
-    <div class="chat-bubble bubble-max-out">
+    <div class="chat-bubble bubble-max-out msg-bubble">
   {% else %}
-    <div class="chat-bubble">
+    <div class="chat-bubble msg-bubble">
   {% endif %}
 
-    {# ── Цитата (если это ответ на сообщение) ── #}
+    {# ── Цитата ── #}
     {% if msg.reply_to %}
-      <div class="reply-preview" onclick="scrollToMessage({{ msg.reply_to.id }})">
+      <div class="reply-preview" onclick="scrollToMessage('{{ msg.reply_to.id }}')">
         <div class="reply-preview-line"></div>
         <div class="reply-preview-content">
           <span class="reply-preview-author">
@@ -49,71 +49,92 @@
       </div>
     {% endif %}
 
-    {# ── Контент сообщения ── #}
+    {# ── Контент ── #}
     {% if msg.message_type == "text" and not msg.file %}
       {{ msg.content|linebreaksbr }}
-
     {% elif msg.message_type == "image" and msg.file %}
       <a href="{% url 'file_download' msg.file.id %}" target="_blank" class="block">
-        <img src="{% url 'file_download' msg.file.id %}"
-             alt="{{ msg.file.filename }}"
-             class="max-w-xs rounded-lg">
+        <img src="{% url 'file_download' msg.file.id %}" alt="{{ msg.file.filename }}" class="max-w-xs rounded-lg">
       </a>
       {% if msg.content %}<div class="mt-1 text-xs opacity-80">{{ msg.content|linebreaksbr }}</div>{% endif %}
-
     {% elif msg.message_type == "document" and msg.file %}
       <a href="{% url 'file_download' msg.file.id %}" target="_blank" class="flex items-center gap-2">
         📎 <span class="underline text-xs break-all">{{ msg.file.filename|default:"Файл" }}</span>
       </a>
       {% if msg.content %}<div class="mt-1 text-xs opacity-80">{{ msg.content|linebreaksbr }}</div>{% endif %}
-
     {% elif msg.message_type == "voice" and msg.file %}
       <div class="flex items-center gap-2">
-        🎤
-        <audio controls class="w-64">
-          <source src="{% url 'file_download' msg.file.id %}" type="audio/ogg">
-        </audio>
+        🎤 <audio controls class="w-56"><source src="{% url 'file_download' msg.file.id %}" type="audio/ogg"></audio>
       </div>
       {% if msg.content %}<div class="mt-1 text-xs opacity-80">{{ msg.content|linebreaksbr }}</div>{% endif %}
-
     {% elif msg.message_type == "audio" and msg.file %}
       <div class="flex items-center gap-2">
-        🎵
-        <audio controls class="w-64">
-          <source src="{% url 'file_download' msg.file.id %}">
-        </audio>
+        🎵 <audio controls class="w-56"><source src="{% url 'file_download' msg.file.id %}"></audio>
       </div>
       <div class="text-xs opacity-70 mt-1">{{ msg.file.filename|default:"Аудио" }}</div>
       {% if msg.content %}<div class="mt-1 text-xs opacity-80">{{ msg.content|linebreaksbr }}</div>{% endif %}
-
     {% elif msg.message_type == "video" and msg.file %}
-      <video controls class="w-64 rounded-lg">
-        <source src="{% url 'file_download' msg.file.id %}">
-      </video>
+      <video controls class="w-64 rounded-lg"><source src="{% url 'file_download' msg.file.id %}"></video>
       {% if msg.content %}<div class="mt-1 text-xs opacity-80">{{ msg.content|linebreaksbr }}</div>{% endif %}
-
     {% else %}
       {{ msg.content|linebreaksbr }}
     {% endif %}
 
+    {# ── Реакции — внутри пузыря ── #}
+    <div class="msg-reactions" id="reactions-{{ msg.id }}">
+      {% if msg.reactions %}
+        {% for emoji, count in msg.reactions.items %}
+          <span class="msg-reaction-badge">{{ emoji }}<span class="msg-reaction-count">{{ count }}</span></span>
+        {% endfor %}
+      {% endif %}
+    </div>
+
+    {# ── Overlay кнопок (ответить + реакция) — поверх пузыря, без сдвига ── #}
+    <div class="msg-actions">
+      {# Кнопка «Ответить» — синяя #}
+      <button class="btn-reply"
+              data-msg-id="{{ msg.id }}"
+              data-msg-text="{{ msg.content|truncatechars:80|escapejs }}"
+              data-msg-author="{% if msg.direction == 'incoming' %}{{ msg.client.first_name|escapejs }}{% else %}Вы{% endif %}"
+              onclick="setReply(this)"
+              title="Ответить">↩</button>
+
+      {# Кнопка «Реакция» — для Telegram и MAX #}
+      {% if msg.telegram_message_id or msg.max_message_id %}
+      <div class="reaction-picker-wrap">
+        <button class="btn-react" title="Поставить реакцию" onclick="toggleReactionPicker(this)">😊</button>
+        <div class="reaction-picker hidden">
+          {% url 'message_react' msg.id as react_url %}
+          <button type="button" class="reaction-emoji-btn" hx-post="{{ react_url }}" hx-vals='{"emoji":"👍"}' hx-swap="none" onclick="this.closest('.reaction-picker').classList.add('hidden')">👍</button>
+          <button type="button" class="reaction-emoji-btn" hx-post="{{ react_url }}" hx-vals='{"emoji":"❤️"}' hx-swap="none" onclick="this.closest('.reaction-picker').classList.add('hidden')">❤️</button>
+          <button type="button" class="reaction-emoji-btn" hx-post="{{ react_url }}" hx-vals='{"emoji":"🔥"}' hx-swap="none" onclick="this.closest('.reaction-picker').classList.add('hidden')">🔥</button>
+          <button type="button" class="reaction-emoji-btn" hx-post="{{ react_url }}" hx-vals='{"emoji":"🥰"}' hx-swap="none" onclick="this.closest('.reaction-picker').classList.add('hidden')">🥰</button>
+          <button type="button" class="reaction-emoji-btn" hx-post="{{ react_url }}" hx-vals='{"emoji":"👏"}' hx-swap="none" onclick="this.closest('.reaction-picker').classList.add('hidden')">👏</button>
+          <button type="button" class="reaction-emoji-btn" hx-post="{{ react_url }}" hx-vals='{"emoji":"😁"}' hx-swap="none" onclick="this.closest('.reaction-picker').classList.add('hidden')">😁</button>
+          <button type="button" class="reaction-emoji-btn" hx-post="{{ react_url }}" hx-vals='{"emoji":"🎉"}' hx-swap="none" onclick="this.closest('.reaction-picker').classList.add('hidden')">🎉</button>
+          <button type="button" class="reaction-emoji-btn" hx-post="{{ react_url }}" hx-vals='{"emoji":"🤔"}' hx-swap="none" onclick="this.closest('.reaction-picker').classList.add('hidden')">🤔</button>
+          <button type="button" class="reaction-emoji-btn" hx-post="{{ react_url }}" hx-vals='{"emoji":"😢"}' hx-swap="none" onclick="this.closest('.reaction-picker').classList.add('hidden')">😢</button>
+          <button type="button" class="reaction-emoji-btn" hx-post="{{ react_url }}" hx-vals='{"emoji":"👎"}' hx-swap="none" onclick="this.closest('.reaction-picker').classList.add('hidden')">👎</button>
+          <button type="button" class="reaction-emoji-btn" hx-post="{{ react_url }}" hx-vals='{"emoji":"😮"}' hx-swap="none" onclick="this.closest('.reaction-picker').classList.add('hidden')">😮</button>
+          <button type="button" class="reaction-emoji-btn" hx-post="{{ react_url }}" hx-vals='{"emoji":"🤯"}' hx-swap="none" onclick="this.closest('.reaction-picker').classList.add('hidden')">🤯</button>
+        </div>
+      </div>
+      {% endif %}
+    </div>
+
   </div>{# /chat-bubble #}
 
-  {# ── Кнопка "Ответить" — появляется при наведении на сообщение ── #}
-  <button class="btn-reply"
-          data-msg-id="{{ msg.id }}"
-          data-msg-text="{{ msg.content|truncatechars:80|escapejs }}"
-          data-msg-author="{% if msg.direction == 'incoming' %}{{ msg.client.first_name|escapejs }}{% else %}Вы{% endif %}"
-          onclick="setReply(this)"
-          title="Ответить">↩</button>
-
-  {# ── Футер: время + статус отправки ── #}
-  <div class="chat-footer text-[10px] text-base-content/60 flex items-center gap-1">
+  {# ── Футер: время + статус + подпись ── #}
+  <div class="chat-footer text-[10px] text-base-content/60 flex items-center gap-1 flex-wrap">
     {{ msg.telegram_date|default:msg.created_at|date:"d.m H:i" }}
     {% if msg.direction == "outgoing" %}
       {% if msg.is_sent %}
         <span class="msg-status text-green-500" title="Отправлено">✓</span>
       {% else %}
         <span class="msg-status text-gray-400 animate-pulse" title="Отправляется">⏳</span>
+      {% endif %}
+      {% if msg.employee %}
+        <span class="opacity-60">· {{ msg.employee.user.get_full_name|default:msg.employee.user.username }}</span>
       {% endif %}
     {% endif %}
   </div>

@@ -41,6 +41,33 @@
 
   {% include "crm/partials/client_merge_modal.html" %}
 
+  <!-- поиск по сообщениям -->
+  <div class="px-3 shrink-0" style="border-bottom:1px solid #eee;padding-top:3px;padding-bottom:3px;">
+    <form id="msg-search-form"
+          hx-get="{% url 'telegram_chat_for_client' client.id %}"
+          hx-target="#telegram-chat-panel-root"
+          hx-swap="outerHTML"
+          hx-push-url="false"
+          class="flex items-center gap-1">
+      <input type="text"
+             name="q"
+             value="{{ search_q|default:'' }}"
+             placeholder="Поиск..."
+             class="input input-bordered flex-1 min-w-0"
+             style="height:24px;font-size:11px;padding:0 8px;min-height:0;"
+             autocomplete="off">
+      {% if search_q %}
+        <a href="{% url 'telegram_chat_for_client' client.id %}"
+           hx-get="{% url 'telegram_chat_for_client' client.id %}"
+           hx-target="#telegram-chat-panel-root"
+           hx-swap="outerHTML"
+           class="btn btn-ghost btn-xs text-gray-400"
+           style="height:24px;min-height:0;padding:0 4px;"
+           title="Сбросить поиск">✕</a>
+      {% endif %}
+    </form>
+  </div>
+
   <!-- список сообщений -->
   <div
     id="telegram-messages-container"
@@ -110,16 +137,43 @@
         class="w-full textarea textarea-bordered resize-none"
         placeholder="Напишите сообщение..."
       ></textarea>
+      <div id="emoji-quick-bar" class="hidden flex flex-wrap gap-1 py-1">
+        <button type="button" class="eq" onclick="insertEmoji('😊')">😊</button>
+        <button type="button" class="eq" onclick="insertEmoji('😂')">😂</button>
+        <button type="button" class="eq" onclick="insertEmoji('❤️')">❤️</button>
+        <button type="button" class="eq" onclick="insertEmoji('👍')">👍</button>
+        <button type="button" class="eq" onclick="insertEmoji('🔥')">🔥</button>
+        <button type="button" class="eq" onclick="insertEmoji('😍')">😍</button>
+        <button type="button" class="eq" onclick="insertEmoji('🤔')">🤔</button>
+        <button type="button" class="eq" onclick="insertEmoji('😎')">😎</button>
+        <button type="button" class="eq" onclick="insertEmoji('🙏')">🙏</button>
+        <button type="button" class="eq" onclick="insertEmoji('👏')">👏</button>
+        <button type="button" class="eq" onclick="insertEmoji('🎉')">🎉</button>
+        <button type="button" class="eq" onclick="insertEmoji('😢')">😢</button>
+        <button type="button" class="eq" onclick="insertEmoji('😮')">😮</button>
+        <button type="button" class="eq" onclick="insertEmoji('💪')">💪</button>
+        <button type="button" class="eq" onclick="insertEmoji('✅')">✅</button>
+        <button type="button" class="eq" onclick="insertEmoji('❌')">❌</button>
+        <button type="button" class="eq" onclick="insertEmoji('⭐')">⭐</button>
+        <button type="button" class="eq" onclick="insertEmoji('💯')">💯</button>
+        <button type="button" class="eq" onclick="insertEmoji('🤝')">🤝</button>
+        <button type="button" class="eq" onclick="insertEmoji('👀')">👀</button>
+        <button type="button" class="eq" onclick="insertEmoji('😡')">😡</button>
+        <button type="button" class="eq" onclick="insertEmoji('🥳')">🥳</button>
+        <button type="button" class="eq" onclick="insertEmoji('🤯')">🤯</button>
+        <button type="button" class="eq" onclick="insertEmoji('💰')">💰</button>
+      </div>
 
       <div class="flex items-center gap-2">
         <div class="flex items-center gap-2">
-          <label class="btn btn-ghost btn-xs">
+          <label class="btn btn-sm text-base border border-blue-300 bg-blue-50 hover:bg-blue-100 text-blue-600" title="Прикрепить файл (фото, документ, аудио)">
             <input type="file" name="file" id="chat-file-input" class="hidden">
-            📎
+            📎 <span class="text-xs font-normal">Файл</span>
           </label>
-          <button type="button" id="btn-record" class="btn btn-ghost btn-xs">🎙</button>
-          <button type="button" id="btn-stop" class="btn btn-ghost btn-xs hidden">⏹</button>
-          <button type="button" id="btn-cancel" class="btn btn-ghost btn-xs hidden">Отмена</button>
+          <button type="button" id="btn-record" class="btn btn-sm text-base border border-rose-300 bg-rose-50 hover:bg-rose-100 text-rose-600" title="Записать голосовое сообщение">🎙 <span class="text-xs font-normal">Аудио</span></button>
+          <button type="button" id="btn-stop" class="btn btn-sm text-base border border-orange-300 bg-orange-50 hover:bg-orange-100 text-orange-600 hidden" title="Остановить запись">⏹ <span class="text-xs font-normal">Стоп</span></button>
+          <button type="button" id="btn-cancel" class="btn btn-ghost btn-xs hidden" title="Отменить">Отмена</button>
+          <button type="button" id="btn-emoji-toggle" class="btn btn-sm text-base border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-600" title="Эмодзи" onclick="toggleEmojiBar()">😊 <span class="text-xs font-normal">Эмодзи</span></button>
         </div>
 
         <div class="ml-auto flex items-center gap-2">
@@ -140,8 +194,7 @@
           <button
             type="submit"
             id="btn-send-max"
-            class="btn btn-sm"
-            style="background-color:#ec4899;border-color:#ec4899;color:white;"
+            class="btn btn-sm btn-max-send"
             hx-post="{% url 'max_send_message' client.id %}"
             hx-encoding="multipart/form-data"
             hx-swap="none"
@@ -327,10 +380,26 @@
 
           if (filePreview) {
             filePreview.innerHTML = "";
+            var wrap = document.createElement("div");
+            wrap.className = "flex items-center gap-2";
             var a = document.createElement("audio");
             a.controls = true;
             a.src = URL.createObjectURL(blob);
-            filePreview.appendChild(a);
+            a.className = "h-8";
+            wrap.appendChild(a);
+            var cancelBtn = document.createElement("button");
+            cancelBtn.type = "button";
+            cancelBtn.textContent = "✕ Отмена";
+            cancelBtn.className = "btn btn-ghost btn-xs text-error";
+            cancelBtn.onclick = function() {
+              clearVoiceInputs();
+              if (filePreview) filePreview.innerHTML = "";
+              currentMode = null;
+              showCancelIfNeeded();
+              updateSendButtons();
+            };
+            wrap.appendChild(cancelBtn);
+            filePreview.appendChild(wrap);
           }
           currentMode = "voice";
           showCancelIfNeeded();
@@ -396,6 +465,20 @@
         return;
       }
 
+      if (data && data.type === "chat_message_reactions") {
+        var reactionsEl = document.getElementById("reactions-" + data.message_id);
+        if (!reactionsEl) return;
+        var reactions = data.reactions || {};
+        var entries = Object.entries(reactions);
+        var inner = "";
+        entries.forEach(function(pair) {
+          inner += '<span class="msg-reaction-badge">' +
+                   pair[0] + '<span class="msg-reaction-count">' + pair[1] + '</span></span>';
+        });
+        reactionsEl.innerHTML = inner;
+        return;
+      }
+
       // Входящее HTML-сообщение (OOB-своп уже выполнен HTMX)
       if (raw.indexOf('data-chat-message') !== -1) {
         // Звук
@@ -408,6 +491,31 @@
       }
     });
     
+    // ── Reaction picker ────────────────────────────────────────────────────
+    window.toggleReactionPicker = function(btn) {
+      var picker = btn.nextElementSibling;
+      if (!picker) return;
+      var isHidden = picker.classList.contains('hidden');
+      // Закрыть все открытые
+      document.querySelectorAll('.reaction-picker').forEach(function(p) {
+        p.classList.add('hidden');
+      });
+      if (isHidden) {
+        picker.classList.remove('hidden');
+        // Закрыть по клику вне пикера
+        var close = function(e) {
+          if (!picker.contains(e.target) && e.target !== btn) {
+            picker.classList.add('hidden');
+            document.removeEventListener('click', close, true);
+          }
+        };
+        setTimeout(function() {
+          document.addEventListener('click', close, true);
+        }, 0);
+      }
+    };
+    // ───────────────────────────────────────────────────────────────────────
+
     // ── Reply (цитата) ─────────────────────────────────────────────────────
     window.setReply = function(btn) {
       var bar = document.getElementById('reply-preview-bar');
@@ -429,6 +537,24 @@
       el.scrollIntoView({ behavior: 'smooth', block: 'center' });
       el.classList.add('ring-2', 'ring-primary', 'rounded-lg');
       setTimeout(function() { el.classList.remove('ring-2', 'ring-primary', 'rounded-lg'); }, 1500);
+    };
+    // ───────────────────────────────────────────────────────────────────────
+
+    // ── Emoji bar ───────────────────────────────────────────────────────
+    window.insertEmoji = function(em) {
+      if (!textarea) return;
+      var start = textarea.selectionStart;
+      var end = textarea.selectionEnd;
+      var val = textarea.value;
+      textarea.value = val.slice(0, start) + em + val.slice(end);
+      textarea.selectionStart = textarea.selectionEnd = start + em.length;
+      textarea.focus();
+      textarea.dispatchEvent(new Event('input'));
+    };
+
+    window.toggleEmojiBar = function() {
+      var bar = document.getElementById('emoji-quick-bar');
+      if (bar) bar.classList.toggle('hidden');
     };
     // ───────────────────────────────────────────────────────────────────────
   })();
