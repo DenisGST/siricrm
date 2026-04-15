@@ -1,0 +1,83 @@
+{# crm/partials/client_create_modal.html #}
+<dialog id="client-create-modal" class="modal modal-open">
+  <div class="modal-box max-w-lg">
+    <div class="flex items-center justify-between mb-4">
+      <h3 class="text-lg font-bold">Новый клиент</h3>
+      <button type="button" class="btn btn-sm btn-ghost btn-circle" onclick="this.closest('dialog').remove()">✕</button>
+    </div>
+
+    <form hx-post="{% url 'client_create' %}"
+          hx-target="#client-create-modal"
+          hx-swap="outerHTML"
+          class="space-y-3">
+      {% csrf_token %}
+
+      {% if form.non_field_errors %}
+        <div class="alert alert-error text-sm py-2">{{ form.non_field_errors }}</div>
+      {% endif %}
+
+      <div class="grid grid-cols-2 gap-3">
+        <div class="form-control">
+          <label class="label py-1"><span class="label-text text-xs">Фамилия</span></label>
+          <input type="text" name="last_name" value="{{ form.last_name.value|default:'' }}" class="input input-bordered input-sm w-full" placeholder="Иванов">
+          {% if form.last_name.errors %}<span class="text-error text-xs">{{ form.last_name.errors.0 }}</span>{% endif %}
+        </div>
+        <div class="form-control">
+          <label class="label py-1"><span class="label-text text-xs">Имя *</span></label>
+          <input type="text" name="first_name" value="{{ form.first_name.value|default:'' }}" class="input input-bordered input-sm w-full" placeholder="Иван" required>
+          {% if form.first_name.errors %}<span class="text-error text-xs">{{ form.first_name.errors.0 }}</span>{% endif %}
+        </div>
+      </div>
+
+      <div class="grid grid-cols-2 gap-3">
+        <div class="form-control">
+          <label class="label py-1"><span class="label-text text-xs">Отчество</span></label>
+          <input type="text" name="patronymic" value="{{ form.patronymic.value|default:'' }}" class="input input-bordered input-sm w-full" placeholder="Иванович">
+        </div>
+        <div class="form-control">
+          <label class="label py-1"><span class="label-text text-xs">Телефон</span></label>
+          <input type="text" name="phone" value="{{ form.phone.value|default:'' }}" class="input input-bordered input-sm w-full" placeholder="+7 900 123-45-67">
+          {% if form.phone.errors %}<span class="text-error text-xs">{{ form.phone.errors.0 }}</span>{% endif %}
+        </div>
+      </div>
+
+      <div class="grid grid-cols-2 gap-3">
+        <div class="form-control">
+          <label class="label py-1"><span class="label-text text-xs">Email</span></label>
+          <input type="email" name="email" value="{{ form.email.value|default:'' }}" class="input input-bordered input-sm w-full" placeholder="email@example.com">
+        </div>
+        <div class="form-control">
+          <label class="label py-1"><span class="label-text text-xs">Username (Telegram)</span></label>
+          <input type="text" name="username" value="{{ form.username.value|default:'' }}" class="input input-bordered input-sm w-full" placeholder="@username">
+        </div>
+      </div>
+
+      <div class="grid grid-cols-2 gap-3">
+        <div class="form-control">
+          <label class="label py-1"><span class="label-text text-xs">Telegram ID</span></label>
+          <input type="number" name="telegram_id" value="{{ form.telegram_id.value|default:'' }}" class="input input-bordered input-sm w-full">
+        </div>
+        <div class="form-control">
+          <label class="label py-1"><span class="label-text text-xs">Статус</span></label>
+          <select name="status" class="select select-bordered select-sm w-full">
+            <option value="lead" {% if form.status.value == "lead" %}selected{% endif %}>Лид</option>
+            <option value="active" {% if form.status.value == "active" %}selected{% endif %}>Активный</option>
+            <option value="inactive" {% if form.status.value == "inactive" %}selected{% endif %}>Неактивный</option>
+            <option value="closed" {% if form.status.value == "closed" %}selected{% endif %}>Закрыт</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="form-control">
+        <label class="label py-1"><span class="label-text text-xs">Заметки</span></label>
+        <textarea name="notes" class="textarea textarea-bordered textarea-sm w-full" rows="2" placeholder="Комментарий...">{{ form.notes.value|default:'' }}</textarea>
+      </div>
+
+      <div class="modal-action pt-2">
+        <button type="button" class="btn btn-sm btn-ghost" onclick="this.closest('dialog').remove()">Отмена</button>
+        <button type="submit" class="btn btn-sm btn-primary">Создать</button>
+      </div>
+    </form>
+  </div>
+  <div class="modal-backdrop" onclick="this.closest('dialog').remove()"></div>
+</dialog>

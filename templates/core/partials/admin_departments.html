@@ -1,0 +1,58 @@
+<div id="departments-list"
+     hx-trigger="reloadDepartments from:body"
+     hx-get="{% url 'core:admin_departments' %}"
+     hx-swap="outerHTML">
+
+  <div class="flex justify-between items-center mb-3">
+    <h3 class="font-semibold">Отделы</h3>
+    <button class="btn btn-primary btn-sm"
+            hx-get="{% url 'core:admin_department_add' %}"
+            hx-target="body" hx-swap="beforeend">
+      + Добавить отдел
+    </button>
+  </div>
+
+  <div class="overflow-x-auto">
+    <table class="table table-sm table-zebra">
+      <thead>
+        <tr>
+          <th>Название</th>
+          <th>Руководитель</th>
+          <th>Сотрудников</th>
+          <th>Статус</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for dept in departments %}
+        <tr>
+          <td class="font-medium">{{ dept.name }}</td>
+          <td>{{ dept.manager.get_full_name|default:"—" }}</td>
+          <td>{{ dept.employees.count }}</td>
+          <td>
+            {% if dept.is_active %}
+              <span class="badge badge-success badge-sm">Активен</span>
+            {% else %}
+              <span class="badge badge-ghost badge-sm">Неактивен</span>
+            {% endif %}
+          </td>
+          <td class="text-right">
+            <button class="btn btn-xs btn-outline"
+                    hx-get="{% url 'core:admin_department_edit' dept.pk %}"
+                    hx-target="body" hx-swap="beforeend">
+              Изменить
+            </button>
+            <button class="btn btn-xs btn-error btn-outline"
+                    hx-post="{% url 'core:admin_department_delete' dept.pk %}"
+                    hx-confirm="Удалить отдел «{{ dept.name }}»?">
+              Удалить
+            </button>
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="5" class="text-center text-base-content/60">Отделов нет</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>

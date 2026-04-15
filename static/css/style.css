@@ -1,178 +1,437 @@
 /* /var/www/projects/siricrm/static/css/style.css */
+/* Outlook-inspired Fluent Design */
 
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Segoe+UI:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap');
+
+:root {
+  --ms-blue: #0078d4;
+  --ms-blue-hover: #106ebe;
+  --ms-blue-light: #deecf9;
+  --ms-bg: #f5f5f5;
+  --ms-surface: #ffffff;
+  --ms-border: #e0e0e0;
+  --ms-border-light: #f0f0f0;
+  --ms-text: #242424;
+  --ms-text-secondary: #616161;
+  --ms-text-tertiary: #9e9e9e;
+  --ms-sidebar-bg: #f0f0f0;
+  --ms-sidebar-hover: #e0e0e0;
+  --ms-sidebar-active: #d0d0d0;
+  --ms-sidebar-width: 48px;
+  --ms-success: #107c10;
+  --ms-warning: #ffb900;
+  --ms-error: #d13438;
+}
 
 html {
   font-size: 14px;
 }
 
 body {
-  background-color: #6890b9;
-  font-family: 'DM Sans', ui-sans-serif, system-ui, sans-serif !important;
-  font-feature-settings: "kern" 1, "liga" 1;
+  background-color: var(--ms-bg);
+  font-family: 'Segoe UI', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif !important;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  letter-spacing: -0.01em;
+  letter-spacing: 0;
+  color: var(--ms-text);
+  margin: 0;
 }
 
-/* Сайдбар */
-.drawer-side .menu {
-  background-color: #f6f7f8;
-  border-right: 1px solid #edeff1;
+/* ─── Twemoji ─── */
+img.emoji {
+  height: 16px !important;
+  width: 16px !important;
+  max-width: none !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  object-fit: contain !important;
+  margin: 0 1px !important;
+  vertical-align: -3px !important;
+  display: inline !important;
+  padding: 0 !important;
+}
+.reaction-emoji-btn img.emoji { height: 20px !important; width: 20px !important; }
+.msg-reaction-badge img.emoji { height: 14px !important; width: 14px !important; }
+.eq img.emoji { height: 20px !important; width: 20px !important; }
+
+/* ─── Layout ─── */
+.app-layout {
+  display: flex;
+  height: 100vh;
+  overflow: hidden;
 }
 
-/* Узкий сайдбар */
-#sidebar.sidebar-collapsed {
-  width: 3.2rem;
+/* ─── Сайдбар: узкая иконочная полоса (Outlook-style) ─── */
+#sidebar {
+  width: var(--ms-sidebar-width);
+  background: var(--ms-sidebar-bg);
+  border-right: 1px solid var(--ms-border);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 6px 0;
+  flex-shrink: 0;
+  transition: none;
+  z-index: 50;
 }
-#sidebar.sidebar-collapsed .menu > li > a {
+
+.sidebar-logo {
+  width: 32px;
+  height: 32px;
+  margin-bottom: 8px;
+  border-radius: 6px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.sidebar-logo img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.sidebar-nav {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  width: 100%;
+  overflow-y: auto;
+  padding: 0 4px;
+}
+
+.sidebar-section-label {
+  font-size: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--ms-text-tertiary);
+  margin-top: 10px;
+  margin-bottom: 2px;
+  white-space: nowrap;
+}
+
+.sidebar-item {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
   justify-content: center;
-  padding-left: 0.5rem;
-  padding-right: 0.5rem;
+  border-radius: 8px;
+  cursor: pointer;
+  color: var(--ms-text-secondary);
+  text-decoration: none;
+  position: relative;
+  transition: background 0.12s, color 0.12s;
+  border: none;
+  background: transparent;
+  font-size: 16px;
+}
+.sidebar-item:hover {
+  background: var(--ms-sidebar-hover);
+  color: var(--ms-text);
+}
+.sidebar-item.active,
+.sidebar-item:active {
+  background: var(--ms-sidebar-active);
+  color: var(--ms-blue);
 }
 
-.telegram-icon { display: none; }
-#sidebar.sidebar-collapsed .telegram-block { display: none; }
-#sidebar.sidebar-collapsed .telegram-icon { display: flex; }
-
-/* Tooltip */
-.tooltip.tooltip-left.tooltip-bot-status::before {
-  background-color: rgba(153, 206, 249, 0.385) !important;
-  color: rgb(15 23 42) !important;
-  border-color: rgb(19, 2, 250) !important;
+/* Tooltip при наведении */
+.sidebar-item[data-tooltip]:hover::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  left: calc(100% + 8px);
+  top: 50%;
+  transform: translateY(-50%);
+  background: var(--ms-text);
+  color: #fff;
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-size: 12px;
+  white-space: nowrap;
+  z-index: 9999;
+  pointer-events: none;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
 }
+
+/* Пользователь внизу сайдбара */
+.sidebar-user {
+  margin-top: auto;
+  padding-top: 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+.sidebar-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--ms-blue);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: default;
+}
+
+/* ─── Правая часть ─── */
+.app-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: var(--ms-bg);
+}
+
+/* ─── Верхняя панель ─── */
+.top-bar {
+  height: 44px;
+  min-height: 44px;
+  background: var(--ms-surface);
+  border-bottom: 1px solid var(--ms-border);
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  gap: 12px;
+  flex-shrink: 0;
+}
+.top-bar-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ms-text);
+}
+.top-bar-subtitle {
+  font-size: 12px;
+  color: var(--ms-text-secondary);
+}
+.top-bar-spacer {
+  flex: 1;
+}
+.top-bar-action {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  color: var(--ms-text-secondary);
+  transition: background 0.12s;
+}
+.top-bar-action:hover {
+  background: var(--ms-border);
+}
+
+/* ─── Контент ─── */
+.content-wrap {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+}
+
+/* Статистика — горизонтальные карточки */
+.stats-row {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.stat-card {
+  flex: 1;
+  background: var(--ms-surface);
+  border: 1px solid var(--ms-border);
+  border-radius: 8px;
+  padding: 12px 14px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.stat-card-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.stat-card-icon.blue   { background: var(--ms-blue-light); color: var(--ms-blue); }
+.stat-card-icon.green  { background: #dff6dd; color: var(--ms-success); }
+.stat-card-icon.orange { background: #fff4ce; color: #c19c00; }
+.stat-card-icon.purple { background: #edebe9; color: #8764b8; }
+.stat-card-label {
+  font-size: 12px;
+  color: var(--ms-text-secondary);
+  white-space: nowrap;
+}
+.stat-card-value {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--ms-text);
+  margin-left: auto;
+}
+
+/* Основная зона контента */
+#content-area {
+  background: var(--ms-surface);
+  border: 1px solid var(--ms-border);
+  border-radius: 8px;
+  padding: 16px;
+  min-height: 200px;
+}
+
+/* ─── Переопределения DaisyUI для Outlook-стиля ─── */
+
+/* Таблицы */
+.table { font-size: 13px; }
+.table th { font-weight: 600; color: var(--ms-text-secondary); font-size: 12px; text-transform: uppercase; letter-spacing: 0.02em; }
+
+/* Бейджи */
+.badge { font-weight: 500; }
+.badge-success { background: #dff6dd; color: var(--ms-success); border-color: #dff6dd; }
+.badge-error { background: #fde7e9; color: var(--ms-error); border-color: #fde7e9; }
 
 /* Кнопки */
-.btn-glow:hover {
-  box-shadow: 0 0 0 1px rgba(50, 140, 250, 0.6), 0 0 10px rgba(50, 190, 240, 0.6);
+.btn-primary { background: var(--ms-blue) !important; border-color: var(--ms-blue) !important; }
+.btn-primary:hover { background: var(--ms-blue-hover) !important; border-color: var(--ms-blue-hover) !important; }
+
+/* Табы */
+.tabs-boxed { background: var(--ms-surface); border: 1px solid var(--ms-border); border-radius: 6px; padding: 2px; }
+.tabs-boxed .tab { border-radius: 4px; font-size: 13px; font-weight: 500; }
+.tabs-boxed .tab-active { background: var(--ms-blue) !important; color: #fff !important; }
+
+/* Карточки */
+.card { border-radius: 8px; border: 1px solid var(--ms-border); box-shadow: none; }
+
+/* Модальные окна */
+.modal-box { border-radius: 8px; box-shadow: 0 8px 32px rgba(0,0,0,0.14); }
+
+/* Инпуты */
+.input, .select, .textarea {
+  border-color: var(--ms-border) !important;
+  border-radius: 4px !important;
+}
+.input:focus, .select:focus, .textarea:focus {
+  outline: none !important;
+  box-shadow: none !important;
+  border-color: var(--ms-blue) !important;
+}
+input:focus, textarea:focus, select:focus {
+  outline: none !important;
+  box-shadow: none !important;
 }
 
-/* Пульсация */
-@keyframes telegram-red-pulse {
-  0%   { transform: scale(1);    box-shadow: 0 0 0 0 rgba(248,113,113,0.7), 0 0 0 0 rgba(248,113,113,0.4); }
-  50%  { transform: scale(1.06); box-shadow: 0 0 0 4px rgba(248,113,113,0), 0 0 18px 0 rgba(248,113,113,0.9); }
-  100% { transform: scale(1);    box-shadow: 0 0 0 0 rgba(248,113,113,0), 0 0 0 0 rgba(248,113,113,0); }
+/* ─── Чат модалка (Outlook-style) ─── */
+.chat-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 999999;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.4);
 }
-.btn-telegram-red-pulse { animation: telegram-red-pulse 1.3s ease-out infinite; }
-
-@keyframes telegram-blue-pulse {
-  0%   { transform: scale(1);    box-shadow: 0 0 0 0 rgba(121,117,255,0.7), 0 0 0 0 rgba(111,178,255,0.4); }
-  50%  { transform: scale(1.06); box-shadow: 0 0 0 4px rgba(100,155,251,0), 0 0 18px 0 rgba(95,138,245,0.9); }
-  100% { transform: scale(1);    box-shadow: 0 0 0 0 rgba(122,113,248,0), 0 0 0 0 rgba(127,113,248,0); }
+.chat-modal-box {
+  background: var(--ms-surface);
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 8px 40px rgba(0,0,0,0.18);
+  display: flex;
+  flex-direction: column;
+  width: 90%;
+  max-width: 960px;
+  height: 80vh;
 }
-.btn-telegram-blue-pulse { animation: telegram-blue-pulse 1.3s ease-out infinite; }
+.chat-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: between;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--ms-border);
+  background: var(--ms-bg);
+}
+.chat-modal-header h3 {
+  font-size: 15px;
+  font-weight: 600;
+  flex: 1;
+}
 
-/* Telegram */
+/* ─── Telegram клиент-лист и чат ─── */
 .tg-client-item.active {
-  background-color: #e8edf3 !important;
-  border-left: 3px solid hsl(var(--p)) !important;
+  background-color: var(--ms-blue-light) !important;
+  border-left: 3px solid var(--ms-blue) !important;
 }
-#telegram-clients-list { background-color: hsl(var(--b1)); }
-
-#tg_emoji_popover .emoji-grid {
-  display: grid;
-  grid-template-columns: repeat(8, minmax(0, 1fr));
-}
+#telegram-clients-list { background-color: var(--ms-surface); }
 
 #tg_message_input {
-  border: 1px solid hsl(var(--b3));
+  border: 1px solid var(--ms-border);
+  border-radius: 4px;
 }
 #tg_message_input:focus {
   outline: none;
-  border-color: hsl(var(--p));
-}
-
-input:focus, textarea:focus {
-  outline: none !important;
-  box-shadow: none !important;
+  border-color: var(--ms-blue);
 }
 
 #telegram-search {
   outline: none !important;
   box-shadow: none !important;
-  border-color: #d4d4d8;
+  border-color: var(--ms-border);
+  border-radius: 4px;
 }
 #telegram-search:focus {
-  box-shadow: 0 0 0 1px rgba(59,130,246,0.35) !important;
-  border-color: #0545acd0 !important;
+  box-shadow: 0 0 0 1px rgba(0,120,212,0.3) !important;
+  border-color: var(--ms-blue) !important;
 }
 
 #telegram-chat-messages { scroll-behavior: smooth; }
 .hidden { display: none !important; }
 
-/* Спиннер импорта */
-.import-spinner__wheel {
-  position: relative; width: 14px; height: 14px;
-  flex-shrink: 0; display: inline-block;
-}
-.import-spinner__wheel span {
-  display: block; position: absolute;
-  width: 12%; height: 28%; border-radius: 2px;
-  background: #0079d3; left: 50%; top: 50%;
-  transform-origin: 0 -100%; opacity: 0.15;
-  animation: import-spinner-tick 1s linear infinite;
-}
-.import-spinner__wheel span:nth-child(1)  { transform: rotate(0deg)   translateX(-50%); animation-delay: 0s; }
-.import-spinner__wheel span:nth-child(2)  { transform: rotate(30deg)  translateX(-50%); animation-delay: -0.917s; }
-.import-spinner__wheel span:nth-child(3)  { transform: rotate(60deg)  translateX(-50%); animation-delay: -0.833s; }
-.import-spinner__wheel span:nth-child(4)  { transform: rotate(90deg)  translateX(-50%); animation-delay: -0.75s; }
-.import-spinner__wheel span:nth-child(5)  { transform: rotate(120deg) translateX(-50%); animation-delay: -0.667s; }
-.import-spinner__wheel span:nth-child(6)  { transform: rotate(150deg) translateX(-50%); animation-delay: -0.583s; }
-.import-spinner__wheel span:nth-child(7)  { transform: rotate(180deg) translateX(-50%); animation-delay: -0.5s; }
-.import-spinner__wheel span:nth-child(8)  { transform: rotate(210deg) translateX(-50%); animation-delay: -0.417s; }
-.import-spinner__wheel span:nth-child(9)  { transform: rotate(240deg) translateX(-50%); animation-delay: -0.333s; }
-.import-spinner__wheel span:nth-child(10) { transform: rotate(270deg) translateX(-50%); animation-delay: -0.25s; }
-.import-spinner__wheel span:nth-child(11) { transform: rotate(300deg) translateX(-50%); animation-delay: -0.167s; }
-.import-spinner__wheel span:nth-child(12) { transform: rotate(330deg) translateX(-50%); animation-delay: -0.083s; }
-@keyframes import-spinner-tick {
-  0%   { opacity: 0.85; }
-  100% { opacity: 0.15; }
-}
-.import-spinner__text { font-size: 0.75rem; color: inherit; }
-
-/* ── Пузыри сообщений чата ── */
-
-/* Telegram входящие — синие */
-.bubble-telegram-in {
-  background-color: #1d4ed8 !important;
-  color: #ffffff !important;
+/* ─── Telegram статус кнопки ─── */
+.btn-glow:hover {
+  box-shadow: 0 0 0 1px rgba(0,120,212,0.4), 0 0 8px rgba(0,120,212,0.3);
 }
 
-/* Telegram исходящие — светло-синие */
-.bubble-telegram-out {
-  background-color: #3b82f6 !important;
-  color: #ffffff !important;
+@keyframes telegram-red-pulse {
+  0%   { transform: scale(1);    box-shadow: 0 0 0 0 rgba(209,52,56,0.5); }
+  50%  { transform: scale(1.06); box-shadow: 0 0 0 4px rgba(209,52,56,0), 0 0 12px rgba(209,52,56,0.6); }
+  100% { transform: scale(1);    box-shadow: 0 0 0 0 rgba(209,52,56,0); }
 }
+.btn-telegram-red-pulse { animation: telegram-red-pulse 1.3s ease-out infinite; }
 
-/* MAX входящие — тёмно-розовые */
-.bubble-max-in {
-  background-color: #be185d !important;
-  color: #ffffff !important;
+@keyframes telegram-blue-pulse {
+  0%   { transform: scale(1);    box-shadow: 0 0 0 0 rgba(0,120,212,0.5); }
+  50%  { transform: scale(1.06); box-shadow: 0 0 0 4px rgba(0,120,212,0), 0 0 12px rgba(0,120,212,0.6); }
+  100% { transform: scale(1);    box-shadow: 0 0 0 0 rgba(0,120,212,0); }
 }
+.btn-telegram-blue-pulse { animation: telegram-blue-pulse 1.3s ease-out infinite; }
 
-/* MAX исходящие — розовые */
-.bubble-max-out {
-  background-color: #ec4899 !important;
-  color: #ffffff !important;
-}
+/* ─── Пузыри сообщений ─── */
+.bubble-telegram-in  { background-color: var(--ms-blue) !important; color: #fff !important; }
+.bubble-telegram-out { background-color: #2b88d8 !important; color: #fff !important; }
+.bubble-max-in       { background-color: #8764b8 !important; color: #fff !important; }
+.bubble-max-out      { background-color: #b4a0ff !important; color: #fff !important; }
 
-/* Кнопка отправки MAX */
 .btn-max-send:not(:disabled) {
-  background-color: #ec4899 !important;
-  border-color: #ec4899 !important;
+  background-color: #8764b8 !important;
+  border-color: #8764b8 !important;
   color: #fff !important;
 }
 .btn-max-send:not(:disabled):hover {
-  background-color: #db2777 !important;
-  border-color: #db2777 !important;
+  background-color: #744da9 !important;
+  border-color: #744da9 !important;
 }
 .btn-max-send:disabled {
-  background-color: #d1d5db !important;
-  border-color: #d1d5db !important;
-  color: #9ca3af !important;
+  background-color: var(--ms-border) !important;
+  border-color: var(--ms-border) !important;
+  color: var(--ms-text-tertiary) !important;
 }
 
-/* Бейджи TLG / MAX */
+/* Бейджи каналов */
 .message-badge {
   display: inline-block;
   font-size: 9px;
@@ -181,201 +440,120 @@ input:focus, textarea:focus {
   border-radius: 3px;
   letter-spacing: 0.03em;
 }
-.message-badge-telegram-in {
-  background-color: #1d4ed8;
-  color: #fff;
-}
-.message-badge-max-in {
-  background-color: #ec4899;
-  color: #fff;
-}
+.message-badge-telegram-in { background-color: var(--ms-blue); color: #fff; }
+.message-badge-max-in { background-color: #8764b8; color: #fff; }
 
-/* Цитата в пузыре сообщения */
+/* Цитата */
 .reply-preview {
-  display: flex;
-  gap: 6px;
-  margin-bottom: 6px;
-  padding: 4px 6px;
-  background: rgba(0,0,0,0.15);
-  border-radius: 6px;
-  cursor: pointer;
+  display: flex; gap: 6px; margin-bottom: 6px;
+  padding: 4px 6px; background: rgba(0,0,0,0.1);
+  border-radius: 4px; cursor: pointer;
 }
 .reply-preview-line {
-  width: 3px;
-  min-height: 100%;
-  background: rgba(255,255,255,0.6);
-  border-radius: 2px;
-  flex-shrink: 0;
+  width: 3px; min-height: 100%;
+  background: rgba(255,255,255,0.6); border-radius: 2px; flex-shrink: 0;
 }
-.reply-preview-content {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  overflow: hidden;
-}
-.reply-preview-author {
-  font-size: 11px;
-  font-weight: 600;
-  opacity: 0.9;
-}
-.reply-preview-text {
-  font-size: 11px;
-  opacity: 0.75;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
+.reply-preview-content { display: flex; flex-direction: column; gap: 2px; overflow: hidden; }
+.reply-preview-author  { font-size: 11px; font-weight: 600; opacity: 0.9; }
+.reply-preview-text    { font-size: 11px; opacity: 0.75; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-/* Пузырь — контекст для абсолютных кнопок */
-.msg-bubble {
-  position: relative !important;
-  overflow: visible !important;
-}
-
-/* Overlay кнопок — рядом с пузырём, снизу, БЕЗ сдвига */
+/* Overlay кнопок сообщений */
+.msg-bubble { position: relative !important; overflow: visible !important; }
 .msg-actions {
-  position: absolute;
-  bottom: 2px;
-  right: -42px;
-  display: none;
-  flex-direction: row;
-  align-items: center;
-  gap: 2px;
-  z-index: 20;
+  position: absolute; bottom: 2px; right: -42px;
+  display: none; flex-direction: row; align-items: center;
+  gap: 2px; z-index: 20;
 }
-/* Входящие (.chat-start): кнопки справа от пузыря */
-.chat-start .msg-actions {
-  right: -42px;
-  left: auto;
-}
-/* Исходящие (.chat-end): кнопки слева от пузыря */
-.chat-end .msg-actions {
-  left: -42px;
-  right: auto;
-}
-.chat:hover .msg-actions {
-  display: flex;
-}
+.chat-start .msg-actions { right: -42px; left: auto; }
+.chat-end .msg-actions   { left: -42px; right: auto; }
+.chat:hover .msg-actions  { display: flex; }
 
-/* Кнопка «Ответить» — синяя, компактная */
-.btn-reply {
-  background: rgba(255,255,255,0.94);
-  color: #2563eb;
-  border: none;
-  border-radius: 50%;
-  width: 20px; height: 20px;
+.btn-reply, .btn-react {
+  background: var(--ms-surface);
+  border: 1px solid var(--ms-border);
+  border-radius: 4px;
+  width: 22px; height: 22px;
   font-size: 11px;
   cursor: pointer;
   display: flex; align-items: center; justify-content: center;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.15);
   padding: 0;
-  transition: background 0.15s;
+  transition: background 0.12s;
 }
-.btn-reply:hover {
-  background: #dbeafe;
-  color: #1d4ed8;
-}
+.btn-reply { color: var(--ms-blue); }
+.btn-reply:hover { background: var(--ms-blue-light); }
+.btn-react:hover { background: var(--ms-border); }
 
-/* Кнопка «Реакция» — компактная, без чёрной обводки */
-.btn-react {
-  background: rgba(255,255,255,0.94);
-  border: none;
-  border-radius: 50%;
-  width: 20px; height: 20px;
-  font-size: 11px;
-  cursor: pointer;
-  display: flex; align-items: center; justify-content: center;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.15);
-  padding: 0;
-  transition: background 0.15s;
-  line-height: 1;
-}
-.btn-react:hover {
-  background: #f3f4f6;
-}
-
-/* Пикер реакций */
-.reaction-picker-wrap {
-  position: relative;
-  display: inline-block;
-}
+/* Реакции */
+.reaction-picker-wrap { position: relative; display: inline-block; }
 .reaction-picker {
-  position: absolute;
-  bottom: calc(100% + 4px);
-  left: 50%;
-  transform: translateX(-50%);
-  background: #fff;
-  border: 1px solid #e5e7eb;
-  border-radius: 12px;
-  box-shadow: 0 4px 16px rgba(0,0,0,0.15);
-  padding: 6px 8px;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 2px;
-  width: 180px;
-  z-index: 100;
+  position: absolute; bottom: calc(100% + 4px); left: 50%; transform: translateX(-50%);
+  background: var(--ms-surface); border: 1px solid var(--ms-border);
+  border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+  padding: 6px 8px; display: flex; flex-wrap: wrap; gap: 2px;
+  width: 180px; z-index: 100;
 }
-.reaction-picker.hidden {
-  display: none !important;
-}
+.reaction-picker.hidden { display: none !important; }
 .reaction-emoji-btn {
-  background: none;
-  border: none;
-  font-size: 20px;
-  cursor: pointer;
-  padding: 4px;
-  border-radius: 6px;
-  line-height: 1;
-  transition: background 0.1s, transform 0.1s;
-  -webkit-text-stroke: 0;
-  text-shadow: none;
-  filter: none;
+  background: none; border: none; font-size: 20px;
+  cursor: pointer; padding: 4px; border-radius: 4px;
+  line-height: 1; transition: background 0.1s, transform 0.1s;
 }
-.reaction-emoji-btn:hover {
-  background: #f3f4f6;
-  transform: scale(1.2);
-}
+.reaction-emoji-btn:hover { background: var(--ms-border); transform: scale(1.15); }
 
-/* Реакции на сообщение */
-.msg-reactions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 3px;
-  margin-top: 4px;
-}
-.msg-reactions:empty {
-  display: none;
-  margin: 0;
-}
+.msg-reactions { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 4px; }
+.msg-reactions:empty { display: none; margin: 0; }
 .msg-reaction-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  font-size: 13px;
-  background: rgba(255,255,255,0.25);
-  border-radius: 10px;
-  padding: 1px 6px;
-  cursor: default;
-  user-select: none;
-  -webkit-text-stroke: 0;
-  text-shadow: none;
+  display: inline-flex; align-items: center; gap: 2px;
+  font-size: 13px; background: rgba(255,255,255,0.25);
+  border-radius: 10px; padding: 1px 6px; cursor: default; user-select: none;
 }
-.msg-reaction-count {
-  font-size: 11px;
-  opacity: 0.85;
+.msg-reaction-count { font-size: 11px; opacity: 0.85; }
+
+/* Emoji quick bar */
+.eq {
+  background: none; border: none; font-size: 20px;
+  cursor: pointer; padding: 2px; border-radius: 4px;
+  line-height: 1; transition: transform 0.1s;
+}
+.eq:hover { transform: scale(1.2); }
+
+/* Спиннер */
+.import-spinner__wheel {
+  position: relative; width: 14px; height: 14px;
+  flex-shrink: 0; display: inline-block;
+}
+.import-spinner__wheel span {
+  display: block; position: absolute;
+  width: 12%; height: 28%; border-radius: 2px;
+  background: var(--ms-blue); left: 50%; top: 50%;
+  transform-origin: 0 -100%; opacity: 0.15;
+  animation: import-spinner-tick 1s linear infinite;
+}
+.import-spinner__wheel span:nth-child(1)  { transform: rotate(0deg) translateX(-50%);   animation-delay: 0s; }
+.import-spinner__wheel span:nth-child(2)  { transform: rotate(30deg) translateX(-50%);  animation-delay: -0.917s; }
+.import-spinner__wheel span:nth-child(3)  { transform: rotate(60deg) translateX(-50%);  animation-delay: -0.833s; }
+.import-spinner__wheel span:nth-child(4)  { transform: rotate(90deg) translateX(-50%);  animation-delay: -0.75s; }
+.import-spinner__wheel span:nth-child(5)  { transform: rotate(120deg) translateX(-50%); animation-delay: -0.667s; }
+.import-spinner__wheel span:nth-child(6)  { transform: rotate(150deg) translateX(-50%); animation-delay: -0.583s; }
+.import-spinner__wheel span:nth-child(7)  { transform: rotate(180deg) translateX(-50%); animation-delay: -0.5s; }
+.import-spinner__wheel span:nth-child(8)  { transform: rotate(210deg) translateX(-50%); animation-delay: -0.417s; }
+.import-spinner__wheel span:nth-child(9)  { transform: rotate(240deg) translateX(-50%); animation-delay: -0.333s; }
+.import-spinner__wheel span:nth-child(10) { transform: rotate(270deg) translateX(-50%); animation-delay: -0.25s; }
+.import-spinner__wheel span:nth-child(11) { transform: rotate(300deg) translateX(-50%); animation-delay: -0.167s; }
+.import-spinner__wheel span:nth-child(12) { transform: rotate(330deg) translateX(-50%); animation-delay: -0.083s; }
+@keyframes import-spinner-tick { 0% { opacity: 0.85; } 100% { opacity: 0.15; } }
+.import-spinner__text { font-size: 0.75rem; color: inherit; }
+
+/* Tooltip для DaisyUI */
+.tooltip.tooltip-left.tooltip-bot-status::before {
+  background-color: var(--ms-text) !important;
+  color: #fff !important;
+  border-color: var(--ms-text) !important;
+  border-radius: 4px;
+  font-size: 12px;
 }
 
-/* Emoji quick bar — кнопки вставки */
-.eq {
-  background: none;
-  border: none;
-  font-size: 20px;
-  cursor: pointer;
-  padding: 2px;
-  border-radius: 6px;
-  line-height: 1;
-  transition: transform 0.1s;
-}
-.eq:hover {
-  transform: scale(1.25);
+#tg_emoji_popover .emoji-grid {
+  display: grid;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
 }

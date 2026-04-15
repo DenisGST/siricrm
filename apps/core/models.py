@@ -39,6 +39,74 @@ class Department(TimeStampedModel):
         verbose_name_plural = 'Отделы'
         ordering = ['name']
 
+class MenuItem(TimeStampedModel):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField("Название", max_length=100)
+    icon = models.CharField("Иконка", max_length=10, blank=True)
+    url = models.CharField("URL", max_length=255)
+    section = models.CharField("Секция меню", max_length=100, blank=True)
+    order = models.PositiveIntegerField("Порядок", default=0)
+    use_htmx = models.BooleanField("Загрузка через HTMX", default=True)
+    requires_superuser = models.BooleanField("Только для суперпользователя", default=False)
+    is_active = models.BooleanField("Активен", default=True)
+
+    class Meta:
+        verbose_name = "Пункт меню"
+        verbose_name_plural = "Пункты меню"
+        ordering = ["section", "order"]
+
+    def __str__(self):
+        return self.name
+
+
+class Widget(TimeStampedModel):
+    WIDGET_TYPES = [
+        ("stats", "Статистика"),
+        ("chart", "График"),
+        ("table", "Таблица"),
+        ("list", "Список"),
+        ("custom", "Кастомный"),
+    ]
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField("Название", max_length=100)
+    slug = models.SlugField("Идентификатор", unique=True)
+    widget_type = models.CharField("Тип", max_length=20, choices=WIDGET_TYPES, default="custom")
+    template_name = models.CharField("Шаблон", max_length=255, blank=True)
+    description = models.TextField("Описание", blank=True)
+    order = models.PositiveIntegerField("Порядок", default=0)
+    is_active = models.BooleanField("Активен", default=True)
+
+    class Meta:
+        verbose_name = "Виджет"
+        verbose_name_plural = "Виджеты"
+        ordering = ["order"]
+
+    def __str__(self):
+        return self.name
+
+
+class DashboardConfig(TimeStampedModel):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField("Название", max_length=100)
+    description = models.TextField("Описание", blank=True)
+    menu_items = models.ManyToManyField(MenuItem, blank=True, verbose_name="Пункты меню")
+    widgets = models.ManyToManyField(Widget, blank=True, verbose_name="Виджеты")
+    is_default = models.BooleanField("По умолчанию", default=False)
+    is_active = models.BooleanField("Активен", default=True)
+
+    class Meta:
+        verbose_name = "Конфигурация дашборда"
+        verbose_name_plural = "Конфигурации дашбордов"
+
+    def __str__(self):
+        return self.name
+
+    def save(self, *args, **kwargs):
+        if self.is_default:
+            DashboardConfig.objects.filter(is_default=True).exclude(pk=self.pk).update(is_default=False)
+        super().save(*args, **kwargs)
+
+
 class Employee(models.Model):
     ROLE_CHOICES = [
         ("operator", "Оператор"),
@@ -73,6 +141,18 @@ class Employee(models.Model):
         default="operator",
     )
     
+    dashboard_config = models.ForeignKey(
+        DashboardConfig,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="employees",
+        verbose_name="Конфигурация дашборда",
+    )
+    has_messenger_access = models.BooleanField("Доступ к мессенджеру", default=True)
+    patronymic = models.CharField("Отчество", max_length=255, blank=True)
+    phone_mobile = models.CharField("Мобильный телефон", max_length=20, blank=True)
+    phone_internal = models.CharField("Внутренний номер", max_length=10, blank=True)
     is_active = models.BooleanField("Активен", default=True)
     is_online = models.BooleanField(default=False, verbose_name='Онлайн')
     joined_at = models.DateTimeField(auto_now_add=True, verbose_name='Дата присоединения')

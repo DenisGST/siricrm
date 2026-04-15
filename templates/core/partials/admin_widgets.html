@@ -1,0 +1,60 @@
+<div id="widgets-list"
+     hx-trigger="reloadWidgets from:body"
+     hx-get="{% url 'core:admin_widgets' %}"
+     hx-swap="outerHTML">
+
+  <div class="flex justify-between items-center mb-3">
+    <h3 class="font-semibold">Виджеты</h3>
+    <button class="btn btn-primary btn-sm"
+            hx-get="{% url 'core:admin_widget_add' %}"
+            hx-target="body" hx-swap="beforeend">
+      + Добавить виджет
+    </button>
+  </div>
+
+  <div class="overflow-x-auto">
+    <table class="table table-sm table-zebra">
+      <thead>
+        <tr>
+          <th>Порядок</th>
+          <th>Название</th>
+          <th>Slug</th>
+          <th>Тип</th>
+          <th>Статус</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for w in widgets %}
+        <tr>
+          <td>{{ w.order }}</td>
+          <td class="font-medium">{{ w.name }}</td>
+          <td class="text-xs font-mono">{{ w.slug }}</td>
+          <td><span class="badge badge-outline badge-xs">{{ w.get_widget_type_display }}</span></td>
+          <td>
+            {% if w.is_active %}
+              <span class="badge badge-success badge-xs">Вкл</span>
+            {% else %}
+              <span class="badge badge-ghost badge-xs">Выкл</span>
+            {% endif %}
+          </td>
+          <td class="text-right">
+            <button class="btn btn-xs btn-outline"
+                    hx-get="{% url 'core:admin_widget_edit' w.pk %}"
+                    hx-target="body" hx-swap="beforeend">
+              Изменить
+            </button>
+            <button class="btn btn-xs btn-error btn-outline"
+                    hx-post="{% url 'core:admin_widget_delete' w.pk %}"
+                    hx-confirm="Удалить виджет «{{ w.name }}»?">
+              Удалить
+            </button>
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="6" class="text-center text-base-content/60">Виджетов нет</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>

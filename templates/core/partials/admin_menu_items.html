@@ -1,0 +1,66 @@
+<div id="menu-items-list"
+     hx-trigger="reloadMenuItems from:body"
+     hx-get="{% url 'core:admin_menu_items' %}"
+     hx-swap="outerHTML">
+
+  <div class="flex justify-between items-center mb-3">
+    <h3 class="font-semibold">Пункты меню</h3>
+    <button class="btn btn-primary btn-sm"
+            hx-get="{% url 'core:admin_menu_item_add' %}"
+            hx-target="body" hx-swap="beforeend">
+      + Добавить пункт
+    </button>
+  </div>
+
+  <div class="overflow-x-auto">
+    <table class="table table-sm table-zebra">
+      <thead>
+        <tr>
+          <th>Порядок</th>
+          <th>Иконка</th>
+          <th>Название</th>
+          <th>URL</th>
+          <th>Секция</th>
+          <th>HTMX</th>
+          <th>Superuser</th>
+          <th>Статус</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in items %}
+        <tr>
+          <td>{{ item.order }}</td>
+          <td>{{ item.icon }}</td>
+          <td class="font-medium">{{ item.name }}</td>
+          <td class="text-xs font-mono">{{ item.url }}</td>
+          <td>{{ item.section|default:"—" }}</td>
+          <td>{% if item.use_htmx %}✓{% endif %}</td>
+          <td>{% if item.requires_superuser %}✓{% endif %}</td>
+          <td>
+            {% if item.is_active %}
+              <span class="badge badge-success badge-xs">Вкл</span>
+            {% else %}
+              <span class="badge badge-ghost badge-xs">Выкл</span>
+            {% endif %}
+          </td>
+          <td class="text-right">
+            <button class="btn btn-xs btn-outline"
+                    hx-get="{% url 'core:admin_menu_item_edit' item.pk %}"
+                    hx-target="body" hx-swap="beforeend">
+              Изменить
+            </button>
+            <button class="btn btn-xs btn-error btn-outline"
+                    hx-post="{% url 'core:admin_menu_item_delete' item.pk %}"
+                    hx-confirm="Удалить пункт «{{ item.name }}»?">
+              Удалить
+            </button>
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="9" class="text-center text-base-content/60">Пунктов нет</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>

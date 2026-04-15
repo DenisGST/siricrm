@@ -18,7 +18,8 @@
     <div class="flex-1 min-w-0">
       <div class="flex justify-between items-center">
         <span class="font-medium text-sm truncate">
-          {{ client.first_name }}{% if client.last_name %} {{ client.last_name }}{% endif %}
+          {{ client.last_name }} {{ client.first_name }}
+          {% if client.patronymic %}<br><span class="text-xs opacity-60">{{ client.patronymic }}</span>{% endif %}
         </span>
         {% if client.last_message_at %}
           <span class="text-[10px] text-base-content/60">

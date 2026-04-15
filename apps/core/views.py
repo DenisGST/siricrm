@@ -1,10 +1,14 @@
-from django.shortcuts import render
+from django.shortcuts import render, get_object_or_404
 from django.contrib.auth.decorators import user_passes_test
-from django.http import JsonResponse
+from django.http import JsonResponse, HttpResponse
 from django.views.decorators.http import require_POST
 from django.core.cache import cache
 from apps.crm.models import Message, Client
-from apps.core.models import Employee
+from apps.core.models import Employee, Department, MenuItem, Widget, DashboardConfig
+from apps.core.forms import (
+    DepartmentForm, EmployeeAdminForm, MenuItemForm,
+    WidgetForm, DashboardConfigForm,
+)
 from django.utils import timezone
 from datetime import datetime, timedelta
 import psutil
@@ -182,3 +186,162 @@ def parse_last_errors(log_file, limit=30, cleared_at=None):
         errors.append({'text': f'Error reading log file: {str(e)}', 'timestamp': 'Unknown'})
 
     return errors[:limit]
+
+
+# ─────────────────────────────────────────────
+# Панель управления (admin panel)
+# ─────────────────────────────────────────────
+
+def is_admin(user):
+    if not user.is_authenticated:
+        return False
+    if user.is_superuser:
+        return True
+    return hasattr(user, "employee") and user.employee.role == "admin"
+
+
+@user_passes_test(is_admin)
+def admin_panel(request):
+    tab = request.GET.get("tab", "departments")
+    return render(request, "core/admin_panel.html", {"active_tab": tab})
+
+
+@user_passes_test(is_admin)
+def admin_departments(request):
+    departments = Department.objects.select_related("manager").all()
+    return render(request, "core/partials/admin_departments.html", {"departments": departments})
+
+
+@user_passes_test(is_admin)
+def admin_department_edit(request, pk=None):
+    dept = get_object_or_404(Department, pk=pk) if pk else None
+    if request.method == "POST":
+        form = DepartmentForm(request.POST, instance=dept)
+        if form.is_valid():
+            form.save()
+            return HttpResponse(
+                headers={"HX-Trigger": "reloadDepartments"}
+            )
+    else:
+        form = DepartmentForm(instance=dept)
+    return render(request, "core/partials/department_form_modal.html", {
+        "form": form, "dept": dept,
+    })
+
+
+@user_passes_test(is_admin)
+@require_POST
+def admin_department_delete(request, pk):
+    dept = get_object_or_404(Department, pk=pk)
+    dept.delete()
+    return HttpResponse(headers={"HX-Trigger": "reloadDepartments"})
+
+
+@user_passes_test(is_admin)
+def admin_employees(request):
+    employees = (
+        Employee.objects
+        .select_related("user", "department", "dashboard_config")
+        .filter(is_active=True)
+        .order_by("user__last_name")
+    )
+    return render(request, "core/partials/admin_employees.html", {"employees": employees})
+
+
+@user_passes_test(is_admin)
+def admin_employee_edit(request, pk):
+    emp = get_object_or_404(Employee.objects.select_related("user"), pk=pk)
+    if request.method == "POST":
+        form = EmployeeAdminForm(request.POST, instance=emp)
+        if form.is_valid():
+            form.save()
+            return HttpResponse(headers={"HX-Trigger": "reloadEmployees"})
+    else:
+        form = EmployeeAdminForm(instance=emp)
+    return render(request, "core/partials/employee_form_modal.html", {
+        "form": form, "emp": emp,
+    })
+
+
+@user_passes_test(is_admin)
+def admin_dashboards(request):
+    configs = DashboardConfig.objects.prefetch_related("menu_items", "widgets").all()
+    return render(request, "core/partials/admin_dashboards.html", {"configs": configs})
+
+
+@user_passes_test(is_admin)
+def admin_dashboard_edit(request, pk=None):
+    config = get_object_or_404(DashboardConfig, pk=pk) if pk else None
+    if request.method == "POST":
+        form = DashboardConfigForm(request.POST, instance=config)
+        if form.is_valid():
+            form.save()
+            return HttpResponse(headers={"HX-Trigger": "reloadDashboards"})
+    else:
+        form = DashboardConfigForm(instance=config)
+    return render(request, "core/partials/dashboard_form_modal.html", {
+        "form": form, "config": config,
+    })
+
+
+@user_passes_test(is_admin)
+@require_POST
+def admin_dashboard_delete(request, pk):
+    get_object_or_404(DashboardConfig, pk=pk).delete()
+    return HttpResponse(headers={"HX-Trigger": "reloadDashboards"})
+
+
+@user_passes_test(is_admin)
+def admin_menu_items(request):
+    items = MenuItem.objects.all()
+    return render(request, "core/partials/admin_menu_items.html", {"items": items})
+
+
+@user_passes_test(is_admin)
+def admin_menu_item_edit(request, pk=None):
+    item = get_object_or_404(MenuItem, pk=pk) if pk else None
+    if request.method == "POST":
+        form = MenuItemForm(request.POST, instance=item)
+        if form.is_valid():
+            form.save()
+            return HttpResponse(headers={"HX-Trigger": "reloadMenuItems"})
+    else:
+        form = MenuItemForm(instance=item)
+    return render(request, "core/partials/menu_item_form_modal.html", {
+        "form": form, "item": item,
+    })
+
+
+@user_passes_test(is_admin)
+@require_POST
+def admin_menu_item_delete(request, pk):
+    get_object_or_404(MenuItem, pk=pk).delete()
+    return HttpResponse(headers={"HX-Trigger": "reloadMenuItems"})
+
+
+@user_passes_test(is_admin)
+def admin_widgets(request):
+    widgets = Widget.objects.all()
+    return render(request, "core/partials/admin_widgets.html", {"widgets": widgets})
+
+
+@user_passes_test(is_admin)
+def admin_widget_edit(request, pk=None):
+    widget = get_object_or_404(Widget, pk=pk) if pk else None
+    if request.method == "POST":
+        form = WidgetForm(request.POST, instance=widget)
+        if form.is_valid():
+            form.save()
+            return HttpResponse(headers={"HX-Trigger": "reloadWidgets"})
+    else:
+        form = WidgetForm(instance=widget)
+    return render(request, "core/partials/widget_form_modal.html", {
+        "form": form, "widget": widget,
+    })
+
+
+@user_passes_test(is_admin)
+@require_POST
+def admin_widget_delete(request, pk):
+    get_object_or_404(Widget, pk=pk).delete()
+    return HttpResponse(headers={"HX-Trigger": "reloadWidgets"})

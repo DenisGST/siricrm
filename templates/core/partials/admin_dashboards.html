@@ -1,0 +1,69 @@
+<div id="dashboards-list"
+     hx-trigger="reloadDashboards from:body"
+     hx-get="{% url 'core:admin_dashboards' %}"
+     hx-swap="outerHTML">
+
+  <div class="flex justify-between items-center mb-3">
+    <h3 class="font-semibold">Конфигурации дашбордов</h3>
+    <button class="btn btn-primary btn-sm"
+            hx-get="{% url 'core:admin_dashboard_add' %}"
+            hx-target="body" hx-swap="beforeend">
+      + Добавить конфигурацию
+    </button>
+  </div>
+
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+    {% for cfg in configs %}
+    <div class="card card-compact bg-base-100 shadow-sm border border-base-300">
+      <div class="card-body">
+        <div class="flex justify-between items-start">
+          <div>
+            <h4 class="card-title text-sm">
+              {{ cfg.name }}
+              {% if cfg.is_default %}<span class="badge badge-primary badge-xs ml-1">default</span>{% endif %}
+            </h4>
+            {% if cfg.description %}
+              <p class="text-xs text-base-content/60 mt-1">{{ cfg.description }}</p>
+            {% endif %}
+          </div>
+          {% if not cfg.is_active %}
+            <span class="badge badge-ghost badge-xs">Неактивен</span>
+          {% endif %}
+        </div>
+
+        <div class="text-xs mt-2">
+          <div><span class="font-medium">Меню:</span>
+            {% for item in cfg.menu_items.all %}
+              <span class="badge badge-outline badge-xs">{{ item.icon }} {{ item.name }}</span>
+            {% empty %}
+              <span class="text-base-content/40">не задано</span>
+            {% endfor %}
+          </div>
+          <div class="mt-1"><span class="font-medium">Виджеты:</span>
+            {% for w in cfg.widgets.all %}
+              <span class="badge badge-outline badge-xs">{{ w.name }}</span>
+            {% empty %}
+              <span class="text-base-content/40">не задано</span>
+            {% endfor %}
+          </div>
+        </div>
+
+        <div class="card-actions justify-end mt-2">
+          <button class="btn btn-xs btn-outline"
+                  hx-get="{% url 'core:admin_dashboard_edit' cfg.pk %}"
+                  hx-target="body" hx-swap="beforeend">
+            Изменить
+          </button>
+          <button class="btn btn-xs btn-error btn-outline"
+                  hx-post="{% url 'core:admin_dashboard_delete' cfg.pk %}"
+                  hx-confirm="Удалить конфигурацию «{{ cfg.name }}»?">
+            Удалить
+          </button>
+        </div>
+      </div>
+    </div>
+    {% empty %}
+    <p class="text-base-content/60 text-sm">Конфигураций нет</p>
+    {% endfor %}
+  </div>
+</div>

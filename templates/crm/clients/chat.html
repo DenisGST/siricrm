@@ -2,7 +2,8 @@
   <div class="flex items-center justify-between">
     <div>
       <h2 class="text-lg font-bold">
-        Чат с {{ client.first_name }} {{ client.last_name }}
+        Чат с {{ client.last_name }} {{ client.first_name }}
+        {% if client.patronymic %}<br><span class="text-sm font-normal opacity-70">{{ client.patronymic }}</span>{% endif %}
       </h2>
       {% if client.username %}
         <p class="text-xs text-base-content/70">@{{ client.username }}</p>

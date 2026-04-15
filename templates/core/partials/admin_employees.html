@@ -1,0 +1,51 @@
+<div id="employees-list"
+     hx-trigger="reloadEmployees from:body"
+     hx-get="{% url 'core:admin_employees' %}"
+     hx-swap="outerHTML">
+
+  <h3 class="font-semibold mb-3">Сотрудники</h3>
+
+  <div class="overflow-x-auto">
+    <table class="table table-sm table-zebra">
+      <thead>
+        <tr>
+          <th>Сотрудник</th>
+          <th>Отдел</th>
+          <th>Роль</th>
+          <th>Дашборд</th>
+          <th>Мессенджер</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for emp in employees %}
+        <tr>
+          <td class="font-medium">
+            {{ emp.user.last_name }} {{ emp.user.first_name }}
+            {% if emp.patronymic %}<br><span class="text-xs text-base-content/60">{{ emp.patronymic }}</span>{% endif %}
+          </td>
+          <td>{{ emp.department.name|default:"—" }}</td>
+          <td><span class="badge badge-sm">{{ emp.get_role_display }}</span></td>
+          <td>{{ emp.dashboard_config.name|default:"По умолчанию" }}</td>
+          <td>
+            {% if emp.has_messenger_access %}
+              <span class="badge badge-success badge-sm">Да</span>
+            {% else %}
+              <span class="badge badge-ghost badge-sm">Нет</span>
+            {% endif %}
+          </td>
+          <td class="text-right">
+            <button class="btn btn-xs btn-outline"
+                    hx-get="{% url 'core:admin_employee_edit' emp.pk %}"
+                    hx-target="body" hx-swap="beforeend">
+              Настроить
+            </button>
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="6" class="text-center text-base-content/60">Сотрудников нет</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>

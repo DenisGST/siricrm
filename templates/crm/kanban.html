@@ -5,8 +5,8 @@
   <button
     class="btn btn-sm btn-primary"
     hx-get="{% url 'client_create' %}"
-    hx-target="#content-area"
-    hx-swap="innerHTML"
+    hx-target="body"
+    hx-swap="beforeend"
   >
     + Новый клиент
   </button>

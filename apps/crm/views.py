@@ -7,7 +7,7 @@ from django.views.decorators.http import require_POST
 from django.template.loader import render_to_string
 
 from apps.crm.models import *
-from django.db import models
+from django.db import models, transaction
 from django.db.models import Q, Prefetch
 from django.utils import timezone
 
@@ -287,53 +287,29 @@ def kanban_column(request, status):
 
 @login_required
 def client_create(request):
-    """
-    Создание клиента с поддержкой HTMX.
-    GET:
-    - обычный запрос -> crm/clients/form.html (полная страница в content-area)
-    POST:
-    - HTMX (HX-Request) -> crm/kanban.html (обновлённый канбан)
-    - обычный POST -> redirect на clients_list
-    """
     if request.method == "POST":
         form = ClientForm(request.POST)
         if form.is_valid():
-            form.save()
+            client = form.save()
 
             if request.headers.get("HX-Request"):
-                leads = Client.objects.filter(status="lead").select_related(
-                    "assigned_employee"
-                )
-                actives = Client.objects.filter(status="active").select_related(
-                    "assigned_employee"
-                )
-                inactives = Client.objects.filter(
-                    status="inactive"
-                ).prefetch_related("employees")
-                closeds = Client.objects.filter(status="closed").select_related(
-                    "assigned_employee"
-                )
-
-                return render(
-                    request,
-                    "crm/kanban.html",
-                    {
-                        "leads": leads,
-                        "actives": actives,
-                        "inactives": inactives,
-                        "closeds": closeds,
-                    },
+                return HttpResponse(
+                    status=204,
+                    headers={"HX-Trigger": "clientCreated"},
                 )
 
             return redirect("clients_list")
-    else:
-        form = ClientForm()
 
-    return render(
-        request,
-        "crm/clients/form.html",
-        {"form": form},
-    )
+        # Ошибки валидации — перерендерим модалку
+        if request.headers.get("HX-Request"):
+            return render(request, "crm/partials/client_create_modal.html", {"form": form})
+        return render(request, "crm/clients/form.html", {"form": form})
+
+    form = ClientForm()
+
+    if request.headers.get("HX-Request"):
+        return render(request, "crm/partials/client_create_modal.html", {"form": form})
+    return render(request, "crm/clients/form.html", {"form": form})
 
 
 @login_required
@@ -528,8 +504,7 @@ def client_edit(request, client_id):
             form.save()
             if request.headers.get("HX-Request"):
                 return HttpResponse(
-                    '<div id="client-edit-success" class="alert alert-success text-sm">✅ Сохранено</div>',
-                    headers={"HX-Trigger": "clientUpdated"},
+                    '<script>window.location.reload();</script>'
                 )
             return redirect("chat", client_id=client_id)
         else:
@@ -610,33 +585,43 @@ def client_merge(request, client_id):
     target_id = request.POST.get("target_id")
     target = get_object_or_404(Client, pk=target_id)
 
-    # Transfer channel IDs (only if source is missing them)
-    if not source.telegram_id and target.telegram_id:
-        source.telegram_id = target.telegram_id
-    if not source.max_chat_id and target.max_chat_id:
-        source.max_chat_id = target.max_chat_id
+    with transaction.atomic():
+        # Clear unique fields on target FIRST to avoid constraint violations
+        if target.telegram_id:
+            target_tg_id = target.telegram_id
+            target.telegram_id = None
+            target.save(update_fields=["telegram_id"])
+            if not source.telegram_id:
+                source.telegram_id = target_tg_id
 
-    # Fill in missing contact info from target
-    for field in ("first_name", "phone", "email", "username", "last_name", "patronymic",
-                  "birth_date", "birth_place", "passport_series", "passport_number",
-                  "passport_issued_by", "passport_issued_date", "inn", "snils", "notes"):
-        if not getattr(source, field) and getattr(target, field):
-            setattr(source, field, getattr(target, field))
+        if target.max_chat_id:
+            target_max_id = target.max_chat_id
+            target.max_chat_id = None
+            target.save(update_fields=["max_chat_id"])
+            if not source.max_chat_id:
+                source.max_chat_id = target_max_id
 
-    source.save()
+        # Fill in missing contact info from target
+        for field in ("first_name", "phone", "email", "username", "last_name", "patronymic",
+                      "birth_date", "birth_place", "passport_series", "passport_number",
+                      "passport_issued_by", "passport_issued_date", "inn", "snils", "notes"):
+            if not getattr(source, field) and getattr(target, field):
+                setattr(source, field, getattr(target, field))
 
-    # Move messages
-    Message.objects.filter(client=target).update(client=source)
+        source.save()
 
-    # Move services
-    Service.objects.filter(client=target).update(client=source)
+        # Move messages
+        Message.objects.filter(client=target).update(client=source)
 
-    # Merge employees M2M
-    for emp in target.employees.all():
-        source.employees.add(emp)
+        # Move services
+        Service.objects.filter(client=target).update(client=source)
 
-    # Delete duplicate
-    target.delete()
+        # Merge employees M2M
+        for emp in target.employees.all():
+            source.employees.add(emp)
+
+        # Delete duplicate
+        target.delete()
 
     # Re-render the chat panel with the updated source client
     qs = (

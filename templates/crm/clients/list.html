@@ -21,15 +21,14 @@
         Найти
       </button>
 
-      <a
-        href="{% url 'client_create' %}"
+      <button
         hx-get="{% url 'client_create' %}"
-        hx-target="#content-area"
-        hx-swap="innerHTML"
+        hx-target="body"
+        hx-swap="beforeend"
         class="btn btn-sm btn-primary"
       >
         + Новый клиент
-      </a>
+      </button>
     </form>
   </div>
 

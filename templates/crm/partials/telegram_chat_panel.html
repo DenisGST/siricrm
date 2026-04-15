@@ -5,7 +5,8 @@
   <div class="flex items-center justify-between border-b px-4 py-2 shrink-0">
     <div>
       <div class="font-semibold">
-        {{ client.first_name }} {{ client.last_name }}
+        {{ client.last_name }} {{ client.first_name }}
+        {% if client.patronymic %}<br><span class="text-sm font-normal opacity-70">{{ client.patronymic }}</span>{% endif %}
         {% if client.username %}
           <span class="text-gray-400 text-sm">@{{ client.username }}</span>
         {% endif %}

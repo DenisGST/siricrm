@@ -2,16 +2,16 @@
 
 <div id="toast-container" hx-swap-oob="afterbegin">
   <div
-    class="alert alert-{{ level }} text-white shadow-lg flex items-center gap-2"
-    style="background-color: rgba(171, 255, 178, 0.4);"
+    class="alert shadow-lg flex items-center gap-2"
+    style="{% if level == 'success' %}background:#059669;color:#fff;{% elif level == 'error' %}background:#dc2626;color:#fff;{% elif level == 'warning' %}background:#d97706;color:#fff;{% else %}background:#2563eb;color:#fff;{% endif %}"
     data-toast="1"
   >
-    <span class="flex-1 text-sm">
+    <span class="flex-1 text-sm font-medium">
       {{ text }}
     </span>
     <button
       type="button"
-      class="btn btn-xs btn-circle btn-ghost text-white"
+      class="btn btn-xs btn-circle btn-ghost text-white opacity-80 hover:opacity-100"
       aria-label="Закрыть"
       data-toast-close="1"
     >

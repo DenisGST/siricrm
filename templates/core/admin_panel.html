@@ -1,0 +1,44 @@
+<div class="p-4">
+  <h2 class="text-xl font-bold mb-4">🛠️ Панель управления</h2>
+
+  <div class="tabs tabs-boxed mb-4">
+    <a class="tab {% if active_tab == 'departments' %}tab-active{% endif %}"
+       hx-get="{% url 'core:admin_departments' %}" hx-target="#admin-content" hx-swap="innerHTML"
+       onclick="setAdminTab(this)">
+      Отделы
+    </a>
+    <a class="tab {% if active_tab == 'employees' %}tab-active{% endif %}"
+       hx-get="{% url 'core:admin_employees' %}" hx-target="#admin-content" hx-swap="innerHTML"
+       onclick="setAdminTab(this)">
+      Сотрудники
+    </a>
+    <a class="tab {% if active_tab == 'dashboards' %}tab-active{% endif %}"
+       hx-get="{% url 'core:admin_dashboards' %}" hx-target="#admin-content" hx-swap="innerHTML"
+       onclick="setAdminTab(this)">
+      Дашборды
+    </a>
+    <a class="tab {% if active_tab == 'menu' %}tab-active{% endif %}"
+       hx-get="{% url 'core:admin_menu_items' %}" hx-target="#admin-content" hx-swap="innerHTML"
+       onclick="setAdminTab(this)">
+      Меню
+    </a>
+    <a class="tab {% if active_tab == 'widgets' %}tab-active{% endif %}"
+       hx-get="{% url 'core:admin_widgets' %}" hx-target="#admin-content" hx-swap="innerHTML"
+       onclick="setAdminTab(this)">
+      Виджеты
+    </a>
+  </div>
+
+  <div id="admin-content"
+       hx-get="{% url 'core:admin_departments' %}"
+       hx-trigger="load"
+       hx-swap="innerHTML">
+  </div>
+</div>
+
+<script>
+function setAdminTab(el) {
+  el.closest('.tabs').querySelectorAll('.tab').forEach(t => t.classList.remove('tab-active'));
+  el.classList.add('tab-active');
+}
+</script>
