@@ -35,6 +35,11 @@ class Region(models.Model):
         verbose_name='Реквизиты суда для госпошлины',
         help_text='БИК, расчётный счёт, получатель, КБК и прочие реквизиты'
     )
+    court_deposit_details = models.TextField(
+        blank=True, default='',
+        verbose_name='Реквизиты суда для оплаты депозита',
+        help_text='Реквизиты депозитного счёта суда (для внесения денежных средств на депозит)',
+    )
 
     def __str__(self):
         return f'{self.number} — {self.name}'

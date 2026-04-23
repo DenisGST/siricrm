@@ -20,6 +20,7 @@
           <th>Название</th>
           <th>Суд</th>
           <th>Адрес суда</th>
+          <th class="text-center" title="Реквизиты для оплаты депозита">Депозит</th>
           <th>Юрлиц</th>
           <th></th>
         </tr>
@@ -33,6 +34,10 @@
           <td class="text-xs">
             {% if r.court_address %}{{ r.court_address.source|truncatechars:50 }}
             {% else %}<span class="text-base-content/40">—</span>{% endif %}
+          </td>
+          <td class="text-center">
+            {% if r.court_deposit_details %}<span class="text-success">✓</span>
+            {% else %}<span class="text-base-content/30">—</span>{% endif %}
           </td>
           <td>{{ r.legal_entities.count }}</td>
           <td class="text-right">
@@ -49,7 +54,7 @@
           </td>
         </tr>
         {% empty %}
-        <tr><td colspan="6" class="text-center text-base-content/60">Регионов нет</td></tr>
+        <tr><td colspan="7" class="text-center text-base-content/60">Регионов нет</td></tr>
         {% endfor %}
       </tbody>
     </table>

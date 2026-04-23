@@ -406,6 +406,7 @@ def references_regions(request):
 
 @user_passes_test(is_references_access)
 def reference_region_edit(request, pk=None):
+    from django.conf import settings
     from apps.crm.models import Region
     from apps.core.forms import RegionForm
     region = get_object_or_404(Region, pk=pk) if pk else None
@@ -418,6 +419,7 @@ def reference_region_edit(request, pk=None):
         form = RegionForm(instance=region)
     return render(request, "core/partials/region_form_modal.html", {
         "form": form, "region": region,
+        "dadata_api_key": settings.DADATA_API_KEY,
     })
 
 

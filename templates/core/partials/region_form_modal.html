@@ -30,24 +30,31 @@
       </div>
 
       <div>
-        <label class="label py-1">
-          <span class="label-text">Адрес суда</span>
-          {% if region.court_address %}
-            <span class="label-text-alt text-base-content/50">связан с Address #{{ region.court_address.pk|stringformat:"s"|slice:":8" }}</span>
-          {% endif %}
-        </label>
-        <textarea name="court_address_text" rows="2"
-                  class="textarea textarea-bordered textarea-sm w-full"
-                  placeholder="Индекс, город, улица, дом">{{ form.court_address_text.value|default:'' }}</textarea>
-        <span class="text-xs text-base-content/60">
-          Текст сохраняется в связанной записи Address (source и result).
-        </span>
+        <label class="label py-1"><span class="label-text">Адрес суда</span></label>
+        <div style="position:relative">
+          <textarea name="court_address_text" id="region-court-address" rows="2"
+                    class="textarea textarea-bordered textarea-sm w-full"
+                    placeholder="Индекс, город, улица, дом"
+                    autocomplete="off">{{ form.court_address_text.value|default:'' }}</textarea>
+          <div id="region-court-address-suggestions"
+               style="display:none; position:absolute; top:100%; left:0; right:0; z-index:9999;
+                      background:var(--ms-surface,#fff); border:1px solid var(--ms-border,#ddd);
+                      border-radius:0 0 4px 4px; box-shadow:0 4px 12px rgba(0,0,0,0.1);
+                      max-height:250px; overflow-y:auto;">
+          </div>
+        </div>
       </div>
 
       <div>
         <label class="label py-1"><span class="label-text">Реквизиты для госпошлины</span></label>
         <textarea name="court_payment_details" rows="4"
                   class="textarea textarea-bordered textarea-sm w-full">{{ form.court_payment_details.value|default:'' }}</textarea>
+      </div>
+
+      <div>
+        <label class="label py-1"><span class="label-text">Реквизиты для оплаты депозита</span></label>
+        <textarea name="court_deposit_details" rows="4"
+                  class="textarea textarea-bordered textarea-sm w-full">{{ form.court_deposit_details.value|default:'' }}</textarea>
       </div>
 
       {% if form.non_field_errors %}
@@ -64,3 +71,60 @@
     <button onclick="this.closest('dialog').remove()">close</button>
   </form>
 </dialog>
+
+<script>
+(function() {
+  var DADATA_TOKEN = "{{ dadata_api_key }}";
+  var input = document.getElementById("region-court-address");
+  var sugBox = document.getElementById("region-court-address-suggestions");
+  if (!input || !sugBox || !DADATA_TOKEN) return;
+  var debounceTimer = null;
+
+  function fetchSuggestions(query) {
+    if (query.length < 3) { sugBox.style.display = "none"; return; }
+    fetch("https://suggestions.dadata.ru/suggestions/api/4_1/rs/suggest/address", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+        "Authorization": "Token " + DADATA_TOKEN
+      },
+      body: JSON.stringify({ query: query, count: 7 })
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (!data.suggestions || !data.suggestions.length) {
+        sugBox.style.display = "none"; return;
+      }
+      sugBox.innerHTML = "";
+      data.suggestions.forEach(function(s) {
+        var div = document.createElement("div");
+        div.textContent = s.value;
+        div.style.cssText = "padding:8px 10px; cursor:pointer; border-bottom:1px solid var(--ms-border-light,#eee); font-size:13px";
+        div.onmouseenter = function() { div.style.background = "var(--ms-border,#e8e8e8)"; };
+        div.onmouseleave = function() { div.style.background = ""; };
+        div.onclick = function() {
+          input.value = (s.data && s.data.postal_code ? s.data.postal_code + ", " : "") + s.value;
+          sugBox.style.display = "none";
+        };
+        sugBox.appendChild(div);
+      });
+      sugBox.style.display = "block";
+    })
+    .catch(function() { sugBox.style.display = "none"; });
+  }
+
+  input.addEventListener("input", function() {
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(function() { fetchSuggestions(input.value.trim()); }, 300);
+  });
+  input.addEventListener("focus", function() {
+    if (input.value.trim().length >= 3) fetchSuggestions(input.value.trim());
+  });
+  document.addEventListener("click", function(e) {
+    if (!sugBox.contains(e.target) && e.target !== input) {
+      sugBox.style.display = "none";
+    }
+  });
+})();
+</script>

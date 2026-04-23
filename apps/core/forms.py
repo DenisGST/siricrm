@@ -100,9 +100,13 @@ class RegionForm(forms.ModelForm):
 
     class Meta:
         model = Region
-        fields = ["number", "name", "court_name", "court_payment_details"]
+        fields = [
+            "number", "name", "court_name",
+            "court_payment_details", "court_deposit_details",
+        ]
         widgets = {
             "court_payment_details": forms.Textarea(attrs={"rows": 4}),
+            "court_deposit_details": forms.Textarea(attrs={"rows": 4}),
         }
 
     def __init__(self, *args, **kwargs):
