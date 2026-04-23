@@ -373,3 +373,96 @@ def admin_widget_edit(request, pk=None):
 def admin_widget_delete(request, pk):
     get_object_or_404(Widget, pk=pk).delete()
     return HttpResponse(headers={"HX-Trigger": "reloadWidgets"})
+
+
+# ─────────────────────────────────────────────
+# Справочники (references): доступ руководителям и администраторам
+# ─────────────────────────────────────────────
+
+def is_references_access(user):
+    """Доступ к справочникам: суперпользователь, администратор, руководитель отдела."""
+    if not user.is_authenticated:
+        return False
+    if user.is_superuser:
+        return True
+    if not hasattr(user, "employee"):
+        return False
+    return user.employee.role in ("admin", "head_dep")
+
+
+@user_passes_test(is_references_access)
+def references_panel(request):
+    from apps.core.forms import RegionForm, LegalEntityKindForm  # noqa: F401
+    tab = request.GET.get("tab", "regions")
+    return render(request, "core/references_panel.html", {"active_tab": tab})
+
+
+@user_passes_test(is_references_access)
+def references_regions(request):
+    from apps.crm.models import Region
+    regions = Region.objects.order_by("number")
+    return render(request, "core/partials/references_regions.html", {"regions": regions})
+
+
+@user_passes_test(is_references_access)
+def reference_region_edit(request, pk=None):
+    from apps.crm.models import Region
+    from apps.core.forms import RegionForm
+    region = get_object_or_404(Region, pk=pk) if pk else None
+    if request.method == "POST":
+        form = RegionForm(request.POST, instance=region)
+        if form.is_valid():
+            form.save()
+            return HttpResponse(headers={"HX-Trigger": "reloadRegions"})
+    else:
+        form = RegionForm(instance=region)
+    return render(request, "core/partials/region_form_modal.html", {
+        "form": form, "region": region,
+    })
+
+
+@user_passes_test(is_references_access)
+@require_POST
+def reference_region_delete(request, pk):
+    from apps.crm.models import Region
+    get_object_or_404(Region, pk=pk).delete()
+    return HttpResponse(headers={"HX-Trigger": "reloadRegions"})
+
+
+@user_passes_test(is_references_access)
+def references_kinds(request):
+    from apps.crm.models import LegalEntityKind
+    kinds = LegalEntityKind.objects.order_by("name")
+    return render(request, "core/partials/references_kinds.html", {"kinds": kinds})
+
+
+@user_passes_test(is_references_access)
+def reference_kind_edit(request, pk=None):
+    from apps.crm.models import LegalEntityKind
+    from apps.core.forms import LegalEntityKindForm
+    kind = get_object_or_404(LegalEntityKind, pk=pk) if pk else None
+    if request.method == "POST":
+        form = LegalEntityKindForm(request.POST, instance=kind)
+        if form.is_valid():
+            form.save()
+            return HttpResponse(headers={"HX-Trigger": "reloadKinds"})
+    else:
+        form = LegalEntityKindForm(instance=kind)
+    return render(request, "core/partials/kind_form_modal.html", {
+        "form": form, "kind": kind,
+    })
+
+
+@user_passes_test(is_references_access)
+@require_POST
+def reference_kind_delete(request, pk):
+    from apps.crm.models import LegalEntityKind
+    kind = get_object_or_404(LegalEntityKind, pk=pk)
+    # Проверяем, не используется ли тип юрлицами — иначе PROTECT выдаст ошибку.
+    if kind.legal_entities.exists():
+        return HttpResponse(
+            f"Нельзя удалить: тип используется в {kind.legal_entities.count()} юрлицах.",
+            status=409,
+        )
+    kind.delete()
+    return HttpResponse(headers={"HX-Trigger": "reloadKinds"})

@@ -1,0 +1,50 @@
+<div id="kinds-list"
+     hx-trigger="reloadKinds from:body"
+     hx-get="{% url 'core:references_kinds' %}"
+     hx-swap="outerHTML">
+
+  <div class="flex justify-between items-center mb-3">
+    <h3 class="font-semibold">Типы юридических лиц ({{ kinds|length }})</h3>
+    <button class="btn btn-primary btn-sm"
+            hx-get="{% url 'core:reference_kind_add' %}"
+            hx-target="body" hx-swap="beforeend">
+      + Добавить тип
+    </button>
+  </div>
+
+  <div class="overflow-x-auto">
+    <table class="table table-sm table-zebra">
+      <thead>
+        <tr>
+          <th>Сокращение</th>
+          <th>Полное наименование</th>
+          <th>Юрлиц</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for k in kinds %}
+        <tr>
+          <td><span class="badge badge-outline">{{ k.short_name }}</span></td>
+          <td>{{ k.name }}</td>
+          <td>{{ k.legal_entities.count }}</td>
+          <td class="text-right">
+            <button class="btn btn-xs btn-outline"
+                    hx-get="{% url 'core:reference_kind_edit' k.pk %}"
+                    hx-target="body" hx-swap="beforeend">
+              Изменить
+            </button>
+            <button class="btn btn-xs btn-error btn-outline"
+                    hx-post="{% url 'core:reference_kind_delete' k.pk %}"
+                    hx-confirm="Удалить тип «{{ k.short_name }}»?">
+              Удалить
+            </button>
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="4" class="text-center text-base-content/60">Типов нет</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>

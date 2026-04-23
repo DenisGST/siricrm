@@ -17,8 +17,16 @@ def sidebar_menu(request):
     else:
         items = MenuItem.objects.filter(is_active=True)
 
-    if not request.user.is_superuser:
+    user = request.user
+    is_elevated = user.is_superuser or (
+        hasattr(user, "employee")
+        and user.employee.role in ("admin", "head_dep")
+    )
+
+    if not user.is_superuser:
         items = items.filter(requires_superuser=False)
+    if not is_elevated:
+        items = items.filter(requires_elevated=False)
 
     sections = {}
     for item in items.order_by("section", "order"):

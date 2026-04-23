@@ -29,4 +29,15 @@ urlpatterns = [
     path('admin-panel/widget/add/', views.admin_widget_edit, name='admin_widget_add'),
     path('admin-panel/widget/<uuid:pk>/', views.admin_widget_edit, name='admin_widget_edit'),
     path('admin-panel/widget/<uuid:pk>/delete/', views.admin_widget_delete, name='admin_widget_delete'),
+
+    # Справочники (доступ: admin, head_dep)
+    path('references/', views.references_panel, name='references_panel'),
+    path('references/regions/', views.references_regions, name='references_regions'),
+    path('references/region/add/', views.reference_region_edit, name='reference_region_add'),
+    path('references/region/<int:pk>/', views.reference_region_edit, name='reference_region_edit'),
+    path('references/region/<int:pk>/delete/', views.reference_region_delete, name='reference_region_delete'),
+    path('references/kinds/', views.references_kinds, name='references_kinds'),
+    path('references/kind/add/', views.reference_kind_edit, name='reference_kind_add'),
+    path('references/kind/<uuid:pk>/', views.reference_kind_edit, name='reference_kind_edit'),
+    path('references/kind/<uuid:pk>/delete/', views.reference_kind_delete, name='reference_kind_delete'),
 ]

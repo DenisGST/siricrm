@@ -48,6 +48,11 @@ class MenuItem(TimeStampedModel):
     order = models.PositiveIntegerField("Порядок", default=0)
     use_htmx = models.BooleanField("Загрузка через HTMX", default=True)
     requires_superuser = models.BooleanField("Только для суперпользователя", default=False)
+    requires_elevated = models.BooleanField(
+        "Только для администраторов и руководителей",
+        default=False,
+        help_text="Видим только superuser / admin / head_dep",
+    )
     is_active = models.BooleanField("Активен", default=True)
 
     class Meta:

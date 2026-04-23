@@ -1,0 +1,29 @@
+<div class="p-4">
+  <h2 class="text-xl font-bold mb-4">📚 Справочники</h2>
+
+  <div class="tabs tabs-boxed mb-4">
+    <a class="tab {% if active_tab == 'regions' %}tab-active{% endif %}"
+       hx-get="{% url 'core:references_regions' %}" hx-target="#ref-content" hx-swap="innerHTML"
+       onclick="setRefTab(this)">
+      Регионы РФ
+    </a>
+    <a class="tab {% if active_tab == 'kinds' %}tab-active{% endif %}"
+       hx-get="{% url 'core:references_kinds' %}" hx-target="#ref-content" hx-swap="innerHTML"
+       onclick="setRefTab(this)">
+      Типы юр. лиц
+    </a>
+  </div>
+
+  <div id="ref-content"
+       hx-get="{% url 'core:references_regions' %}"
+       hx-trigger="load"
+       hx-swap="innerHTML">
+  </div>
+</div>
+
+<script>
+function setRefTab(el) {
+  el.closest('.tabs').querySelectorAll('.tab').forEach(t => t.classList.remove('tab-active'));
+  el.classList.add('tab-active');
+}
+</script>

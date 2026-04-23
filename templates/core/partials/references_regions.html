@@ -1,0 +1,54 @@
+<div id="regions-list"
+     hx-trigger="reloadRegions from:body"
+     hx-get="{% url 'core:references_regions' %}"
+     hx-swap="outerHTML">
+
+  <div class="flex justify-between items-center mb-3">
+    <h3 class="font-semibold">Регионы РФ ({{ regions|length }})</h3>
+    <button class="btn btn-primary btn-sm"
+            hx-get="{% url 'core:reference_region_add' %}"
+            hx-target="body" hx-swap="beforeend">
+      + Добавить регион
+    </button>
+  </div>
+
+  <div class="overflow-x-auto">
+    <table class="table table-sm table-zebra">
+      <thead>
+        <tr>
+          <th class="w-16">№</th>
+          <th>Название</th>
+          <th>Суд</th>
+          <th>Адрес суда</th>
+          <th>Юрлиц</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in regions %}
+        <tr>
+          <td class="font-semibold">{{ r.number }}</td>
+          <td>{{ r.name }}</td>
+          <td class="text-xs">{{ r.court_name|truncatechars:60 }}</td>
+          <td class="text-xs">{{ r.court_address|truncatechars:50 }}</td>
+          <td>{{ r.legal_entities.count }}</td>
+          <td class="text-right">
+            <button class="btn btn-xs btn-outline"
+                    hx-get="{% url 'core:reference_region_edit' r.pk %}"
+                    hx-target="body" hx-swap="beforeend">
+              Изменить
+            </button>
+            <button class="btn btn-xs btn-error btn-outline"
+                    hx-post="{% url 'core:reference_region_delete' r.pk %}"
+                    hx-confirm="Удалить регион «{{ r.name }}»? Юрлица этого региона потеряют привязку.">
+              Удалить
+            </button>
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="6" class="text-center text-base-content/60">Регионов нет</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>

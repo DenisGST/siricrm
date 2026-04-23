@@ -1,6 +1,7 @@
 from django import forms
 from django.contrib.auth.models import User
 from .models import Department, Employee, MenuItem, Widget, DashboardConfig
+from apps.crm.models import Region, LegalEntityKind
 
 
 class EmployeeForm(forms.ModelForm):
@@ -70,7 +71,10 @@ class EmployeeCreateForm(forms.Form):
 class MenuItemForm(forms.ModelForm):
     class Meta:
         model = MenuItem
-        fields = ["name", "icon", "url", "section", "order", "use_htmx", "requires_superuser", "is_active"]
+        fields = [
+            "name", "icon", "url", "section", "order", "use_htmx",
+            "requires_superuser", "requires_elevated", "is_active",
+        ]
 
 
 class WidgetForm(forms.ModelForm):
@@ -80,6 +84,22 @@ class WidgetForm(forms.ModelForm):
         widgets = {
             "description": forms.Textarea(attrs={"rows": 2}),
         }
+
+
+class RegionForm(forms.ModelForm):
+    class Meta:
+        model = Region
+        fields = ["number", "name", "court_name", "court_address", "court_payment_details"]
+        widgets = {
+            "court_address": forms.Textarea(attrs={"rows": 2}),
+            "court_payment_details": forms.Textarea(attrs={"rows": 4}),
+        }
+
+
+class LegalEntityKindForm(forms.ModelForm):
+    class Meta:
+        model = LegalEntityKind
+        fields = ["name", "short_name"]
 
 
 class DashboardConfigForm(forms.ModelForm):
