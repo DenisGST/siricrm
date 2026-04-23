@@ -1,0 +1,127 @@
+<dialog id="emp-create-modal" class="modal modal-middle modal-open">
+  <div class="modal-box w-full max-w-lg">
+    <h3 class="font-bold text-lg mb-4">Новый сотрудник</h3>
+
+    <form hx-post="{% url 'core:admin_employee_create' %}"
+          hx-target="#emp-create-modal" hx-swap="outerHTML"
+          class="space-y-3">
+      {% csrf_token %}
+
+      {% if form.non_field_errors %}
+        <div class="alert alert-error text-sm py-2">{{ form.non_field_errors }}</div>
+      {% endif %}
+
+      <div class="divider text-xs">Учётная запись</div>
+
+      <div class="grid grid-cols-2 gap-3">
+        <div class="form-control">
+          <label class="label py-1"><span class="label-text text-xs">Логин *</span></label>
+          <input type="text" name="username" value="{{ form.username.value|default:'' }}"
+            class="input input-bordered input-sm w-full" required autocomplete="off">
+          {% if form.username.errors %}<span class="text-error text-xs">{{ form.username.errors.0 }}</span>{% endif %}
+        </div>
+        <div class="form-control">
+          <label class="label py-1"><span class="label-text text-xs">Пароль *</span></label>
+          <input type="password" name="password" value=""
+            class="input input-bordered input-sm w-full" required autocomplete="new-password">
+          {% if form.password.errors %}<span class="text-error text-xs">{{ form.password.errors.0 }}</span>{% endif %}
+        </div>
+      </div>
+
+      <div class="divider text-xs">ФИО</div>
+
+      <div class="grid grid-cols-3 gap-3">
+        <div class="form-control">
+          <label class="label py-1"><span class="label-text text-xs">Фамилия *</span></label>
+          <input type="text" name="last_name" value="{{ form.last_name.value|default:'' }}"
+            class="input input-bordered input-sm w-full" required>
+          {% if form.last_name.errors %}<span class="text-error text-xs">{{ form.last_name.errors.0 }}</span>{% endif %}
+        </div>
+        <div class="form-control">
+          <label class="label py-1"><span class="label-text text-xs">Имя *</span></label>
+          <input type="text" name="first_name" value="{{ form.first_name.value|default:'' }}"
+            class="input input-bordered input-sm w-full" required>
+          {% if form.first_name.errors %}<span class="text-error text-xs">{{ form.first_name.errors.0 }}</span>{% endif %}
+        </div>
+        <div class="form-control">
+          <label class="label py-1"><span class="label-text text-xs">Отчество</span></label>
+          <input type="text" name="patronymic" value="{{ form.patronymic.value|default:'' }}"
+            class="input input-bordered input-sm w-full">
+        </div>
+      </div>
+
+      <div class="divider text-xs">Контакты</div>
+
+      <div class="grid grid-cols-3 gap-3">
+        <div class="form-control">
+          <label class="label py-1"><span class="label-text text-xs">Email</span></label>
+          <input type="email" name="email" value="{{ form.email.value|default:'' }}"
+            class="input input-bordered input-sm w-full">
+        </div>
+        <div class="form-control">
+          <label class="label py-1"><span class="label-text text-xs">Мобильный</span></label>
+          <input type="text" name="phone_mobile" value="{{ form.phone_mobile.value|default:'' }}"
+            class="input input-bordered input-sm w-full" placeholder="+7 900 123-45-67">
+        </div>
+        <div class="form-control">
+          <label class="label py-1"><span class="label-text text-xs">Внутренний</span></label>
+          <input type="text" name="phone_internal" value="{{ form.phone_internal.value|default:'' }}"
+            class="input input-bordered input-sm w-full" placeholder="100">
+        </div>
+      </div>
+
+      <div class="divider text-xs">Настройки</div>
+
+      <div class="grid grid-cols-2 gap-3">
+        <div class="form-control">
+          <label class="label py-1"><span class="label-text text-xs">Отдел</span></label>
+          <select name="department" class="select select-bordered select-sm w-full">
+            <option value="">— Не назначен —</option>
+            {% for dept in form.fields.department.queryset %}
+              <option value="{{ dept.pk }}" {% if form.department.value|stringformat:"s" == dept.pk|stringformat:"s" %}selected{% endif %}>{{ dept.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-control">
+          <label class="label py-1"><span class="label-text text-xs">Роль</span></label>
+          <select name="role" class="select select-bordered select-sm w-full">
+            {% for val, label in form.fields.role.choices %}
+              <option value="{{ val }}" {% if form.role.value == val %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+
+      <div class="form-control">
+        <label class="label py-1"><span class="label-text text-xs">Конфигурация дашборда</span></label>
+        <select name="dashboard_config" class="select select-bordered select-sm w-full">
+          <option value="">— По умолчанию —</option>
+          {% for cfg in form.fields.dashboard_config.queryset %}
+            <option value="{{ cfg.pk }}" {% if form.dashboard_config.value|stringformat:"s" == cfg.pk|stringformat:"s" %}selected{% endif %}>{{ cfg.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="flex items-center gap-3">
+        <label class="label cursor-pointer gap-2">
+          <span class="label-text">Доступ к мессенджеру</span>
+          <input type="checkbox" name="has_messenger_access"
+                 {% if form.has_messenger_access.value != False %}checked{% endif %}
+                 class="toggle toggle-primary toggle-sm">
+        </label>
+      </div>
+
+      {% if form.errors and not form.non_field_errors %}
+        <div class="alert alert-error text-sm">{{ form.errors }}</div>
+      {% endif %}
+
+      <div class="modal-action">
+        <button type="submit" class="btn btn-primary btn-sm">Создать</button>
+        <button type="button" class="btn btn-sm" onclick="this.closest('dialog').remove()">Отмена</button>
+      </div>
+    </form>
+  </div>
+  <form method="dialog" class="modal-backdrop">
+    <button onclick="this.closest('dialog').remove()">close</button>
+  </form>
+</dialog>

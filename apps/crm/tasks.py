@@ -216,7 +216,8 @@ def reassign_clients_by_load():
             )
             
             if employee:
-                client.employees.add(employee)  # ✅ ManyToMany
+                from apps.crm.models import ClientEmployee
+                ClientEmployee.objects.get_or_create(client=client, employee=employee)
                 EmployeeLog.objects.create(
                     employee=employee,
                     action="client_assigned",

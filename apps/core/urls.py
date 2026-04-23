@@ -15,6 +15,7 @@ urlpatterns = [
     path('admin-panel/department/<uuid:pk>/', views.admin_department_edit, name='admin_department_edit'),
     path('admin-panel/department/<uuid:pk>/delete/', views.admin_department_delete, name='admin_department_delete'),
     path('admin-panel/employees/', views.admin_employees, name='admin_employees'),
+    path('admin-panel/employee/add/', views.admin_employee_create, name='admin_employee_create'),
     path('admin-panel/employee/<int:pk>/', views.admin_employee_edit, name='admin_employee_edit'),
     path('admin-panel/dashboards/', views.admin_dashboards, name='admin_dashboards'),
     path('admin-panel/dashboard/add/', views.admin_dashboard_edit, name='admin_dashboard_add'),

@@ -1,15 +1,29 @@
-{% load static %}
+{% load static icons %}
 <!-- /var/www/projects/siricrm/templates/crm/partials/telegram_chat_panel.html -->
 <div id="telegram-chat-panel-root" class="relative flex flex-col h-full">
   <!-- шапка -->
   <div class="flex items-center justify-between border-b px-4 py-2 shrink-0">
     <div>
-      <div class="font-semibold">
-        {{ client.last_name }} {{ client.first_name }}
+      <div class="font-semibold flex items-center gap-2">
+        <span>{{ client.last_name }} {{ client.first_name }}
         {% if client.patronymic %}<br><span class="text-sm font-normal opacity-70">{{ client.patronymic }}</span>{% endif %}
         {% if client.username %}
           <span class="text-gray-400 text-sm">@{{ client.username }}</span>
         {% endif %}
+        </span>
+        <span id="messenger-status-badge"
+              data-client-id="{{ client.id }}"
+              hx-get="{% url 'messenger_status_badge' client.id %}"
+              hx-trigger="messengerStatusChanged from:body"
+              hx-swap="innerHTML">
+          {% if messenger_status == "open" %}
+            <span class="badge badge-sm gap-1" style="background:#ef4444;color:#fff;border:none">Диалог открыт</span>
+          {% elif messenger_status == "waiting" %}
+            <span class="badge badge-sm gap-1" style="background:#3b82f6;color:#fff;border:none">Ожидаю ответа</span>
+          {% else %}
+            <span class="badge badge-sm gap-1" style="background:#22c55e;color:#fff;border:none">Диалог закрыт</span>
+          {% endif %}
+        </span>
       </div>
       {% if client.phone %}
         <div class="text-xs text-gray-500">
@@ -24,18 +38,18 @@
       {% endif %}
       <button
         onclick="document.getElementById('client-merge-modal').showModal(); document.getElementById('merge-search-input').focus()"
-        class="btn btn-ghost btn-xs text-gray-400 hover:text-warning"
+        class="btn btn-ghost btn-sm gap-1 text-gray-500 hover:text-warning"
         title="Объединить с другим клиентом"
       >
-        Объединить
+        {% icon "merge" size=16 %} <span class="text-xs">Объединить</span>
       </button>
       <button
         id="btn-import-history"
         onclick="startImportHistory('{{ client.id }}')"
-        class="btn btn-ghost btn-xs text-gray-400 hover:text-primary"
+        class="btn btn-ghost btn-sm gap-1 text-gray-500 hover:text-primary"
         title="Импорт истории из Telegram"
       >
-        История
+        {% icon "history" size=16 %} <span class="text-xs">История</span>
       </button>
     </div>
   </div>
@@ -167,14 +181,14 @@
 
       <div class="flex items-center gap-2">
         <div class="flex items-center gap-2">
-          <label class="btn btn-sm text-base border border-blue-300 bg-blue-50 hover:bg-blue-100 text-blue-600" title="Прикрепить файл (фото, документ, аудио)">
+          <label class="btn btn-sm gap-1 border border-blue-300 bg-blue-50 hover:bg-blue-100 text-blue-600" title="Прикрепить файл (фото, документ, аудио)">
             <input type="file" name="file" id="chat-file-input" class="hidden">
-            📎 <span class="text-xs font-normal">Файл</span>
+            {% icon "paperclip" size=16 %} <span class="text-xs font-normal">Файл</span>
           </label>
-          <button type="button" id="btn-record" class="btn btn-sm text-base border border-rose-300 bg-rose-50 hover:bg-rose-100 text-rose-600" title="Записать голосовое сообщение">🎙 <span class="text-xs font-normal">Аудио</span></button>
-          <button type="button" id="btn-stop" class="btn btn-sm text-base border border-orange-300 bg-orange-50 hover:bg-orange-100 text-orange-600 hidden" title="Остановить запись">⏹ <span class="text-xs font-normal">Стоп</span></button>
+          <button type="button" id="btn-record" class="btn btn-sm gap-1 border border-rose-300 bg-rose-50 hover:bg-rose-100 text-rose-600" title="Записать голосовое сообщение">{% icon "mic" size=16 %} <span class="text-xs font-normal">Аудио</span></button>
+          <button type="button" id="btn-stop" class="btn btn-sm gap-1 border border-orange-300 bg-orange-50 hover:bg-orange-100 text-orange-600 hidden" title="Остановить запись">{% icon "x" size=16 %} <span class="text-xs font-normal">Стоп</span></button>
           <button type="button" id="btn-cancel" class="btn btn-ghost btn-xs hidden" title="Отменить">Отмена</button>
-          <button type="button" id="btn-emoji-toggle" class="btn btn-sm text-base border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-600" title="Эмодзи" onclick="toggleEmojiBar()">😊 <span class="text-xs font-normal">Эмодзи</span></button>
+          <button type="button" id="btn-emoji-toggle" class="btn btn-sm gap-1 border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-600" title="Эмодзи" onclick="toggleEmojiBar()">{% icon "smile" size=16 %} <span class="text-xs font-normal">Эмодзи</span></button>
         </div>
 
         <div class="ml-auto flex items-center gap-2">
@@ -204,6 +218,17 @@
             MAX
           </button>
           {% endif %}
+          <span id="close-dialog-slot">
+            <button type="button"
+              class="btn btn-sm border-success bg-success/10 hover:bg-success/20 text-success"
+              hx-post="{% url 'close_dialog' client.id %}"
+              hx-target="#messenger-status-badge"
+              hx-swap="innerHTML"
+              title="Переключить статус диалога"
+            >
+              {% icon "check" size=18 %}
+            </button>
+          </span>
         </div>
       </div>
 

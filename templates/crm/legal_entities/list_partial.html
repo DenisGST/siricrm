@@ -1,0 +1,127 @@
+{% load static %}
+<div id="legal-entities-table">
+  <input type="hidden" id="le-sort" name="sort" value="{{ sort }}" form="le-filters">
+  <div class="overflow-x-auto">
+    <table class="table table-zebra table-sm">
+      <thead>
+        <tr>
+          <th>#</th>
+          {% with current=sort %}
+          <th class="le-sort-th" data-sort="name">
+            Наименование {% include "crm/legal_entities/_sort_arrow.html" with field="name" %}
+          </th>
+          <th class="le-sort-th" data-sort="kind__short_name">
+            Тип {% include "crm/legal_entities/_sort_arrow.html" with field="kind__short_name" %}
+          </th>
+          <th class="le-sort-th" data-sort="entity_type">
+            Форма {% include "crm/legal_entities/_sort_arrow.html" with field="entity_type" %}
+          </th>
+          <th class="le-sort-th" data-sort="inn">
+            ИНН / КПП {% include "crm/legal_entities/_sort_arrow.html" with field="inn" %}
+          </th>
+          <th class="le-sort-th" data-sort="ogrn">
+            ОГРН {% include "crm/legal_entities/_sort_arrow.html" with field="ogrn" %}
+          </th>
+          <th class="le-sort-th" data-sort="director_name">
+            Руководитель {% include "crm/legal_entities/_sort_arrow.html" with field="director_name" %}
+          </th>
+          <th>Контакты</th>
+          <th class="le-sort-th" data-sort="status">
+            Статус {% include "crm/legal_entities/_sort_arrow.html" with field="status" %}
+          </th>
+          <th></th>
+          {% endwith %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for le in page_obj %}
+          <tr class="hover le-row cursor-pointer"
+              hx-get="{% url 'legal_entity_detail' le.id %}"
+              hx-target="body"
+              hx-swap="beforeend"
+              hx-trigger="click">
+            <th>{{ forloop.counter0|add:page_obj.start_index }}</th>
+            <td>
+              <div class="font-semibold">
+                {% if le.brand %}{{ le.brand }}{% else %}{{ le.short_name|default:le.name }}{% endif %}
+              </div>
+              {% if le.brand %}
+                <div class="text-xs" style="color:var(--ms-text-tertiary)">{{ le.short_name|default:le.name }}</div>
+              {% elif le.short_name and le.name != le.short_name %}
+                <div class="text-xs" style="color:var(--ms-text-tertiary)">{{ le.name }}</div>
+              {% endif %}
+            </td>
+            <td class="text-xs">
+              {% if le.kind %}
+                <span class="badge badge-sm badge-outline"
+                      title="{{ le.kind.name }}">{{ le.kind.short_name }}</span>
+              {% else %}—{% endif %}
+            </td>
+            <td><span class="badge badge-sm badge-outline">{{ le.get_entity_type_display }}</span></td>
+            <td class="text-xs">
+              {% if le.inn %}{{ le.inn }}{% endif %}
+              {% if le.kpp %}<br>{{ le.kpp }}{% endif %}
+            </td>
+            <td class="text-xs">{{ le.ogrn|default:"—" }}</td>
+            <td class="text-xs">{{ le.director_name|default:"—" }}</td>
+            <td class="text-xs">
+              {% if le.phone %}<div>{{ le.phone }}</div>{% endif %}
+              {% if le.email %}<div>{{ le.email }}</div>{% endif %}
+            </td>
+            <td>
+              {% if le.status == "active" %}
+                <span class="badge badge-sm" style="background:#16a34a;color:#fff;border:none">Действующая</span>
+              {% elif le.status == "liquidation" %}
+                <span class="badge badge-sm" style="background:#f59e0b;color:#fff;border:none">В ликвидации</span>
+              {% elif le.status == "bankruptcy" %}
+                <span class="badge badge-sm" style="background:#dc2626;color:#fff;border:none">Банкротство</span>
+              {% elif le.status == "liquidated" %}
+                <span class="badge badge-sm" style="background:#6b7280;color:#fff;border:none">Ликвидирована</span>
+              {% endif %}
+            </td>
+            <td onclick="event.stopPropagation()">
+              <button class="btn btn-xs btn-outline"
+                      hx-get="{% url 'legal_entity_edit' le.id %}"
+                      hx-target="body"
+                      hx-swap="beforeend">Изменить</button>
+            </td>
+          </tr>
+        {% empty %}
+          <tr>
+            <td colspan="10" class="text-center text-sm text-base-content/60">
+              Юридических лиц нет
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% if page_obj.paginator.num_pages > 1 %}
+    <div class="join mt-3">
+      {% if page_obj.has_previous %}
+        <button
+          class="btn btn-sm join-item"
+          hx-get="{% url 'legal_entities_list' %}?partial=1&page={{ page_obj.previous_page_number }}"
+          hx-target="#legal-entities-table"
+          hx-swap="outerHTML"
+          hx-include="#le-filters"
+        >«</button>
+      {% endif %}
+
+      <button class="btn btn-sm join-item btn-ghost">
+        Стр. {{ page_obj.number }} / {{ page_obj.paginator.num_pages }}
+      </button>
+
+      {% if page_obj.has_next %}
+        <button
+          class="btn btn-sm join-item"
+          hx-get="{% url 'legal_entities_list' %}?partial=1&page={{ page_obj.next_page_number }}"
+          hx-target="#legal-entities-table"
+          hx-swap="outerHTML"
+          hx-include="#le-filters"
+        >»</button>
+      {% endif %}
+    </div>
+  {% endif %}
+</div>

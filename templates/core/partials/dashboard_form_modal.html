@@ -8,26 +8,25 @@
           class="space-y-3">
       {% csrf_token %}
 
-      <div class="grid grid-cols-2 gap-3">
-        <div>
-          <label class="label"><span class="label-text">Название</span></label>
-          <input type="text" name="name" value="{{ form.name.value|default:'' }}"
-                 class="input input-bordered w-full input-sm" required>
-        </div>
-        <div class="flex items-end gap-4 pb-1">
-          <label class="label cursor-pointer gap-2">
-            <span class="label-text">По умолчанию</span>
-            <input type="checkbox" name="is_default"
-                   {% if form.is_default.value %}checked{% endif %}
-                   class="toggle toggle-primary toggle-sm">
-          </label>
-          <label class="label cursor-pointer gap-2">
-            <span class="label-text">Активен</span>
-            <input type="checkbox" name="is_active"
-                   {% if form.is_active.value %}checked{% endif %}
-                   class="toggle toggle-primary toggle-sm">
-          </label>
-        </div>
+      <div>
+        <label class="label"><span class="label-text">Название</span></label>
+        <input type="text" name="name" value="{{ form.name.value|default:'' }}"
+               class="input input-bordered w-full input-sm" required>
+      </div>
+
+      <div class="flex gap-6">
+        <label class="label cursor-pointer gap-2">
+          <input type="checkbox" name="is_default"
+                 {% if form.is_default.value %}checked{% endif %}
+                 class="checkbox checkbox-primary checkbox-sm">
+          <span class="label-text">По умолчанию</span>
+        </label>
+        <label class="label cursor-pointer gap-2">
+          <input type="checkbox" name="is_active"
+                 {% if form.is_active.value %}checked{% endif %}
+                 class="checkbox checkbox-primary checkbox-sm">
+          <span class="label-text">Активен</span>
+        </label>
       </div>
 
       <div>
@@ -39,9 +38,9 @@
       <div class="divider text-xs">Пункты меню</div>
       <div class="grid grid-cols-2 sm:grid-cols-3 gap-1 max-h-48 overflow-y-auto">
         {% for checkbox in form.menu_items %}
-          <label class="label cursor-pointer justify-start gap-2 p-1">
+          <label class="flex items-center gap-2 cursor-pointer p-1">
             {{ checkbox.tag }}
-            <span class="label-text text-xs">{{ checkbox.choice_label }}</span>
+            <span class="text-xs">{{ checkbox.choice_label }}</span>
           </label>
         {% endfor %}
       </div>
@@ -49,9 +48,9 @@
       <div class="divider text-xs">Виджеты</div>
       <div class="grid grid-cols-2 sm:grid-cols-3 gap-1 max-h-48 overflow-y-auto">
         {% for checkbox in form.widgets %}
-          <label class="label cursor-pointer justify-start gap-2 p-1">
+          <label class="flex items-center gap-2 cursor-pointer p-1">
             {{ checkbox.tag }}
-            <span class="label-text text-xs">{{ checkbox.choice_label }}</span>
+            <span class="text-xs">{{ checkbox.choice_label }}</span>
           </label>
         {% endfor %}
       </div>

@@ -1,0 +1,44 @@
+{% load icons %}
+{% if empty and q|length >= 2 %}
+  <div class="global-search-empty">Ничего не найдено</div>
+{% elif clients or legal_entities or messages %}
+  {% if clients %}
+    <div class="global-search-group-title">Клиенты</div>
+    {% for c in clients %}
+      <a href="#" class="global-search-item"
+         onclick="openTelegramChatModalForClient('{{ c.id }}'); closeGlobalSearch(); return false;">
+        {% icon "user" size=14 %}
+        <span class="gs-main">{{ c.last_name }} {{ c.first_name }} {{ c.patronymic }}</span>
+        <span class="gs-aux">
+          {% if c.username %}@{{ c.username }}{% elif c.phone %}{{ c.phone }}{% endif %}
+        </span>
+      </a>
+    {% endfor %}
+  {% endif %}
+
+  {% if legal_entities %}
+    <div class="global-search-group-title">Юр. лица</div>
+    {% for le in legal_entities %}
+      <a href="#" class="global-search-item"
+         hx-get="{% url 'legal_entity_detail' le.id %}"
+         hx-target="body" hx-swap="beforeend"
+         onclick="closeGlobalSearch()">
+        {% icon "building-2" size=14 %}
+        <span class="gs-main">{{ le.name }}</span>
+        <span class="gs-aux">{% if le.inn %}ИНН {{ le.inn }}{% endif %}</span>
+      </a>
+    {% endfor %}
+  {% endif %}
+
+  {% if messages %}
+    <div class="global-search-group-title">Сообщения</div>
+    {% for m in messages %}
+      <a href="#" class="global-search-item"
+         onclick="openTelegramChatModalForClient('{{ m.client_id }}'); closeGlobalSearch(); return false;">
+        {% icon "message-square" size=14 %}
+        <span class="gs-main">{{ m.content|truncatechars:60 }}</span>
+        <span class="gs-aux">{{ m.client.last_name }} {{ m.client.first_name }}</span>
+      </a>
+    {% endfor %}
+  {% endif %}
+{% endif %}

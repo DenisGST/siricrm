@@ -1,15 +1,6 @@
 {% load static %}
-<div class="flex justify-between items-center mb-4">
-  <h2 class="text-xl font-bold">Kanban по клиентам</h2>
-
-  <button
-    class="btn btn-sm btn-primary"
-    hx-get="{% url 'client_create' %}"
-    hx-target="body"
-    hx-swap="beforeend"
-  >
-    + Новый клиент
-  </button>
+<div class="mb-4">
+  <h2 class="text-sm font-semibold" style="color:var(--ms-text-secondary)">Kanban по клиентам</h2>
 </div>
 
 <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -23,7 +14,8 @@
     <div id="kanban-lead"
          class="space-y-2 min-h-[50px]"
          hx-get="{% url 'kanban_column' 'lead' %}"
-         hx-trigger="load"
+         hx-trigger="load, kanbanRefresh from:body"
+         hx-include="#kanban-filter-form"
          hx-target="#kanban-lead"
          hx-swap="innerHTML">
       <!-- сюда HTMX подгрузит карточки -->
@@ -40,7 +32,8 @@
     <div id="kanban-active"
          class="space-y-2 min-h-[50px]"
          hx-get="{% url 'kanban_column' 'active' %}"
-         hx-trigger="load"
+         hx-trigger="load, kanbanRefresh from:body"
+         hx-include="#kanban-filter-form"
          hx-target="#kanban-active"
          hx-swap="innerHTML">
     </div>
@@ -56,7 +49,8 @@
     <div id="kanban-inactive"
          class="space-y-2 min-h-[50px]"
          hx-get="{% url 'kanban_column' 'inactive' %}"
-         hx-trigger="load"
+         hx-trigger="load, kanbanRefresh from:body"
+         hx-include="#kanban-filter-form"
          hx-target="#kanban-inactive"
          hx-swap="innerHTML">
     </div>
@@ -72,7 +66,8 @@
     <div id="kanban-closed"
          class="space-y-2 min-h-[50px]"
          hx-get="{% url 'kanban_column' 'closed' %}"
-         hx-trigger="load"
+         hx-trigger="load, kanbanRefresh from:body"
+         hx-include="#kanban-filter-form"
          hx-target="#kanban-closed"
          hx-swap="innerHTML">
     </div>

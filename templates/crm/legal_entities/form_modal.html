@@ -1,0 +1,381 @@
+<dialog id="legal-entity-modal" class="modal modal-open">
+  <div class="modal-box w-full max-w-4xl">
+    <div class="flex items-center justify-between mb-4">
+      <h3 class="text-lg font-bold">
+        {% if not is_new %}Редактирование юр. лица{% else %}Новое юридическое лицо{% endif %}
+      </h3>
+      <button type="button" class="btn btn-sm btn-ghost btn-circle"
+              onclick="this.closest('dialog').remove()">✕</button>
+    </div>
+
+    <!-- Поиск организации по DaData -->
+    <div class="mb-4 p-3 rounded" style="background:var(--ms-bg); border:1px solid var(--ms-border)">
+      <label class="text-xs font-semibold mb-1 block" style="color:var(--ms-text-secondary)">Поиск организации (наименование или ИНН)</label>
+      <div style="position:relative">
+        <input type="text" id="dadata-party-input"
+               class="input input-bordered input-sm w-full"
+               placeholder="Начните вводить название или ИНН..."
+               autocomplete="off">
+        <div id="dadata-party-suggestions"
+             style="display:none; position:absolute; top:100%; left:0; right:0; z-index:9999;
+                    background:var(--ms-surface,#fff); border:1px solid var(--ms-border);
+                    border-radius:0 0 4px 4px; box-shadow:0 4px 12px rgba(0,0,0,0.1);
+                    max-height:250px; overflow-y:auto;">
+        </div>
+      </div>
+    </div>
+
+    <form hx-post="{% if not is_new %}{% url 'legal_entity_edit' legal_entity.pk %}{% else %}{% url 'legal_entity_create' %}{% endif %}"
+          hx-target="#legal-entity-modal"
+          hx-swap="outerHTML"
+          hx-on::after-request="if(event.detail.successful && event.detail.xhr.status === 204){ var d=document.getElementById('legal-entity-modal'); if(d) d.remove(); }"
+          class="space-y-4"
+          id="le-form">
+      {% csrf_token %}
+
+      {% if form.non_field_errors %}
+        <div class="alert alert-error text-sm py-2">{{ form.non_field_errors }}</div>
+      {% endif %}
+      {% if form.errors %}
+        <div class="alert alert-warning text-xs py-2">
+          <div class="font-semibold mb-1">Проверьте заполнение полей:</div>
+          <ul class="list-disc ml-4">
+            {% for field, errs in form.errors.items %}
+              <li>{{ field }}: {{ errs|join:"; " }}</li>
+            {% endfor %}
+          </ul>
+        </div>
+      {% endif %}
+
+      <div role="tablist" class="tabs tabs-bordered">
+
+        <!-- Таб 1: Основное -->
+        <input type="radio" name="le-tabs" role="tab" class="tab" aria-label="Основное" checked />
+        <div role="tabpanel" class="tab-content pt-4 space-y-3">
+
+          <div class="grid grid-cols-4 gap-3">
+            <div class="form-control">
+              <label class="label py-1"><span class="label-text text-xs">Тип юр.лица</span></label>
+              <select name="kind" id="le-kind" class="select select-bordered select-sm w-full">
+                <option value="">—</option>
+                {% for obj in form.fields.kind.queryset %}
+                  <option value="{{ obj.pk }}"
+                    {% if form.kind.value|stringformat:"s" == obj.pk|stringformat:"s" %}selected{% endif %}>
+                    {{ obj.name }} ({{ obj.short_name }})
+                  </option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="form-control">
+              <label class="label py-1"><span class="label-text text-xs">Форма</span></label>
+              <select name="entity_type" id="le-entity_type" class="select select-bordered select-sm w-full">
+                {% for val, label in form.fields.entity_type.choices %}
+                  <option value="{{ val }}" {% if form.entity_type.value == val %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="form-control col-span-2">
+              <label class="label py-1"><span class="label-text text-xs">Наименование *</span></label>
+              <input type="text" name="name" id="le-name" value="{{ form.name.value|default:'' }}"
+                class="input input-bordered input-sm w-full" required>
+              {% if form.name.errors %}<span class="text-error text-xs">{{ form.name.errors.0 }}</span>{% endif %}
+            </div>
+          </div>
+
+          <div class="grid grid-cols-4 gap-3">
+            <div class="form-control col-span-2">
+              <label class="label py-1"><span class="label-text text-xs">Статус</span></label>
+              <select name="status" id="le-status" class="select select-bordered select-sm w-full">
+                {% for val, label in form.fields.status.choices %}
+                  <option value="{{ val }}" {% if form.status.value == val %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="form-control col-span-2 flex-row items-end gap-2">
+              <label class="label cursor-pointer gap-2">
+                <input type="checkbox" name="is_active" class="checkbox checkbox-sm"
+                       {% if form.is_active.value %}checked{% endif %}>
+                <span class="label-text text-xs">Активна</span>
+              </label>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 gap-3">
+            <div class="form-control">
+              <label class="label py-1"><span class="label-text text-xs">Краткое наименование</span></label>
+              <input type="text" name="short_name" id="le-short_name" value="{{ form.short_name.value|default:'' }}"
+                class="input input-bordered input-sm w-full">
+            </div>
+            <div class="form-control">
+              <label class="label py-1"><span class="label-text text-xs">Бренд</span></label>
+              <input type="text" name="brand" id="le-brand" value="{{ form.brand.value|default:'' }}"
+                class="input input-bordered input-sm w-full">
+            </div>
+          </div>
+
+          <div class="divider text-xs">Реквизиты</div>
+          <div class="grid grid-cols-3 gap-3">
+            <div class="form-control">
+              <label class="label py-1"><span class="label-text text-xs">ИНН</span></label>
+              <input type="text" name="inn" id="le-inn" value="{{ form.inn.value|default:'' }}"
+                maxlength="12" class="input input-bordered input-sm w-full">
+            </div>
+            <div class="form-control">
+              <label class="label py-1"><span class="label-text text-xs">КПП</span></label>
+              <input type="text" name="kpp" id="le-kpp" value="{{ form.kpp.value|default:'' }}"
+                maxlength="9" class="input input-bordered input-sm w-full">
+            </div>
+            <div class="form-control">
+              <label class="label py-1"><span class="label-text text-xs">ОГРН</span></label>
+              <input type="text" name="ogrn" id="le-ogrn" value="{{ form.ogrn.value|default:'' }}"
+                maxlength="15" class="input input-bordered input-sm w-full">
+            </div>
+            <div class="form-control">
+              <label class="label py-1"><span class="label-text text-xs">ОКПО</span></label>
+              <input type="text" name="okpo" id="le-okpo" value="{{ form.okpo.value|default:'' }}"
+                maxlength="14" class="input input-bordered input-sm w-full">
+            </div>
+            <div class="form-control">
+              <label class="label py-1"><span class="label-text text-xs">ОКВЭД</span></label>
+              <input type="text" name="okved" id="le-okved" value="{{ form.okved.value|default:'' }}"
+                maxlength="10" class="input input-bordered input-sm w-full">
+            </div>
+          </div>
+
+          <div class="divider text-xs">Контакты</div>
+          <div class="grid grid-cols-3 gap-3">
+            <div class="form-control">
+              <label class="label py-1"><span class="label-text text-xs">Телефон</span></label>
+              <input type="text" name="phone" id="le-phone" value="{{ form.phone.value|default:'' }}"
+                class="input input-bordered input-sm w-full">
+            </div>
+            <div class="form-control">
+              <label class="label py-1"><span class="label-text text-xs">Email</span></label>
+              <input type="email" name="email" id="le-email" value="{{ form.email.value|default:'' }}"
+                class="input input-bordered input-sm w-full">
+            </div>
+            <div class="form-control">
+              <label class="label py-1"><span class="label-text text-xs">Сайт</span></label>
+              <input type="url" name="website" id="le-website" value="{{ form.website.value|default:'' }}"
+                class="input input-bordered input-sm w-full" placeholder="https://">
+            </div>
+          </div>
+        </div>
+
+        <!-- Таб 2: Адреса и руководство -->
+        <input type="radio" name="le-tabs" role="tab" class="tab" aria-label="Адреса" />
+        <div role="tabpanel" class="tab-content pt-4 space-y-3">
+
+          <div class="form-control">
+            <label class="label py-1"><span class="label-text text-xs">Юридический адрес</span></label>
+            <textarea name="legal_address" id="le-legal_address" rows="2"
+              class="textarea textarea-bordered textarea-sm w-full">{{ form.legal_address.value|default:'' }}</textarea>
+          </div>
+          <div class="form-control">
+            <label class="label py-1"><span class="label-text text-xs">Фактический адрес</span></label>
+            <textarea name="actual_address" id="le-actual_address" rows="2"
+              class="textarea textarea-bordered textarea-sm w-full">{{ form.actual_address.value|default:'' }}</textarea>
+          </div>
+          <div class="form-control">
+            <label class="label py-1"><span class="label-text text-xs">Почтовый адрес</span></label>
+            <textarea name="postal_address" id="le-postal_address" rows="2"
+              class="textarea textarea-bordered textarea-sm w-full">{{ form.postal_address.value|default:'' }}</textarea>
+          </div>
+
+          <div class="divider text-xs">Руководство</div>
+          <div class="grid grid-cols-2 gap-3">
+            <div class="form-control">
+              <label class="label py-1"><span class="label-text text-xs">ФИО руководителя</span></label>
+              <input type="text" name="director_name" id="le-director_name" value="{{ form.director_name.value|default:'' }}"
+                class="input input-bordered input-sm w-full">
+            </div>
+            <div class="form-control">
+              <label class="label py-1"><span class="label-text text-xs">Должность</span></label>
+              <input type="text" name="director_title" id="le-director_title" value="{{ form.director_title.value|default:'' }}"
+                class="input input-bordered input-sm w-full" placeholder="Генеральный директор">
+            </div>
+          </div>
+        </div>
+
+        <!-- Таб 3: Банковские реквизиты и заметки -->
+        <input type="radio" name="le-tabs" role="tab" class="tab" aria-label="Банк и заметки" />
+        <div role="tabpanel" class="tab-content pt-4 space-y-3">
+
+          <div class="divider text-xs">Банковские реквизиты</div>
+          <div class="grid grid-cols-2 gap-3">
+            <div class="form-control col-span-2">
+              <label class="label py-1"><span class="label-text text-xs">Наименование банка</span></label>
+              <input type="text" name="bank_name" id="le-bank_name" value="{{ form.bank_name.value|default:'' }}"
+                class="input input-bordered input-sm w-full">
+            </div>
+            <div class="form-control">
+              <label class="label py-1"><span class="label-text text-xs">БИК</span></label>
+              <input type="text" name="bik" id="le-bik" value="{{ form.bik.value|default:'' }}"
+                maxlength="9" class="input input-bordered input-sm w-full">
+            </div>
+            <div class="form-control">
+              <label class="label py-1"><span class="label-text text-xs">Корр. счёт</span></label>
+              <input type="text" name="correspondent_account" id="le-correspondent_account" value="{{ form.correspondent_account.value|default:'' }}"
+                maxlength="20" class="input input-bordered input-sm w-full">
+            </div>
+            <div class="form-control col-span-2">
+              <label class="label py-1"><span class="label-text text-xs">Расчётный счёт</span></label>
+              <input type="text" name="settlement_account" id="le-settlement_account" value="{{ form.settlement_account.value|default:'' }}"
+                maxlength="20" class="input input-bordered input-sm w-full">
+            </div>
+          </div>
+
+          <div class="divider text-xs">Заметки</div>
+          <div class="form-control">
+            <textarea name="notes" id="le-notes" rows="4"
+              class="textarea textarea-bordered textarea-sm w-full">{{ form.notes.value|default:'' }}</textarea>
+          </div>
+
+          <div class="form-control">
+            <label class="label cursor-pointer justify-start gap-2">
+              <input type="checkbox" name="is_active" class="checkbox checkbox-sm"
+                {% if form.is_active.value != False %}checked{% endif %}>
+              <span class="label-text text-xs">Активна</span>
+            </label>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="modal-action pt-2">
+        <button type="button" class="btn btn-sm btn-ghost" onclick="this.closest('dialog').remove()">Отмена</button>
+        <button type="submit" class="btn btn-sm btn-primary">
+          {% if not is_new %}Сохранить{% else %}Создать{% endif %}
+        </button>
+      </div>
+    </form>
+  </div>
+  <div class="modal-backdrop" onclick="this.closest('dialog').remove()"></div>
+</dialog>
+
+<script>
+(function() {
+  var DADATA_TOKEN = "{{ dadata_api_key }}";
+  var input = document.getElementById("dadata-party-input");
+  var sugBox = document.getElementById("dadata-party-suggestions");
+  var debounceTimer = null;
+
+  var ENTITY_TYPE_MAP = {
+    "LEGAL": {"ООО": "ooo", "АО": "ao", "ПАО": "pao"},
+    "INDIVIDUAL": "ip"
+  };
+
+  function setVal(id, val) {
+    var el = document.getElementById(id);
+    if (el) el.value = val || "";
+  }
+
+  function detectEntityType(data) {
+    if (data.type === "INDIVIDUAL") return "ip";
+    var opf = (data.opf && data.opf.short) || "";
+    if (opf === "ПАО") return "pao";
+    if (opf === "АО" || opf === "ЗАО" || opf === "ОАО") return "ao";
+    if (opf === "ООО") return "ooo";
+    return "other";
+  }
+
+  function fillFromSuggestion(s) {
+    var d = s.data;
+
+    setVal("le-name", (d.name && d.name.full_with_opf) || s.value);
+    setVal("le-short_name", (d.name && d.name.short_with_opf) || "");
+    setVal("le-inn", d.inn);
+    setVal("le-kpp", d.kpp);
+    setVal("le-ogrn", d.ogrn);
+    setVal("le-okpo", d.okpo);
+    setVal("le-okved", d.okved);
+
+    // Адрес
+    var addr = (d.address && d.address.unrestricted_value) || "";
+    setVal("le-legal_address", addr);
+
+    // Руководитель
+    if (d.management) {
+      setVal("le-director_name", d.management.name);
+      setVal("le-director_title", d.management.post);
+    }
+
+    // Контакты
+    if (d.phones) setVal("le-phone", d.phones);
+    if (d.emails) setVal("le-email", d.emails);
+
+    // Форма юр. лица
+    var sel = document.getElementById("le-entity_type");
+    if (sel) {
+      var etype = detectEntityType(d);
+      for (var i = 0; i < sel.options.length; i++) {
+        if (sel.options[i].value === etype) { sel.selectedIndex = i; break; }
+      }
+    }
+
+    sugBox.style.display = "none";
+    input.value = "";
+  }
+
+  function fetchSuggestions(query) {
+    if (query.length < 2) { sugBox.style.display = "none"; return; }
+
+    fetch("https://suggestions.dadata.ru/suggestions/api/4_1/rs/suggest/party", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+        "Authorization": "Token " + DADATA_TOKEN
+      },
+      body: JSON.stringify({ query: query, count: 7 })
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (!data.suggestions || !data.suggestions.length) {
+        sugBox.style.display = "none";
+        return;
+      }
+      sugBox.innerHTML = "";
+      data.suggestions.forEach(function(s) {
+        var div = document.createElement("div");
+        var d = s.data;
+        var status = (d.state && d.state.status) || "";
+        var statusBadge = "";
+        if (status === "LIQUIDATING") statusBadge = ' <span style="color:#e55;font-size:10px">[ликвидируется]</span>';
+        if (status === "LIQUIDATED") statusBadge = ' <span style="color:#999;font-size:10px">[ликвидирована]</span>';
+
+        div.innerHTML =
+          '<div style="font-size:13px;font-weight:500">' + s.value + statusBadge + '</div>' +
+          '<div style="font-size:11px;color:var(--ms-text-tertiary,#888)">' +
+            'ИНН: ' + (d.inn || '—') +
+            (d.kpp ? ', КПП: ' + d.kpp : '') +
+            (d.address && d.address.value ? '<br>' + d.address.value : '') +
+            (d.management && d.management.name ? '<br>' + d.management.post + ': ' + d.management.name : '') +
+          '</div>';
+        div.style.cssText = "padding:8px 10px; cursor:pointer; border-bottom:1px solid var(--ms-border-light,#eee)";
+        div.onmouseenter = function() { div.style.background = "var(--ms-border,#e8e8e8)"; };
+        div.onmouseleave = function() { div.style.background = ""; };
+        div.onclick = function() { fillFromSuggestion(s); };
+        sugBox.appendChild(div);
+      });
+      sugBox.style.display = "block";
+    })
+    .catch(function() { sugBox.style.display = "none"; });
+  }
+
+  input.addEventListener("input", function() {
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(function() { fetchSuggestions(input.value.trim()); }, 300);
+  });
+
+  input.addEventListener("focus", function() {
+    if (input.value.trim().length >= 2) fetchSuggestions(input.value.trim());
+  });
+
+  document.addEventListener("click", function(e) {
+    if (!sugBox.contains(e.target) && e.target !== input) {
+      sugBox.style.display = "none";
+    }
+  });
+})();
+</script>

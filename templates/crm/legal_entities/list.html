@@ -1,0 +1,110 @@
+{% load static icons %}
+<div class="flex flex-col gap-4">
+
+  <div class="flex flex-wrap items-center gap-2">
+    <h2 class="text-sm font-semibold mr-2" style="color:var(--ms-text-secondary)">Юридические лица</h2>
+
+    <form id="le-filters"
+          hx-get="{% url 'legal_entities_list' %}?partial=1"
+          hx-target="#legal-entities-table"
+          hx-swap="outerHTML"
+          class="flex flex-wrap items-center gap-2">
+
+      <!-- Поиск: submit по Enter, живой поиск по keyup с задержкой -->
+      <label class="input input-sm input-bordered le-search flex items-center gap-2 w-64">
+        {% icon "search" size=14 %}
+        <input type="search" name="search" value="{{ search }}"
+               placeholder="ФИО, бренд, ИНН, ОГРН"
+               class="le-search-input"
+               hx-get="{% url 'legal_entities_list' %}?partial=1"
+               hx-target="#legal-entities-table"
+               hx-swap="outerHTML"
+               hx-trigger="keyup changed delay:400ms, search"
+               hx-include="#le-filters">
+      </label>
+
+      <!-- Фильтры (submit формы на изменение) -->
+      <select name="kind" class="select select-sm select-bordered"
+              onchange="this.form.requestSubmit()">
+        <option value="">Тип: все</option>
+        {% for k in kinds %}
+          <option value="{{ k.pk }}" {% if f_kind == k.pk|stringformat:"s" %}selected{% endif %}>
+            {{ k.short_name }}
+          </option>
+        {% endfor %}
+      </select>
+
+      <select name="status" class="select select-sm select-bordered"
+              onchange="this.form.requestSubmit()">
+        <option value="">Статус: все</option>
+        {% for val, label in status_choices %}
+          <option value="{{ val }}" {% if f_status == val %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+
+      <select name="entity_type" class="select select-sm select-bordered"
+              onchange="this.form.requestSubmit()">
+        <option value="">Форма: все</option>
+        {% for val, label in entity_type_choices %}
+          <option value="{{ val }}" {% if f_entity_type == val %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+
+      {% if search or f_kind or f_status or f_entity_type %}
+        <button type="button" class="btn btn-sm btn-ghost"
+                onclick="
+                  var f=document.getElementById('le-filters');
+                  f.reset();
+                  var s=f.querySelector('input[name=sort]'); if(s) s.value='name';
+                  f.requestSubmit();
+                ">Сбросить</button>
+      {% endif %}
+    </form>
+
+    <!-- Кнопка добавления — иконкой, вне формы, через htmx.ajax напрямую -->
+    <button type="button" class="btn btn-sm btn-square btn-primary ml-auto"
+            title="Новое юр. лицо"
+            onclick="htmx.ajax('GET', '{% url 'legal_entity_create' %}', {target:'body', swap:'beforeend'})">
+      {% icon "plus" size=16 %}
+    </button>
+  </div>
+
+  <div hx-get="{% url 'legal_entities_list' %}?partial=1"
+       hx-trigger="legalEntityChanged from:body"
+       hx-target="#legal-entities-table"
+       hx-swap="outerHTML"
+       hx-include="#le-filters">
+  </div>
+
+  {% include "crm/legal_entities/list_partial.html" %}
+</div>
+
+<script>
+(function() {
+  if (window.__leSortBound) return;
+  window.__leSortBound = true;
+  // Клик по заголовку таблицы — переключение сортировки (делегирование)
+  document.addEventListener('click', function(e) {
+    var th = e.target.closest('.le-sort-th');
+    if (!th) return;
+    var form = document.getElementById('le-filters');
+    if (!form) return;
+    // Скрытый input может быть внутри #legal-entities-table (с form="le-filters")
+    // или внутри формы — возьмём любой.
+    var hidden = form.querySelector('input[name="sort"]')
+              || document.querySelector('input[name="sort"][form="le-filters"]');
+    var field = th.dataset.sort;
+    var cur = hidden ? hidden.value : '';
+    var next = cur === field ? '-' + field : field;
+    if (!hidden) {
+      hidden = document.createElement('input');
+      hidden.type = 'hidden';
+      hidden.name = 'sort';
+      form.appendChild(hidden);
+    }
+    hidden.value = next;
+    form.requestSubmit();   // HTMX перехватит native submit
+  });
+})();
+</script>
+

@@ -1,6 +1,6 @@
 # apps/crm/forms.py
 from django import forms
-from .models import Client
+from .models import Client, LegalEntity
 from apps.core.models import Employee
 
 
@@ -44,3 +44,17 @@ class ClientForm(forms.ModelForm):
             "birth_date": forms.DateInput(attrs={"type": "date", "class": "input input-bordered w-full"}),
             "passport_issued_date": forms.DateInput(attrs={"type": "date", "class": "input input-bordered w-full"}),
         }
+
+
+class LegalEntityForm(forms.ModelForm):
+    class Meta:
+        model = LegalEntity
+        fields = [
+            "kind", "entity_type", "name", "short_name", "brand",
+            "inn", "kpp", "ogrn", "okpo", "okved",
+            "legal_address", "actual_address", "postal_address",
+            "director_name", "director_title",
+            "phone", "email", "website",
+            "bank_name", "bik", "correspondent_account", "settlement_account",
+            "notes", "is_active", "status",
+        ]

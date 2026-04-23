@@ -1,0 +1,204 @@
+<div id="address-section">
+  <div class="p-3 rounded" style="background:var(--ms-bg); border:1px solid var(--ms-border)">
+    <h4 class="text-sm font-semibold mb-3">
+      {% if not is_new %}Редактирование адреса{% else %}Новый адрес{% endif %}
+    </h4>
+
+    <form id="address-form"
+          hx-post="{% if not is_new %}{% url 'address_edit' client.id address.id %}{% else %}{% url 'address_add' client.id %}{% endif %}"
+          hx-target="#address-section"
+          hx-swap="innerHTML"
+          class="space-y-2">
+      {% csrf_token %}
+
+      <div class="grid grid-cols-2 gap-2">
+        <div>
+          <label class="text-xs font-medium">Тип адреса</label>
+          <select name="address_type" id="addr-type-select"
+                  class="select select-bordered select-sm w-full"
+                  onchange="document.getElementById('addr-comment-row').style.display = this.value==='other' ? '' : 'none'">
+            {% for val, label in address_types %}
+              <option value="{{ val }}" {% if address and address.address_type == val %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div id="addr-comment-row" style="{% if not address or address.address_type != 'other' %}display:none{% endif %}">
+          <label class="text-xs font-medium">Комментарий</label>
+          <input type="text" name="comment" value="{{ address.comment|default:'' }}"
+                 class="input input-bordered input-sm w-full" placeholder="Уточнение типа адреса">
+        </div>
+      </div>
+
+      <div>
+        <label class="text-xs font-medium">Адрес</label>
+        <div style="position:relative">
+          <input type="text" id="dadata-address-input"
+                 name="source"
+                 value="{{ address.result|default:'' }}"
+                 class="input input-bordered input-sm w-full"
+                 placeholder="Начните вводить адрес..."
+                 autocomplete="off">
+          <div id="dadata-suggestions"
+               style="display:none; position:absolute; top:100%; left:0; right:0; z-index:9999;
+                      background:var(--ms-surface); border:1px solid var(--ms-border);
+                      border-radius:0 0 4px 4px; box-shadow:0 4px 12px rgba(0,0,0,0.1);
+                      max-height:200px; overflow-y:auto;">
+          </div>
+        </div>
+      </div>
+
+      <!-- Скрытое поле result -->
+      <input type="hidden" name="result" id="addr-result" value="{{ address.result|default:'' }}">
+
+      <!-- Все структурные поля DaData — скрытые -->
+      {% with fields="postal_code,country,country_iso_code,federal_district,region_fias_id,region_kladr_id,region_with_type,region_type_full,region,area_fias_id,area_with_type,area_type_full,area,city_fias_id,city_kladr_id,city_with_type,city_type_full,city,city_district_with_type,settlement_fias_id,settlement_with_type,settlement_type_full,settlement,street_fias_id,street_with_type,street_type_full,street,house_fias_id,house_type_full,house,block_type_full,block,entrance,floor,flat_type_full,flat,fias_id,fias_level,kladr_id,geo_lat,geo_lon,qc_geo,qc_complete,qc_house,qc,okato,oktmo,tax_office,timezone" %}
+        {% for f in fields|make_list %}{% endfor %}
+      {% endwith %}
+      <input type="hidden" name="postal_code" id="addr-postal_code" value="{{ address.postal_code|default:'' }}">
+      <input type="hidden" name="country" id="addr-country" value="{{ address.country|default:'' }}">
+      <input type="hidden" name="country_iso_code" id="addr-country_iso_code" value="{{ address.country_iso_code|default:'' }}">
+      <input type="hidden" name="federal_district" id="addr-federal_district" value="{{ address.federal_district|default:'' }}">
+      <input type="hidden" name="region_fias_id" id="addr-region_fias_id" value="{{ address.region_fias_id|default:'' }}">
+      <input type="hidden" name="region_kladr_id" id="addr-region_kladr_id" value="{{ address.region_kladr_id|default:'' }}">
+      <input type="hidden" name="region_with_type" id="addr-region_with_type" value="{{ address.region_with_type|default:'' }}">
+      <input type="hidden" name="region_type_full" id="addr-region_type_full" value="{{ address.region_type_full|default:'' }}">
+      <input type="hidden" name="region" id="addr-region" value="{{ address.region|default:'' }}">
+      <input type="hidden" name="area_fias_id" id="addr-area_fias_id" value="{{ address.area_fias_id|default:'' }}">
+      <input type="hidden" name="area_with_type" id="addr-area_with_type" value="{{ address.area_with_type|default:'' }}">
+      <input type="hidden" name="area_type_full" id="addr-area_type_full" value="{{ address.area_type_full|default:'' }}">
+      <input type="hidden" name="area" id="addr-area" value="{{ address.area|default:'' }}">
+      <input type="hidden" name="city_fias_id" id="addr-city_fias_id" value="{{ address.city_fias_id|default:'' }}">
+      <input type="hidden" name="city_kladr_id" id="addr-city_kladr_id" value="{{ address.city_kladr_id|default:'' }}">
+      <input type="hidden" name="city_with_type" id="addr-city_with_type" value="{{ address.city_with_type|default:'' }}">
+      <input type="hidden" name="city_type_full" id="addr-city_type_full" value="{{ address.city_type_full|default:'' }}">
+      <input type="hidden" name="city" id="addr-city" value="{{ address.city|default:'' }}">
+      <input type="hidden" name="city_district_with_type" id="addr-city_district_with_type" value="{{ address.city_district_with_type|default:'' }}">
+      <input type="hidden" name="settlement_fias_id" id="addr-settlement_fias_id" value="{{ address.settlement_fias_id|default:'' }}">
+      <input type="hidden" name="settlement_with_type" id="addr-settlement_with_type" value="{{ address.settlement_with_type|default:'' }}">
+      <input type="hidden" name="settlement_type_full" id="addr-settlement_type_full" value="{{ address.settlement_type_full|default:'' }}">
+      <input type="hidden" name="settlement" id="addr-settlement" value="{{ address.settlement|default:'' }}">
+      <input type="hidden" name="street_fias_id" id="addr-street_fias_id" value="{{ address.street_fias_id|default:'' }}">
+      <input type="hidden" name="street_with_type" id="addr-street_with_type" value="{{ address.street_with_type|default:'' }}">
+      <input type="hidden" name="street_type_full" id="addr-street_type_full" value="{{ address.street_type_full|default:'' }}">
+      <input type="hidden" name="street" id="addr-street" value="{{ address.street|default:'' }}">
+      <input type="hidden" name="house_fias_id" id="addr-house_fias_id" value="{{ address.house_fias_id|default:'' }}">
+      <input type="hidden" name="house_type_full" id="addr-house_type_full" value="{{ address.house_type_full|default:'' }}">
+      <input type="hidden" name="house" id="addr-house" value="{{ address.house|default:'' }}">
+      <input type="hidden" name="block_type_full" id="addr-block_type_full" value="{{ address.block_type_full|default:'' }}">
+      <input type="hidden" name="block" id="addr-block" value="{{ address.block|default:'' }}">
+      <input type="hidden" name="entrance" id="addr-entrance" value="{{ address.entrance|default:'' }}">
+      <input type="hidden" name="floor" id="addr-floor" value="{{ address.floor|default:'' }}">
+      <input type="hidden" name="flat_type_full" id="addr-flat_type_full" value="{{ address.flat_type_full|default:'' }}">
+      <input type="hidden" name="flat" id="addr-flat" value="{{ address.flat|default:'' }}">
+      <input type="hidden" name="fias_id" id="addr-fias_id" value="{{ address.fias_id|default:'' }}">
+      <input type="hidden" name="fias_level" id="addr-fias_level" value="{{ address.fias_level|default:'' }}">
+      <input type="hidden" name="kladr_id" id="addr-kladr_id" value="{{ address.kladr_id|default:'' }}">
+      <input type="hidden" name="geo_lat" id="addr-geo_lat" value="{{ address.geo_lat|default:'' }}">
+      <input type="hidden" name="geo_lon" id="addr-geo_lon" value="{{ address.geo_lon|default:'' }}">
+      <input type="hidden" name="qc_geo" id="addr-qc_geo" value="{{ address.qc_geo|default:'' }}">
+      <input type="hidden" name="qc_complete" id="addr-qc_complete" value="{{ address.qc_complete|default:'' }}">
+      <input type="hidden" name="qc_house" id="addr-qc_house" value="{{ address.qc_house|default:'' }}">
+      <input type="hidden" name="qc" id="addr-qc" value="{{ address.qc|default:'' }}">
+      <input type="hidden" name="okato" id="addr-okato" value="{{ address.okato|default:'' }}">
+      <input type="hidden" name="oktmo" id="addr-oktmo" value="{{ address.oktmo|default:'' }}">
+      <input type="hidden" name="tax_office" id="addr-tax_office" value="{{ address.tax_office|default:'' }}">
+      <input type="hidden" name="timezone" id="addr-timezone" value="{{ address.timezone|default:'' }}">
+
+      <div class="flex gap-2 mt-2">
+        <button type="submit" class="btn btn-primary btn-xs">Сохранить</button>
+        <button type="button" class="btn btn-xs"
+                hx-get="{% url 'client_addresses' client.id %}"
+                hx-target="#address-section"
+                hx-swap="innerHTML">Отмена</button>
+      </div>
+    </form>
+  </div>
+
+  <script>
+  (function() {
+    const DADATA_TOKEN = "{{ dadata_api_key }}";
+    const input = document.getElementById("dadata-address-input");
+    const sugBox = document.getElementById("dadata-suggestions");
+    let debounceTimer = null;
+
+    const FIELDS = [
+      "postal_code","country","country_iso_code","federal_district",
+      "region_fias_id","region_kladr_id","region_with_type","region_type_full","region",
+      "area_fias_id","area_with_type","area_type_full","area",
+      "city_fias_id","city_kladr_id","city_with_type","city_type_full","city",
+      "city_district_with_type",
+      "settlement_fias_id","settlement_with_type","settlement_type_full","settlement",
+      "street_fias_id","street_with_type","street_type_full","street",
+      "house_fias_id","house_type_full","house",
+      "block_type_full","block","entrance","floor",
+      "flat_type_full","flat",
+      "fias_id","fias_level","kladr_id",
+      "geo_lat","geo_lon",
+      "qc_geo","qc_complete","qc_house","qc",
+      "okato","oktmo","tax_office","timezone"
+    ];
+
+    function fillFields(data) {
+      FIELDS.forEach(function(f) {
+        var el = document.getElementById("addr-" + f);
+        if (el) el.value = data[f] || "";
+      });
+    }
+
+    function selectSuggestion(s) {
+      input.value = s.value;
+      document.getElementById("addr-result").value = s.unrestricted_value || s.value;
+      fillFields(s.data);
+      sugBox.style.display = "none";
+    }
+
+    function fetchSuggestions(query) {
+      if (query.length < 3) { sugBox.style.display = "none"; return; }
+
+      fetch("https://suggestions.dadata.ru/suggestions/api/4_1/rs/suggest/address", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Accept": "application/json",
+          "Authorization": "Token " + DADATA_TOKEN
+        },
+        body: JSON.stringify({ query: query, count: 7 })
+      })
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        if (!data.suggestions || !data.suggestions.length) {
+          sugBox.style.display = "none";
+          return;
+        }
+        sugBox.innerHTML = "";
+        data.suggestions.forEach(function(s) {
+          var div = document.createElement("div");
+          div.textContent = s.value;
+          div.style.cssText = "padding:6px 10px; cursor:pointer; font-size:12px; border-bottom:1px solid var(--ms-border-light)";
+          div.onmouseenter = function() { div.style.background = "var(--ms-border)"; };
+          div.onmouseleave = function() { div.style.background = ""; };
+          div.onclick = function() { selectSuggestion(s); };
+          sugBox.appendChild(div);
+        });
+        sugBox.style.display = "block";
+      })
+      .catch(function() { sugBox.style.display = "none"; });
+    }
+
+    input.addEventListener("input", function() {
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(function() { fetchSuggestions(input.value); }, 300);
+    });
+
+    input.addEventListener("focus", function() {
+      if (input.value.length >= 3) fetchSuggestions(input.value);
+    });
+
+    document.addEventListener("click", function(e) {
+      if (!sugBox.contains(e.target) && e.target !== input) {
+        sugBox.style.display = "none";
+      }
+    });
+  })();
+  </script>
+</div>

@@ -11,6 +11,8 @@ ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1').split(','
 CSRF_TRUSTED_ORIGINS = ['https://siricrm.ru', 'https://www.siricrm.ru']
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
+DADATA_API_KEY = config('DADATA_API_KEY', default='b16b9a063109b2cd131d2388018302b6bb2e7e44')
+
 INSTALLED_APPS = [
     'daphne',
     'django.contrib.admin',

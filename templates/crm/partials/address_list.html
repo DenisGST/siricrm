@@ -1,0 +1,41 @@
+<div id="address-section">
+  <div class="flex items-center justify-between mb-2">
+    <span class="text-xs font-semibold" style="color:var(--ms-text-secondary)">Адреса</span>
+    <button type="button" class="btn btn-primary btn-xs"
+            hx-get="{% url 'address_add' client.id %}"
+            hx-target="#address-section"
+            hx-swap="innerHTML">
+      + Добавить адрес
+    </button>
+  </div>
+
+  {% for addr in addresses %}
+  <div class="flex items-start gap-2 p-2 rounded mb-1" style="background:var(--ms-bg); border:1px solid var(--ms-border)">
+    <div class="flex-1 min-w-0">
+      <div class="flex items-center gap-2">
+        <span class="badge badge-sm badge-outline">{{ addr.get_address_type_display }}</span>
+        {% if addr.comment %}
+          <span class="text-xs" style="color:var(--ms-text-tertiary)">({{ addr.comment }})</span>
+        {% endif %}
+      </div>
+      <div class="text-xs mt-1 truncate" title="{{ addr.result }}">{{ addr.result|default:addr.source }}</div>
+      {% if addr.postal_code %}
+        <div class="text-xs" style="color:var(--ms-text-tertiary)">Индекс: {{ addr.postal_code }}</div>
+      {% endif %}
+    </div>
+    <div class="flex gap-1 flex-shrink-0">
+      <button type="button" class="btn btn-xs btn-outline"
+              hx-get="{% url 'address_edit' client.id addr.id %}"
+              hx-target="#address-section"
+              hx-swap="innerHTML">✎</button>
+      <button type="button" class="btn btn-xs btn-error btn-outline"
+              hx-post="{% url 'address_delete' client.id addr.id %}"
+              hx-target="#address-section"
+              hx-swap="innerHTML"
+              hx-confirm="Удалить этот адрес?">✕</button>
+    </div>
+  </div>
+  {% empty %}
+  <div class="text-xs py-2" style="color:var(--ms-text-tertiary)">Адреса не добавлены</div>
+  {% endfor %}
+</div>

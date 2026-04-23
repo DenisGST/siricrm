@@ -42,7 +42,7 @@ class Department(TimeStampedModel):
 class MenuItem(TimeStampedModel):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField("Название", max_length=100)
-    icon = models.CharField("Иконка", max_length=10, blank=True)
+    icon = models.CharField("Иконка", max_length=50, blank=True)
     url = models.CharField("URL", max_length=255)
     section = models.CharField("Секция меню", max_length=100, blank=True)
     order = models.PositiveIntegerField("Порядок", default=0)

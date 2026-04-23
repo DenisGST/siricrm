@@ -83,6 +83,7 @@ class Client(TimeStampedModel):
     contacts_confirmed = models.BooleanField(default=False, verbose_name='Контакты подтверждены')
     employees = models.ManyToManyField(
         Employee,
+        through="ClientEmployee",
         related_name="clients",
         blank=True,
         help_text="Сотрудники, работающие с клиентом",
@@ -114,6 +115,217 @@ class Client(TimeStampedModel):
             models.Index(fields=['telegram_id']),
             models.Index(fields=['status']),
         ]
+
+
+class ClientEmployee(models.Model):
+    MESSENGER_STATUS_CHOICES = [
+        ("open", "Диалог открыт"),
+        ("waiting", "Ожидаю ответа"),
+        ("closed", "Диалог закрыт"),
+    ]
+
+    client = models.ForeignKey(
+        Client, on_delete=models.CASCADE, related_name="client_employees",
+    )
+    employee = models.ForeignKey(
+        Employee, on_delete=models.CASCADE, related_name="client_employees",
+    )
+    messenger_status = models.CharField(
+        "Статус мессенджера", max_length=10,
+        choices=MESSENGER_STATUS_CHOICES, default="closed",
+    )
+    status_changed_at = models.DateTimeField(
+        "Время изменения статуса", null=True, blank=True,
+    )
+
+    class Meta:
+        unique_together = ("client", "employee")
+        verbose_name = "Связь клиент-сотрудник"
+        verbose_name_plural = "Связи клиент-сотрудник"
+
+    def __str__(self):
+        return f"{self.client} — {self.employee} ({self.get_messenger_status_display()})"
+
+
+class Address(TimeStampedModel):
+    """Адрес клиента (структура полей — DaData)"""
+    ADDRESS_TYPES = [
+        ("default", "По умолчанию"),
+        ("registration", "Адрес регистрации"),
+        ("actual", "Адрес фактического проживания"),
+        ("postal", "Почтовый адрес"),
+        ("other", "Иное"),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    client = models.ForeignKey(
+        Client, on_delete=models.CASCADE,
+        related_name="addresses", verbose_name="Клиент",
+    )
+    address_type = models.CharField(
+        "Тип адреса", max_length=20,
+        choices=ADDRESS_TYPES, default="default",
+    )
+    comment = models.CharField("Комментарий", max_length=500, blank=True)
+
+    result = models.TextField("Полный адрес (стандартизированный)", blank=True)
+    source = models.TextField("Исходный ввод", blank=True)
+
+    postal_code = models.CharField("Индекс", max_length=6, blank=True)
+    country = models.CharField("Страна", max_length=120, blank=True, default="Россия")
+    country_iso_code = models.CharField("ISO-код страны", max_length=2, blank=True)
+    federal_district = models.CharField("Федеральный округ", max_length=255, blank=True)
+
+    region_fias_id = models.CharField("ФИАС ID региона", max_length=36, blank=True)
+    region_kladr_id = models.CharField("КЛАДР ID региона", max_length=19, blank=True)
+    region_with_type = models.CharField("Регион с типом", max_length=255, blank=True)
+    region_type_full = models.CharField("Тип региона", max_length=50, blank=True)
+    region = models.CharField("Регион", max_length=255, blank=True)
+
+    area_fias_id = models.CharField("ФИАС ID района", max_length=36, blank=True)
+    area_with_type = models.CharField("Район с типом", max_length=255, blank=True)
+    area_type_full = models.CharField("Тип района", max_length=50, blank=True)
+    area = models.CharField("Район", max_length=255, blank=True)
+
+    city_fias_id = models.CharField("ФИАС ID города", max_length=36, blank=True)
+    city_kladr_id = models.CharField("КЛАДР ID города", max_length=19, blank=True)
+    city_with_type = models.CharField("Город с типом", max_length=255, blank=True)
+    city_type_full = models.CharField("Тип города", max_length=50, blank=True)
+    city = models.CharField("Город", max_length=255, blank=True)
+
+    city_district_with_type = models.CharField("Район города с типом", max_length=255, blank=True)
+
+    settlement_fias_id = models.CharField("ФИАС ID н.п.", max_length=36, blank=True)
+    settlement_with_type = models.CharField("Нас. пункт с типом", max_length=255, blank=True)
+    settlement_type_full = models.CharField("Тип нас. пункта", max_length=50, blank=True)
+    settlement = models.CharField("Населённый пункт", max_length=255, blank=True)
+
+    street_fias_id = models.CharField("ФИАС ID улицы", max_length=36, blank=True)
+    street_with_type = models.CharField("Улица с типом", max_length=255, blank=True)
+    street_type_full = models.CharField("Тип улицы", max_length=50, blank=True)
+    street = models.CharField("Улица", max_length=255, blank=True)
+
+    house_fias_id = models.CharField("ФИАС ID дома", max_length=36, blank=True)
+    house_type_full = models.CharField("Тип дома", max_length=50, blank=True)
+    house = models.CharField("Дом", max_length=50, blank=True)
+    block_type_full = models.CharField("Тип корпуса/строения", max_length=50, blank=True)
+    block = models.CharField("Корпус/строение", max_length=50, blank=True)
+    entrance = models.CharField("Подъезд", max_length=10, blank=True)
+    floor = models.CharField("Этаж", max_length=10, blank=True)
+    flat_type_full = models.CharField("Тип помещения", max_length=50, blank=True)
+    flat = models.CharField("Квартира/офис", max_length=50, blank=True)
+
+    fias_id = models.CharField("ФИАС ID", max_length=36, blank=True)
+    fias_level = models.CharField("Уровень детализации ФИАС", max_length=2, blank=True)
+    kladr_id = models.CharField("КЛАДР ID", max_length=19, blank=True)
+
+    geo_lat = models.CharField("Широта", max_length=15, blank=True)
+    geo_lon = models.CharField("Долгота", max_length=15, blank=True)
+
+    qc_geo = models.CharField("Код точности координат", max_length=1, blank=True)
+    qc_complete = models.CharField("Код полноты", max_length=1, blank=True)
+    qc_house = models.CharField("Код проверки дома", max_length=1, blank=True)
+    qc = models.CharField("Код качества", max_length=1, blank=True)
+
+    okato = models.CharField("ОКАТО", max_length=11, blank=True)
+    oktmo = models.CharField("ОКТМО", max_length=11, blank=True)
+    tax_office = models.CharField("Код ИФНС", max_length=4, blank=True)
+    timezone = models.CharField("Часовой пояс", max_length=50, blank=True)
+
+    class Meta:
+        verbose_name = "Адрес"
+        verbose_name_plural = "Адреса"
+        ordering = ["address_type"]
+
+    def __str__(self):
+        return f"{self.get_address_type_display()}: {self.result or self.source}"
+
+
+class LegalEntityKind(TimeStampedModel):
+    """Справочник типов юридических лиц (Банк, МФО, СРО, КО, ФНС, ФССП и т. п.)."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField(max_length=255, unique=True, verbose_name="Наименование типа")
+    short_name = models.CharField(max_length=50, verbose_name="Сокращённое наименование")
+
+    def __str__(self):
+        return self.short_name or self.name
+
+    class Meta:
+        verbose_name = "Тип юридического лица"
+        verbose_name_plural = "Типы юридических лиц"
+        ordering = ["name"]
+
+
+class LegalEntity(TimeStampedModel):
+    """Юридическое лицо"""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
+    ENTITY_TYPE_CHOICES = [
+        ("ooo", "ООО"),
+        ("ip", "ИП"),
+        ("ao", "АО"),
+        ("pao", "ПАО"),
+        ("other", "Иное"),
+    ]
+    entity_type = models.CharField(
+        max_length=10, choices=ENTITY_TYPE_CHOICES,
+        default="ooo", verbose_name="Форма",
+    )
+    name = models.CharField(max_length=500, verbose_name="Наименование")
+    short_name = models.CharField(max_length=255, blank=True, verbose_name="Краткое наименование")
+    brand = models.CharField(max_length=255, blank=True, verbose_name="Бренд")
+
+    inn = models.CharField(max_length=12, blank=True, verbose_name="ИНН")
+    kpp = models.CharField(max_length=9, blank=True, verbose_name="КПП")
+    ogrn = models.CharField(max_length=15, blank=True, verbose_name="ОГРН")
+    okpo = models.CharField(max_length=14, blank=True, verbose_name="ОКПО")
+    okved = models.CharField(max_length=10, blank=True, verbose_name="ОКВЭД")
+
+    legal_address = models.TextField(blank=True, verbose_name="Юридический адрес")
+    actual_address = models.TextField(blank=True, verbose_name="Фактический адрес")
+    postal_address = models.TextField(blank=True, verbose_name="Почтовый адрес")
+
+    director_name = models.CharField(max_length=255, blank=True, verbose_name="Руководитель")
+    director_title = models.CharField(max_length=255, blank=True, verbose_name="Должность руководителя")
+
+    phone = models.CharField(max_length=20, blank=True, verbose_name="Телефон")
+    email = models.EmailField(blank=True, verbose_name="Email")
+    website = models.URLField(blank=True, verbose_name="Сайт")
+
+    bank_name = models.CharField(max_length=255, blank=True, verbose_name="Банк")
+    bik = models.CharField(max_length=9, blank=True, verbose_name="БИК")
+    correspondent_account = models.CharField(max_length=20, blank=True, verbose_name="Корр. счёт")
+    settlement_account = models.CharField(max_length=20, blank=True, verbose_name="Расчётный счёт")
+
+    notes = models.TextField(blank=True, verbose_name="Заметки")
+    is_active = models.BooleanField(default=True, verbose_name="Активна")
+
+    STATUS_CHOICES = [
+        ("active", "Действующая"),
+        ("liquidation", "В ликвидации"),
+        ("bankruptcy", "Банкротство"),
+        ("liquidated", "Ликвидирована"),
+    ]
+    status = models.CharField(
+        max_length=20, choices=STATUS_CHOICES,
+        default="active", verbose_name="Статус",
+    )
+
+    kind = models.ForeignKey(
+        "LegalEntityKind",
+        on_delete=models.PROTECT,
+        null=True, blank=True,
+        related_name="legal_entities",
+        verbose_name="Тип юридического лица",
+    )
+
+    def __str__(self):
+        return self.short_name or self.name
+
+    class Meta:
+        verbose_name = "Юридическое лицо"
+        verbose_name_plural = "Юридические лица"
+        ordering = ["name"]
 
 
 class Message(TimeStampedModel):

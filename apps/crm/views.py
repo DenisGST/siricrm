@@ -11,8 +11,8 @@ from django.db import models, transaction
 from django.db.models import Q, Prefetch
 from django.utils import timezone
 
-from .models import Client, Message
-from .forms import ClientForm
+from .models import Client, Message, Address, LegalEntity, ClientEmployee
+from .forms import ClientForm, LegalEntityForm
 from apps.core.models import Employee, EmployeeLog, Department
 from apps.telegram.telegram_sender import create_message_and_store_file
 from .tasks import send_telegram_message_task
@@ -61,12 +61,21 @@ def telegram_send_message(request, client_id):
 
     send_telegram_message_task.delay(str(msg.id))
 
+    if employee:
+        ClientEmployee.objects.filter(
+            client=client, employee=employee,
+        ).update(messenger_status="waiting", status_changed_at=timezone.now())
+        from apps.realtime.utils import push_messenger_status_update
+        push_messenger_status_update(client)
+
     html = render_to_string(
         "crm/partials/telegram_message.html",
         {"msg": msg},
         request=request,
     )
-    return HttpResponse(html)
+    resp = HttpResponse(html)
+    resp["HX-Trigger"] = "messengerStatusChanged"
+    return resp
 
 
 @login_required
@@ -123,12 +132,21 @@ def max_send_message(request, client_id):
 
     send_max_message_task.delay(str(msg.id))
 
+    if employee:
+        ClientEmployee.objects.filter(
+            client=client, employee=employee,
+        ).update(messenger_status="waiting", status_changed_at=timezone.now())
+        from apps.realtime.utils import push_messenger_status_update
+        push_messenger_status_update(client)
+
     html = render_to_string(
         "crm/partials/telegram_message.html",
         {"msg": msg},
         request=request,
     )
-    return HttpResponse(html)
+    resp = HttpResponse(html)
+    resp["HX-Trigger"] = "messengerStatusChanged"
+    return resp
 
 
 @login_required
@@ -158,11 +176,21 @@ def telegram_chat_for_client(request, client_id):
             {"messages": page_obj.object_list},
         )
 
-    # обычный GET / HX без page → полная панель с последними сообщениями
+    # Статус мессенджера для текущего сотрудника
+    messenger_status = "closed"
+    try:
+        emp = Employee.objects.get(user=request.user)
+        ce = ClientEmployee.objects.filter(client=client, employee=emp).first()
+        if ce:
+            messenger_status = ce.messenger_status
+    except Employee.DoesNotExist:
+        pass
+
     return render(
         request,
         "crm/partials/telegram_chat_panel.html",
-        {"client": client, "page_obj": page_obj, "messages": page_obj.object_list, "search_q": search_q},
+        {"client": client, "page_obj": page_obj, "messages": page_obj.object_list,
+         "search_q": search_q, "messenger_status": messenger_status},
     )
 
 
@@ -170,8 +198,39 @@ def telegram_chat_for_client(request, client_id):
 def telegram_clients_list(request):
     page_number = request.GET.get("page") or 1
     query = (request.GET.get("q") or "").strip()
+    scope = request.GET.get("scope") or "mine"
+    if scope not in ("all", "dept", "mine"):
+        scope = "mine"
 
-    qs = Client.objects.all().order_by("-last_message_at")
+    try:
+        emp = Employee.objects.get(user=request.user)
+    except Employee.DoesNotExist:
+        emp = None
+
+    qs = Client.objects.all()
+
+    if emp:
+        if scope == "mine":
+            qs = qs.filter(employees=emp).distinct()
+        elif scope == "dept" and emp.department_id:
+            qs = qs.filter(employees__department_id=emp.department_id).distinct()
+        # "all" → без фильтрации
+    elif scope != "all":
+        # Если не сотрудник и фильтр не "all" — пусто
+        qs = qs.none()
+
+    ALLOWED_SORTS = {
+        "-last_message_at", "last_message_at",
+        "last_name", "-last_name",
+        "first_name", "-first_name",
+        "-created_at", "created_at",
+    }
+    sort = request.GET.get("sort") or "-last_message_at"
+    if sort not in ALLOWED_SORTS:
+        sort = "-last_message_at"
+    # Стабильная вторичная сортировка — чтобы клиенты с одинаковым значением
+    # не "прыгали" при пагинации
+    qs = qs.order_by(sort, "id")
 
     if query:
         qs = qs.filter(
@@ -184,10 +243,26 @@ def telegram_clients_list(request):
     paginator = Paginator(qs, CLIENTS_PER_PAGE)
     page_obj = paginator.get_page(page_number)
 
+    # Статусы мессенджера для текущего сотрудника
+    if emp:
+        statuses = dict(
+            ClientEmployee.objects.filter(
+                employee=emp, client__in=page_obj.object_list,
+            ).values_list("client_id", "messenger_status")
+        )
+        for c in page_obj.object_list:
+            c.ms_status = statuses.get(c.pk, "")
+    else:
+        for c in page_obj.object_list:
+            c.ms_status = ""
+
     context = {
         "page_obj": page_obj,
         "has_next": page_obj.has_next(),
         "next_page_number": page_obj.next_page_number() if page_obj.has_next() else None,
+        "scope": scope,
+        "query": query,
+        "sort": sort,
     }
 
     return render(request, "crm/partials/telegram_clients_list.html", context)
@@ -252,36 +327,98 @@ def dashboard(request):
     )
 
 
+def _annotate_ms_status(clients, user):
+    """Проставляет ms_status на объекты клиентов для текущего пользователя."""
+    try:
+        emp = Employee.objects.get(user=user)
+        statuses = dict(
+            ClientEmployee.objects.filter(
+                employee=emp, client__in=clients,
+            ).values_list("client_id", "messenger_status")
+        )
+        for c in clients:
+            c.ms_status = statuses.get(c.pk, "")
+    except Employee.DoesNotExist:
+        for c in clients:
+            c.ms_status = ""
+    return clients
+
+
 @login_required
 def kanban(request):
-    # версия с четырьмя колонками
-    leads = Client.objects.filter(status="lead").prefetch_related("employees")
-    actives = Client.objects.filter(status="active").prefetch_related("employees")
-    inactives = Client.objects.filter(status="inactive").select_related(
-        "assigned_employee"
-    )
-    closeds = Client.objects.filter(status="closed").prefetch_related("employees")
+    # фильтры из querystring
+    employee_id = request.GET.get("employee") or ""
+    ms_status = request.GET.get("ms_status") or ""
+    created_from = request.GET.get("created_from") or ""
+    created_to = request.GET.get("created_to") or ""
 
-    return render(
-        request,
-        "crm/kanban.html",
-        {
-            "leads": leads,
-            "actives": actives,
-            "inactives": inactives,
-            "closeds": closeds,
-        },
-    )
+    base_qs = Client.objects.all()
+    if employee_id:
+        base_qs = base_qs.filter(employees__id=employee_id)
+    if created_from:
+        base_qs = base_qs.filter(created_at__gte=created_from)
+    if created_to:
+        base_qs = base_qs.filter(created_at__lte=created_to)
+
+    if ms_status:
+        try:
+            emp = Employee.objects.get(user=request.user)
+            ce_ids = ClientEmployee.objects.filter(
+                employee=emp, messenger_status=ms_status,
+            ).values_list("client_id", flat=True)
+            base_qs = base_qs.filter(id__in=list(ce_ids))
+        except Employee.DoesNotExist:
+            base_qs = base_qs.none()
+
+    leads = list(base_qs.filter(status="lead").prefetch_related("employees"))
+    actives = list(base_qs.filter(status="active").prefetch_related("employees"))
+    inactives = list(base_qs.filter(status="inactive").select_related("assigned_employee"))
+    closeds = list(base_qs.filter(status="closed").prefetch_related("employees"))
+
+    for group in (leads, actives, inactives, closeds):
+        _annotate_ms_status(group, request.user)
+
+    context = {
+        "leads": leads, "actives": actives,
+        "inactives": inactives, "closeds": closeds,
+        "filter_employee": employee_id,
+        "filter_ms_status": ms_status,
+        "filter_created_from": created_from,
+        "filter_created_to": created_to,
+        "employees_all": Employee.objects.select_related("user").order_by("user__last_name", "user__first_name"),
+    }
+    template = "crm/kanban.html"
+    if request.headers.get("HX-Request"):
+        template = "crm/kanban.html"
+    return render(request, template, context)
 
 
 @login_required
 def kanban_column(request, status):
-    clients = (
-        Client.objects.filter(status=status)
-        .prefetch_related("employees")
-        .order_by("-last_message_at")
-    )
+    employee_id = request.GET.get("employee") or ""
+    ms_status = request.GET.get("ms_status") or ""
+    created_from = request.GET.get("created_from") or ""
+    created_to = request.GET.get("created_to") or ""
 
+    qs = Client.objects.filter(status=status)
+    if employee_id:
+        qs = qs.filter(employees__id=employee_id)
+    if created_from:
+        qs = qs.filter(created_at__gte=created_from)
+    if created_to:
+        qs = qs.filter(created_at__lte=created_to)
+    if ms_status:
+        try:
+            emp = Employee.objects.get(user=request.user)
+            ce_ids = ClientEmployee.objects.filter(
+                employee=emp, messenger_status=ms_status,
+            ).values_list("client_id", flat=True)
+            qs = qs.filter(id__in=list(ce_ids))
+        except Employee.DoesNotExist:
+            qs = qs.none()
+
+    clients = list(qs.prefetch_related("employees").order_by("-last_message_at"))
+    _annotate_ms_status(clients, request.user)
     return render(request, "crm/partials/kanban_column.html", {"clients": clients})
 
 
@@ -293,6 +430,15 @@ def client_create(request):
             client = form.save()
 
             if request.headers.get("HX-Request"):
+                # Если запрос из таба "Адреса" — открыть edit-модалку с адресной секцией
+                if request.POST.get("open_addresses"):
+                    edit_form = ClientForm(instance=client)
+                    return render(request, "crm/partials/client_edit_modal.html", {
+                        "form": edit_form,
+                        "client": client,
+                        "dadata_api_key": settings.DADATA_API_KEY,
+                        "open_tab": "addresses",
+                    })
                 return HttpResponse(
                     status=204,
                     headers={"HX-Trigger": "clientCreated"},
@@ -510,13 +656,15 @@ def client_edit(request, client_id):
         else:
             if request.headers.get("HX-Request"):
                 return render(request, "crm/partials/client_edit_modal.html", {
-                    "form": form, "client": client
+                    "form": form, "client": client,
+                    "dadata_api_key": settings.DADATA_API_KEY,
                 })
     else:
         form = ClientForm(instance=client)
 
     return render(request, "crm/partials/client_edit_modal.html", {
-        "form": form, "client": client
+        "form": form, "client": client,
+        "dadata_api_key": settings.DADATA_API_KEY,
     })
 
 
@@ -617,8 +765,11 @@ def client_merge(request, client_id):
         Service.objects.filter(client=target).update(client=source)
 
         # Merge employees M2M
-        for emp in target.employees.all():
-            source.employees.add(emp)
+        for ce in target.client_employees.all():
+            ClientEmployee.objects.get_or_create(
+                client=source, employee=ce.employee,
+                defaults={"messenger_status": ce.messenger_status},
+            )
 
         # Delete duplicate
         target.delete()
@@ -640,3 +791,279 @@ def client_merge(request, client_id):
         "page_obj": page_obj,
         "merge_success": True,
     })
+
+
+# ─── Адреса клиента ───
+
+DADATA_ADDRESS_FIELDS = [
+    "postal_code", "country", "country_iso_code", "federal_district",
+    "region_fias_id", "region_kladr_id", "region_with_type", "region_type_full", "region",
+    "area_fias_id", "area_with_type", "area_type_full", "area",
+    "city_fias_id", "city_kladr_id", "city_with_type", "city_type_full", "city",
+    "city_district_with_type",
+    "settlement_fias_id", "settlement_with_type", "settlement_type_full", "settlement",
+    "street_fias_id", "street_with_type", "street_type_full", "street",
+    "house_fias_id", "house_type_full", "house",
+    "block_type_full", "block", "entrance", "floor",
+    "flat_type_full", "flat",
+    "fias_id", "fias_level", "kladr_id",
+    "geo_lat", "geo_lon",
+    "qc_geo", "qc_complete", "qc_house", "qc",
+    "okato", "oktmo", "tax_office", "timezone",
+]
+
+
+@login_required
+def client_addresses(request, client_id):
+    client = get_object_or_404(Client, pk=client_id)
+    addresses = client.addresses.order_by("address_type")
+    return render(request, "crm/partials/address_list.html", {
+        "client": client, "addresses": addresses,
+        "dadata_api_key": settings.DADATA_API_KEY,
+    })
+
+
+@login_required
+def address_form(request, client_id, address_id=None):
+    client = get_object_or_404(Client, pk=client_id)
+    address = get_object_or_404(Address, pk=address_id, client=client) if address_id else None
+
+    if request.method == "POST":
+        if address:
+            addr = address
+        else:
+            addr = Address(client=client)
+
+        addr.address_type = request.POST.get("address_type", "default")
+        addr.comment = request.POST.get("comment", "")
+        addr.source = request.POST.get("source", "")
+        addr.result = request.POST.get("result", "") or addr.source
+
+        for field in DADATA_ADDRESS_FIELDS:
+            setattr(addr, field, request.POST.get(field, ""))
+
+        addr.save()
+        addresses = client.addresses.order_by("address_type")
+        return render(request, "crm/partials/address_list.html", {
+            "client": client, "addresses": addresses,
+            "dadata_api_key": settings.DADATA_API_KEY,
+        })
+
+    return render(request, "crm/partials/address_form.html", {
+        "client": client, "address": address or Address(),
+        "address_types": Address.ADDRESS_TYPES,
+        "dadata_api_key": settings.DADATA_API_KEY,
+        "is_new": address is None,
+    })
+
+
+@login_required
+@require_POST
+def address_delete(request, client_id, address_id):
+    address = get_object_or_404(Address, pk=address_id, client_id=client_id)
+    address.delete()
+    client = get_object_or_404(Client, pk=client_id)
+    addresses = client.addresses.order_by("address_type")
+    return render(request, "crm/partials/address_list.html", {
+        "client": client, "addresses": addresses,
+        "dadata_api_key": settings.DADATA_API_KEY,
+    })
+
+
+# ─── Статус мессенджера ───
+
+STATUS_CYCLE = {"closed": "waiting", "waiting": "open", "open": "closed"}
+
+def _render_status_badge(status: str) -> str:
+    if status == "open":
+        return '<span class="badge badge-sm gap-1" style="background:#ef4444;color:#fff;border:none">Диалог открыт</span>'
+    if status == "waiting":
+        return '<span class="badge badge-sm gap-1" style="background:#3b82f6;color:#fff;border:none">Ожидаю ответа</span>'
+    return '<span class="badge badge-sm gap-1" style="background:#22c55e;color:#fff;border:none">Диалог закрыт</span>'
+
+
+@login_required
+@require_POST
+def cycle_dialog_status(request, client_id):
+    """Циклически переключает статус: closed → waiting → open → closed."""
+    client = get_object_or_404(Client, pk=client_id)
+    try:
+        employee = Employee.objects.get(user=request.user)
+    except Employee.DoesNotExist:
+        return HttpResponseBadRequest("No employee")
+
+    ce, _ = ClientEmployee.objects.get_or_create(client=client, employee=employee)
+    next_status = STATUS_CYCLE.get(ce.messenger_status, "closed")
+    ce.messenger_status = next_status
+    ce.status_changed_at = timezone.now()
+    ce.save(update_fields=["messenger_status", "status_changed_at"])
+
+    from apps.realtime.utils import push_messenger_status_update
+    push_messenger_status_update(client)
+
+    return HttpResponse(_render_status_badge(next_status))
+
+
+@login_required
+def notifications_count(request):
+    """Счётчик непрочитанных диалогов текущего сотрудника (messenger_status=open)."""
+    count = 0
+    try:
+        emp = Employee.objects.get(user=request.user)
+        count = ClientEmployee.objects.filter(
+            employee=emp, messenger_status="open"
+        ).count()
+    except Employee.DoesNotExist:
+        pass
+    return render(request, "crm/partials/notif_count.html", {"count": count})
+
+
+@login_required
+def global_search(request):
+    """Глобальный поиск: клиенты, юр.лица, сообщения. Возвращает HTML-дропдаун."""
+    q = (request.GET.get("q") or "").strip()
+    if len(q) < 2:
+        return render(request, "crm/partials/global_search_results.html",
+                      {"q": q, "clients": [], "legal_entities": [], "messages": [], "empty": True})
+
+    clients = Client.objects.filter(
+        Q(first_name__icontains=q) | Q(last_name__icontains=q) |
+        Q(patronymic__icontains=q) | Q(username__icontains=q) |
+        Q(phone__icontains=q)
+    ).order_by("last_name", "first_name")[:8]
+
+    legal_entities = LegalEntity.objects.filter(
+        Q(name__icontains=q) | Q(inn__icontains=q) | Q(ogrn__icontains=q)
+    ).order_by("name")[:5]
+
+    messages = Message.objects.filter(
+        content__icontains=q
+    ).select_related("client").order_by("-created_at")[:5]
+
+    empty = not (clients or legal_entities or messages)
+    return render(request, "crm/partials/global_search_results.html", {
+        "q": q, "clients": clients, "legal_entities": legal_entities,
+        "messages": messages, "empty": empty,
+    })
+
+
+@login_required
+def messenger_status_badge(request, client_id):
+    client = get_object_or_404(Client, pk=client_id)
+    status = "closed"
+    try:
+        emp = Employee.objects.get(user=request.user)
+        ce = ClientEmployee.objects.filter(client=client, employee=emp).first()
+        if ce:
+            status = ce.messenger_status
+    except Employee.DoesNotExist:
+        pass
+    return HttpResponse(_render_status_badge(status))
+
+
+# ─── Юридические лица ───
+
+@login_required
+def legal_entities_list(request):
+    from apps.crm.models import LegalEntityKind
+
+    search = request.GET.get("search", "").strip()
+    f_kind = request.GET.get("kind", "").strip()
+    f_status = request.GET.get("status", "").strip()
+    f_entity_type = request.GET.get("entity_type", "").strip()
+    sort = (request.GET.get("sort") or "name").strip()
+
+    ALLOWED_SORT = {
+        "name", "kind__short_name", "entity_type", "inn", "ogrn",
+        "director_name", "status", "brand",
+    }
+    sort_key = sort.lstrip("-")
+    if sort_key not in ALLOWED_SORT:
+        sort = "name"
+
+    qs = LegalEntity.objects.select_related("kind").all()
+
+    if search:
+        qs = qs.filter(
+            Q(name__icontains=search)
+            | Q(short_name__icontains=search)
+            | Q(brand__icontains=search)
+            | Q(inn__icontains=search)
+            | Q(ogrn__icontains=search)
+        )
+    if f_kind:
+        qs = qs.filter(kind_id=f_kind)
+    if f_status:
+        qs = qs.filter(status=f_status)
+    if f_entity_type:
+        qs = qs.filter(entity_type=f_entity_type)
+
+    paginator = Paginator(qs.order_by(sort, "name"), 20)
+    page_obj = paginator.get_page(request.GET.get("page", 1))
+
+    if request.headers.get("HX-Request") and request.GET.get("partial") == "1":
+        template = "crm/legal_entities/list_partial.html"
+    else:
+        template = "crm/legal_entities/list.html"
+
+    return render(request, template, {
+        "page_obj": page_obj,
+        "search": search,
+        "f_kind": f_kind,
+        "f_status": f_status,
+        "f_entity_type": f_entity_type,
+        "sort": sort,
+        "kinds": LegalEntityKind.objects.order_by("name"),
+        "status_choices": LegalEntity.STATUS_CHOICES,
+        "entity_type_choices": LegalEntity.ENTITY_TYPE_CHOICES,
+    })
+
+
+@login_required
+def legal_entity_create(request):
+    if request.method == "POST":
+        form = LegalEntityForm(request.POST)
+        if form.is_valid():
+            form.save()
+            if request.headers.get("HX-Request"):
+                # Пустое тело + outerHTML-swap → модалка удаляется из DOM.
+                # HX-Trigger обновит список юр.лиц.
+                resp = HttpResponse("")
+                resp["HX-Trigger"] = "legalEntityChanged"
+                return resp
+            return redirect("legal_entities_list")
+        # Форма невалидна — показываем её снова с ошибками
+    else:
+        form = LegalEntityForm()
+
+    return render(request, "crm/legal_entities/form_modal.html", {
+        "form": form, "legal_entity": LegalEntity(), "is_new": True,
+        "dadata_api_key": settings.DADATA_API_KEY,
+    })
+
+
+@login_required
+def legal_entity_edit(request, le_id):
+    le = get_object_or_404(LegalEntity, pk=le_id)
+    if request.method == "POST":
+        form = LegalEntityForm(request.POST, instance=le)
+        if form.is_valid():
+            form.save()
+            if request.headers.get("HX-Request"):
+                resp = HttpResponse("")
+                resp["HX-Trigger"] = "legalEntityChanged"
+                return resp
+            return redirect("legal_entities_list")
+    else:
+        form = LegalEntityForm(instance=le)
+
+    return render(request, "crm/legal_entities/form_modal.html", {
+        "form": form, "legal_entity": le,
+        "dadata_api_key": settings.DADATA_API_KEY,
+    })
+
+
+@login_required
+def legal_entity_detail(request, le_id):
+    le = get_object_or_404(LegalEntity, pk=le_id)
+    return render(request, "crm/legal_entities/detail_modal.html", {"le": le})

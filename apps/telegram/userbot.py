@@ -186,29 +186,33 @@ async def import_message_history(telegram_id: int, limit: int = 100):
 
 
 async def heartbeat_loop():
-    """Каждые 120 секунд пишет heartbeat в Redis и каждые 5 минут делает catch_up."""
+    """
+    Каждые 30 секунд пишет heartbeat в Redis и делает catch_up.
+    Частый catch_up предотвращает "замерзание" update stream в Telethon
+    (real-time MTProto push иногда теряется, обновления зависают в очереди).
+    """
     from django.core.cache import cache
     logger.info("❤️ Heartbeat loop started")
     ticks = 0
     while True:
         try:
-            await sync_to_async(cache.set)("userbot_heartbeat", "ok", timeout=240)
-            logger.info("❤️ Heartbeat written to cache")
+            await sync_to_async(cache.set)("userbot_heartbeat", "ok", timeout=120)
         except Exception as e:
             logger.warning(f"Heartbeat cache error: {e}")
 
-        ticks += 1
-        # Каждые 5 тиков (10 минут) принудительно синхронизируем очередь обновлений.
-        # Это предотвращает "замерзание" update stream в Telethon.
-        if ticks % 5 == 0:
-            try:
-                if client.is_connected():
-                    await client.catch_up()
-                    logger.info("🔄 catch_up выполнен")
-            except Exception as e:
-                logger.warning(f"catch_up error: {e}")
+        # Каждый тик (30 сек) — принудительный catch_up, чтобы не терять сообщения
+        try:
+            if client.is_connected():
+                await client.catch_up()
+        except Exception as e:
+            logger.warning(f"catch_up error: {e}")
 
-        await asyncio.sleep(120)
+        ticks += 1
+        # Раз в 10 минут логируем для отслеживания работоспособности
+        if ticks % 20 == 0:
+            logger.info(f"❤️ Heartbeat loop alive (tick={ticks})")
+
+        await asyncio.sleep(30)
 
 
 async def keep_connected():
@@ -241,8 +245,7 @@ async def start_userbot():
     # ========= Обработчик прочтений и реакций =========
     # ВАЖНО: хендлеры регистрируются ДО client.start(), чтобы Telethon мог
     # доставить пропущенные во время рестарта сообщения через эти же хендлеры.
-    @client.on(events.Raw)
-    async def handle_read(event):
+    async def _process_raw_event(event):
         """Обработка прочтений и реакций."""
         from telethon.tl.types import UpdateReadHistoryInbox, UpdateMessageReactions, ReactionEmoji
 
@@ -314,9 +317,12 @@ async def start_userbot():
                 logger.exception("Error handling reactions: %s", e)
         return
 
+    @client.on(events.Raw)
+    async def handle_read(event):
+        asyncio.create_task(_process_raw_event(event))
+
     # ========= Обработчик исходящих сообщений (из приложения Telegram) =========
-    @client.on(events.NewMessage(outgoing=True))
-    async def handle_outgoing_message(event):
+    async def _process_outgoing_message(event):
         """Сохраняем сообщения, отправленные из приложения Telegram (не из CRM)."""
         try:
             # Работаем только с личными сообщениями
@@ -437,9 +443,12 @@ async def start_userbot():
         except Exception as e:
             logger.exception("Error in outgoing message handler: %s", e)
 
+    @client.on(events.NewMessage(outgoing=True))
+    async def handle_outgoing_message(event):
+        asyncio.create_task(_process_outgoing_message(event))
+
     # ========= Обработчик новых входящих сообщений =========
-    @client.on(events.NewMessage(incoming=True))
-    async def handle_new_message(event):
+    async def _process_incoming_message(event):
         """Обрабатываем только личные сообщения от пользователей."""
         try:
             sender = await event.get_sender()
@@ -602,7 +611,17 @@ async def start_userbot():
 
             logger.info(f"💬 Incoming {message_type} from {telegram_id}: {content[:50] if content else file_name}")
 
-            from apps.realtime.utils import push_chat_message, push_client_toast
+            # Обновляем статус мессенджера → "Диалог открыт"
+            from apps.crm.models import ClientEmployee
+            from django.utils import timezone as tz
+            await sync_to_async(
+                lambda: ClientEmployee.objects.filter(client=db_client).update(
+                    messenger_status="open", status_changed_at=tz.now(),
+                )
+            )()
+
+            from apps.realtime.utils import push_chat_message, push_client_toast, push_messenger_status_update
+            await sync_to_async(push_messenger_status_update)(db_client)
 
             if msg.direction == "incoming":
                 await sync_to_async(push_chat_message)(msg)
@@ -623,6 +642,11 @@ async def start_userbot():
         except Exception as e:
             from django.db import connection
             logger.exception("Error in userbot new message handler: %s", e)
+
+    @client.on(events.NewMessage(incoming=True))
+    async def handle_new_message(event):
+        # Обрабатываем в фоне, чтобы не блокировать update-receiver
+        asyncio.create_task(_process_incoming_message(event))
 
     # ========= Подключение с retry-логикой =========
     MAX_RETRIES = 10

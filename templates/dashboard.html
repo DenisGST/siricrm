@@ -1,4 +1,4 @@
-{% load static %}
+{% load static icons %}
 <!DOCTYPE html>
 <html lang="ru">
 <head>
@@ -60,40 +60,35 @@
           {% if item.use_htmx %}
             <a href="#" class="sidebar-item" data-tooltip="{{ item.name }}"
                hx-get="{{ item.url }}" hx-target="#content-area" hx-swap="innerHTML">
-              {{ item.icon }}
+              {% sidebar_icon item.icon size=22 %}
             </a>
           {% else %}
             <a href="{{ item.url }}" class="sidebar-item" data-tooltip="{{ item.name }}"
                {% if '/admin/' in item.url %}target="_self"{% endif %}>
-              {{ item.icon }}
+              {% sidebar_icon item.icon size=22 %}
             </a>
           {% endif %}
         {% endfor %}
+        {% if section == "CRM" %}
+          <button type="button" class="sidebar-item sidebar-item-new" data-tooltip="Новый клиент"
+                  hx-get="{% url 'client_create' %}"
+                  hx-target="body"
+                  hx-swap="beforeend"
+                  style="color:#22c55e">
+            {% icon "user-plus" size=22 %}
+          </button>
+          <a href="#" class="sidebar-item" data-tooltip="Юридические лица"
+             hx-get="{% url 'legal_entities_list' %}" hx-target="#content-area" hx-swap="innerHTML">
+            {% icon "building-2" size=22 %}
+          </a>
+        {% endif %}
       {% endfor %}
     </div>
 
     <div class="sidebar-user">
-      <!-- Telegram status -->
-      {% if bot_status == "ok" %}
-        <button type="button" class="sidebar-item btn-glow" data-tooltip="Telegram: ОК"
-                onclick="openTelegramChatModal()">
-          {% include "partials/telegram_green.svg" %}
-        </button>
-      {% elif bot_status == "pending" %}
-        <button type="button" class="sidebar-item btn-glow btn-telegram-blue-pulse" data-tooltip="Telegram: есть сообщения"
-                onclick="openTelegramChatModal()">
-          {% include "partials/telegram_blue.svg" %}
-        </button>
-      {% else %}
-        <button type="button" class="sidebar-item btn-glow btn-telegram-red-pulse" data-tooltip="Telegram: ошибка"
-                onclick="openTelegramChatModal()">
-          {% include "partials/telegram_red.svg" %}
-        </button>
-      {% endif %}
-
       <form method="post" action="{% url 'logout' %}">
         {% csrf_token %}
-        <button type="submit" class="sidebar-item" data-tooltip="Выйти">🚪</button>
+        <button type="submit" class="sidebar-item" data-tooltip="Выйти">{% icon "log-out" size=22 %}</button>
       </form>
 
       <div class="sidebar-avatar" title="{{ user.get_full_name|default:user.username }}">
@@ -104,11 +99,91 @@
 
   <!-- Правая часть -->
   <div class="app-main">
-    <!-- Верхняя панель -->
-    <header class="top-bar">
-      <span class="top-bar-title">SiriCRM</span>
-      <span class="top-bar-subtitle">Панель управления</span>
-      <div class="top-bar-spacer"></div>
+    <!-- Верхняя панель (daisyUI navbar) -->
+    <header class="navbar bg-base-100 border-b border-base-300 px-2 py-0 gap-1">
+      <!-- Слева: бренд + кнопки "Добавить" -->
+      <div class="navbar-start gap-2">
+        <span class="navbar-brand">Сириус-CRM</span>
+        <div class="tooltip tooltip-bottom" data-tip="Новый клиент">
+          <button type="button" class="btn btn-ghost btn-xs btn-square"
+                  style="color:#22c55e"
+                  hx-get="{% url 'client_create' %}" hx-target="body" hx-swap="beforeend">
+            {% icon "user-plus" size=16 %}
+          </button>
+        </div>
+        <div class="tooltip tooltip-bottom" data-tip="Новое юр. лицо">
+          <button type="button" class="btn btn-ghost btn-xs btn-square"
+                  style="color:#0078d4"
+                  hx-get="{% url 'legal_entity_create' %}" hx-target="body" hx-swap="beforeend">
+            {% icon "building-2" size=16 %}
+          </button>
+        </div>
+      </div>
+
+      <!-- По центру: поиск + фильтр -->
+      <div class="navbar-center gap-1">
+        <div class="relative global-search-wrap" id="global-search-wrap">
+          <label class="input input-bordered input-xs flex items-center gap-2">
+            {% icon "search" size=12 %}
+            <input id="global-search" type="search" name="q"
+                   placeholder="Поиск клиентов, юр.лиц, сообщений…"
+                   autocomplete="off"
+                   class="grow bg-transparent outline-none text-xs"
+                   hx-get="{% url 'global_search' %}"
+                   hx-trigger="keyup changed delay:250ms, focus"
+                   hx-target="#global-search-results"
+                   hx-swap="innerHTML"
+                   onfocus="openGlobalSearch()">
+          </label>
+          <div id="global-search-results" class="global-search-dropdown hidden"></div>
+        </div>
+        <div class="tooltip tooltip-bottom" data-tip="Фильтры">
+          <button id="kanban-filters-btn" type="button" class="btn btn-ghost btn-xs btn-square"
+                  onclick="toggleGlobalFilters()">
+            {% icon "filter" size=14 %}
+          </button>
+        </div>
+      </div>
+
+      <!-- Справа: уведомления + Telegram -->
+      <div class="navbar-end gap-0">
+        <div class="tooltip tooltip-bottom" data-tip="Уведомления">
+          <button type="button" class="btn btn-ghost btn-xs btn-square indicator"
+                  onclick="toggleNotifications()">
+            <span id="notif-count" class="indicator-item badge badge-error badge-xs hidden"></span>
+            {% icon "bell" size=14 %}
+          </button>
+        </div>
+        <span id="notif-count-poller" class="hidden"
+              hx-get="{% url 'notifications_count' %}"
+              hx-trigger="load, every 20s, refresh-count"
+              hx-swap="none"></span>
+
+        <span class="navbar-divider"></span>
+
+        {% if bot_status == "ok" %}
+          <div class="tooltip tooltip-bottom" data-tip="Telegram: ОК">
+            <button type="button" class="btn btn-ghost btn-xs btn-square btn-glow"
+                    onclick="openTelegramChatModal()">
+              {% include "partials/telegram_green.svg" %}
+            </button>
+          </div>
+        {% elif bot_status == "pending" %}
+          <div class="tooltip tooltip-bottom" data-tip="Telegram: есть сообщения">
+            <button type="button" class="btn btn-ghost btn-xs btn-square btn-glow btn-telegram-blue-pulse"
+                    onclick="openTelegramChatModal()">
+              {% include "partials/telegram_blue.svg" %}
+            </button>
+          </div>
+        {% else %}
+          <div class="tooltip tooltip-bottom" data-tip="Telegram: ошибка">
+            <button type="button" class="btn btn-ghost btn-xs btn-square btn-glow btn-telegram-red-pulse"
+                    onclick="openTelegramChatModal()">
+              {% include "partials/telegram_red.svg" %}
+            </button>
+          </div>
+        {% endif %}
+      </div>
     </header>
 
     <!-- Контент -->
@@ -185,6 +260,55 @@
   </div>
 </div>
 
+<!-- Поповер фильтров Канбана (якорится к кнопке фильтра в navbar) -->
+<form id="kanban-filter-form"
+      class="kanban-filters-popover hidden"
+      onchange="document.body.dispatchEvent(new CustomEvent('kanbanRefresh'))">
+  <div class="flex items-center justify-between mb-3">
+    <h3 class="text-sm font-semibold">Фильтры</h3>
+    <button type="button" class="btn btn-xs btn-ghost btn-circle"
+            onclick="closeKanbanFiltersModal()">✕</button>
+  </div>
+
+  <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+    <label class="form-control w-full">
+      <span class="label label-text !text-xs !py-0 !pb-1 opacity-70">Сотрудник</span>
+      <select id="flt-employee" name="employee" class="select select-bordered select-sm">
+        <option value="">Все</option>
+        {% for e in employees_all %}
+          <option value="{{ e.id }}">{{ e.user.last_name }} {{ e.user.first_name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label class="form-control w-full">
+      <span class="label label-text !text-xs !py-0 !pb-1 opacity-70">Диалог</span>
+      <select id="flt-ms" name="ms_status" class="select select-bordered select-sm">
+        <option value="">Все</option>
+        <option value="open">Открыт</option>
+        <option value="waiting">Ожидаю ответа</option>
+        <option value="closed">Закрыт</option>
+      </select>
+    </label>
+    <label class="form-control w-full">
+      <span class="label label-text !text-xs !py-0 !pb-1 opacity-70">Создан с</span>
+      <input id="flt-from" type="date" name="created_from"
+             class="input input-bordered input-sm">
+    </label>
+    <label class="form-control w-full">
+      <span class="label label-text !text-xs !py-0 !pb-1 opacity-70">Создан по</span>
+      <input id="flt-to" type="date" name="created_to"
+             class="input input-bordered input-sm">
+    </label>
+  </div>
+
+  <div class="flex justify-end gap-2 mt-4">
+    <button type="button" class="btn btn-xs btn-ghost"
+            onclick="resetKanbanFilters()">Сбросить</button>
+    <button type="button" class="btn btn-xs btn-primary"
+            onclick="closeKanbanFiltersModal()">Готово</button>
+  </div>
+</form>
+
 <!-- Модалка Siri-чат -->
 <div id="telegram_chat_modal" class="chat-modal-overlay">
   <div class="chat-modal-box">
@@ -193,22 +317,54 @@
       <button type="button" class="top-bar-action" onclick="closeTelegramChatModal()">✕</button>
     </div>
     <div class="flex flex-1 min-h-0 overflow-hidden">
-      <aside class="w-72 border-r flex flex-col min-h-0" style="border-color:var(--ms-border)">
-        <div class="px-3 py-2 mb-2 mt-1 border-b" style="border-color:var(--ms-border-light)">
-          <input id="telegram-search" type="search" name="q" placeholder=" 🔎 ФИО, телефон"
-                 class="w-full h-8 px-3 text-xs rounded"
-                 style="border:1px solid var(--ms-border); background:var(--ms-surface)"
-                 hx-get="/telegram/clients/"
-                 hx-trigger="input changed delay:400ms"
-                 hx-target="#telegram-clients-list"
-                 hx-swap="innerHTML">
+      <aside class="border-r flex flex-col min-h-0" style="border-color:var(--ms-border); width:340px; min-width:340px">
+        <div class="px-3 py-2 border-b" style="border-color:var(--ms-border-light)">
+          <!-- Фильтр-переключатель клиентов -->
+          <div id="client-scope-filter" class="join w-full mb-2">
+            <button type="button" class="join-item btn btn-xs flex-1 btn-primary" data-scope="mine"
+                    onclick="setClientScope('mine')">Мои</button>
+            <button type="button" class="join-item btn btn-xs flex-1" data-scope="dept"
+                    onclick="setClientScope('dept')">Отдел</button>
+            <button type="button" class="join-item btn btn-xs flex-1" data-scope="all"
+                    onclick="setClientScope('all')">Все</button>
+          </div>
+          <input type="hidden" id="telegram-scope" name="scope" value="mine">
+          <input type="hidden" id="telegram-sort" name="sort" value="-last_message_at">
+
+          <div class="flex gap-1 items-center">
+            <input id="telegram-search" type="search" name="q" placeholder=" 🔎 ФИО, телефон"
+                   class="flex-1 h-8 px-3 text-xs rounded"
+                   style="border:1px solid var(--ms-border); background:var(--ms-surface)"
+                   hx-get="/telegram/clients/"
+                   hx-trigger="input changed delay:400ms"
+                   hx-target="#telegram-clients-list"
+                   hx-swap="innerHTML"
+                   hx-include="#telegram-scope,#telegram-sort">
+
+            <!-- Компактный dropdown сортировки (fixed-position чтобы не обрезался overflow-hidden) -->
+            <button id="sort-btn" type="button" class="btn btn-sm btn-ghost px-1 h-8 min-h-8"
+                    title="Сортировка" onclick="toggleSortMenu(event)">
+              {% icon "arrow-up-down" size=16 %}
+            </button>
+          </div>
         </div>
         <div id="telegram-clients-list" class="flex-1 min-h-0 overflow-y-auto px-3"
-             hx-get="{% url 'telegram_clients_list' %}" hx-trigger="load" hx-swap="innerHTML">
+             hx-get="{% url 'telegram_clients_list' %}?scope=mine" hx-trigger="load" hx-swap="innerHTML">
         </div>
       </aside>
       <section id="telegram-chat-panel" class="flex-1 flex flex-col min-h-0"></section>
     </div>
+    <!-- Sort menu (fixed-position, рендерится поверх всего) -->
+    <ul id="sort-menu" class="hidden fixed bg-base-100 rounded-box shadow-lg text-xs w-56 p-1 menu"
+        style="border:1px solid var(--ms-border); z-index:9999;">
+      <li><a onclick="setClientSort('-last_message_at', this)" data-sort="-last_message_at" class="active">🕒 Сначала новые сообщения</a></li>
+      <li><a onclick="setClientSort('last_message_at', this)" data-sort="last_message_at">🕑 Сначала старые сообщения</a></li>
+      <li><a onclick="setClientSort('last_name', this)" data-sort="last_name">🔤 Фамилия А-Я</a></li>
+      <li><a onclick="setClientSort('-last_name', this)" data-sort="-last_name">🔠 Фамилия Я-А</a></li>
+      <li><a onclick="setClientSort('first_name', this)" data-sort="first_name">🔤 Имя А-Я</a></li>
+      <li><a onclick="setClientSort('-first_name', this)" data-sort="-first_name">🔠 Имя Я-А</a></li>
+      <li><a onclick="setClientSort('-created_at', this)" data-sort="-created_at">✨ Недавно добавленные</a></li>
+    </ul>
   </div>
 </div>
 
@@ -261,6 +417,93 @@ document.addEventListener('htmx:afterRequest', (event) => {
       Notification.requestPermission();
     }
   });
+
+  function positionKanbanFiltersPopover() {
+    const btn = document.getElementById('kanban-filters-btn');
+    const pop = document.getElementById('kanban-filter-form');
+    if (!btn || !pop) return;
+    const r = btn.getBoundingClientRect();
+    const popWidth = pop.offsetWidth || 440;
+    let left = r.right - popWidth;
+    if (left < 8) left = 8;
+    const maxLeft = window.innerWidth - popWidth - 8;
+    if (left > maxLeft) left = maxLeft;
+    pop.style.top = (r.bottom + 6) + 'px';
+    pop.style.left = left + 'px';
+  }
+  function toggleGlobalFilters() {
+    const pop = document.getElementById('kanban-filter-form');
+    if (!pop) return;
+    if (pop.classList.contains('hidden')) {
+      pop.classList.remove('hidden');
+      positionKanbanFiltersPopover();
+      setTimeout(() => document.addEventListener('click', closeKanbanFiltersOutside, { once: true }), 10);
+    } else {
+      pop.classList.add('hidden');
+    }
+  }
+  function closeKanbanFiltersModal() {
+    const pop = document.getElementById('kanban-filter-form');
+    if (pop) pop.classList.add('hidden');
+  }
+  function closeKanbanFiltersOutside(e) {
+    const pop = document.getElementById('kanban-filter-form');
+    const btn = document.getElementById('kanban-filters-btn');
+    if (!pop || pop.classList.contains('hidden')) return;
+    if (pop.contains(e.target) || btn.contains(e.target)) {
+      document.addEventListener('click', closeKanbanFiltersOutside, { once: true });
+    } else {
+      pop.classList.add('hidden');
+    }
+  }
+  window.addEventListener('resize', () => {
+    const pop = document.getElementById('kanban-filter-form');
+    if (pop && !pop.classList.contains('hidden')) positionKanbanFiltersPopover();
+  });
+  function resetKanbanFilters() {
+    const form = document.getElementById('kanban-filter-form');
+    if (!form) return;
+    form.reset();
+    document.body.dispatchEvent(new CustomEvent('kanbanRefresh'));
+  }
+  function toggleNotifications() {
+    openTelegramChatModal();
+  }
+
+  // Глобальный поиск: открыть/закрыть dropdown
+  function openGlobalSearch() {
+    const dd = document.getElementById('global-search-results');
+    if (dd && dd.textContent.trim().length > 0) dd.classList.remove('hidden');
+  }
+  function closeGlobalSearch() {
+    const dd = document.getElementById('global-search-results');
+    const input = document.getElementById('global-search');
+    if (dd) dd.classList.add('hidden');
+    if (input) input.value = '';
+  }
+  document.addEventListener('DOMContentLoaded', () => {
+    document.addEventListener('click', (e) => {
+      const wrap = document.getElementById('global-search-wrap');
+      if (wrap && !wrap.contains(e.target)) {
+        document.getElementById('global-search-results')?.classList.add('hidden');
+      }
+    });
+    // При получении результатов — показываем dropdown, только если есть контент
+    const dd = document.getElementById('global-search-results');
+    if (dd) {
+      dd.addEventListener('htmx:afterSwap', () => {
+        if (dd.textContent.trim().length > 0) dd.classList.remove('hidden');
+        else dd.classList.add('hidden');
+      });
+    }
+  });
+
+  // Реакция на messengerStatusChanged — обновить счётчик
+  document.addEventListener('htmx:afterSettle', () => {});
+  document.body.addEventListener('messengerStatusChanged', () => {
+    const poller = document.getElementById('notif-count-poller');
+    if (poller && window.htmx) htmx.trigger(poller, 'refresh-count');
+  });
 </script>
 
 
@@ -272,6 +515,85 @@ document.addEventListener('htmx:afterRequest', (event) => {
   function closeTelegramChatModal() {
     const el = document.getElementById('telegram_chat_modal');
     if (el) el.style.display = 'none';
+  }
+  function toggleSortMenu(evt) {
+    evt.stopPropagation();
+    const btn = document.getElementById('sort-btn');
+    const menu = document.getElementById('sort-menu');
+    if (!btn || !menu) return;
+    if (menu.classList.contains('hidden')) {
+      const r = btn.getBoundingClientRect();
+      menu.style.top = (r.bottom + 4) + 'px';
+      menu.style.left = Math.max(8, r.right - 224) + 'px'; // w-56 = 224px
+      menu.classList.remove('hidden');
+      setTimeout(function() {
+        document.addEventListener('click', closeSortMenuOutside, { once: true });
+      }, 10);
+    } else {
+      menu.classList.add('hidden');
+    }
+  }
+  function closeSortMenuOutside(e) {
+    const menu = document.getElementById('sort-menu');
+    const btn = document.getElementById('sort-btn');
+    if (menu && !menu.contains(e.target) && !btn.contains(e.target)) {
+      menu.classList.add('hidden');
+    } else if (menu && !menu.classList.contains('hidden')) {
+      // Если кликнули внутри меню на не-элемент — продолжаем слушать
+      document.addEventListener('click', closeSortMenuOutside, { once: true });
+    }
+  }
+
+  function setClientSort(sort, el) {
+    const hidden = document.getElementById('telegram-sort');
+    if (hidden) hidden.value = sort;
+    document.querySelectorAll('[data-sort]').forEach(function(a) {
+      a.classList.toggle('active', a.dataset.sort === sort);
+    });
+    // Закрыть меню
+    const menu = document.getElementById('sort-menu');
+    if (menu) menu.classList.add('hidden');
+    // Перезагрузить список
+    const scope = document.getElementById('telegram-scope')?.value || 'mine';
+    const q = document.getElementById('telegram-search')?.value || '';
+    if (window.htmx) {
+      htmx.ajax('GET',
+        '/telegram/clients/?scope=' + encodeURIComponent(scope)
+          + '&q=' + encodeURIComponent(q)
+          + '&sort=' + encodeURIComponent(sort),
+        { target: '#telegram-clients-list', swap: 'innerHTML' });
+    }
+  }
+  function setClientScope(scope) {
+    const hidden = document.getElementById('telegram-scope');
+    if (hidden) hidden.value = scope;
+    document.querySelectorAll('#client-scope-filter [data-scope]').forEach(function(b) {
+      b.classList.toggle('btn-primary', b.dataset.scope === scope);
+    });
+    const search = document.getElementById('telegram-search');
+    const sort = document.getElementById('telegram-sort');
+    const q = search ? search.value : '';
+    const s = sort ? sort.value : '-last_message_at';
+    if (window.htmx) {
+      htmx.ajax('GET',
+        '/telegram/clients/?scope=' + encodeURIComponent(scope)
+          + '&q=' + encodeURIComponent(q)
+          + '&sort=' + encodeURIComponent(s),
+        { target: '#telegram-clients-list', swap: 'innerHTML' });
+    }
+  }
+  function openTelegramChatModalForClient(clientId) {
+    openTelegramChatModal();
+    // Подгрузка чата выбранного клиента
+    const panel = document.getElementById('telegram-chat-panel');
+    if (panel && window.htmx) {
+      htmx.ajax('GET', '/telegram/chat/' + clientId + '/', { target: '#telegram-chat-panel', swap: 'innerHTML' });
+    }
+    // Подсветить выбранного клиента в списке слева (если он уже в DOM)
+    setTimeout(function() {
+      const item = document.querySelector('#telegram-clients-list .tg-client-item[data-client-id="' + clientId + '"]');
+      if (item) setActiveTelegramClient(item);
+    }, 400);
   }
 </script>
 <script>

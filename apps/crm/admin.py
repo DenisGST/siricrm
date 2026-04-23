@@ -1,5 +1,17 @@
 from django.contrib import admin
-from .models import Client, Message, Service, Region
+from .models import Client, ClientEmployee, Message, Service, Region, LegalEntityKind
+
+
+@admin.register(LegalEntityKind)
+class LegalEntityKindAdmin(admin.ModelAdmin):
+    list_display = ("name", "short_name")
+    search_fields = ("name", "short_name")
+    ordering = ("name",)
+
+
+class ClientEmployeeInline(admin.TabularInline):
+    model = ClientEmployee
+    extra = 0
 
 
 @admin.register(Client)
@@ -24,9 +36,7 @@ class ClientAdmin(admin.ModelAdmin):
         "telegram_id",
         "contacts_confirmed",
     )
-    list_filter = ("status",)
-    autocomplete_fields = ("employees",)  
-    filter_horizontal = ("employees",)    
+    inlines = [ClientEmployeeInline]
 
 
 @admin.register(Message)

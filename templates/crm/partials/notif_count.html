@@ -1,0 +1,7 @@
+{% if count %}
+  <span id="notif-count" hx-swap-oob="outerHTML"
+        class="indicator-item badge badge-error badge-xs">{{ count }}</span>
+{% else %}
+  <span id="notif-count" hx-swap-oob="outerHTML"
+        class="indicator-item badge badge-error badge-xs hidden"></span>
+{% endif %}

@@ -26,5 +26,19 @@ urlpatterns = [
     path("clients/merge-search/", views.client_merge_search, name="client_merge_search"),
     path("clients/<uuid:client_id>/merge/", views.client_merge, name="client_merge"),
     path("message/<uuid:msg_id>/react/", views.message_react, name="message_react"),
+    # Адреса клиента
+    path("clients/<uuid:client_id>/addresses/", views.client_addresses, name="client_addresses"),
+    path("clients/<uuid:client_id>/address/add/", views.address_form, name="address_add"),
+    path("clients/<uuid:client_id>/address/<uuid:address_id>/", views.address_form, name="address_edit"),
+    path("clients/<uuid:client_id>/address/<uuid:address_id>/delete/", views.address_delete, name="address_delete"),
+    path("clients/<uuid:client_id>/close-dialog/", views.cycle_dialog_status, name="close_dialog"),
+    path("clients/<uuid:client_id>/messenger-status/", views.messenger_status_badge, name="messenger_status_badge"),
+    path("api/notifications/count/", views.notifications_count, name="notifications_count"),
+    path("api/global-search/", views.global_search, name="global_search"),
+    # Юридические лица
+    path("legal-entities/", views.legal_entities_list, name="legal_entities_list"),
+    path("legal-entities/new/", views.legal_entity_create, name="legal_entity_create"),
+    path("legal-entities/<uuid:le_id>/", views.legal_entity_detail, name="legal_entity_detail"),
+    path("legal-entities/<uuid:le_id>/edit/", views.legal_entity_edit, name="legal_entity_edit"),
 ]
 

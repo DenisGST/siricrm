@@ -154,6 +154,7 @@ img.emoji {
   box-shadow: 0 2px 8px rgba(0,0,0,0.15);
 }
 
+
 /* Пользователь внизу сайдбара */
 .sidebar-user {
   margin-top: auto;
@@ -188,14 +189,21 @@ img.emoji {
 
 /* ─── Верхняя панель ─── */
 .top-bar {
-  height: 44px;
-  min-height: 44px;
+  height: 48px;
+  min-height: 48px;
   background: var(--ms-surface);
   border-bottom: 1px solid var(--ms-border);
   display: flex;
   align-items: center;
-  padding: 0 16px;
+  padding: 0 12px;
   gap: 12px;
+  flex-shrink: 0;
+}
+.top-bar-left {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 200px;
   flex-shrink: 0;
 }
 .top-bar-title {
@@ -207,9 +215,317 @@ img.emoji {
   font-size: 12px;
   color: var(--ms-text-secondary);
 }
-.top-bar-spacer {
+.top-bar-search {
   flex: 1;
+  max-width: 520px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--ms-bg);
+  border: 1px solid var(--ms-border);
+  border-radius: 6px;
+  padding: 0 10px;
+  height: 30px;
+  transition: border-color 0.12s, background 0.12s;
 }
+.top-bar-search:focus-within {
+  border-color: var(--ms-blue);
+  background: var(--ms-surface);
+}
+.top-bar-search svg {
+  color: var(--ms-text-tertiary);
+  flex-shrink: 0;
+}
+.top-bar-search input {
+  flex: 1;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 13px;
+  color: var(--ms-text);
+  min-width: 0;
+}
+.top-bar-search input::placeholder {
+  color: var(--ms-text-tertiary);
+}
+.top-bar-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+}
+.top-bar-action-btn {
+  position: relative;
+  width: 34px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  color: var(--ms-text-secondary);
+  transition: background 0.12s, color 0.12s;
+}
+.top-bar-action-btn:hover {
+  background: var(--ms-sidebar-hover);
+  color: var(--ms-text);
+}
+.top-bar-action-btn[data-tooltip]:hover::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--ms-text);
+  color: #fff;
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-size: 11px;
+  white-space: nowrap;
+  z-index: 9999;
+  pointer-events: none;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+}
+.top-bar-divider {
+  width: 1px;
+  height: 20px;
+  background: var(--ms-border);
+  margin: 0 4px;
+}
+.top-bar-dot {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--ms-error);
+  border: 2px solid var(--ms-surface);
+}
+.top-bar-badge {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: var(--ms-error);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid var(--ms-surface);
+  line-height: 1;
+}
+.top-bar-badge.hidden { display: none; }
+
+/* ─── Глобальный поиск ─── */
+.top-bar-search { position: relative; }
+.global-search-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  background: var(--ms-surface);
+  border: 1px solid var(--ms-border);
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+  max-height: 420px;
+  overflow-y: auto;
+  z-index: 1000;
+  padding: 4px 0;
+}
+.global-search-dropdown.hidden { display: none; }
+.global-search-group-title {
+  padding: 6px 10px 2px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--ms-text-tertiary);
+  letter-spacing: 0.04em;
+}
+.global-search-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  font-size: 12px;
+  color: var(--ms-text);
+  text-decoration: none;
+  cursor: pointer;
+}
+.global-search-item:hover { background: var(--ms-sidebar-hover); }
+.global-search-item svg { color: var(--ms-text-tertiary); flex-shrink: 0; }
+.global-search-item .gs-main {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.global-search-item .gs-aux {
+  font-size: 11px;
+  color: var(--ms-text-tertiary);
+  flex-shrink: 0;
+  max-width: 40%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.global-search-empty {
+  padding: 12px;
+  font-size: 12px;
+  color: var(--ms-text-tertiary);
+  text-align: center;
+}
+
+/* Поповер фильтров Канбана (якорится к кнопке в navbar) */
+.kanban-filters-popover {
+  position: fixed;
+  top: 60px;
+  left: 50%;
+  width: 440px;
+  max-width: calc(100vw - 16px);
+  padding: 14px 14px 12px;
+  background: var(--ms-surface);
+  border: 1px solid var(--ms-border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+  z-index: 10000;
+}
+.kanban-filters-popover.hidden { display: none; }
+
+/* ─── Поиск в списке юр.лиц ─── */
+.le-search {
+  padding: 0 10px;
+  transition: border-color 0.12s, box-shadow 0.12s;
+}
+.le-search:focus-within {
+  border-color: var(--ms-blue);
+  box-shadow: 0 0 0 3px rgba(0, 120, 212, 0.25);
+  outline: none;
+}
+.le-search-input {
+  flex: 1;
+  height: 100%;
+  width: 100%;
+  background: transparent;
+  border: 0;
+  outline: none;
+  font-size: 12px;
+  color: var(--ms-text);
+  padding: 0;
+  margin: 0;
+}
+.le-search-input:focus { outline: none; box-shadow: none; }
+/* Увеличенный крестик очистки в Chromium/WebKit */
+.le-search-input::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  margin-left: 6px;
+  cursor: pointer;
+  background:
+    linear-gradient(45deg, transparent 45%, var(--ms-text-secondary) 45%, var(--ms-text-secondary) 55%, transparent 55%),
+    linear-gradient(-45deg, transparent 45%, var(--ms-text-secondary) 45%, var(--ms-text-secondary) 55%, transparent 55%);
+  border-radius: 50%;
+  transition: background-color 0.12s;
+}
+.le-search-input::-webkit-search-cancel-button:hover {
+  background-color: rgba(0, 0, 0, 0.06);
+}
+
+/* Компактный navbar для top-bar (~36px — уменьшен на 30%) */
+.app-main > .navbar {
+  min-height: 36px;
+  height: 36px;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+.app-main > .navbar .btn-square.btn-xs {
+  width: 26px;
+  height: 26px;
+  min-height: 26px;
+  padding: 0;
+}
+.navbar-brand {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ms-text);
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  padding-right: 4px;
+}
+/* Глобальный поиск — ширина увеличена на 60% (было 256/320/384 → 410/512/614) */
+.global-search-wrap label.input-xs { width: 410px; }
+@media (min-width: 768px) {
+  .global-search-wrap label.input-xs { width: 512px; }
+}
+@media (min-width: 1024px) {
+  .global-search-wrap label.input-xs { width: 614px; }
+}
+.app-main > .navbar .input-xs,
+.app-main > .navbar label.input-xs {
+  height: 22px;
+  min-height: 22px;
+  font-size: 11px;
+  line-height: 1;
+  padding: 0 8px;
+  border-radius: 4px;
+}
+.app-main > .navbar label.input-xs input {
+  height: 100%;
+  line-height: 1;
+  font-size: 11px;
+}
+
+/* daisyUI tooltip-bottom — в бандле отсутствует, добавляем сами */
+.tooltip.tooltip-bottom:before {
+  top: var(--tooltip-offset) !important;
+  bottom: auto !important;
+  left: 50% !important;
+  right: auto !important;
+  transform: translateX(-50%) !important;
+}
+.tooltip.tooltip-bottom:after {
+  top: var(--tooltip-tail-offset) !important;
+  bottom: auto !important;
+  left: 50% !important;
+  right: auto !important;
+  transform: translateX(-50%) !important;
+  border-color: transparent transparent var(--tooltip-color) transparent !important;
+}
+.app-main > .navbar .navbar-divider {
+  display: inline-block;
+  width: 1px;
+  height: 20px;
+  margin: 0 6px;
+  background: var(--ms-border);
+  align-self: center;
+}
+
+/* daisyUI indicator — в бандле не скомпилирован, добавим сами */
+.indicator {
+  position: relative;
+  display: inline-flex;
+  width: max-content;
+}
+.indicator-item {
+  position: absolute;
+  left: auto;
+  right: 0;
+  top: 0;
+  bottom: auto;
+  transform: translate(50%, -50%);
+  z-index: 1;
+  white-space: nowrap;
+}
+/* Совместимость со старыми вызовами */
 .top-bar-action {
   width: 32px;
   height: 32px;

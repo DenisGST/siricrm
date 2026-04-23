@@ -66,7 +66,8 @@ class ClientViewSet(viewsets.ModelViewSet):
         try:
             from apps.core.models import Employee
             employee = Employee.objects.get(id=employee_id)
-            client.employees.add(employee)
+            from apps.crm.models import ClientEmployee
+            ClientEmployee.objects.get_or_create(client=client, employee=employee)
 
             return Response({
                 'status': 'success',

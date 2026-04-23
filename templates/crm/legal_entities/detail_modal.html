@@ -1,0 +1,205 @@
+<dialog id="legal-entity-detail-modal" class="modal modal-open">
+  <div class="modal-box w-full max-w-3xl">
+    <div class="flex items-center justify-between mb-4">
+      <div class="flex items-center gap-3">
+        <h3 class="text-lg font-bold">
+          {% if le.brand %}{{ le.brand }}{% else %}{{ le.short_name|default:le.name }}{% endif %}
+        </h3>
+        {% if le.status == "active" %}
+          <span class="badge badge-sm" style="background:#16a34a;color:#fff;border:none">Действующая</span>
+        {% elif le.status == "liquidation" %}
+          <span class="badge badge-sm" style="background:#f59e0b;color:#fff;border:none">В ликвидации</span>
+        {% elif le.status == "bankruptcy" %}
+          <span class="badge badge-sm" style="background:#dc2626;color:#fff;border:none">Банкротство</span>
+        {% elif le.status == "liquidated" %}
+          <span class="badge badge-sm" style="background:#6b7280;color:#fff;border:none">Ликвидирована</span>
+        {% endif %}
+      </div>
+      <button type="button" class="btn btn-sm btn-ghost btn-circle"
+              onclick="this.closest('dialog').remove()">✕</button>
+    </div>
+
+    <div class="space-y-4 text-sm">
+
+      <!-- Основное -->
+      <div class="grid grid-cols-2 gap-x-6 gap-y-2">
+        {% if le.kind %}
+        <div>
+          <span class="text-xs font-semibold" style="color:var(--ms-text-secondary)">Тип</span>
+          <div>{{ le.kind.name }} ({{ le.kind.short_name }})</div>
+        </div>
+        {% endif %}
+        <div>
+          <span class="text-xs font-semibold" style="color:var(--ms-text-secondary)">Форма</span>
+          <div>{{ le.get_entity_type_display }}</div>
+        </div>
+        <div>
+          <span class="text-xs font-semibold" style="color:var(--ms-text-secondary)">Наименование</span>
+          <div>{{ le.name }}</div>
+        </div>
+        {% if le.short_name %}
+        <div>
+          <span class="text-xs font-semibold" style="color:var(--ms-text-secondary)">Краткое наименование</span>
+          <div>{{ le.short_name }}</div>
+        </div>
+        {% endif %}
+        {% if le.brand %}
+        <div>
+          <span class="text-xs font-semibold" style="color:var(--ms-text-secondary)">Бренд</span>
+          <div>{{ le.brand }}</div>
+        </div>
+        {% endif %}
+      </div>
+
+      <!-- Реквизиты -->
+      <div class="divider text-xs">Реквизиты</div>
+      <div class="grid grid-cols-3 gap-x-6 gap-y-2">
+        {% if le.inn %}
+        <div>
+          <span class="text-xs font-semibold" style="color:var(--ms-text-secondary)">ИНН</span>
+          <div>{{ le.inn }}</div>
+        </div>
+        {% endif %}
+        {% if le.kpp %}
+        <div>
+          <span class="text-xs font-semibold" style="color:var(--ms-text-secondary)">КПП</span>
+          <div>{{ le.kpp }}</div>
+        </div>
+        {% endif %}
+        {% if le.ogrn %}
+        <div>
+          <span class="text-xs font-semibold" style="color:var(--ms-text-secondary)">ОГРН</span>
+          <div>{{ le.ogrn }}</div>
+        </div>
+        {% endif %}
+        {% if le.okpo %}
+        <div>
+          <span class="text-xs font-semibold" style="color:var(--ms-text-secondary)">ОКПО</span>
+          <div>{{ le.okpo }}</div>
+        </div>
+        {% endif %}
+        {% if le.okved %}
+        <div>
+          <span class="text-xs font-semibold" style="color:var(--ms-text-secondary)">ОКВЭД</span>
+          <div>{{ le.okved }}</div>
+        </div>
+        {% endif %}
+      </div>
+
+      <!-- Адреса -->
+      {% if le.legal_address or le.actual_address or le.postal_address %}
+      <div class="divider text-xs">Адреса</div>
+      <div class="space-y-2">
+        {% if le.legal_address %}
+        <div>
+          <span class="text-xs font-semibold" style="color:var(--ms-text-secondary)">Юридический</span>
+          <div>{{ le.legal_address }}</div>
+        </div>
+        {% endif %}
+        {% if le.actual_address %}
+        <div>
+          <span class="text-xs font-semibold" style="color:var(--ms-text-secondary)">Фактический</span>
+          <div>{{ le.actual_address }}</div>
+        </div>
+        {% endif %}
+        {% if le.postal_address %}
+        <div>
+          <span class="text-xs font-semibold" style="color:var(--ms-text-secondary)">Почтовый</span>
+          <div>{{ le.postal_address }}</div>
+        </div>
+        {% endif %}
+      </div>
+      {% endif %}
+
+      <!-- Руководство -->
+      {% if le.director_name %}
+      <div class="divider text-xs">Руководство</div>
+      <div class="grid grid-cols-2 gap-x-6 gap-y-2">
+        <div>
+          <span class="text-xs font-semibold" style="color:var(--ms-text-secondary)">ФИО</span>
+          <div>{{ le.director_name }}</div>
+        </div>
+        {% if le.director_title %}
+        <div>
+          <span class="text-xs font-semibold" style="color:var(--ms-text-secondary)">Должность</span>
+          <div>{{ le.director_title }}</div>
+        </div>
+        {% endif %}
+      </div>
+      {% endif %}
+
+      <!-- Контакты -->
+      {% if le.phone or le.email or le.website %}
+      <div class="divider text-xs">Контакты</div>
+      <div class="grid grid-cols-3 gap-x-6 gap-y-2">
+        {% if le.phone %}
+        <div>
+          <span class="text-xs font-semibold" style="color:var(--ms-text-secondary)">Телефон</span>
+          <div>{{ le.phone }}</div>
+        </div>
+        {% endif %}
+        {% if le.email %}
+        <div>
+          <span class="text-xs font-semibold" style="color:var(--ms-text-secondary)">Email</span>
+          <div>{{ le.email }}</div>
+        </div>
+        {% endif %}
+        {% if le.website %}
+        <div>
+          <span class="text-xs font-semibold" style="color:var(--ms-text-secondary)">Сайт</span>
+          <div><a href="{{ le.website }}" target="_blank" class="link link-primary">{{ le.website }}</a></div>
+        </div>
+        {% endif %}
+      </div>
+      {% endif %}
+
+      <!-- Банк -->
+      {% if le.bank_name or le.bik or le.settlement_account %}
+      <div class="divider text-xs">Банковские реквизиты</div>
+      <div class="grid grid-cols-2 gap-x-6 gap-y-2">
+        {% if le.bank_name %}
+        <div>
+          <span class="text-xs font-semibold" style="color:var(--ms-text-secondary)">Банк</span>
+          <div>{{ le.bank_name }}</div>
+        </div>
+        {% endif %}
+        {% if le.bik %}
+        <div>
+          <span class="text-xs font-semibold" style="color:var(--ms-text-secondary)">БИК</span>
+          <div>{{ le.bik }}</div>
+        </div>
+        {% endif %}
+        {% if le.correspondent_account %}
+        <div>
+          <span class="text-xs font-semibold" style="color:var(--ms-text-secondary)">Корр. счёт</span>
+          <div>{{ le.correspondent_account }}</div>
+        </div>
+        {% endif %}
+        {% if le.settlement_account %}
+        <div>
+          <span class="text-xs font-semibold" style="color:var(--ms-text-secondary)">Расчётный счёт</span>
+          <div>{{ le.settlement_account }}</div>
+        </div>
+        {% endif %}
+      </div>
+      {% endif %}
+
+      <!-- Заметки -->
+      {% if le.notes %}
+      <div class="divider text-xs">Заметки</div>
+      <div class="whitespace-pre-line">{{ le.notes }}</div>
+      {% endif %}
+    </div>
+
+    <div class="modal-action">
+      <button class="btn btn-sm btn-primary"
+              hx-get="{% url 'legal_entity_edit' le.pk %}"
+              hx-target="body"
+              hx-swap="beforeend"
+              hx-on::after-request="document.getElementById('legal-entity-detail-modal')?.remove()">Редактировать</button>
+      <button type="button" class="btn btn-sm"
+              onclick="this.closest('dialog').remove()">Закрыть</button>
+    </div>
+  </div>
+  <div class="modal-backdrop" onclick="this.closest('dialog').remove()"></div>
+</dialog>

@@ -130,6 +130,29 @@ def push_message_reactions(msg: Message):
     )
 
 
+def push_messenger_status_update(client: Client):
+    """
+    Шлёт OOB-обновление иконки статуса мессенджера во все места отображения
+    (список клиентов в сайдбаре, карточка Kanban, бейдж в шапке чата).
+
+    Обновление рассылается персонально каждому закреплённому сотруднику,
+    т.к. статус у каждого свой.
+    """
+    if channel_layer is None:
+        return
+
+    from apps.crm.models import ClientEmployee
+
+    for ce in ClientEmployee.objects.filter(client=client).select_related('employee__user'):
+        html = render_to_string("crm/partials/messenger_status_oob.html", {
+            "client": client, "status": ce.messenger_status,
+        })
+        async_to_sync(channel_layer.group_send)(
+            f"user_notifications_{ce.employee.user.id}",
+            {"type": "notify", "html": html},
+        )
+
+
 def push_message_status(msg: Message):
     """
     Обновляет статус пузыря в чате через WS.

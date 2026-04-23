@@ -3,7 +3,14 @@
      hx-get="{% url 'core:admin_employees' %}"
      hx-swap="outerHTML">
 
-  <h3 class="font-semibold mb-3">Сотрудники</h3>
+  <div class="flex items-center justify-between mb-3">
+    <h3 class="font-semibold">Сотрудники</h3>
+    <button class="btn btn-sm btn-primary"
+            hx-get="{% url 'core:admin_employee_create' %}"
+            hx-target="body" hx-swap="beforeend">
+      + Добавить сотрудника
+    </button>
+  </div>
 
   <div class="overflow-x-auto">
     <table class="table table-sm table-zebra">

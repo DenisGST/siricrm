@@ -170,7 +170,7 @@
             🗑 Очистить лог
           </button>
         </div>
-        <div class="p-4 max-h-80 overflow-y-auto">
+        <div class="p-4 max-h-96 overflow-y-auto" style="scrollbar-width:thin">
           <div id="django-errors" class="space-y-2">
             <p class="text-sm text-base-content/60">Загрузка...</p>
           </div>
@@ -185,7 +185,7 @@
             🗑 Очистить лог
           </button>
         </div>
-        <div class="p-4 max-h-80 overflow-y-auto">
+        <div class="p-4 max-h-96 overflow-y-auto" style="scrollbar-width:thin">
           <div id="userbot-errors" class="space-y-2">
             <p class="text-sm text-base-content/60">Загрузка...</p>
           </div>
@@ -200,7 +200,7 @@
             🗑 Очистить лог
           </button>
         </div>
-        <div class="p-4 max-h-80 overflow-y-auto">
+        <div class="p-4 max-h-96 overflow-y-auto" style="scrollbar-width:thin">
           <div id="celery-errors" class="space-y-2">
             <p class="text-sm text-base-content/60">Загрузка...</p>
           </div>
@@ -215,7 +215,7 @@
             🗑 Очистить лог
           </button>
         </div>
-        <div class="p-4 max-h-80 overflow-y-auto">
+        <div class="p-4 max-h-96 overflow-y-auto" style="scrollbar-width:thin">
           <div id="maxbot-errors" class="space-y-2">
             <p class="text-sm text-base-content/60">Загрузка...</p>
           </div>
@@ -319,6 +319,9 @@
     }
   }
 
+  var ERROR_SHOW_LIMIT = 10;
+  var errorExpandState = {};
+
   function renderErrors(containerId, countId, errors) {
     const container = document.getElementById(containerId);
     const badge     = document.getElementById(countId);
@@ -333,12 +336,23 @@
     badge.textContent = errors.length;
     badge.style.display = 'inline-flex';
 
-    container.innerHTML = errors.map(err => `
-      <div class="border-l-4 border-error pl-3 py-1">
-        <div class="text-[0.68rem] text-base-content/50 mb-1">${err.timestamp}</div>
-        <div class="log-entry">${escapeHtml(err.text)}</div>
-      </div>
-    `).join('');
+    var expanded = errorExpandState[containerId];
+    var visible = expanded ? errors : errors.slice(0, ERROR_SHOW_LIMIT);
+
+    var html = visible.map(function(err) {
+      return '<div class="border-l-4 border-error pl-3 py-1">' +
+        '<div class="text-[0.68rem] text-base-content/50 mb-1">' + err.timestamp + '</div>' +
+        '<div class="log-entry">' + escapeHtml(err.text) + '</div>' +
+      '</div>';
+    }).join('');
+
+    if (errors.length > ERROR_SHOW_LIMIT && !expanded) {
+      html += '<button onclick="errorExpandState[\'' + containerId + '\']=true;loadData()" class="btn btn-xs btn-ghost mt-2 w-full">Показать все (' + errors.length + ')</button>';
+    } else if (errors.length > ERROR_SHOW_LIMIT && expanded) {
+      html += '<button onclick="delete errorExpandState[\'' + containerId + '\'];loadData()" class="btn btn-xs btn-ghost mt-2 w-full">Свернуть</button>';
+    }
+
+    container.innerHTML = html;
   }
 
   async function clearLog(logKey) {
@@ -373,12 +387,12 @@
     return d.innerHTML;
   }
 
-  document.addEventListener('DOMContentLoaded', () => {
+  // Запуск сразу — DOMContentLoaded не срабатывает при HTMX-подгрузке
+  (function() {
     initCharts();
     loadData();
-    setInterval(loadData, 10000);
-  });
+    if (window._monitoringInterval) clearInterval(window._monitoringInterval);
+    window._monitoringInterval = setInterval(loadData, 10000);
+  })();
 </script>
-
-</body>
 </html>

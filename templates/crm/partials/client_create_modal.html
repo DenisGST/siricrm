@@ -1,6 +1,6 @@
 {# crm/partials/client_create_modal.html #}
 <dialog id="client-create-modal" class="modal modal-open">
-  <div class="modal-box max-w-lg">
+  <div class="modal-box w-full max-w-4xl">
     <div class="flex items-center justify-between mb-4">
       <h3 class="text-lg font-bold">Новый клиент</h3>
       <button type="button" class="btn btn-sm btn-ghost btn-circle" onclick="this.closest('dialog').remove()">✕</button>
@@ -9,68 +9,157 @@
     <form hx-post="{% url 'client_create' %}"
           hx-target="#client-create-modal"
           hx-swap="outerHTML"
-          class="space-y-3">
+          class="space-y-4">
       {% csrf_token %}
 
       {% if form.non_field_errors %}
         <div class="alert alert-error text-sm py-2">{{ form.non_field_errors }}</div>
       {% endif %}
 
-      <div class="grid grid-cols-2 gap-3">
-        <div class="form-control">
-          <label class="label py-1"><span class="label-text text-xs">Фамилия</span></label>
-          <input type="text" name="last_name" value="{{ form.last_name.value|default:'' }}" class="input input-bordered input-sm w-full" placeholder="Иванов">
-          {% if form.last_name.errors %}<span class="text-error text-xs">{{ form.last_name.errors.0 }}</span>{% endif %}
-        </div>
-        <div class="form-control">
-          <label class="label py-1"><span class="label-text text-xs">Имя *</span></label>
-          <input type="text" name="first_name" value="{{ form.first_name.value|default:'' }}" class="input input-bordered input-sm w-full" placeholder="Иван" required>
-          {% if form.first_name.errors %}<span class="text-error text-xs">{{ form.first_name.errors.0 }}</span>{% endif %}
-        </div>
-      </div>
+      <!-- Табы -->
+      <div role="tablist" class="tabs tabs-bordered">
 
-      <div class="grid grid-cols-2 gap-3">
-        <div class="form-control">
-          <label class="label py-1"><span class="label-text text-xs">Отчество</span></label>
-          <input type="text" name="patronymic" value="{{ form.patronymic.value|default:'' }}" class="input input-bordered input-sm w-full" placeholder="Иванович">
-        </div>
-        <div class="form-control">
-          <label class="label py-1"><span class="label-text text-xs">Телефон</span></label>
-          <input type="text" name="phone" value="{{ form.phone.value|default:'' }}" class="input input-bordered input-sm w-full" placeholder="+7 900 123-45-67">
-          {% if form.phone.errors %}<span class="text-error text-xs">{{ form.phone.errors.0 }}</span>{% endif %}
-        </div>
-      </div>
+        <input type="radio" name="client-create-tabs" role="tab" class="tab" aria-label="Основное" checked />
+        <div role="tabpanel" class="tab-content pt-4 space-y-3">
 
-      <div class="grid grid-cols-2 gap-3">
-        <div class="form-control">
-          <label class="label py-1"><span class="label-text text-xs">Email</span></label>
-          <input type="email" name="email" value="{{ form.email.value|default:'' }}" class="input input-bordered input-sm w-full" placeholder="email@example.com">
-        </div>
-        <div class="form-control">
-          <label class="label py-1"><span class="label-text text-xs">Username (Telegram)</span></label>
-          <input type="text" name="username" value="{{ form.username.value|default:'' }}" class="input input-bordered input-sm w-full" placeholder="@username">
-        </div>
-      </div>
+          <!-- ФИО -->
+          <div class="grid grid-cols-3 gap-3">
+            <div class="form-control">
+              <label class="label py-1"><span class="label-text text-xs">Фамилия</span></label>
+              <input type="text" name="last_name" value="{{ form.last_name.value|default:'' }}"
+                class="input input-bordered input-sm w-full" placeholder="Иванов">
+              {% if form.last_name.errors %}<span class="text-error text-xs">{{ form.last_name.errors.0 }}</span>{% endif %}
+            </div>
+            <div class="form-control">
+              <label class="label py-1"><span class="label-text text-xs">Имя *</span></label>
+              <input type="text" name="first_name" value="{{ form.first_name.value|default:'' }}"
+                class="input input-bordered input-sm w-full" placeholder="Иван" required>
+              {% if form.first_name.errors %}<span class="text-error text-xs">{{ form.first_name.errors.0 }}</span>{% endif %}
+            </div>
+            <div class="form-control">
+              <label class="label py-1"><span class="label-text text-xs">Отчество</span></label>
+              <input type="text" name="patronymic" value="{{ form.patronymic.value|default:'' }}"
+                class="input input-bordered input-sm w-full" placeholder="Иванович">
+            </div>
+          </div>
 
-      <div class="grid grid-cols-2 gap-3">
-        <div class="form-control">
-          <label class="label py-1"><span class="label-text text-xs">Telegram ID</span></label>
-          <input type="number" name="telegram_id" value="{{ form.telegram_id.value|default:'' }}" class="input input-bordered input-sm w-full">
-        </div>
-        <div class="form-control">
-          <label class="label py-1"><span class="label-text text-xs">Статус</span></label>
-          <select name="status" class="select select-bordered select-sm w-full">
-            <option value="lead" {% if form.status.value == "lead" %}selected{% endif %}>Лид</option>
-            <option value="active" {% if form.status.value == "active" %}selected{% endif %}>Активный</option>
-            <option value="inactive" {% if form.status.value == "inactive" %}selected{% endif %}>Неактивный</option>
-            <option value="closed" {% if form.status.value == "closed" %}selected{% endif %}>Закрыт</option>
-          </select>
-        </div>
-      </div>
+          <!-- Контакты -->
+          <div class="grid grid-cols-2 gap-3">
+            <div class="form-control">
+              <label class="label py-1"><span class="label-text text-xs">Телефон</span></label>
+              <input type="text" name="phone" value="{{ form.phone.value|default:'' }}"
+                class="input input-bordered input-sm w-full" placeholder="+7 900 123-45-67">
+              {% if form.phone.errors %}<span class="text-error text-xs">{{ form.phone.errors.0 }}</span>{% endif %}
+            </div>
+            <div class="form-control">
+              <label class="label py-1"><span class="label-text text-xs">Email</span></label>
+              <input type="email" name="email" value="{{ form.email.value|default:'' }}"
+                class="input input-bordered input-sm w-full" placeholder="email@example.com">
+            </div>
+            <div class="form-control">
+              <label class="label py-1"><span class="label-text text-xs">Username (Telegram)</span></label>
+              <input type="text" name="username" value="{{ form.username.value|default:'' }}"
+                class="input input-bordered input-sm w-full" placeholder="@username">
+            </div>
+            <div class="form-control">
+              <label class="label py-1"><span class="label-text text-xs">Telegram ID</span></label>
+              <input type="number" name="telegram_id" value="{{ form.telegram_id.value|default:'' }}"
+                class="input input-bordered input-sm w-full">
+            </div>
+          </div>
 
-      <div class="form-control">
-        <label class="label py-1"><span class="label-text text-xs">Заметки</span></label>
-        <textarea name="notes" class="textarea textarea-bordered textarea-sm w-full" rows="2" placeholder="Комментарий...">{{ form.notes.value|default:'' }}</textarea>
+          <!-- Статус -->
+          <div class="form-control">
+            <label class="label py-1"><span class="label-text text-xs">Статус</span></label>
+            <select name="status" class="select select-bordered select-sm w-full">
+              {% for val, label in form.fields.status.choices %}
+                <option value="{{ val }}" {% if form.status.value == val %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+
+        </div>
+
+        <input type="radio" name="client-create-tabs" role="tab" class="tab" aria-label="Документы" />
+        <div role="tabpanel" class="tab-content pt-4 space-y-3">
+
+          <!-- Личные данные -->
+          <div class="divider text-xs">Личные данные</div>
+          <div class="grid grid-cols-2 gap-3">
+            <div class="form-control">
+              <label class="label py-1"><span class="label-text text-xs">Дата рождения</span></label>
+              <input type="date" name="birth_date" value="{{ form.birth_date.value|default:'' }}"
+                class="input input-bordered input-sm w-full">
+            </div>
+            <div class="form-control">
+              <label class="label py-1"><span class="label-text text-xs">Место рождения</span></label>
+              <input type="text" name="birth_place" value="{{ form.birth_place.value|default:'' }}"
+                class="input input-bordered input-sm w-full">
+            </div>
+          </div>
+
+          <!-- Паспорт -->
+          <div class="divider text-xs">Паспорт</div>
+          <div class="grid grid-cols-2 gap-3">
+            <div class="form-control">
+              <label class="label py-1"><span class="label-text text-xs">Серия</span></label>
+              <input type="text" name="passport_series" value="{{ form.passport_series.value|default:'' }}"
+                maxlength="4" placeholder="1234" class="input input-bordered input-sm w-full">
+            </div>
+            <div class="form-control">
+              <label class="label py-1"><span class="label-text text-xs">Номер</span></label>
+              <input type="text" name="passport_number" value="{{ form.passport_number.value|default:'' }}"
+                maxlength="6" placeholder="567890" class="input input-bordered input-sm w-full">
+            </div>
+            <div class="form-control col-span-2">
+              <label class="label py-1"><span class="label-text text-xs">Кем выдан</span></label>
+              <input type="text" name="passport_issued_by" value="{{ form.passport_issued_by.value|default:'' }}"
+                class="input input-bordered input-sm w-full">
+            </div>
+            <div class="form-control">
+              <label class="label py-1"><span class="label-text text-xs">Дата выдачи</span></label>
+              <input type="date" name="passport_issued_date" value="{{ form.passport_issued_date.value|default:'' }}"
+                class="input input-bordered input-sm w-full">
+            </div>
+          </div>
+
+          <!-- ИНН / СНИЛС -->
+          <div class="divider text-xs">Документы</div>
+          <div class="grid grid-cols-2 gap-3">
+            <div class="form-control">
+              <label class="label py-1"><span class="label-text text-xs">ИНН</span></label>
+              <input type="text" name="inn" value="{{ form.inn.value|default:'' }}"
+                maxlength="12" class="input input-bordered input-sm w-full">
+            </div>
+            <div class="form-control">
+              <label class="label py-1"><span class="label-text text-xs">СНИЛС</span></label>
+              <input type="text" name="snils" value="{{ form.snils.value|default:'' }}"
+                maxlength="14" placeholder="000-000-000 00" class="input input-bordered input-sm w-full">
+            </div>
+          </div>
+
+        </div>
+
+        <input type="radio" name="client-create-tabs" role="tab" class="tab" aria-label="Адреса и заметки" />
+        <div role="tabpanel" class="tab-content pt-4 space-y-3">
+
+          <div class="form-control">
+            <label class="label py-1"><span class="label-text text-xs">Заметки</span></label>
+            <textarea name="notes" class="textarea textarea-bordered textarea-sm w-full" rows="4"
+              placeholder="Комментарий...">{{ form.notes.value|default:'' }}</textarea>
+          </div>
+
+          <!-- Кнопка: сохранить клиента и открыть раздел адресов -->
+          <div class="alert alert-info text-xs py-2">
+            Сохраните клиента, чтобы добавить адреса.
+          </div>
+          <button type="submit" name="open_addresses" value="1"
+                  class="btn btn-sm btn-outline w-full">
+            Сохранить и добавить адреса
+          </button>
+
+        </div>
+
       </div>
 
       <div class="modal-action pt-2">

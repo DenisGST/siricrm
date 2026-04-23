@@ -6,8 +6,8 @@ from django.core.cache import cache
 from apps.crm.models import Message, Client
 from apps.core.models import Employee, Department, MenuItem, Widget, DashboardConfig
 from apps.core.forms import (
-    DepartmentForm, EmployeeAdminForm, MenuItemForm,
-    WidgetForm, DashboardConfigForm,
+    DepartmentForm, EmployeeAdminForm, EmployeeCreateForm,
+    MenuItemForm, WidgetForm, DashboardConfigForm,
 )
 from django.utils import timezone
 from datetime import datetime, timedelta
@@ -261,6 +261,34 @@ def admin_employee_edit(request, pk):
     return render(request, "core/partials/employee_form_modal.html", {
         "form": form, "emp": emp,
     })
+
+
+@user_passes_test(is_admin)
+def admin_employee_create(request):
+    if request.method == "POST":
+        form = EmployeeCreateForm(request.POST)
+        if form.is_valid():
+            user = User.objects.create_user(
+                username=form.cleaned_data["username"],
+                password=form.cleaned_data["password"],
+                first_name=form.cleaned_data["first_name"],
+                last_name=form.cleaned_data["last_name"],
+                email=form.cleaned_data.get("email", ""),
+            )
+            Employee.objects.create(
+                user=user,
+                patronymic=form.cleaned_data.get("patronymic", ""),
+                phone_mobile=form.cleaned_data.get("phone_mobile", ""),
+                phone_internal=form.cleaned_data.get("phone_internal", ""),
+                department=form.cleaned_data.get("department"),
+                role=form.cleaned_data["role"],
+                dashboard_config=form.cleaned_data.get("dashboard_config"),
+                has_messenger_access=form.cleaned_data.get("has_messenger_access", True),
+            )
+            return HttpResponse(headers={"HX-Trigger": "reloadEmployees"})
+    else:
+        form = EmployeeCreateForm()
+    return render(request, "core/partials/employee_create_modal.html", {"form": form})
 
 
 @user_passes_test(is_admin)

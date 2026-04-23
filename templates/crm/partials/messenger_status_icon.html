@@ -1,0 +1,23 @@
+{% if place == "list" %}
+<span id="ms-status-list-{{ client_id }}" class="ms-status-icon avatar placeholder"
+      title="{% if status == 'open' %}Диалог открыт{% elif status == 'waiting' %}Ожидаю ответа{% elif status == 'closed' %}Диалог закрыт{% endif %}">
+  <div class="w-8 rounded-full text-xs flex items-center justify-center"
+       style="{% if status == 'open' %}background:#ef4444;color:#fff{% elif status == 'waiting' %}background:#3b82f6;color:#fff{% elif status == 'closed' %}background:#22c55e;color:#fff{% else %}background:#8b5cf6;color:#fff{% endif %}">
+    {{ initial|default:"?" }}
+  </div>
+</span>
+{% else %}
+<span id="ms-status-{{ place }}-{{ client_id }}"
+      class="ms-status-icon"
+      title="{% if status == 'open' %}Диалог открыт{% elif status == 'waiting' %}Ожидаю ответа{% elif status == 'closed' %}Диалог закрыт{% endif %}">
+  {% if status == "open" %}
+    <span style="color:#ef4444; font-size:16px; font-weight:700; line-height:1; display:inline-block; width:14px; text-align:center">!</span>
+  {% elif status == "waiting" %}
+    <span style="color:#3b82f6; font-size:16px; font-weight:700; line-height:1; display:inline-block; width:14px; text-align:center">?</span>
+  {% elif status == "closed" %}
+    <span style="color:#22c55e; font-size:16px; font-weight:700; line-height:1; display:inline-block; width:14px; text-align:center">✓</span>
+  {% else %}
+    <span style="display:inline-block; width:14px"></span>
+  {% endif %}
+</span>
+{% endif %}
