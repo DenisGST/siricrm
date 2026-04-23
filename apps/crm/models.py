@@ -24,8 +24,12 @@ class Region(models.Model):
         max_length=500,
         verbose_name='Наименование суда'
     )
-    court_address = models.TextField(
-        verbose_name='Адрес суда'
+    court_address = models.ForeignKey(
+        "Address",
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name="courts",
+        verbose_name='Адрес суда',
     )
     court_payment_details = models.TextField(
         verbose_name='Реквизиты суда для госпошлины',
@@ -160,6 +164,7 @@ class Address(TimeStampedModel):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     client = models.ForeignKey(
         Client, on_delete=models.CASCADE,
+        null=True, blank=True,
         related_name="addresses", verbose_name="Клиент",
     )
     address_type = models.CharField(

@@ -87,13 +87,57 @@ class WidgetForm(forms.ModelForm):
 
 
 class RegionForm(forms.ModelForm):
+    """Форма редактирования региона.
+    Поле court_address — FK на Address — редактируется отдельным блоком
+    (структурированные поля адреса) в шаблоне, а не через textarea.
+    """
+    court_address_text = forms.CharField(
+        label="Адрес суда",
+        required=False,
+        widget=forms.Textarea(attrs={"rows": 2}),
+        help_text="Полный адрес (сохранится в Address.source/result)",
+    )
+
     class Meta:
         model = Region
-        fields = ["number", "name", "court_name", "court_address", "court_payment_details"]
+        fields = ["number", "name", "court_name", "court_payment_details"]
         widgets = {
-            "court_address": forms.Textarea(attrs={"rows": 2}),
             "court_payment_details": forms.Textarea(attrs={"rows": 4}),
         }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.instance and self.instance.pk and self.instance.court_address:
+            self.fields["court_address_text"].initial = (
+                self.instance.court_address.source
+                or self.instance.court_address.result
+                or ""
+            )
+
+    def save(self, commit=True):
+        from apps.crm.models import Address
+        region = super().save(commit=False)
+        text = (self.cleaned_data.get("court_address_text") or "").strip()
+
+        if text:
+            addr = region.court_address
+            if addr is None:
+                addr = Address.objects.create(
+                    client=None, address_type="default",
+                    source=text, result=text,
+                )
+            else:
+                addr.source = text
+                addr.result = text
+                addr.save(update_fields=["source", "result"])
+            region.court_address = addr
+        elif region.court_address is not None:
+            # Очистка текста — оставляем адрес-объект, но обнуляем FK у региона.
+            region.court_address = None
+
+        if commit:
+            region.save()
+        return region
 
 
 class LegalEntityKindForm(forms.ModelForm):

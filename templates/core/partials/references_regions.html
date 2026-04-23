@@ -30,7 +30,10 @@
           <td class="font-semibold">{{ r.number }}</td>
           <td>{{ r.name }}</td>
           <td class="text-xs">{{ r.court_name|truncatechars:60 }}</td>
-          <td class="text-xs">{{ r.court_address|truncatechars:50 }}</td>
+          <td class="text-xs">
+            {% if r.court_address %}{{ r.court_address.source|truncatechars:50 }}
+            {% else %}<span class="text-base-content/40">—</span>{% endif %}
+          </td>
           <td>{{ r.legal_entities.count }}</td>
           <td class="text-right">
             <button class="btn btn-xs btn-outline"

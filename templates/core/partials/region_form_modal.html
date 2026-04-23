@@ -30,9 +30,18 @@
       </div>
 
       <div>
-        <label class="label py-1"><span class="label-text">Адрес суда</span></label>
-        <textarea name="court_address" rows="2"
-                  class="textarea textarea-bordered textarea-sm w-full">{{ form.court_address.value|default:'' }}</textarea>
+        <label class="label py-1">
+          <span class="label-text">Адрес суда</span>
+          {% if region.court_address %}
+            <span class="label-text-alt text-base-content/50">связан с Address #{{ region.court_address.pk|stringformat:"s"|slice:":8" }}</span>
+          {% endif %}
+        </label>
+        <textarea name="court_address_text" rows="2"
+                  class="textarea textarea-bordered textarea-sm w-full"
+                  placeholder="Индекс, город, улица, дом">{{ form.court_address_text.value|default:'' }}</textarea>
+        <span class="text-xs text-base-content/60">
+          Текст сохраняется в связанной записи Address (source и result).
+        </span>
       </div>
 
       <div>
