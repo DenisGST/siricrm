@@ -50,7 +50,18 @@
         {% endfor %}
       </select>
 
-      {% if search or f_kind or f_status or f_entity_type %}
+      <select name="region" class="select select-sm select-bordered w-56"
+              onchange="this.form.requestSubmit()">
+        <option value="">Регион: все</option>
+        <option value="none" {% if f_region == "none" %}selected{% endif %}>— без региона —</option>
+        {% for r in regions %}
+          <option value="{{ r.pk }}" {% if f_region == r.pk|stringformat:"s" %}selected{% endif %}>
+            {{ r.number }} — {{ r.name }}
+          </option>
+        {% endfor %}
+      </select>
+
+      {% if search or f_kind or f_status or f_entity_type or f_region %}
         <button type="button" class="btn btn-sm btn-ghost"
                 onclick="
                   var f=document.getElementById('le-filters');

@@ -49,6 +49,12 @@
           <div>{{ le.brand }}</div>
         </div>
         {% endif %}
+        {% if le.region %}
+        <div>
+          <span class="text-xs font-semibold" style="color:var(--ms-text-secondary)">Регион (субъект РФ)</span>
+          <div>{{ le.region.number }} — {{ le.region.name }}</div>
+        </div>
+        {% endif %}
       </div>
 
       <!-- Реквизиты -->

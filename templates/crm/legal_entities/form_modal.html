@@ -84,6 +84,21 @@
 
           <div class="grid grid-cols-4 gap-3">
             <div class="form-control col-span-2">
+              <label class="label py-1"><span class="label-text text-xs">Регион (субъект РФ)</span></label>
+              <select name="region" id="le-region" class="select select-bordered select-sm w-full">
+                <option value="">—</option>
+                {% for obj in form.fields.region.queryset %}
+                  <option value="{{ obj.pk }}"
+                    {% if form.region.value|stringformat:"s" == obj.pk|stringformat:"s" %}selected{% endif %}>
+                    {{ obj.number }} — {{ obj.name }}
+                  </option>
+                {% endfor %}
+              </select>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-4 gap-3">
+            <div class="form-control col-span-2">
               <label class="label py-1"><span class="label-text text-xs">Статус</span></label>
               <select name="status" id="le-status" class="select select-bordered select-sm w-full">
                 {% for val, label in form.fields.status.choices %}

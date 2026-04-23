@@ -22,6 +22,9 @@
           <th class="le-sort-th" data-sort="ogrn">
             ОГРН {% include "crm/legal_entities/_sort_arrow.html" with field="ogrn" %}
           </th>
+          <th class="le-sort-th" data-sort="region__name">
+            Регион {% include "crm/legal_entities/_sort_arrow.html" with field="region__name" %}
+          </th>
           <th class="le-sort-th" data-sort="director_name">
             Руководитель {% include "crm/legal_entities/_sort_arrow.html" with field="director_name" %}
           </th>
@@ -63,6 +66,14 @@
               {% if le.kpp %}<br>{{ le.kpp }}{% endif %}
             </td>
             <td class="text-xs">{{ le.ogrn|default:"—" }}</td>
+            <td class="text-xs">
+              {% if le.region %}
+                <span class="badge badge-sm badge-ghost" title="{{ le.region.name }}">
+                  {{ le.region.number }}
+                </span>
+                <span>{{ le.region.name }}</span>
+              {% else %}—{% endif %}
+            </td>
             <td class="text-xs">{{ le.director_name|default:"—" }}</td>
             <td class="text-xs">
               {% if le.phone %}<div>{{ le.phone }}</div>{% endif %}
@@ -88,7 +99,7 @@
           </tr>
         {% empty %}
           <tr>
-            <td colspan="10" class="text-center text-sm text-base-content/60">
+            <td colspan="11" class="text-center text-sm text-base-content/60">
               Юридических лиц нет
             </td>
           </tr>

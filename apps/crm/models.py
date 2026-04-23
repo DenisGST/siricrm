@@ -319,6 +319,14 @@ class LegalEntity(TimeStampedModel):
         verbose_name="Тип юридического лица",
     )
 
+    region = models.ForeignKey(
+        "Region",
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name="legal_entities",
+        verbose_name="Регион (субъект РФ)",
+    )
+
     def __str__(self):
         return self.short_name or self.name
 

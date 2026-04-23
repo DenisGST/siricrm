@@ -965,23 +965,24 @@ def messenger_status_badge(request, client_id):
 
 @login_required
 def legal_entities_list(request):
-    from apps.crm.models import LegalEntityKind
+    from apps.crm.models import LegalEntityKind, Region
 
     search = request.GET.get("search", "").strip()
     f_kind = request.GET.get("kind", "").strip()
     f_status = request.GET.get("status", "").strip()
     f_entity_type = request.GET.get("entity_type", "").strip()
+    f_region = request.GET.get("region", "").strip()
     sort = (request.GET.get("sort") or "name").strip()
 
     ALLOWED_SORT = {
         "name", "kind__short_name", "entity_type", "inn", "ogrn",
-        "director_name", "status", "brand",
+        "director_name", "status", "brand", "region__name",
     }
     sort_key = sort.lstrip("-")
     if sort_key not in ALLOWED_SORT:
         sort = "name"
 
-    qs = LegalEntity.objects.select_related("kind").all()
+    qs = LegalEntity.objects.select_related("kind", "region").all()
 
     if search:
         qs = qs.filter(
@@ -997,6 +998,11 @@ def legal_entities_list(request):
         qs = qs.filter(status=f_status)
     if f_entity_type:
         qs = qs.filter(entity_type=f_entity_type)
+    if f_region:
+        if f_region == "none":
+            qs = qs.filter(region__isnull=True)
+        else:
+            qs = qs.filter(region_id=f_region)
 
     paginator = Paginator(qs.order_by(sort, "name"), 20)
     page_obj = paginator.get_page(request.GET.get("page", 1))
@@ -1012,8 +1018,10 @@ def legal_entities_list(request):
         "f_kind": f_kind,
         "f_status": f_status,
         "f_entity_type": f_entity_type,
+        "f_region": f_region,
         "sort": sort,
         "kinds": LegalEntityKind.objects.order_by("name"),
+        "regions": Region.objects.order_by("number"),
         "status_choices": LegalEntity.STATUS_CHOICES,
         "entity_type_choices": LegalEntity.ENTITY_TYPE_CHOICES,
     })

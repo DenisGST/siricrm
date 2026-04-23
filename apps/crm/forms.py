@@ -50,7 +50,7 @@ class LegalEntityForm(forms.ModelForm):
     class Meta:
         model = LegalEntity
         fields = [
-            "kind", "entity_type", "name", "short_name", "brand",
+            "kind", "region", "entity_type", "name", "short_name", "brand",
             "inn", "kpp", "ogrn", "okpo", "okved",
             "legal_address", "actual_address", "postal_address",
             "director_name", "director_title",
