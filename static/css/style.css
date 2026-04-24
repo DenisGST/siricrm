@@ -461,14 +461,9 @@ img.emoji {
   white-space: nowrap;
   padding-right: 4px;
 }
-/* Глобальный поиск — ширина увеличена на 60% (было 256/320/384 → 410/512/614) */
-.global-search-wrap label.input-xs { width: 410px; }
-@media (min-width: 768px) {
-  .global-search-wrap label.input-xs { width: 512px; }
-}
-@media (min-width: 1024px) {
-  .global-search-wrap label.input-xs { width: 614px; }
-}
+/* Глобальный поиск — занимает всё доступное место в navbar-center */
+.global-search-wrap { width: 100%; min-width: 260px; }
+.global-search-wrap label.input-xs { width: 100%; }
 .app-main > .navbar .input-xs,
 .app-main > .navbar label.input-xs {
   height: 22px;

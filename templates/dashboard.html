@@ -102,8 +102,9 @@
     <!-- Верхняя панель (daisyUI navbar) -->
     <header class="navbar bg-base-100 border-b border-base-300 px-2 py-0 gap-1">
       <!-- Слева: бренд + кнопки "Добавить" -->
-      <div class="navbar-start gap-2">
+      <div class="navbar-start gap-1">
         <span class="navbar-brand">Сириус-CRM</span>
+        <span class="navbar-divider"></span>
         <div class="tooltip tooltip-bottom" data-tip="Новый клиент">
           <button type="button" class="btn btn-ghost btn-xs btn-square"
                   style="color:#22c55e"
@@ -121,14 +122,15 @@
       </div>
 
       <!-- По центру: поиск + фильтр -->
-      <div class="navbar-center gap-1">
-        <div class="relative global-search-wrap" id="global-search-wrap">
-          <label class="input input-bordered input-xs flex items-center gap-2">
-            {% icon "search" size=12 %}
+      <div class="navbar-center gap-1 flex-1">
+        <span class="navbar-divider"></span>
+        <div class="relative global-search-wrap flex-1" id="global-search-wrap">
+          <label class="input input-xs input-bordered le-search flex items-center gap-2 w-full">
+            {% icon "search" size=14 %}
             <input id="global-search" type="search" name="q"
                    placeholder="Поиск клиентов, юр.лиц, сообщений…"
                    autocomplete="off"
-                   class="grow bg-transparent outline-none text-xs"
+                   class="le-search-input"
                    hx-get="{% url 'global_search' %}"
                    hx-trigger="keyup changed delay:250ms, focus"
                    hx-target="#global-search-results"
@@ -143,6 +145,7 @@
             {% icon "filter" size=14 %}
           </button>
         </div>
+        <span class="navbar-divider"></span>
       </div>
 
       <!-- Справа: уведомления + Telegram -->

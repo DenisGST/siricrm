@@ -930,15 +930,15 @@ def global_search(request):
         Q(first_name__icontains=q) | Q(last_name__icontains=q) |
         Q(patronymic__icontains=q) | Q(username__icontains=q) |
         Q(phone__icontains=q)
-    ).order_by("last_name", "first_name")[:8]
+    ).order_by("last_name", "first_name")[:12]
 
     legal_entities = LegalEntity.objects.filter(
         Q(name__icontains=q) | Q(inn__icontains=q) | Q(ogrn__icontains=q)
-    ).order_by("name")[:5]
+    ).order_by("name")[:12]
 
     messages = Message.objects.filter(
         content__icontains=q
-    ).select_related("client").order_by("-created_at")[:5]
+    ).select_related("client").order_by("-created_at")[:12]
 
     empty = not (clients or legal_entities or messages)
     return render(request, "crm/partials/global_search_results.html", {
