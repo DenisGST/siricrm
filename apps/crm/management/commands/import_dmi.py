@@ -145,12 +145,22 @@ class Command(BaseCommand):
         parser.add_argument("--sleep", type=float, default=0.12)
         parser.add_argument("--limit", type=int, default=0, help="Ограничить число МО")
         parser.add_argument("--region", type=int, default=0, help="Только один регион по Region.number")
+        parser.add_argument(
+            "--skip-covered", action="store_true",
+            help="Пропустить регионы, где уже есть хотя бы один ДМИ.",
+        )
+        parser.add_argument(
+            "--max-queries", type=int, default=0,
+            help="Ограничить общее число запросов к DaData (защита от исчерпания квоты).",
+        )
 
     def handle(self, *args, **opts):
         dry_run = opts["dry_run"]
         sleep_s = opts["sleep"]
         limit = opts["limit"]
         only_region = opts["region"]
+        skip_covered = opts["skip_covered"]
+        max_queries = opts["max_queries"]
 
         token = getattr(settings, "DADATA_API_KEY", "") or ""
         if not token:
@@ -169,114 +179,145 @@ class Command(BaseCommand):
             region = Region.objects.filter(number=only_region).first()
             if region:
                 munis = [m for m in munis if m[0] == region.id]
+
+        covered_ids: set[int] = set()
+        if skip_covered and kind:
+            covered_ids = set(
+                LegalEntity.objects.filter(kind=kind, region__isnull=False)
+                .values_list("region_id", flat=True).distinct()
+            )
+            if covered_ids:
+                before = len(munis)
+                munis = [m for m in munis if m[0] not in covered_ids]
+                self.stdout.write(
+                    f"Пропущено покрытых регионов: {len(covered_ids)} "
+                    f"(МО отброшено: {before - len(munis)})"
+                )
+
         if limit:
             munis = munis[:limit]
 
         self.stdout.write(f"МО для обработки: {len(munis)}")
         regions_by_id = {r.id: r for r in Region.objects.all()}
 
-        # Собираем уникальных по ИНН кандидатов.
-        by_inn: dict[str, dict] = {}
+        # Группируем МО по региону, чтобы коммитить прогресс по регионам.
+        from collections import defaultdict
+        by_region: dict[int, list[str]] = defaultdict(list)
+        for rid, muni in munis:
+            by_region[rid].append(muni)
+        region_order = sorted(by_region.keys())
 
-        for i, (rid, muni) in enumerate(munis, 1):
+        total_created = total_updated = 0
+        queries_used = 0
+        aborted = False
+
+        for rid in region_order:
             rg = regions_by_id.get(rid)
             if not rg:
                 continue
+            rg_munis = by_region[rid]
 
-            queries = [
-                f"{muni} имуществ",
-                f"{muni} КУМИ",
-            ]
-            for q in queries:
-                for s in dadata_suggest(q, token, count=10):
-                    if not looks_like_dmi(s):
-                        continue
-                    inn = (s.get("data") or {}).get("inn")
-                    if not inn:
-                        continue
-                    if inn in by_inn:
-                        continue
-                    # Проверяем регион по адресу suggestion — должен совпадать
-                    # с тем регионом, по которому мы ищем (муниципалитет).
-                    data = s.get("data") or {}
-                    addr = (data.get("address") or {}).get("unrestricted_value") or ""
-                    addr_region = find_region_number(addr)
-                    if addr_region and addr_region != rg.number:
-                        continue
-                    by_inn[inn] = {"sugg": s, "region": rg, "muni": muni}
-                time.sleep(sleep_s)
+            # Собираем кандидатов по этому региону.
+            by_inn: dict[str, dict] = {}
+            self.stdout.write(f"[{rg.number:3}] {rg.name} — МО: {len(rg_munis)}")
 
-            if i % 50 == 0:
-                self.stdout.write(f"  [{i}/{len(munis)}]  уникальных ДМИ: {len(by_inn)}")
+            for muni in rg_munis:
+                queries = [f"{muni} имуществ", f"{muni} КУМИ"]
+                for q in queries:
+                    if max_queries and queries_used >= max_queries:
+                        aborted = True
+                        break
+                    for s in dadata_suggest(q, token, count=10):
+                        if not looks_like_dmi(s):
+                            continue
+                        inn = (s.get("data") or {}).get("inn")
+                        if not inn or inn in by_inn:
+                            continue
+                        data = s.get("data") or {}
+                        addr = (data.get("address") or {}).get("unrestricted_value") or ""
+                        addr_region = find_region_number(addr)
+                        if addr_region and addr_region != rg.number:
+                            continue
+                        by_inn[inn] = {"sugg": s, "muni": muni}
+                    queries_used += 1
+                    time.sleep(sleep_s)
+                if aborted:
+                    break
 
-        self.stdout.write(f"Всего уникальных ДМИ: {len(by_inn)}")
+            # Сохраняем результат региона отдельной транзакцией.
+            created = updated = 0
+            if by_inn and not dry_run:
+                with transaction.atomic():
+                    for inn, payload in by_inn.items():
+                        s = payload["sugg"]
+                        muni = payload["muni"]
+                        data = s.get("data") or {}
 
-        # Сохраняем.
-        created = updated = 0
-        with transaction.atomic():
-            for inn, payload in by_inn.items():
-                s = payload["sugg"]
-                rg = payload["region"]
-                muni = payload["muni"]
-                data = s.get("data") or {}
+                        full_name = ((data.get("name") or {}).get("full_with_opf")
+                                     or s.get("value") or "")
+                        short_name = ((data.get("name") or {}).get("short_with_opf")
+                                      or s.get("value") or "")[:255]
 
-                full_name = ((data.get("name") or {}).get("full_with_opf")
-                             or s.get("value") or "")
-                short_name = ((data.get("name") or {}).get("short_with_opf")
-                              or s.get("value") or "")[:255]
+                        enrichment = enrich_from_dadata(data)
+                        legal_address = enrichment.get("legal_address") or ""
+                        rgn_num = find_region_number(legal_address) or rg.number
+                        region_obj = rg
+                        if rgn_num != rg.number:
+                            rg_alt = Region.objects.filter(number=rgn_num).first()
+                            if rg_alt:
+                                region_obj = rg_alt
 
-                enrichment = enrich_from_dadata(data)
-                legal_address = enrichment.get("legal_address") or ""
+                        defaults = {
+                            "name": full_name[:500],
+                            "short_name": short_name,
+                            "kind": kind,
+                            "entity_type": map_entity_type(
+                                ((data.get("opf") or {}).get("short") or "")
+                            ) or "other",
+                            "status": "active",
+                            "is_active": True,
+                            "inn": (inn or "")[:12],
+                            "ogrn": (data.get("ogrn") or "")[:15],
+                            "kpp": enrichment.get("kpp", ""),
+                            "okpo": enrichment.get("okpo", ""),
+                            "okved": enrichment.get("okved", ""),
+                            "legal_address": legal_address,
+                            "phone": enrichment.get("phone", "")[:20],
+                            "email": enrichment.get("email", "")[:100],
+                            "director_name": enrichment.get("director_name", "")[:255],
+                            "director_title": enrichment.get("director_title", "")[:255],
+                            "region": region_obj,
+                            "notes": (
+                                "Импорт через DaData suggest "
+                                f"(поиск по МО: {rg.name} / {muni})"
+                            ),
+                        }
+                        _, is_new = LegalEntity.objects.update_or_create(
+                            inn=inn, kind=kind, defaults=defaults,
+                        )
+                        if is_new:
+                            created += 1
+                        else:
+                            updated += 1
+            elif dry_run:
+                for inn, payload in by_inn.items():
+                    sv = payload["sugg"].get("value") or ""
+                    self.stdout.write(f"  ИНН={inn} | {sv[:80]}")
 
-                # Уточняем регион по адресу (если DaData даёт другой — верим ему).
-                rgn_num = find_region_number(legal_address) or rg.number
-                region_obj = regions_by_id.get(rg.id)
-                if rgn_num != rg.number:
-                    rg_alt = Region.objects.filter(number=rgn_num).first()
-                    if rg_alt:
-                        region_obj = rg_alt
+            total_created += created
+            total_updated += updated
+            self.stdout.write(
+                f"  → найдено {len(by_inn)}, создано {created}, обновлено {updated}, "
+                f"запросов к DaData: {queries_used}"
+            )
 
-                defaults = {
-                    "name": full_name[:500],
-                    "short_name": short_name,
-                    "kind": kind,
-                    "entity_type": map_entity_type(
-                        ((data.get("opf") or {}).get("short") or "")
-                    ) or "other",
-                    "status": "active",
-                    "is_active": True,
-                    "inn": (inn or "")[:12],
-                    "ogrn": (data.get("ogrn") or "")[:15],
-                    "kpp": enrichment.get("kpp", ""),
-                    "okpo": enrichment.get("okpo", ""),
-                    "okved": enrichment.get("okved", ""),
-                    "legal_address": legal_address,
-                    "phone": enrichment.get("phone", "")[:20],
-                    "email": enrichment.get("email", "")[:100],
-                    "director_name": enrichment.get("director_name", "")[:255],
-                    "director_title": enrichment.get("director_title", "")[:255],
-                    "region": region_obj,
-                    "notes": (
-                        "Импорт через DaData suggest "
-                        f"(поиск по МО: {rg.name} / {muni})"
-                    ),
-                }
-
-                if dry_run:
-                    self.stdout.write(
-                        f"  [{rg.number:3}] ИНН={inn} | {short_name[:80]}"
-                    )
-                    continue
-
-                obj, is_new = LegalEntity.objects.update_or_create(
-                    inn=inn, kind=kind,
-                    defaults=defaults,
-                )
-                if is_new:
-                    created += 1
-                else:
-                    updated += 1
+            if aborted:
+                self.stdout.write(self.style.WARNING(
+                    f"Достигнут лимит --max-queries={max_queries}, остановка."
+                ))
+                break
 
         self.stdout.write(self.style.SUCCESS(
-            f"Готово. Создано: {created}, обновлено: {updated}"
+            f"Готово. Создано: {total_created}, обновлено: {total_updated}, "
+            f"запросов к DaData: {queries_used}"
         ))
