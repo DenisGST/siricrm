@@ -1,10 +1,11 @@
+{% with opp_dir=dir|default:"asc" %}
 <div id="employees-list"
      hx-trigger="reloadEmployees from:body"
-     hx-get="{% url 'core:admin_employees' %}"
+     hx-get="{% url 'core:admin_employees' %}?sort={{ sort }}&dir={{ dir }}"
      hx-swap="outerHTML">
 
   <div class="flex items-center justify-between mb-3">
-    <h3 class="font-semibold">Сотрудники</h3>
+    <h3 class="font-semibold">Сотрудники ({{ employees|length }})</h3>
     <button class="btn btn-sm btn-primary"
             hx-get="{% url 'core:admin_employee_create' %}"
             hx-target="body" hx-swap="beforeend">
@@ -16,17 +17,54 @@
     <table class="table table-sm table-zebra">
       <thead>
         <tr>
-          <th>Сотрудник</th>
-          <th>Отдел</th>
-          <th>Роль</th>
-          <th>Дашборд</th>
-          <th>Мессенджер</th>
+          {% with col="name" %}
+          <th class="cursor-pointer select-none"
+              hx-get="{% url 'core:admin_employees' %}?sort={{ col }}&dir={% if sort == col and dir == 'asc' %}desc{% else %}asc{% endif %}"
+              hx-target="#employees-list" hx-swap="outerHTML">
+            Сотрудник
+            {% if sort == col %}{% if dir == "asc" %}↑{% else %}↓{% endif %}{% endif %}
+          </th>
+          {% endwith %}
+          {% with col="department" %}
+          <th class="cursor-pointer select-none"
+              hx-get="{% url 'core:admin_employees' %}?sort={{ col }}&dir={% if sort == col and dir == 'asc' %}desc{% else %}asc{% endif %}"
+              hx-target="#employees-list" hx-swap="outerHTML">
+            Отдел
+            {% if sort == col %}{% if dir == "asc" %}↑{% else %}↓{% endif %}{% endif %}
+          </th>
+          {% endwith %}
+          {% with col="role" %}
+          <th class="cursor-pointer select-none"
+              hx-get="{% url 'core:admin_employees' %}?sort={{ col }}&dir={% if sort == col and dir == 'asc' %}desc{% else %}asc{% endif %}"
+              hx-target="#employees-list" hx-swap="outerHTML">
+            Роль
+            {% if sort == col %}{% if dir == "asc" %}↑{% else %}↓{% endif %}{% endif %}
+          </th>
+          {% endwith %}
+          {% with col="dashboard" %}
+          <th class="cursor-pointer select-none"
+              hx-get="{% url 'core:admin_employees' %}?sort={{ col }}&dir={% if sort == col and dir == 'asc' %}desc{% else %}asc{% endif %}"
+              hx-target="#employees-list" hx-swap="outerHTML">
+            Дашборд
+            {% if sort == col %}{% if dir == "asc" %}↑{% else %}↓{% endif %}{% endif %}
+          </th>
+          {% endwith %}
+          {% with col="messenger" %}
+          <th class="cursor-pointer select-none"
+              hx-get="{% url 'core:admin_employees' %}?sort={{ col }}&dir={% if sort == col and dir == 'asc' %}desc{% else %}asc{% endif %}"
+              hx-target="#employees-list" hx-swap="outerHTML">
+            Мессенджер
+            {% if sort == col %}{% if dir == "asc" %}↑{% else %}↓{% endif %}{% endif %}
+          </th>
+          {% endwith %}
           <th></th>
         </tr>
       </thead>
       <tbody>
         {% for emp in employees %}
-        <tr>
+        <tr class="cursor-pointer hover"
+            hx-get="{% url 'core:admin_employee_edit' emp.pk %}"
+            hx-target="body" hx-swap="beforeend">
           <td class="font-medium">
             {{ emp.user.last_name }} {{ emp.user.first_name }}
             {% if emp.patronymic %}<br><span class="text-xs text-base-content/60">{{ emp.patronymic }}</span>{% endif %}
@@ -41,11 +79,13 @@
               <span class="badge badge-ghost badge-sm">Нет</span>
             {% endif %}
           </td>
-          <td class="text-right">
-            <button class="btn btn-xs btn-outline"
-                    hx-get="{% url 'core:admin_employee_edit' emp.pk %}"
-                    hx-target="body" hx-swap="beforeend">
-              Настроить
+          <td class="text-right" onclick="event.stopPropagation()">
+            <button class="btn btn-xs btn-ghost"
+                    hx-get="{% url 'core:admin_employee_settings' emp.pk %}"
+                    hx-target="body" hx-swap="beforeend"
+                    onclick="event.stopPropagation()"
+                    title="Быстрые настройки">
+              ⚙️
             </button>
           </td>
         </tr>
@@ -56,3 +96,4 @@
     </table>
   </div>
 </div>
+{% endwith %}

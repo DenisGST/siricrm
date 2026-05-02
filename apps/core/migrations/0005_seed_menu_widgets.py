@@ -9,13 +9,12 @@ def seed_data(apps, schema_editor):
     items = [
         MenuItem(name="Главная", icon="🏠", url="/", section="", order=0, use_htmx=False),
         MenuItem(name="Dashboard", icon="📊", url="/dashboard/", section="", order=1, use_htmx=False),
-        MenuItem(name="Kanban", icon="📋", url="/kanban/", section="CRM", order=10, use_htmx=True),
+        MenuItem(name="Канбан по клиентам", icon="kanban-square", url="/kanban/", section="CRM", order=10, use_htmx=True),
         MenuItem(name="Клиенты", icon="👥", url="/clients/", section="CRM", order=11, use_htmx=True),
         MenuItem(name="Сотрудники", icon="👨‍💼", url="/employees/", section="CRM", order=12, use_htmx=True),
         MenuItem(name="Логи", icon="📊", url="/logs/", section="CRM", order=13, use_htmx=True),
         MenuItem(name="Django Admin", icon="⚙️", url="/admin/", section="Администрирование", order=90, use_htmx=False, requires_superuser=True),
         MenuItem(name="Панель управления", icon="🛠️", url="/admin-panel/", section="Администрирование", order=91, use_htmx=True, requires_superuser=True),
-        MenuItem(name="Настройки", icon="🔧", url="/settings/", section="Администрирование", order=92, use_htmx=False),
     ]
     MenuItem.objects.bulk_create(items)
 

@@ -1,0 +1,59 @@
+{% load icons %}
+<div id="services-list">
+  <div class="flex items-center justify-between mb-4">
+    <h2 class="text-xl font-bold">Услуги</h2>
+    <button class="btn btn-primary btn-sm"
+            hx-get="{% url 'service_create' %}"
+            hx-target="body" hx-swap="beforeend">
+      + Новая услуга
+    </button>
+  </div>
+
+  <div class="overflow-x-auto">
+    <table class="table table-sm table-zebra">
+      <thead>
+        <tr>
+          <th>№ договора</th>
+          <th>Клиент</th>
+          <th>Услуга</th>
+          <th>Регион</th>
+          <th>Общий статус</th>
+          <th>Дата договора</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody hx-trigger="serviceChanged from:body"
+             hx-get="{% url 'services_list' %}"
+             hx-target="#services-list" hx-swap="outerHTML">
+        {% for s in services %}
+        <tr>
+          <td><span class="font-mono text-xs">{{ s.numb_dogovor|default:"—" }}</span></td>
+          <td>
+            {{ s.client.last_name }} {{ s.client.first_name }} {{ s.client.patronymic }}
+          </td>
+          <td><span class="badge badge-outline">{{ s.name.short_name }}</span></td>
+          <td>{{ s.region.name|default:"—" }}</td>
+          <td>
+            {% if s.common_status %}
+              <span class="badge badge-ghost badge-sm">{{ s.common_status.name }}</span>
+            {% else %}<span class="text-base-content/40">—</span>{% endif %}
+          </td>
+          <td>{{ s.date_dogovor|date:"d.m.Y"|default:"—" }}</td>
+          <td class="text-right">
+            <button class="btn btn-xs btn-outline"
+                    hx-get="{% url 'service_edit' s.pk %}"
+                    hx-target="body" hx-swap="beforeend">Изменить</button>
+            <button class="btn btn-xs btn-error btn-outline"
+                    hx-post="{% url 'service_delete' s.pk %}"
+                    hx-confirm="Удалить услугу «{{ s.numb_dogovor|default:s.name.short_name }}»?">
+              Удалить
+            </button>
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="7" class="text-center text-base-content/60">Услуг нет</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>

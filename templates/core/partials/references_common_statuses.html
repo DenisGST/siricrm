@@ -1,0 +1,54 @@
+<div id="common-statuses-list"
+     hx-trigger="reloadCommonStatuses from:body"
+     hx-get="{% url 'core:references_common_statuses' %}"
+     hx-swap="outerHTML">
+
+  <div class="flex justify-between items-center mb-3">
+    <h3 class="font-semibold">Общие статусы услуг ({{ items|length }})</h3>
+    <button class="btn btn-primary btn-sm"
+            hx-get="{% url 'core:reference_common_status_add' %}"
+            hx-target="body" hx-swap="beforeend">
+      + Добавить статус
+    </button>
+  </div>
+
+  <div class="overflow-x-auto">
+    <table class="table table-sm table-zebra">
+      <thead>
+        <tr>
+          <th>Услуга</th>
+          <th>Наименование статуса</th>
+          <th>Порядок</th>
+          <th>Статус</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for it in items %}
+        <tr>
+          <td><span class="badge badge-outline">{{ it.service_name.short_name }}</span></td>
+          <td>{{ it.name }}</td>
+          <td>{{ it.order }}</td>
+          <td>
+            {% if it.is_active %}
+              <span class="badge badge-success badge-xs">активен</span>
+            {% else %}
+              <span class="badge badge-ghost badge-xs">неактивен</span>
+            {% endif %}
+          </td>
+          <td class="text-right">
+            <button class="btn btn-xs btn-outline"
+                    hx-get="{% url 'core:reference_common_status_edit' it.pk %}"
+                    hx-target="body" hx-swap="beforeend">Изменить</button>
+            <button class="btn btn-xs btn-error btn-outline"
+                    hx-post="{% url 'core:reference_common_status_delete' it.pk %}"
+                    hx-confirm="Удалить статус «{{ it.name }}»?">Удалить</button>
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="5" class="text-center text-base-content/60">Статусов нет</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>

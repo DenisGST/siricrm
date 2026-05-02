@@ -1,16 +1,44 @@
 {% load static %}
-<div class="mb-4">
-  <h2 class="text-sm font-semibold" style="color:var(--ms-text-secondary)">Kanban по клиентам</h2>
+<div class="flex items-center gap-3 mb-4">
+  <h2 class="text-sm font-semibold" style="color:var(--ms-text-secondary)">Канбан по клиентам</h2>
+  <select id="kanban-emp-filter"
+          style="height:1.6rem;font-size:0.72rem;padding:0 1.5rem 0 0.5rem;border:1px solid oklch(var(--bc)/0.2);border-radius:6px;background-color:transparent;cursor:pointer;appearance:auto;"
+          onchange="document.getElementById('flt-employee').value = this.value;
+                    document.body.dispatchEvent(new CustomEvent('kanbanRefresh'));">
+    <option value="">Все сотрудники</option>
+    <option value="__none__" {% if filter_employee == '__none__' %}selected{% endif %}>— Не назначен</option>
+    {% for e in employees_all %}
+      <option value="{{ e.id }}" {% if filter_employee == e.id|stringformat:'s' %}selected{% endif %}>
+        {{ e.user.last_name }} {{ e.user.first_name }}
+      </option>
+    {% endfor %}
+  </select>
 </div>
 
-<div class="grid grid-cols-1 md:grid-cols-4 gap-4">
-  <!-- Колонка: Лиды -->
+<div style="display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:1rem;">
+
+  <!-- Неизвестный -->
+  <div class="bg-base-200 rounded-lg p-3">
+    <div class="flex items-center justify-between mb-2">
+      <h2 class="font-bold text-sm uppercase">Неизвестный</h2>
+      <span class="badge badge-sm badge-ghost">{{ unknowns|length }}</span>
+    </div>
+    <div id="kanban-unknown"
+         class="space-y-2 min-h-[50px]"
+         hx-get="{% url 'kanban_column' 'unknown' %}"
+         hx-trigger="load, kanbanRefresh from:body"
+         hx-include="#kanban-filter-form"
+         hx-target="#kanban-unknown"
+         hx-swap="innerHTML">
+    </div>
+  </div>
+
+  <!-- Лиды -->
   <div class="bg-base-200 rounded-lg p-3">
     <div class="flex items-center justify-between mb-2">
       <h2 class="font-bold text-sm uppercase">Лиды</h2>
       <span class="badge badge-sm badge-warning">{{ leads|length }}</span>
     </div>
-
     <div id="kanban-lead"
          class="space-y-2 min-h-[50px]"
          hx-get="{% url 'kanban_column' 'lead' %}"
@@ -18,17 +46,15 @@
          hx-include="#kanban-filter-form"
          hx-target="#kanban-lead"
          hx-swap="innerHTML">
-      <!-- сюда HTMX подгрузит карточки -->
     </div>
   </div>
 
-  <!-- Колонка: Активные -->
+  <!-- Активные -->
   <div class="bg-base-200 rounded-lg p-3">
     <div class="flex items-center justify-between mb-2">
       <h2 class="font-bold text-sm uppercase">Активные</h2>
       <span class="badge badge-sm badge-success">{{ actives|length }}</span>
     </div>
-
     <div id="kanban-active"
          class="space-y-2 min-h-[50px]"
          hx-get="{% url 'kanban_column' 'active' %}"
@@ -39,30 +65,12 @@
     </div>
   </div>
 
-  <!-- Колонка: Неактивные -->
-  <div class="bg-base-200 rounded-lg p-3">
-    <div class="flex items-center justify-between mb-2">
-      <h2 class="font-bold text-sm uppercase">Неактивные</h2>
-      <span class="badge badge-sm badge-neutral">{{ inactives|length }}</span>
-    </div>
-
-    <div id="kanban-inactive"
-         class="space-y-2 min-h-[50px]"
-         hx-get="{% url 'kanban_column' 'inactive' %}"
-         hx-trigger="load, kanbanRefresh from:body"
-         hx-include="#kanban-filter-form"
-         hx-target="#kanban-inactive"
-         hx-swap="innerHTML">
-    </div>
-  </div>
-
-  <!-- Колонка: Закрытые -->
+  <!-- Закрытые -->
   <div class="bg-base-200 rounded-lg p-3">
     <div class="flex items-center justify-between mb-2">
       <h2 class="font-bold text-sm uppercase">Закрытые</h2>
-      <span class="badge badge-sm badge-accent">{{ closeds|length }}</span>
+      <span class="badge badge-sm badge-error">{{ closeds|length }}</span>
     </div>
-
     <div id="kanban-closed"
          class="space-y-2 min-h-[50px]"
          hx-get="{% url 'kanban_column' 'closed' %}"
@@ -72,4 +80,21 @@
          hx-swap="innerHTML">
     </div>
   </div>
+
+  <!-- Архивные -->
+  <div class="bg-base-200 rounded-lg p-3">
+    <div class="flex items-center justify-between mb-2">
+      <h2 class="font-bold text-sm uppercase">Архивные</h2>
+      <span class="badge badge-sm badge-neutral">{{ archives|length }}</span>
+    </div>
+    <div id="kanban-archive"
+         class="space-y-2 min-h-[50px]"
+         hx-get="{% url 'kanban_column' 'archive' %}"
+         hx-trigger="load, kanbanRefresh from:body"
+         hx-include="#kanban-filter-form"
+         hx-target="#kanban-archive"
+         hx-swap="innerHTML">
+    </div>
+  </div>
+
 </div>

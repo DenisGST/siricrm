@@ -103,5 +103,5 @@ def sidebar_icon(icon_value, size=22):
     # Проверяем наличие SVG в line/
     if _read_svg(val) is not None:
         return icon(val, size=size)
-    # Fallback — эмодзи / текст как есть
-    return mark_safe(val)
+    # Emoji/text — оборачиваем в span для CSS-стилизации
+    return mark_safe(f'<span class="si-emoji" style="font-size:{size}px;line-height:1">{val}</span>')

@@ -440,6 +440,9 @@ async def start_userbot():
             from apps.realtime.utils import push_chat_message
             await sync_to_async(push_chat_message)(msg)
 
+            from apps.crm.event_logger import log_messenger_message
+            await sync_to_async(log_messenger_message)(db_client, msg, sirius_bot_employee)
+
         except Exception as e:
             logger.exception("Error in outgoing message handler: %s", e)
 
@@ -471,13 +474,18 @@ async def start_userbot():
                         'last_name': sender.last_name or "",
                         'username': sender.username or "",
                         'phone': phone or "",
-                        'status': "lead",
+                        'status': "unknown",
                         'last_message_at': timezone.now(),
                     }
                 )
 
                 if created:
                     logger.info(f"✨ Created new client {telegram_id} with phone {phone}")
+                    from apps.crm.models import ClientEmployee
+                    await sync_to_async(ClientEmployee.objects.get_or_create)(
+                        client=db_client, employee=sirius_bot_employee,
+                    )
+                    logger.info(f"🤖 Assigned Sirius Bot to new client {telegram_id}")
                 else:
                     logger.info(f"✅ Found existing client {telegram_id}")
 
@@ -610,6 +618,9 @@ async def start_userbot():
             )
 
             logger.info(f"💬 Incoming {message_type} from {telegram_id}: {content[:50] if content else file_name}")
+
+            from apps.crm.event_logger import log_messenger_message
+            await sync_to_async(log_messenger_message)(db_client, msg)
 
             # Обновляем статус мессенджера → "Диалог открыт"
             from apps.crm.models import ClientEmployee

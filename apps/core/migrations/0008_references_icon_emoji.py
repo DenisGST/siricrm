@@ -3,7 +3,7 @@ from django.db import migrations
 
 def set_icon(apps, schema_editor):
     MenuItem = apps.get_model("core", "MenuItem")
-    MenuItem.objects.filter(url="/references/").update(icon="📚")
+    MenuItem.objects.filter(url="/references/").update(icon="bookmark")
 
 
 def unset_icon(apps, schema_editor):

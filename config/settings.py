@@ -12,6 +12,7 @@ CSRF_TRUSTED_ORIGINS = ['https://siricrm.ru', 'https://www.siricrm.ru']
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
 DADATA_API_KEY = config('DADATA_API_KEY', default='b16b9a063109b2cd131d2388018302b6bb2e7e44')
+DADATA_SECRET_KEY = config('DADATA_SECRET_KEY', default='')
 
 INSTALLED_APPS = [
     'daphne',

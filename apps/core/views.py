@@ -1,12 +1,13 @@
 from django.shortcuts import render, get_object_or_404
 from django.contrib.auth.decorators import user_passes_test
+from django.contrib.auth.models import User
 from django.http import JsonResponse, HttpResponse
 from django.views.decorators.http import require_POST
 from django.core.cache import cache
 from apps.crm.models import Message, Client
 from apps.core.models import Employee, Department, MenuItem, Widget, DashboardConfig
 from apps.core.forms import (
-    DepartmentForm, EmployeeAdminForm, EmployeeCreateForm,
+    DepartmentForm, EmployeeAdminForm, EmployeeCreateForm, EmployeeFullEditForm,
     MenuItemForm, WidgetForm, DashboardConfigForm,
 )
 from django.utils import timezone
@@ -26,6 +27,23 @@ LOG_FILES = {
 
 def is_superuser(user):
     return user.is_superuser
+
+
+@user_passes_test(is_superuser)
+def icons_gallery(request):
+    from pathlib import Path
+    from django.conf import settings as djsettings
+
+    line_dir = Path(djsettings.BASE_DIR) / "static" / "icons" / "line"
+    brand_dir = Path(djsettings.BASE_DIR) / "static" / "icons" / "brand"
+
+    line_icons = sorted(p.stem for p in line_dir.glob("*.svg"))
+    brand_icons = sorted(p.stem for p in brand_dir.glob("*.svg")) if brand_dir.exists() else []
+
+    return render(request, "core/icons_gallery.html", {
+        "line_icons": line_icons,
+        "brand_icons": brand_icons,
+    })
 
 
 @user_passes_test(is_superuser)
@@ -239,17 +257,50 @@ def admin_department_delete(request, pk):
 
 @user_passes_test(is_admin)
 def admin_employees(request):
+    sort = request.GET.get("sort", "user__last_name")
+    direction = request.GET.get("dir", "asc")
+    allowed_sorts = {
+        "name": "user__last_name",
+        "department": "department__name",
+        "role": "role",
+        "dashboard": "dashboard_config__name",
+        "messenger": "has_messenger_access",
+    }
+    order_field = allowed_sorts.get(sort, "user__last_name")
+    if direction == "desc":
+        order_field = f"-{order_field}"
     employees = (
         Employee.objects
         .select_related("user", "department", "dashboard_config")
         .filter(is_active=True)
-        .order_by("user__last_name")
+        .order_by(order_field)
     )
-    return render(request, "core/partials/admin_employees.html", {"employees": employees})
+    return render(request, "core/partials/admin_employees.html", {
+        "employees": employees,
+        "sort": sort,
+        "dir": direction,
+    })
 
 
 @user_passes_test(is_admin)
 def admin_employee_edit(request, pk):
+    """Полное редактирование сотрудника (ФИО, контакты, роль, доступы)."""
+    emp = get_object_or_404(Employee.objects.select_related("user"), pk=pk)
+    if request.method == "POST":
+        form = EmployeeFullEditForm(request.POST, instance=emp)
+        if form.is_valid():
+            form.save()
+            return HttpResponse(headers={"HX-Trigger": "reloadEmployees"})
+    else:
+        form = EmployeeFullEditForm(instance=emp)
+    return render(request, "core/partials/employee_edit_modal.html", {
+        "form": form, "emp": emp,
+    })
+
+
+@user_passes_test(is_admin)
+def admin_employee_settings(request, pk):
+    """Узкая форма: только настройки (роль, дашборд, доступы)."""
     emp = get_object_or_404(Employee.objects.select_related("user"), pk=pk)
     if request.method == "POST":
         form = EmployeeAdminForm(request.POST, instance=emp)
@@ -468,3 +519,215 @@ def reference_kind_delete(request, pk):
         )
     kind.delete()
     return HttpResponse(headers={"HX-Trigger": "reloadKinds"})
+
+
+# ─── Справочник: Услуги (ServiceName) ───
+@user_passes_test(is_references_access)
+def references_service_names(request):
+    from apps.crm.models import ServiceName
+    items = ServiceName.objects.prefetch_related("departments").order_by("short_name")
+    return render(request, "core/partials/references_service_names.html", {"items": items})
+
+
+@user_passes_test(is_references_access)
+def reference_service_name_edit(request, pk=None):
+    from apps.crm.models import ServiceName
+    from apps.core.forms import ServiceNameForm
+    obj = get_object_or_404(ServiceName, pk=pk) if pk else None
+    if request.method == "POST":
+        form = ServiceNameForm(request.POST, instance=obj)
+        if form.is_valid():
+            form.save()
+            return HttpResponse(headers={"HX-Trigger": "reloadServiceNames"})
+    else:
+        form = ServiceNameForm(instance=obj)
+    return render(request, "core/partials/service_name_form_modal.html", {
+        "form": form, "obj": obj,
+    })
+
+
+@user_passes_test(is_references_access)
+@require_POST
+def reference_service_name_delete(request, pk):
+    from apps.crm.models import ServiceName
+    obj = get_object_or_404(ServiceName, pk=pk)
+    if obj.services.exists():
+        return HttpResponse(
+            f"Нельзя удалить: услуга используется в {obj.services.count()} договорах.",
+            status=409,
+        )
+    obj.delete()
+    return HttpResponse(headers={"HX-Trigger": "reloadServiceNames"})
+
+
+# ─── Справочник: Порядок оплаты ───
+@user_passes_test(is_references_access)
+def references_payment_procedures(request):
+    from apps.crm.models import PaymentProcedure
+    items = PaymentProcedure.objects.order_by("short_name")
+    return render(request, "core/partials/references_payment_procedures.html", {"items": items})
+
+
+@user_passes_test(is_references_access)
+def reference_payment_procedure_edit(request, pk=None):
+    from apps.crm.models import PaymentProcedure
+    from apps.core.forms import PaymentProcedureForm
+    obj = get_object_or_404(PaymentProcedure, pk=pk) if pk else None
+    if request.method == "POST":
+        form = PaymentProcedureForm(request.POST, instance=obj)
+        if form.is_valid():
+            form.save()
+            return HttpResponse(headers={"HX-Trigger": "reloadPaymentProcedures"})
+    else:
+        form = PaymentProcedureForm(instance=obj)
+    return render(request, "core/partials/payment_procedure_form_modal.html", {
+        "form": form, "obj": obj,
+    })
+
+
+@user_passes_test(is_references_access)
+@require_POST
+def reference_payment_procedure_delete(request, pk):
+    from apps.crm.models import PaymentProcedure
+    obj = get_object_or_404(PaymentProcedure, pk=pk)
+    if obj.services.exists():
+        return HttpResponse(
+            f"Нельзя удалить: порядок оплаты используется в {obj.services.count()} договорах.",
+            status=409,
+        )
+    obj.delete()
+    return HttpResponse(headers={"HX-Trigger": "reloadPaymentProcedures"})
+
+
+# ─── Справочник: Общие статусы услуг ───
+@user_passes_test(is_references_access)
+def references_common_statuses(request):
+    from apps.crm.models import ServiceCommonStatus
+    items = ServiceCommonStatus.objects.select_related("service_name").order_by("service_name", "order")
+    return render(request, "core/partials/references_common_statuses.html", {"items": items})
+
+
+@user_passes_test(is_references_access)
+def reference_common_status_edit(request, pk=None):
+    from apps.crm.models import ServiceCommonStatus
+    from apps.core.forms import ServiceCommonStatusForm
+    obj = get_object_or_404(ServiceCommonStatus, pk=pk) if pk else None
+    if request.method == "POST":
+        form = ServiceCommonStatusForm(request.POST, instance=obj)
+        if form.is_valid():
+            form.save()
+            return HttpResponse(headers={"HX-Trigger": "reloadCommonStatuses"})
+    else:
+        form = ServiceCommonStatusForm(instance=obj)
+    return render(request, "core/partials/common_status_form_modal.html", {
+        "form": form, "obj": obj,
+    })
+
+
+@user_passes_test(is_references_access)
+@require_POST
+def reference_common_status_delete(request, pk):
+    from apps.crm.models import ServiceCommonStatus
+    obj = get_object_or_404(ServiceCommonStatus, pk=pk)
+    obj.delete()
+    return HttpResponse(headers={"HX-Trigger": "reloadCommonStatuses"})
+
+
+# ─── Справочник: Статусы услуг сотрудников ───
+@user_passes_test(is_references_access)
+def references_employee_statuses(request):
+    from apps.crm.models import ServiceEmployeeStatus, ServiceCommonStatus, ServiceName
+    emp_id = request.GET.get("employee") or ""
+    service_id = request.GET.get("service_name") or ""
+    common_status_id = request.GET.get("common_status") or ""
+    items = ServiceEmployeeStatus.objects.select_related(
+        "employee__user", "common_status__service_name"
+    ).order_by("employee", "common_status__service_name", "common_status__order", "order")
+    if emp_id:
+        items = items.filter(employee_id=emp_id)
+    if service_id:
+        items = items.filter(common_status__service_name_id=service_id)
+    if common_status_id:
+        items = items.filter(common_status_id=common_status_id)
+    employees = Employee.objects.select_related("user").order_by("user__last_name")
+    service_names = ServiceName.objects.filter(is_active=True).order_by("short_name")
+    common_statuses = ServiceCommonStatus.objects.filter(is_active=True).select_related("service_name")
+    if service_id:
+        common_statuses = common_statuses.filter(service_name_id=service_id)
+    return render(request, "core/partials/references_employee_statuses.html", {
+        "items": items,
+        "employees_all": employees,
+        "service_names": service_names,
+        "common_statuses": common_statuses.order_by("service_name__short_name", "order"),
+        "filter_employee": emp_id,
+        "filter_service_name": service_id,
+        "filter_common_status": common_status_id,
+    })
+
+
+@user_passes_test(is_references_access)
+def reference_employee_status_edit(request, pk=None):
+    from apps.crm.models import ServiceEmployeeStatus
+    from apps.core.forms import ServiceEmployeeStatusForm
+    obj = get_object_or_404(ServiceEmployeeStatus, pk=pk) if pk else None
+    if request.method == "POST":
+        form = ServiceEmployeeStatusForm(request.POST, instance=obj)
+        if form.is_valid():
+            form.save()
+            return HttpResponse(headers={"HX-Trigger": "reloadEmployeeStatuses"})
+    else:
+        form = ServiceEmployeeStatusForm(instance=obj)
+    return render(request, "core/partials/employee_status_form_modal.html", {
+        "form": form, "obj": obj,
+    })
+
+
+@user_passes_test(is_references_access)
+@require_POST
+def reference_employee_status_delete(request, pk):
+    from apps.crm.models import ServiceEmployeeStatus
+    obj = get_object_or_404(ServiceEmployeeStatus, pk=pk)
+    obj.delete()
+    return HttpResponse(headers={"HX-Trigger": "reloadEmployeeStatuses"})
+
+
+# ─── Справочник: Теги сотрудников ───
+@user_passes_test(is_references_access)
+def references_tags(request):
+    from apps.crm.models import ServiceTag
+    emp_id = request.GET.get("employee") or ""
+    items = ServiceTag.objects.select_related("employee__user").order_by("employee", "name")
+    if emp_id:
+        items = items.filter(employee_id=emp_id)
+    employees = Employee.objects.select_related("user").order_by("user__last_name")
+    return render(request, "core/partials/references_tags.html", {
+        "items": items,
+        "employees_all": employees,
+        "filter_employee": emp_id,
+    })
+
+
+@user_passes_test(is_references_access)
+def reference_tag_edit(request, pk=None):
+    from apps.crm.models import ServiceTag
+    from apps.core.forms import ServiceTagForm
+    obj = get_object_or_404(ServiceTag, pk=pk) if pk else None
+    if request.method == "POST":
+        form = ServiceTagForm(request.POST, instance=obj)
+        if form.is_valid():
+            form.save()
+            return HttpResponse(headers={"HX-Trigger": "reloadTags"})
+    else:
+        form = ServiceTagForm(instance=obj)
+    return render(request, "core/partials/tag_form_modal.html", {
+        "form": form, "obj": obj,
+    })
+
+
+@user_passes_test(is_references_access)
+@require_POST
+def reference_tag_delete(request, pk):
+    from apps.crm.models import ServiceTag
+    obj = get_object_or_404(ServiceTag, pk=pk)
+    obj.delete()
+    return HttpResponse(headers={"HX-Trigger": "reloadTags"})

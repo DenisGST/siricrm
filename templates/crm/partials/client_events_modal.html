@@ -1,0 +1,89 @@
+{% load icons %}
+<dialog id="client-events-modal" class="modal modal-middle modal-open">
+  <div class="modal-box w-11/12 max-w-4xl">
+
+    <div class="flex items-center justify-between mb-4">
+      <div>
+        <h3 class="font-bold text-lg">
+          {{ client.last_name }} {{ client.first_name }}{% if client.patronymic %} {{ client.patronymic }}{% endif %}
+        </h3>
+        <div class="flex items-center gap-2 mt-1">
+          <span class="badge badge-sm badge-outline">{{ client.get_status_display }}</span>
+          {% if client.phone %}<span class="text-xs text-base-content/60">{{ client.phone }}</span>{% endif %}
+          {% if client.username %}<span class="text-xs text-base-content/60">@{{ client.username }}</span>{% endif %}
+        </div>
+      </div>
+      <div class="flex gap-2">
+        <button class="btn btn-ghost btn-sm"
+                hx-get="{% url 'client_edit' client.id %}"
+                hx-target="body" hx-swap="beforeend"
+                hx-on::after-request="document.getElementById('client-edit-modal')?.showModal()">
+          {% icon "pencil" size=16 %} Редактировать
+        </button>
+        <button type="button" class="btn btn-sm btn-ghost" onclick="this.closest('dialog').remove()">✕</button>
+      </div>
+    </div>
+
+    <div class="overflow-x-auto max-h-[60vh] overflow-y-auto">
+      {% if events %}
+      <table class="table table-sm table-zebra w-full">
+        <thead class="sticky top-0 bg-base-100 z-10">
+          <tr>
+            <th class="w-10 text-center">№</th>
+            <th class="w-36">Дата</th>
+            <th class="w-44">Тип</th>
+            <th>Наименование</th>
+            <th class="w-36">Сотрудник</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for ev in events %}
+          <tr>
+            <td class="text-center text-base-content/50 text-xs">{{ forloop.counter }}</td>
+            <td class="text-xs whitespace-nowrap">{{ ev.created_at|date:"d.m.Y H:i" }}</td>
+            <td>
+              <span class="badge badge-xs
+                {% if ev.event_type == 'status_change' %}badge-warning
+                {% elif ev.event_type == 'contract_created' %}badge-success
+                {% elif ev.event_type == 'contract_terminated' %}badge-error
+                {% elif ev.event_type == 'first_contact' %}badge-primary
+                {% elif ev.event_type == 'claim_filed' or ev.event_type == 'hearing_scheduled' %}badge-info
+                {% elif ev.event_type == 'procedure_started' or ev.event_type == 'procedure_ended' %}badge-accent
+                {% elif ev.event_type == 'file_received' or ev.event_type == 'file_sent' %}badge-neutral
+                {% else %}badge-ghost
+                {% endif %}">
+                {{ ev.get_event_type_display }}
+              </span>
+            </td>
+            <td>
+              <span class="text-sm">{{ ev.description|default:"—" }}</span>
+              {% if ev.old_value or ev.new_value %}
+                <span class="text-xs text-base-content/50 ml-1">
+                  {% if ev.old_value %}<span class="line-through">{{ ev.old_value }}</span> → {% endif %}
+                  {{ ev.new_value }}
+                </span>
+              {% endif %}
+            </td>
+            <td class="text-xs text-base-content/60">
+              {{ ev.employee.user.get_full_name|default:"—" }}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+        <div class="text-center text-base-content/50 py-10">
+          {% icon "history" size=32 %}
+          <p class="mt-2 text-sm">Событий пока нет</p>
+        </div>
+      {% endif %}
+    </div>
+
+    <div class="modal-action mt-3">
+      <button type="button" class="btn btn-sm" onclick="this.closest('dialog').remove()">Закрыть</button>
+    </div>
+  </div>
+  <form method="dialog" class="modal-backdrop">
+    <button onclick="this.closest('dialog').remove()">close</button>
+  </form>
+</dialog>

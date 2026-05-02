@@ -155,6 +155,12 @@ class Employee(models.Model):
         verbose_name="Конфигурация дашборда",
     )
     has_messenger_access = models.BooleanField("Доступ к мессенджеру", default=True)
+    services_allowed = models.ManyToManyField(
+        "crm.ServiceName",
+        blank=True,
+        related_name="allowed_employees",
+        verbose_name="Доступные услуги",
+    )
     patronymic = models.CharField("Отчество", max_length=255, blank=True)
     phone_mobile = models.CharField("Мобильный телефон", max_length=20, blank=True)
     phone_internal = models.CharField("Внутренний номер", max_length=10, blank=True)

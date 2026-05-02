@@ -58,37 +58,26 @@
         {% endif %}
         {% for item in items %}
           {% if item.use_htmx %}
-            <a href="#" class="sidebar-item" data-tooltip="{{ item.name }}"
+            <a href="#" title="{{ item.name }}"
+               class="sidebar-item {% if section == 'CRM' %}si-sect-crm{% elif section == 'Администрирование' %}si-sect-admin{% else %}si-sect-top{% endif %}"
                hx-get="{{ item.url }}" hx-target="#content-area" hx-swap="innerHTML">
               {% sidebar_icon item.icon size=22 %}
             </a>
           {% else %}
-            <a href="{{ item.url }}" class="sidebar-item" data-tooltip="{{ item.name }}"
+            <a href="{{ item.url }}" title="{{ item.name }}"
+               class="sidebar-item {% if section == 'CRM' %}si-sect-crm{% elif section == 'Администрирование' %}si-sect-admin{% else %}si-sect-top{% endif %}"
                {% if '/admin/' in item.url %}target="_self"{% endif %}>
               {% sidebar_icon item.icon size=22 %}
             </a>
           {% endif %}
         {% endfor %}
-        {% if section == "CRM" %}
-          <button type="button" class="sidebar-item sidebar-item-new" data-tooltip="Новый клиент"
-                  hx-get="{% url 'client_create' %}"
-                  hx-target="body"
-                  hx-swap="beforeend"
-                  style="color:#22c55e">
-            {% icon "user-plus" size=22 %}
-          </button>
-          <a href="#" class="sidebar-item" data-tooltip="Юридические лица"
-             hx-get="{% url 'legal_entities_list' %}" hx-target="#content-area" hx-swap="innerHTML">
-            {% icon "building-2" size=22 %}
-          </a>
-        {% endif %}
       {% endfor %}
     </div>
 
     <div class="sidebar-user">
       <form method="post" action="{% url 'logout' %}">
         {% csrf_token %}
-        <button type="submit" class="sidebar-item" data-tooltip="Выйти">{% icon "log-out" size=22 %}</button>
+        <button type="submit" class="sidebar-item" title="Выйти">{% icon "log-out" size=22 %}</button>
       </form>
 
       <div class="sidebar-avatar" title="{{ user.get_full_name|default:user.username }}">
@@ -117,6 +106,13 @@
                   style="color:#0078d4"
                   hx-get="{% url 'legal_entity_create' %}" hx-target="body" hx-swap="beforeend">
             {% icon "building-2" size=16 %}
+          </button>
+        </div>
+        <div class="tooltip tooltip-bottom" data-tip="Новая услуга">
+          <button type="button" class="btn btn-ghost btn-xs btn-square"
+                  style="color:#f59e0b"
+                  hx-get="{% url 'service_create' %}" hx-target="body" hx-swap="beforeend">
+            {% icon "briefcase" size=16 %}
           </button>
         </div>
       </div>
@@ -278,6 +274,7 @@
       <span class="label label-text !text-xs !py-0 !pb-1 opacity-70">Сотрудник</span>
       <select id="flt-employee" name="employee" class="select select-bordered select-sm">
         <option value="">Все</option>
+        <option value="__none__">— Не назначен</option>
         {% for e in employees_all %}
           <option value="{{ e.id }}">{{ e.user.last_name }} {{ e.user.first_name }}</option>
         {% endfor %}
@@ -467,8 +464,15 @@ document.addEventListener('htmx:afterRequest', (event) => {
     const form = document.getElementById('kanban-filter-form');
     if (!form) return;
     form.reset();
+    const inl = document.getElementById('kanban-emp-filter');
+    if (inl) inl.value = '';
     document.body.dispatchEvent(new CustomEvent('kanbanRefresh'));
   }
+  // Синхронизация поповера → inline-селект
+  document.getElementById('flt-employee')?.addEventListener('change', function() {
+    const inl = document.getElementById('kanban-emp-filter');
+    if (inl) inl.value = this.value;
+  });
   function toggleNotifications() {
     openTelegramChatModal();
   }
@@ -769,6 +773,7 @@ document.addEventListener('htmx:afterRequest', (event) => {
   document.body.addEventListener('htmx:afterSwap', function(e) { parseEmoji(e.detail.target); });
   document.body.addEventListener('htmx:oobAfterSwap', function() { parseEmoji(); });
   document.body.addEventListener('htmx:wsAfterMessage', function() { parseEmoji(); });
+
 </script>
 
 </body>

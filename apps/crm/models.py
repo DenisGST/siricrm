@@ -99,10 +99,11 @@ class Client(TimeStampedModel):
     )
     
     STATUS_CHOICES = [
+        ('unknown', 'Неизвестный'),
         ('lead', 'Лид'),
         ('active', 'Активный'),
-        ('inactive', 'Неактивный'),
         ('closed', 'Закрыт'),
+        ('archive', 'Архивный'),
     ]
     status = models.CharField(
         max_length=20,
@@ -346,6 +347,75 @@ class LegalEntity(TimeStampedModel):
         ordering = ["name"]
 
 
+class ClientEvent(models.Model):
+    """Лог событий по клиенту.
+
+    Все значимые действия фиксируются здесь. Набор event_type расширяется
+    по мере доработки CRM — добавляем новые choices, не меняя схему.
+    """
+    EVENT_CHOICES = [
+        # --- Общие ---
+        ("first_contact",    "Первое обращение"),
+        ("status_change",    "Смена статуса"),
+        ("note",             "Заметка"),
+        # --- Договор ---
+        ("contract_created", "Заключение договора"),
+        ("contract_terminated", "Расторжение договора"),
+        # --- Сотрудники ---
+        ("employee_assigned",  "Назначен сотрудник"),
+        ("employee_removed",   "Сотрудник снят"),
+        # --- Производство ---
+        ("dept_assigned",    "Передан в работу отдела"),
+        ("claim_filed",      "Подан иск в суд"),
+        ("hearing_scheduled","Назначено судебное заседание"),
+        ("procedure_started","Введена процедура"),
+        ("procedure_ended",  "Окончена процедура"),
+        # --- Мессенджер ---
+        ("dialog_started",   "Начат диалог"),
+        ("dialog_ended",     "Окончен диалог"),
+        ("file_received",    "Получен файл"),
+        ("file_sent",        "Отправлен файл"),
+        # --- Корреспонденция ---
+        ("letter_outgoing",  "Направлено исходящее письмо"),
+        ("letter_incoming",  "Получено входящее письмо"),
+        # --- Система ---
+        ("system",           "Системное событие"),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    client = models.ForeignKey(
+        "Client",
+        on_delete=models.CASCADE,
+        related_name="events",
+        verbose_name="Клиент",
+    )
+    event_type = models.CharField(
+        "Тип события", max_length=30, choices=EVENT_CHOICES, default="note",
+    )
+    description = models.TextField("Описание", blank=True)
+    old_value = models.CharField("Старое значение", max_length=255, blank=True)
+    new_value = models.CharField("Новое значение", max_length=255, blank=True)
+    employee = models.ForeignKey(
+        Employee,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name="client_events",
+        verbose_name="Сотрудник",
+    )
+    created_at = models.DateTimeField("Дата и время", auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Событие клиента"
+        verbose_name_plural = "События клиентов"
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["client", "created_at"]),
+        ]
+
+    def __str__(self):
+        return f"{self.client} — {self.get_event_type_display()} ({self.created_at:%d.%m.%Y %H:%M})"
+
+
 class Message(TimeStampedModel):
     """Message model for conversations"""
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -536,8 +606,150 @@ class EmployeeLog(models.Model):
             models.Index(fields=['client', 'timestamp']),
         ]
 """
+class ServiceName(TimeStampedModel):
+    """Справочник: наименования услуг."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    full_name = models.CharField("Полное наименование", max_length=255)
+    short_name = models.CharField("Сокращённое наименование", max_length=50)
+    is_active = models.BooleanField("Активна", default=True)
+    departments = models.ManyToManyField(
+        "core.Department",
+        blank=True,
+        related_name="service_names",
+        verbose_name="Отделы",
+    )
+
+    class Meta:
+        verbose_name = "Наименование услуги"
+        verbose_name_plural = "Наименования услуг"
+        ordering = ["short_name"]
+
+    def __str__(self):
+        return f"{self.short_name} — {self.full_name}"
+
+
+class PaymentProcedure(TimeStampedModel):
+    """Справочник: порядок оплаты по договору."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    full_name = models.CharField("Полное наименование", max_length=255)
+    short_name = models.CharField("Сокращённое наименование", max_length=50)
+    description = models.TextField("Описание", blank=True)
+    is_active = models.BooleanField("Активен", default=True)
+
+    class Meta:
+        verbose_name = "Порядок оплаты"
+        verbose_name_plural = "Порядок оплаты"
+        ordering = ["short_name"]
+
+    def __str__(self):
+        return self.short_name
+
+
+class ServiceCommonStatus(TimeStampedModel):
+    """Справочник: общий статус услуги (колонки общего канбана)."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    service_name = models.ForeignKey(
+        ServiceName,
+        on_delete=models.CASCADE,
+        related_name="common_statuses",
+        verbose_name="Услуга",
+    )
+    name = models.CharField("Наименование статуса", max_length=100)
+    order = models.PositiveIntegerField("Порядок", default=0)
+    is_active = models.BooleanField("Активен", default=True)
+
+    class Meta:
+        verbose_name = "Общий статус услуги"
+        verbose_name_plural = "Общие статусы услуг"
+        ordering = ["service_name", "order", "name"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["service_name", "name"],
+                name="unique_common_status_per_service",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.service_name.short_name}: {self.name}"
+
+
+class ServiceEmployeeStatus(TimeStampedModel):
+    """Справочник: статусы услуги у конкретного сотрудника (колонки «Моего канбана»).
+
+    Каждый статус привязан к конкретному общему статусу услуги — это означает,
+    что личный статус сотрудника соответствует одному из общих статусов.
+    Услуга (ServiceName) берётся через common_status.service_name.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    employee = models.ForeignKey(
+        Employee,
+        on_delete=models.CASCADE,
+        related_name="service_statuses",
+        verbose_name="Сотрудник",
+    )
+    common_status = models.ForeignKey(
+        ServiceCommonStatus,
+        on_delete=models.CASCADE,
+        related_name="employee_statuses",
+        verbose_name="Общий статус услуги",
+    )
+    name = models.CharField("Наименование статуса", max_length=100)
+    comment = models.TextField("Комментарий", blank=True)
+    order = models.PositiveIntegerField("Порядок", default=0)
+    is_active = models.BooleanField("Активен", default=True)
+
+    @property
+    def service_name(self):
+        return self.common_status.service_name
+
+    class Meta:
+        verbose_name = "Статус услуги сотрудника"
+        verbose_name_plural = "Статусы услуг сотрудников"
+        ordering = ["employee", "common_status__service_name", "common_status__order", "order", "name"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["employee", "common_status", "name"],
+                name="unique_emp_status_per_emp_common_status",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.employee} / {self.common_status.service_name.short_name} / {self.common_status.name}: {self.name}"
+
+
+class ServiceTag(TimeStampedModel):
+    """Справочник: теги сотрудника (для навешивания на услугу)."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    employee = models.ForeignKey(
+        Employee,
+        on_delete=models.CASCADE,
+        related_name="service_tags",
+        verbose_name="Сотрудник",
+    )
+    name = models.CharField("Наименование тега", max_length=50)
+    color = models.CharField(
+        "Цвет (tailwind class)", max_length=30, blank=True, default="",
+        help_text="Например: badge-warning, badge-error, badge-info",
+    )
+    is_active = models.BooleanField("Активен", default=True)
+
+    class Meta:
+        verbose_name = "Тег"
+        verbose_name_plural = "Теги"
+        ordering = ["employee", "name"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["employee", "name"],
+                name="unique_tag_per_employee",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.employee} / {self.name}"
+
+
 class Service(TimeStampedModel):
-    """Услуга, привязанная к клиенту"""
+    """Услуга, оказываемая клиенту."""
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
 
     client = models.ForeignKey(
@@ -546,211 +758,252 @@ class Service(TimeStampedModel):
         related_name="services",
         verbose_name="Клиент",
     )
-
-    # Агент (отдельный клиент, который привёл этого клиента)
     agent = models.ForeignKey(
         Client,
         on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
+        null=True, blank=True,
         related_name="agent_services",
         verbose_name="Агент",
     )
-
-    # Наименование услуги
-    SERVICE_NAME_CHOICES = [
-        ("BFL", "БФЛ"),
-        ("DTP", "ДТП"),
-        ("ZALIV", "Залив"),
-        ("ZPP", "ЗПП"),
-        ("OTHER", "Прочее"),
-    ]
-    name = models.CharField(
-        max_length=20,
-        choices=SERVICE_NAME_CHOICES,
-        verbose_name="Наименование услуги",
+    name = models.ForeignKey(
+        ServiceName,
+        on_delete=models.PROTECT,
+        related_name="services",
+        verbose_name="Услуга",
+    )
+    region = models.ForeignKey(
+        "crm.Region",
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name="services",
+        verbose_name="Регион",
     )
 
-    # Условия для агента
     AGENT_CIRCS_CHOICES = [
-        ("ONCE_3000", "Разово 3000"),
-        ("PERCENT", "Проценты"),
+        ("ONCE", "Разовая выплата"),
+        ("PERCENT", "Процент"),
         ("INDIVIDUAL", "Индивидуальные условия"),
     ]
     agent_circs = models.CharField(
+        "Условия для агента",
         max_length=20,
         choices=AGENT_CIRCS_CHOICES,
-        verbose_name="Условия для агента",
+        blank=True, default="",
     )
-    agent_circs_notes = models.TextField(
-        max_length=1000,
-        blank=True,
-        verbose_name="Уточнения условий агента",
+    agent_once_amount = models.DecimalField(
+        "Сумма разовой выплаты агенту",
+        max_digits=12, decimal_places=2,
+        null=True, blank=True,
     )
+    agent_percent = models.DecimalField(
+        "Процент выплаты агенту (от денег клиента)",
+        max_digits=5, decimal_places=2,
+        null=True, blank=True,
+    )
+    agent_notes = models.TextField("Комментарии по работе с агентом", blank=True)
 
-    # Выплата агентских
-    agent_paid = models.IntegerField(
-        default=0,
-        verbose_name="Выплата агентских",
-    )
-
-    # Особые отметки
-    special_notes = models.TextField(
-        max_length=1000,
-        blank=True,
-        verbose_name="Особые отметки",
-    )
-
-    # Даты / договор
-    date_anketa = models.DateField(
-        null=True,
-        blank=True,
-        verbose_name="Дата анкетирования",
-    )
-    date_dogovor = models.DateField(
-        null=True,
-        blank=True,
-        verbose_name="Дата договора",
+    date_dogovor = models.DateField("Дата договора", null=True, blank=True)
+    contract_seq = models.PositiveIntegerField(
+        "Счётчик номера договора",
+        null=True, blank=True, unique=True,
+        help_text="Начинается с 1000; формируется автоматически при сохранении",
     )
     numb_dogovor = models.CharField(
-        max_length=50,
-        blank=True,
-        verbose_name="Номер договора",
+        "Номер договора", max_length=50, blank=True,
+        help_text="Автоматически '1000-БФЛ' или вводится вручную",
     )
 
-    # Порядок оплаты
-    PAYMENT_PROCEDURE_CHOICES = [
-        ("PREPAY", "Предоплата"),
-        ("INSTALLMENTS", "Рассрочка"),
-        ("POSTPAY", "Постоплата"),
-        ("SUCCESS_FEE", "Гонорар успеха"),
-        ("SUBSCRIPTION", "Абонентская плата"),
-    ]
-    payment_procedure = models.CharField(
-        max_length=20,
-        choices=PAYMENT_PROCEDURE_CHOICES,
+    date_start = models.DateField("Дата начала оказания услуг", null=True, blank=True)
+    date_end = models.DateField("Дата окончания оказания услуг", null=True, blank=True)
+    date_terminated = models.DateField("Дата расторжения договора", null=True, blank=True)
+    date_executed = models.DateField("Дата исполнения услуг по договору", null=True, blank=True)
+
+    contract_file = models.ForeignKey(
+        StoredFile,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name="contract_services",
+        verbose_name="Файл договора",
+    )
+    contract_price = models.DecimalField(
+        "Цена договора, ₽",
+        max_digits=14, decimal_places=2,
+        null=True, blank=True,
+    )
+    payment_procedure = models.ForeignKey(
+        PaymentProcedure,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name="services",
         verbose_name="Порядок оплаты",
     )
-
-    # Как оплачивать
-    PAYMENT_AS_CHOICES = [
-        ("CASHBOX", "Касса"),
-        ("ACCOUNT", "Расчетный счет"),
-        ("CASH", "Наличные"),
-    ]
-    payment_as = models.CharField(
-        max_length=20,
-        choices=PAYMENT_AS_CHOICES,
-        verbose_name="Как оплачивать",
+    common_status = models.ForeignKey(
+        ServiceCommonStatus,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name="services",
+        verbose_name="Общий статус услуги",
     )
 
-    # Статус услуги
-    STATUS_SERVICE_CHOICES = [
-        ("LEAD", "Лид"),
-        ("CONTRACT", "Заключение договора"),
-        ("PERFORMANCE", "Исполнение договора"),
-        ("DEBTOR", "Должник"),
-        ("WARRANTY", "Гарантийное обслуживание"),
-        ("ARCHIVE", "Архив"),
-    ]
-    status_service = models.CharField(
-        max_length=20,
-        choices=STATUS_SERVICE_CHOICES,
-        default="LEAD",
-        verbose_name="Статус услуги",
+    employees = models.ManyToManyField(
+        Employee,
+        through="ServiceEmployeeState",
+        through_fields=("service", "employee"),
+        related_name="assigned_services",
+        blank=True,
+        verbose_name="Исполнители",
+    )
+    tags = models.ManyToManyField(
+        ServiceTag,
+        through="ServiceTagAssignment",
+        related_name="services",
+        blank=True,
+        verbose_name="Теги",
     )
 
-    # Статус в колл-центре
-    STATUS_CALLCENTER_CHOICES = [
-        ("LEAD_CREATED", "Лид создан"),
-        ("NO_ANSWER", "Недозвон"),
-        ("BAD_LEAD", "Неликвид"),
-        ("LEAD_IN_WORK", "Лид в работе"),
-        ("REFUSED_APPOINT", "Отказ на стадии записи на консультацию"),
-        ("NON_TARGET", "Нецелевой лид"),
-        ("NOT_READY_ASSETS", "Не готов по имуществу"),
-        ("WANTED_FREE", "Искал бесплатно"),
-        ("APPOINTMENT", "Записан на консультацию"),
-        ("TO_CONTRACT", "Передан на заключение договора"),
-        ("DEAL_SUPPORT", "Сопровождаю сделку"),
-        ("POSTPONED", "Отложено на потом"),
-        ("ARCHIVE", "Архив"),
-    ]
-    status_callcenter = models.CharField(
-        max_length=30,
-        choices=STATUS_CALLCENTER_CHOICES,
-        default="LEAD_CREATED",
-        verbose_name="Статус в колл-центре",
-    )
-
-    # Статус консультанта
-    STATUS_CONSULTANT_CHOICES = [
-        ("LEAD", "Лид"),
-        ("NO_ANSWER", "Недозвон"),
-        ("QUESTIONNAIRE", "Анкетирование"),
-        ("NON_TARGET_CLIENT", "Нецелевой клиент"),
-        ("APPOINTMENT", "Запись на консультацию"),
-        ("THINKING", "Клиент думает"),
-        ("TARGET_CHECK", "Определяется целевитость клиента"),
-        ("CONTRACT", "Заключение договора"),
-        ("LOST", "Пропал"),
-        ("CONTRACT_SIGNED", "Договор заключен"),
-        ("TO_LAWYERS", "Передан в работу юристов"),
-        ("SUPPORT", "Сопровождаю"),
-        ("REFUSAL", "Отказ от сотрудничества"),
-        ("ARCHIVE", "Архив"),
-    ]
-    status_consultant = models.CharField(
-        max_length=30,
-        choices=STATUS_CONSULTANT_CHOICES,
-        default="LEAD",
-        verbose_name="Статус консультанта",
-    )
-
-    # Статус сбора документов
-    STATUS_SBOR_CHOICES = [
-        ("COLLECTING", "Сбор документов"),
-        ("CLAIM_FILED", "Иск подан"),
-        ("CLAIM_RETURNED", "Иск возвращен"),
-        ("CLAIM_ACCEPTED", "Иск принят"),
-        ("TO_FIX", "Доработать"),
-        ("HEARING_ASSIGNED", "Назначено СЗ"),
-        ("PROCEDURE_STARTED", "Введена процедура"),
-        ("TRANSFERRED", "Передано в другой отдел"),
-        ("SUPPORT", "Сопровождаю"),
-        ("ARCHIVE", "Архив"),
-    ]
-    status_sbor = models.CharField(
-        max_length=30,
-        choices=STATUS_SBOR_CHOICES,
-        default="COLLECTING",
-        verbose_name="Статус сбора документов",
-    )
-    
-    # Статус юротдела (БФЛ)
-    STATUS_BFL_CHOICES = [
-        ("INPUT", "Ввод"),
-        ("RESTRUCT", "Реструктуризация"),
-        ("REALIZATION", "Реализация"),
-        ("FINISHING", "Завершение"),
-        ("FINISHED", "Завершен"),
-        ("WARRANTY", "Гарантийное обслуживание"),
-        ("ARCHIVE", "Архив"),
-    ]
-    status_bfl = models.CharField(
-        max_length=20,
-        choices=STATUS_BFL_CHOICES,
-        default="INPUT",
-        verbose_name="Статус юротдела (БФЛ)",
-    )
-
-    is_active = models.BooleanField(default=True, verbose_name="Активна")
+    is_active = models.BooleanField("Активна", default=True)
 
     def __str__(self):
-        return f"{self.get_name_display()} ({self.client})"
+        return f"{self.name.short_name} ({self.client})"
+
+    def save(self, *args, **kwargs):
+        # Автонумер: contract_seq начинается с 1000, numb_dogovor = '{seq}-{short_name}'
+        if self.contract_seq is None and not self.numb_dogovor:
+            last = (
+                Service.objects.filter(contract_seq__isnull=False)
+                .order_by("-contract_seq").values_list("contract_seq", flat=True).first()
+            )
+            self.contract_seq = (last or 999) + 1
+            short = (self.name.short_name or "").upper() if self.name_id else ""
+            self.numb_dogovor = f"{self.contract_seq}-{short}" if short else str(self.contract_seq)
+        super().save(*args, **kwargs)
 
     class Meta:
         verbose_name = "Услуга"
         verbose_name_plural = "Услуги"
         ordering = ["-created_at"]
+
+
+class ServiceEmployeeState(models.Model):
+    """M2M: статус услуги у конкретного сотрудника."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    service = models.ForeignKey(
+        Service, on_delete=models.CASCADE, related_name="employee_states",
+        verbose_name="Услуга",
+    )
+    employee = models.ForeignKey(
+        Employee, on_delete=models.CASCADE, related_name="service_states",
+        verbose_name="Сотрудник",
+    )
+    status = models.ForeignKey(
+        ServiceEmployeeStatus, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name="states",
+        verbose_name="Статус",
+    )
+    updated_at = models.DateTimeField("Обновлено", auto_now=True)
+    updated_by = models.ForeignKey(
+        Employee, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name="+",
+        verbose_name="Кем обновлено",
+    )
+
+    class Meta:
+        verbose_name = "Статус исполнителя"
+        verbose_name_plural = "Статусы исполнителей"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["service", "employee"],
+                name="unique_state_per_service_employee",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.service} — {self.employee}: {self.status or '—'}"
+
+
+class ServiceTagAssignment(models.Model):
+    """Назначение тега сотрудника на услугу."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    service = models.ForeignKey(
+        Service, on_delete=models.CASCADE, related_name="tag_assignments",
+        verbose_name="Услуга",
+    )
+    employee = models.ForeignKey(
+        Employee, on_delete=models.CASCADE, related_name="service_tag_assignments",
+        verbose_name="Сотрудник",
+    )
+    tag = models.ForeignKey(
+        ServiceTag, on_delete=models.CASCADE, related_name="assignments",
+        verbose_name="Тег",
+    )
+    created_at = models.DateTimeField("Создано", auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Назначение тега"
+        verbose_name_plural = "Назначения тегов"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["service", "employee", "tag"],
+                name="unique_tag_assignment",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.service} — {self.employee}: {self.tag.name}"
+
+
+class ServiceLog(models.Model):
+    """Лог событий по услуге."""
+    ACTION_CHOICES = [
+        ("status_change", "Смена статуса сотрудника"),
+        ("common_status_change", "Смена общего статуса"),
+        ("tag_added", "Тег добавлен"),
+        ("tag_removed", "Тег удалён"),
+        ("assigned", "Сотрудник назначен"),
+        ("unassigned", "Сотрудник снят"),
+    ]
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    service = models.ForeignKey(
+        Service, on_delete=models.CASCADE, related_name="logs",
+        verbose_name="Услуга",
+    )
+    employee = models.ForeignKey(
+        Employee, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="service_logs", verbose_name="Сотрудник",
+    )
+    action = models.CharField("Действие", max_length=30, choices=ACTION_CHOICES)
+    old_status = models.ForeignKey(
+        ServiceEmployeeStatus, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name="+", verbose_name="Старый статус",
+    )
+    new_status = models.ForeignKey(
+        ServiceEmployeeStatus, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name="+", verbose_name="Новый статус",
+    )
+    old_common_status = models.ForeignKey(
+        ServiceCommonStatus, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name="+", verbose_name="Старый общий статус",
+    )
+    new_common_status = models.ForeignKey(
+        ServiceCommonStatus, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name="+", verbose_name="Новый общий статус",
+    )
+    tag = models.ForeignKey(
+        ServiceTag, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name="+", verbose_name="Тег",
+    )
+    comment = models.TextField("Комментарий", blank=True)
+    created_at = models.DateTimeField("Время", auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Лог услуги"
+        verbose_name_plural = "Логи услуг"
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["service", "created_at"]),
+            models.Index(fields=["employee", "created_at"]),
+        ]
+
+    def __str__(self):
+        return f"{self.service} — {self.get_action_display()} ({self.created_at:%d.%m %H:%M})"
 

@@ -11,6 +11,7 @@ urlpatterns = [
     path('employees/', views.employees_list, name='employees_list'),
     path('clients/<uuid:client_id>/chat/', views.chat, name='chat'),
     path("clients/new/", views.client_create, name="client_create"),
+    path("clients/<uuid:client_id>/events/", views.client_events_modal, name="client_events_modal"),
     path("clients/<uuid:client_id>/max/send/", views.max_send_message, name="max_send_message"),
     path("clients/<uuid:client_id>/edit/", views.client_edit, name="client_edit"),
     path('logs/', views.logs_list, name='logs_list'),
@@ -32,6 +33,8 @@ urlpatterns = [
     path("clients/<uuid:client_id>/address/<uuid:address_id>/", views.address_form, name="address_edit"),
     path("clients/<uuid:client_id>/address/<uuid:address_id>/delete/", views.address_delete, name="address_delete"),
     path("clients/<uuid:client_id>/close-dialog/", views.cycle_dialog_status, name="close_dialog"),
+    path("clients/<uuid:client_id>/assign-employee/", views.client_assign_employee_picker, name="client_assign_employee_picker"),
+    path("clients/<uuid:client_id>/assign-employee/set/", views.client_assign_employee, name="client_assign_employee"),
     path("clients/<uuid:client_id>/messenger-status/", views.messenger_status_badge, name="messenger_status_badge"),
     path("api/notifications/count/", views.notifications_count, name="notifications_count"),
     path("api/global-search/", views.global_search, name="global_search"),
@@ -40,5 +43,18 @@ urlpatterns = [
     path("legal-entities/new/", views.legal_entity_create, name="legal_entity_create"),
     path("legal-entities/<uuid:le_id>/", views.legal_entity_detail, name="legal_entity_detail"),
     path("legal-entities/<uuid:le_id>/edit/", views.legal_entity_edit, name="legal_entity_edit"),
+
+    # Услуги
+    path("services/", views.services_list, name="services_list"),
+    path("services/new/", views.service_edit, name="service_create"),
+    path("services/<uuid:pk>/", views.service_edit, name="service_edit"),
+    path("services/<uuid:pk>/delete/", views.service_delete, name="service_delete"),
+    path("services/client-search/", views.service_client_search, name="service_client_search"),
+
+    # Канбаны услуг
+    path("services-kanban/", views.services_kanban, name="services_kanban"),
+    path("services-kanban/col/<uuid:status_id>/", views.services_kanban_column, name="services_kanban_column"),
+    path("my-kanban/", views.my_kanban, name="my_kanban"),
+    path("my-kanban/col/<uuid:status_id>/", views.my_kanban_column, name="my_kanban_column"),
 ]
 

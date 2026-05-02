@@ -170,6 +170,12 @@ def send_telegram_message_task(message_id):
                     push_toast(message.employee.user, "Сообщение отправлено", level="success")
             except Exception as e:
                 logger.warning(f"Failed to push WS update: {e}")
+
+            try:
+                from apps.crm.event_logger import log_messenger_message
+                log_messenger_message(message.client, message, message.employee)
+            except Exception as e:
+                logger.warning(f"Failed to log messenger event: {e}")
         else:
             logger.error(f"❌ Task: Failed to send message {message_id}: {result['error']}")
             try:

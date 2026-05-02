@@ -51,7 +51,7 @@ class Command(BaseCommand):
                 patronymic="",
                 username=username,
                 phone=phone,
-                status=random.choice(["lead", "active", "inactive", "closed"]),
+                status=random.choice(["unknown", "lead", "active", "closed", "archive"]),
                 last_message_at=None,
             )
             clients.append(client)

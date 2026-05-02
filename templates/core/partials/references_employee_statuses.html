@@ -1,0 +1,105 @@
+<div id="employee-statuses-list"
+     hx-trigger="reloadEmployeeStatuses from:body"
+     hx-get="{% url 'core:references_employee_statuses' %}?employee={{ filter_employee }}&service_name={{ filter_service_name }}&common_status={{ filter_common_status }}"
+     hx-swap="outerHTML">
+
+  <div class="flex flex-wrap justify-between items-center mb-3 gap-2">
+    <h3 class="font-semibold">Статусы услуг сотрудников ({{ items|length }})</h3>
+    <div class="flex flex-wrap gap-2 items-center">
+
+      <!-- Фильтр по сотруднику -->
+      <select class="select select-bordered select-xs"
+              hx-get="{% url 'core:references_employee_statuses' %}"
+              hx-include="[name='service_name_f'],[name='common_status_f']"
+              hx-trigger="change" hx-target="#employee-statuses-list" hx-swap="outerHTML"
+              name="employee">
+        <option value="">— сотрудник —</option>
+        {% for e in employees_all %}
+          <option value="{{ e.id }}" {% if filter_employee == e.id|stringformat:"s" %}selected{% endif %}>
+            {{ e.user.get_full_name|default:e.user.username }}
+          </option>
+        {% endfor %}
+      </select>
+
+      <!-- Фильтр по услуге -->
+      <select class="select select-bordered select-xs"
+              hx-get="{% url 'core:references_employee_statuses' %}"
+              hx-include="[name='employee'],[name='common_status_f']"
+              hx-trigger="change" hx-target="#employee-statuses-list" hx-swap="outerHTML"
+              name="service_name_f">
+        <option value="">— услуга —</option>
+        {% for s in service_names %}
+          <option value="{{ s.id }}" {% if filter_service_name == s.id|stringformat:"s" %}selected{% endif %}>
+            {{ s.short_name }}
+          </option>
+        {% endfor %}
+      </select>
+
+      <!-- Фильтр по общему статусу -->
+      <select class="select select-bordered select-xs"
+              hx-get="{% url 'core:references_employee_statuses' %}"
+              hx-include="[name='employee'],[name='service_name_f']"
+              hx-trigger="change" hx-target="#employee-statuses-list" hx-swap="outerHTML"
+              name="common_status_f">
+        <option value="">— общий статус —</option>
+        {% for cs in common_statuses %}
+          <option value="{{ cs.id }}" {% if filter_common_status == cs.id|stringformat:"s" %}selected{% endif %}>
+            {{ cs.service_name.short_name }}: {{ cs.name }}
+          </option>
+        {% endfor %}
+      </select>
+
+      <button class="btn btn-primary btn-sm"
+              hx-get="{% url 'core:reference_employee_status_add' %}"
+              hx-target="body" hx-swap="beforeend">
+        + Добавить
+      </button>
+    </div>
+  </div>
+
+  <div class="overflow-x-auto">
+    <table class="table table-sm table-zebra">
+      <thead>
+        <tr>
+          <th>Сотрудник</th>
+          <th>Услуга</th>
+          <th>Общий статус</th>
+          <th>Наименование личного статуса</th>
+          <th>Комментарий</th>
+          <th>Порядок</th>
+          <th>Вкл</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for it in items %}
+        <tr>
+          <td>{{ it.employee.user.get_full_name|default:it.employee.user.username }}</td>
+          <td><span class="badge badge-outline badge-sm">{{ it.common_status.service_name.short_name }}</span></td>
+          <td><span class="badge badge-ghost badge-sm">{{ it.common_status.name }}</span></td>
+          <td class="font-medium">{{ it.name }}</td>
+          <td class="text-xs text-base-content/70 max-w-xs truncate" title="{{ it.comment }}">{{ it.comment|default:"—" }}</td>
+          <td>{{ it.order }}</td>
+          <td>
+            {% if it.is_active %}
+              <span class="badge badge-success badge-xs">да</span>
+            {% else %}
+              <span class="badge badge-ghost badge-xs">нет</span>
+            {% endif %}
+          </td>
+          <td class="text-right">
+            <button class="btn btn-xs btn-outline"
+                    hx-get="{% url 'core:reference_employee_status_edit' it.pk %}"
+                    hx-target="body" hx-swap="beforeend">Изменить</button>
+            <button class="btn btn-xs btn-error btn-outline"
+                    hx-post="{% url 'core:reference_employee_status_delete' it.pk %}"
+                    hx-confirm="Удалить статус «{{ it.name }}»?">Удалить</button>
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="8" class="text-center text-base-content/60">Статусов нет</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>

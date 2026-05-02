@@ -73,6 +73,8 @@ img.emoji {
   flex-shrink: 0;
   transition: none;
   z-index: 50;
+  /* Важно: tooltip pseudo-элементы детей выходят за правый край sidebar — не обрезаем */
+  overflow: visible;
 }
 
 .sidebar-logo {
@@ -96,18 +98,17 @@ img.emoji {
   align-items: center;
   gap: 2px;
   width: 100%;
-  overflow-y: auto;
+  /* overflow видимый, чтобы tooltip-ы детей не обрезались */
+  overflow: visible;
   padding: 0 4px;
 }
 
 .sidebar-section-label {
-  font-size: 8px;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--ms-text-tertiary);
-  margin-top: 10px;
-  margin-bottom: 2px;
-  white-space: nowrap;
+  width: 60%;
+  height: 1px;
+  background: var(--ms-border);
+  margin: 8px auto 4px;
+  font-size: 0;
 }
 
 .sidebar-item {
@@ -118,41 +119,61 @@ img.emoji {
   justify-content: center;
   border-radius: 8px;
   cursor: pointer;
-  color: var(--ms-text-secondary);
+  /* Default: всё серое */
+  color: #9ca3af;
   text-decoration: none;
   position: relative;
-  transition: background 0.12s, color 0.12s;
+  transition: background 0.14s, color 0.14s, filter 0.14s;
   border: none;
   background: transparent;
   font-size: 16px;
 }
-.sidebar-item:hover {
-  background: var(--ms-sidebar-hover);
-  color: var(--ms-text);
+/* Emoji-иконки — обесцвечиваем по умолчанию */
+.sidebar-item .si-emoji {
+  filter: grayscale(1) opacity(0.5);
+  transition: filter 0.14s;
 }
+
+/* Hover: раздел CRM → ярко-зелёный */
+.sidebar-item.si-sect-crm:hover {
+  color: #16a34a;
+  background: #f0fdf4;
+}
+.sidebar-item.si-sect-crm:hover .si-emoji {
+  filter: none;
+}
+
+/* Hover: верхний раздел → ярко-красный */
+.sidebar-item.si-sect-top:hover {
+  color: #dc2626;
+  background: #fef2f2;
+}
+.sidebar-item.si-sect-top:hover .si-emoji {
+  filter: none;
+}
+
+/* Hover: Администрирование → ярко-красный */
+.sidebar-item.si-sect-admin:hover {
+  color: #dc2626;
+  background: #fef2f2;
+}
+.sidebar-item.si-sect-admin:hover .si-emoji {
+  filter: none;
+}
+
+/* Кнопка выйти (sidebar-user) → красная */
+.sidebar-user .sidebar-item:hover {
+  color: #dc2626;
+  background: #fef2f2;
+}
+
 .sidebar-item.active,
 .sidebar-item:active {
   background: var(--ms-sidebar-active);
   color: var(--ms-blue);
 }
 
-/* Tooltip при наведении */
-.sidebar-item[data-tooltip]:hover::after {
-  content: attr(data-tooltip);
-  position: absolute;
-  left: calc(100% + 8px);
-  top: 50%;
-  transform: translateY(-50%);
-  background: var(--ms-text);
-  color: #fff;
-  padding: 4px 10px;
-  border-radius: 4px;
-  font-size: 12px;
-  white-space: nowrap;
-  z-index: 9999;
-  pointer-events: none;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
-}
+/* Tooltip — используем нативный browser title=""; CSS-эффекты не нужны. */
 
 
 /* Пользователь внизу сайдбара */
@@ -271,22 +292,6 @@ img.emoji {
 .top-bar-action-btn:hover {
   background: var(--ms-sidebar-hover);
   color: var(--ms-text);
-}
-.top-bar-action-btn[data-tooltip]:hover::after {
-  content: attr(data-tooltip);
-  position: absolute;
-  top: calc(100% + 6px);
-  left: 50%;
-  transform: translateX(-50%);
-  background: var(--ms-text);
-  color: #fff;
-  padding: 4px 10px;
-  border-radius: 4px;
-  font-size: 11px;
-  white-space: nowrap;
-  z-index: 9999;
-  pointer-events: none;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
 }
 .top-bar-divider {
   width: 1px;
@@ -867,4 +872,34 @@ input:focus, textarea:focus, select:focus {
 #tg_emoji_popover .emoji-grid {
   display: grid;
   grid-template-columns: repeat(8, minmax(0, 1fr));
+}
+
+/* Бэйдж ответственного сотрудника на карточке канбана */
+.kanban-emp-badge {
+  transition: border-color 0.15s, box-shadow 0.15s, color 0.15s;
+}
+.kanban-emp-badge:hover {
+  border-color: oklch(var(--p)) !important;
+  box-shadow: 0 0 0 2px oklch(var(--p) / 0.25);
+  color: oklch(var(--p));
+}
+
+/* Кнопки действий на карточке канбана */
+.kanban-action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: 4px;
+  border: 1px solid transparent;
+  background: transparent;
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s, color 0.15s;
+}
+.kanban-action-btn:hover {
+  border-color: oklch(var(--p));
+  box-shadow: 0 0 0 2px oklch(var(--p) / 0.25);
+  color: oklch(var(--p));
 }

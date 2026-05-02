@@ -1,17 +1,28 @@
 <div class="p-4">
   <h2 class="text-xl font-bold mb-4">📚 Справочники</h2>
 
-  <div class="tabs tabs-boxed mb-4">
+  <div class="tabs tabs-boxed mb-4 flex-wrap">
     <a class="tab {% if active_tab == 'regions' %}tab-active{% endif %}"
        hx-get="{% url 'core:references_regions' %}" hx-target="#ref-content" hx-swap="innerHTML"
-       onclick="setRefTab(this)">
-      Регионы РФ
-    </a>
+       onclick="setRefTab(this)">Регионы РФ</a>
     <a class="tab {% if active_tab == 'kinds' %}tab-active{% endif %}"
        hx-get="{% url 'core:references_kinds' %}" hx-target="#ref-content" hx-swap="innerHTML"
-       onclick="setRefTab(this)">
-      Типы юр. лиц
-    </a>
+       onclick="setRefTab(this)">Типы юр. лиц</a>
+    <a class="tab {% if active_tab == 'service_names' %}tab-active{% endif %}"
+       hx-get="{% url 'core:references_service_names' %}" hx-target="#ref-content" hx-swap="innerHTML"
+       onclick="setRefTab(this)">Услуги</a>
+    <a class="tab {% if active_tab == 'payment_procedures' %}tab-active{% endif %}"
+       hx-get="{% url 'core:references_payment_procedures' %}" hx-target="#ref-content" hx-swap="innerHTML"
+       onclick="setRefTab(this)">Порядок оплаты</a>
+    <a class="tab {% if active_tab == 'common_statuses' %}tab-active{% endif %}"
+       hx-get="{% url 'core:references_common_statuses' %}" hx-target="#ref-content" hx-swap="innerHTML"
+       onclick="setRefTab(this)">Общие статусы услуг</a>
+    <a class="tab {% if active_tab == 'employee_statuses' %}tab-active{% endif %}"
+       hx-get="{% url 'core:references_employee_statuses' %}" hx-target="#ref-content" hx-swap="innerHTML"
+       onclick="setRefTab(this)">Статусы сотрудников</a>
+    <a class="tab {% if active_tab == 'tags' %}tab-active{% endif %}"
+       hx-get="{% url 'core:references_tags' %}" hx-target="#ref-content" hx-swap="innerHTML"
+       onclick="setRefTab(this)">Теги сотрудников</a>
   </div>
 
   <div id="ref-content"

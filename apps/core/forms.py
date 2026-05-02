@@ -1,7 +1,11 @@
 from django import forms
 from django.contrib.auth.models import User
 from .models import Department, Employee, MenuItem, Widget, DashboardConfig
-from apps.crm.models import Region, LegalEntityKind
+from apps.crm.models import (
+    Region, LegalEntityKind,
+    ServiceName, PaymentProcedure, ServiceCommonStatus,
+    ServiceEmployeeStatus, ServiceTag,
+)
 
 
 class EmployeeForm(forms.ModelForm):
@@ -15,9 +19,15 @@ class EmployeeForm(forms.ModelForm):
         fields = ["user", "department", "role", "is_active"]
 
 
+class _FullNameUserChoiceField(forms.ModelChoiceField):
+    def label_from_instance(self, obj):
+        full = obj.get_full_name().strip()
+        return full if full else obj.username
+
+
 class DepartmentForm(forms.ModelForm):
-    manager = forms.ModelChoiceField(
-        queryset=User.objects.filter(is_active=True),
+    manager = _FullNameUserChoiceField(
+        queryset=User.objects.filter(is_active=True).order_by("last_name", "first_name"),
         required=False,
         label="Руководитель",
     )
@@ -31,12 +41,59 @@ class DepartmentForm(forms.ModelForm):
 
 
 class EmployeeAdminForm(forms.ModelForm):
+    services_allowed = forms.ModelMultipleChoiceField(
+        queryset=ServiceName.objects.filter(is_active=True).order_by("short_name"),
+        widget=forms.CheckboxSelectMultiple,
+        required=False,
+        label="Доступные услуги",
+    )
+
     class Meta:
         model = Employee
         fields = [
             "department", "role", "dashboard_config",
-            "has_messenger_access", "is_active",
+            "has_messenger_access", "services_allowed", "is_active",
         ]
+
+
+class EmployeeFullEditForm(forms.ModelForm):
+    """Полная форма редактирования сотрудника (ФИО, контакты, роль, доступы)."""
+    last_name = forms.CharField(max_length=150, label="Фамилия")
+    first_name = forms.CharField(max_length=150, label="Имя")
+    email = forms.EmailField(required=False, label="Email")
+    services_allowed = forms.ModelMultipleChoiceField(
+        queryset=ServiceName.objects.filter(is_active=True).order_by("short_name"),
+        widget=forms.CheckboxSelectMultiple,
+        required=False,
+        label="Доступные услуги",
+    )
+
+    class Meta:
+        model = Employee
+        fields = [
+            "department", "role", "dashboard_config",
+            "has_messenger_access", "patronymic",
+            "phone_mobile", "phone_internal",
+            "services_allowed", "is_active",
+        ]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.instance and self.instance.pk:
+            self.fields["last_name"].initial = self.instance.user.last_name
+            self.fields["first_name"].initial = self.instance.user.first_name
+            self.fields["email"].initial = self.instance.user.email
+
+    def save(self, commit=True):
+        emp = super().save(commit=False)
+        emp.user.last_name = self.cleaned_data["last_name"]
+        emp.user.first_name = self.cleaned_data["first_name"]
+        emp.user.email = self.cleaned_data.get("email", "")
+        emp.user.save(update_fields=["last_name", "first_name", "email"])
+        if commit:
+            emp.save()
+            self.save_m2m()
+        return emp
 
 
 class EmployeeCreateForm(forms.Form):
@@ -148,6 +205,45 @@ class LegalEntityKindForm(forms.ModelForm):
     class Meta:
         model = LegalEntityKind
         fields = ["name", "short_name"]
+
+
+class ServiceNameForm(forms.ModelForm):
+    departments = forms.ModelMultipleChoiceField(
+        queryset=Department.objects.filter(is_active=True),
+        widget=forms.CheckboxSelectMultiple,
+        required=False,
+        label="Отделы",
+    )
+
+    class Meta:
+        model = ServiceName
+        fields = ["full_name", "short_name", "is_active", "departments"]
+
+
+class PaymentProcedureForm(forms.ModelForm):
+    class Meta:
+        model = PaymentProcedure
+        fields = ["full_name", "short_name", "description", "is_active"]
+        widgets = {"description": forms.Textarea(attrs={"rows": 2})}
+
+
+class ServiceCommonStatusForm(forms.ModelForm):
+    class Meta:
+        model = ServiceCommonStatus
+        fields = ["service_name", "name", "order", "is_active"]
+
+
+class ServiceEmployeeStatusForm(forms.ModelForm):
+    class Meta:
+        model = ServiceEmployeeStatus
+        fields = ["employee", "common_status", "name", "comment", "order", "is_active"]
+        widgets = {"comment": forms.Textarea(attrs={"rows": 2})}
+
+
+class ServiceTagForm(forms.ModelForm):
+    class Meta:
+        model = ServiceTag
+        fields = ["employee", "name", "color", "is_active"]
 
 
 class DashboardConfigForm(forms.ModelForm):

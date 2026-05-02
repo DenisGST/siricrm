@@ -1,23 +1,13 @@
 # apps/crm/forms.py
 from django import forms
-from .models import Client, LegalEntity
+from .models import (
+    Client, LegalEntity,
+    Service, ServiceName, PaymentProcedure, ServiceCommonStatus, Region,
+)
 from apps.core.models import Employee
 
 
 class ClientForm(forms.ModelForm):
-    employees = forms.ModelMultipleChoiceField(
-        queryset=Employee.objects.filter(is_active=True),
-        required=False,
-        widget=forms.SelectMultiple(
-            attrs={
-                "class": "select select-bordered w-full",
-                "size": 5,
-            }
-        ),
-        label="Сотрудники",
-        help_text="Выберите одного или нескольких сотрудников",
-    )
-
     class Meta:
         model = Client
         fields = [
@@ -25,7 +15,6 @@ class ClientForm(forms.ModelForm):
             "last_name",
             "patronymic",
             "username",
-            "telegram_id",
             "phone",
             "email",
             "birth_date",
@@ -36,7 +25,6 @@ class ClientForm(forms.ModelForm):
             "passport_issued_date",
             "inn",
             "snils",
-            "employees",
             "status",
             "notes",
         ]
@@ -58,3 +46,68 @@ class LegalEntityForm(forms.ModelForm):
             "bank_name", "bik", "correspondent_account", "settlement_account",
             "notes", "is_active", "status",
         ]
+
+
+class ServiceForm(forms.ModelForm):
+    _sel = {"class": "select select-bordered select-sm w-full"}
+    name = forms.ModelChoiceField(
+        queryset=ServiceName.objects.filter(is_active=True).order_by("short_name"),
+        label="Услуга",
+        widget=forms.Select(attrs={**_sel, "form": "svc-form"}),
+    )
+    region = forms.ModelChoiceField(
+        queryset=Region.objects.order_by("number"),
+        required=False, label="Регион",
+        widget=forms.Select(attrs=_sel),
+    )
+    payment_procedure = forms.ModelChoiceField(
+        queryset=PaymentProcedure.objects.filter(is_active=True).order_by("short_name"),
+        required=False, label="Порядок оплаты",
+        widget=forms.Select(attrs=_sel),
+    )
+    common_status = forms.ModelChoiceField(
+        queryset=ServiceCommonStatus.objects.filter(is_active=True),
+        required=False, label="Общий статус услуги",
+        widget=forms.Select(attrs=_sel),
+    )
+    agent = forms.ModelChoiceField(
+        queryset=Client.objects.all(), required=False, label="Агент",
+    )
+
+    class Meta:
+        model = Service
+        fields = [
+            "client", "agent", "name", "region",
+            "agent_circs", "agent_once_amount", "agent_percent", "agent_notes",
+            "date_dogovor", "numb_dogovor",
+            "date_start", "date_end", "date_terminated", "date_executed",
+            "contract_price", "payment_procedure", "common_status", "is_active",
+        ]
+        widgets = {
+            "date_dogovor": forms.DateInput(attrs={"type": "date"}),
+            "date_start": forms.DateInput(attrs={"type": "date"}),
+            "date_end": forms.DateInput(attrs={"type": "date"}),
+            "date_terminated": forms.DateInput(attrs={"type": "date"}),
+            "date_executed": forms.DateInput(attrs={"type": "date"}),
+            "agent_notes": forms.Textarea(attrs={"rows": 2}),
+        }
+
+    def __init__(self, *args, current_employee=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.current_employee = current_employee
+        # Ограничить common_status статусами выбранной услуги.
+        name_id = (self.data.get("name") or self.initial.get("name")
+                   or (self.instance.name_id if self.instance.pk else None))
+        if name_id:
+            self.fields["common_status"].queryset = ServiceCommonStatus.objects.filter(
+                service_name_id=name_id, is_active=True,
+            ).order_by("order", "name")
+
+    def clean_name(self):
+        sn = self.cleaned_data.get("name")
+        if sn and self.current_employee:
+            if not self.current_employee.services_allowed.filter(pk=sn.pk).exists():
+                raise forms.ValidationError(
+                    "У вас нет доступа к этой услуге. Обратитесь к администратору."
+                )
+        return sn

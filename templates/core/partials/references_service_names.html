@@ -1,0 +1,60 @@
+<div id="service-names-list"
+     hx-trigger="reloadServiceNames from:body"
+     hx-get="{% url 'core:references_service_names' %}"
+     hx-swap="outerHTML">
+
+  <div class="flex justify-between items-center mb-3">
+    <h3 class="font-semibold">Услуги ({{ items|length }})</h3>
+    <button class="btn btn-primary btn-sm"
+            hx-get="{% url 'core:reference_service_name_add' %}"
+            hx-target="body" hx-swap="beforeend">
+      + Добавить услугу
+    </button>
+  </div>
+
+  <div class="overflow-x-auto">
+    <table class="table table-sm table-zebra">
+      <thead>
+        <tr>
+          <th>Сокращение</th>
+          <th>Полное наименование</th>
+          <th>Отделы</th>
+          <th>Статус</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for it in items %}
+        <tr>
+          <td><span class="badge badge-outline">{{ it.short_name }}</span></td>
+          <td>{{ it.full_name }}</td>
+          <td>
+            {% for d in it.departments.all %}
+              <span class="badge badge-ghost badge-xs">{{ d.name }}</span>
+            {% empty %}
+              <span class="text-base-content/40">—</span>
+            {% endfor %}
+          </td>
+          <td>
+            {% if it.is_active %}
+              <span class="badge badge-success badge-xs">активна</span>
+            {% else %}
+              <span class="badge badge-ghost badge-xs">неактивна</span>
+            {% endif %}
+          </td>
+          <td class="text-right">
+            <button class="btn btn-xs btn-outline"
+                    hx-get="{% url 'core:reference_service_name_edit' it.pk %}"
+                    hx-target="body" hx-swap="beforeend">Изменить</button>
+            <button class="btn btn-xs btn-error btn-outline"
+                    hx-post="{% url 'core:reference_service_name_delete' it.pk %}"
+                    hx-confirm="Удалить услугу «{{ it.short_name }}»?">Удалить</button>
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="5" class="text-center text-base-content/60">Услуг нет</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>

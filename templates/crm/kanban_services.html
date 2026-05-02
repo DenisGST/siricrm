@@ -1,0 +1,40 @@
+{% load static %}
+<div class="mb-4 flex flex-wrap items-center justify-between gap-2">
+  <h2 class="text-sm font-semibold" style="color:var(--ms-text-secondary)">Канбан по услугам</h2>
+  <form hx-get="{% url 'services_kanban' %}" hx-target="#content-area" hx-swap="innerHTML"
+        id="services-kanban-filter" class="flex items-center gap-2">
+    <select name="service_name" class="select select-bordered select-xs"
+            onchange="this.form.requestSubmit()">
+      <option value="">— все услуги —</option>
+      {% for s in service_names %}
+        <option value="{{ s.id }}" {% if filter_service_name == s.id|stringformat:"s" %}selected{% endif %}>{{ s.short_name }}</option>
+      {% endfor %}
+    </select>
+  </form>
+</div>
+
+{% if statuses %}
+<div class="flex gap-4 overflow-x-auto pb-2">
+  {% for st in statuses %}
+  <div class="bg-base-200 rounded-lg p-3 min-w-[280px] flex-shrink-0">
+    <div class="flex items-center justify-between mb-2">
+      <h3 class="font-bold text-sm">
+        <span class="badge badge-outline badge-xs mr-1">{{ st.service_name.short_name }}</span>
+        {{ st.name }}
+      </h3>
+    </div>
+    <div id="svc-kanban-{{ st.id }}"
+         class="space-y-2 min-h-[50px]"
+         hx-get="{% url 'services_kanban_column' st.id %}"
+         hx-trigger="load, serviceChanged from:body"
+         hx-target="#svc-kanban-{{ st.id }}"
+         hx-swap="innerHTML">
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="text-center text-base-content/60 p-8">
+  Нет активных статусов. Добавь их в <a class="link" href="/references/">Справочниках → Общие статусы услуг</a>.
+</div>
+{% endif %}

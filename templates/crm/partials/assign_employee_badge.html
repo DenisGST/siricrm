@@ -1,0 +1,10 @@
+{% load crm_tags %}
+<span id="assign-badge-btn-{{ client.id }}"
+      class="badge badge-outline text-xs shrink-0 ml-1 cursor-pointer kanban-emp-badge"
+      hx-get="{% url 'client_assign_employee_picker' client.id %}?current={{ emp.id }}"
+      hx-target="body"
+      hx-swap="beforeend"
+      onclick="event.stopPropagation()"
+      title="Изменить ответственного">
+  {{ emp|short_name }}
+</span>

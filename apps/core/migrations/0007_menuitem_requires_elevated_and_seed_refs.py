@@ -8,7 +8,7 @@ def seed_references_menu(apps, schema_editor):
         url="/references/",
         defaults={
             "name": "Справочники",
-            "icon": "📚",
+            "icon": "bookmark",
             "section": "Администрирование",
             "order": 93,
             "use_htmx": True,

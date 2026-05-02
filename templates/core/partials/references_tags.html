@@ -1,0 +1,69 @@
+<div id="tags-list"
+     hx-trigger="reloadTags from:body"
+     hx-get="{% url 'core:references_tags' %}?employee={{ filter_employee }}"
+     hx-swap="outerHTML">
+
+  <div class="flex flex-wrap justify-between items-center mb-3 gap-2">
+    <h3 class="font-semibold">Теги сотрудников ({{ items|length }})</h3>
+    <div class="flex gap-2 items-center">
+      <select class="select select-bordered select-xs"
+              hx-get="{% url 'core:references_tags' %}"
+              hx-trigger="change" hx-target="#tags-list" hx-swap="outerHTML"
+              name="employee">
+        <option value="">— сотрудник —</option>
+        {% for e in employees_all %}
+          <option value="{{ e.id }}" {% if filter_employee == e.id|stringformat:"s" %}selected{% endif %}>
+            {{ e.user.get_full_name|default:e.user.username }}
+          </option>
+        {% endfor %}
+      </select>
+      <button class="btn btn-primary btn-sm"
+              hx-get="{% url 'core:reference_tag_add' %}"
+              hx-target="body" hx-swap="beforeend">
+        + Добавить тег
+      </button>
+    </div>
+  </div>
+
+  <div class="overflow-x-auto">
+    <table class="table table-sm table-zebra">
+      <thead>
+        <tr>
+          <th>Сотрудник</th>
+          <th>Тег</th>
+          <th>Цвет</th>
+          <th>Статус</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for it in items %}
+        <tr>
+          <td>{{ it.employee.user.get_full_name|default:it.employee.user.username }}</td>
+          <td>
+            <span class="badge {{ it.color|default:'badge-neutral' }} badge-sm">{{ it.name }}</span>
+          </td>
+          <td class="text-xs">{{ it.color|default:"—" }}</td>
+          <td>
+            {% if it.is_active %}
+              <span class="badge badge-success badge-xs">активен</span>
+            {% else %}
+              <span class="badge badge-ghost badge-xs">неактивен</span>
+            {% endif %}
+          </td>
+          <td class="text-right">
+            <button class="btn btn-xs btn-outline"
+                    hx-get="{% url 'core:reference_tag_edit' it.pk %}"
+                    hx-target="body" hx-swap="beforeend">Изменить</button>
+            <button class="btn btn-xs btn-error btn-outline"
+                    hx-post="{% url 'core:reference_tag_delete' it.pk %}"
+                    hx-confirm="Удалить тег «{{ it.name }}»?">Удалить</button>
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="5" class="text-center text-base-content/60">Тегов нет</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>

@@ -74,12 +74,22 @@ def max_webhook(request):
             "first_name": sender.get("first_name", ""),
             "last_name": sender.get("last_name", ""),
             "username": sender.get("name", ""),
-            "status": "lead",
+            "status": "unknown",
             "last_message_at": timezone.now(),
         },
     )
     if created:
         logger.info("✨ Created MAX client %s (max_chat_id=%s)", client.id, user_id)
+        from apps.crm.models import ClientEmployee
+        from apps.core.models import Employee
+        from django.contrib.auth.models import User
+        bot_user, _ = User.objects.get_or_create(
+            username="sirius_bot",
+            defaults={"first_name": "Бот", "last_name": "Сириус", "is_active": False},
+        )
+        bot_emp, _ = Employee.objects.get_or_create(user=bot_user)
+        ClientEmployee.objects.get_or_create(client=client, employee=bot_emp)
+        logger.info("🤖 Assigned Sirius Bot to new MAX client %s", client.id)
     else:
         logger.info("✅ Found MAX client %s (max_chat_id=%s)", client.id, user_id)
         client.last_message_at = timezone.now()
@@ -119,7 +129,9 @@ def max_webhook(request):
                 },
             )
             logger.info("💬 MAX text message %s for client %s", msg_obj.id, client.id)
-            _push(msg_obj)  # пушим только входящие
+            _push(msg_obj)
+            from apps.crm.event_logger import log_messenger_message
+            log_messenger_message(client, msg_obj)
 
     # вложения
     for att in attachments:
@@ -195,6 +207,9 @@ def max_webhook(request):
                 "size": size,
             },
         )
+
+        from apps.crm.event_logger import log_messenger_message
+        log_messenger_message(client, msg_obj)
 
         logger.info(
             "📎 MAX incoming %s for client %s: msg=%s, file=%s (%d bytes)",

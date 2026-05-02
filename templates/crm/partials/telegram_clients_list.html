@@ -33,7 +33,7 @@
         {% endif %}
       </div>
       <div class="text-[10px] text-base-content/50 mt-0.5">
-        {% if client.status == "lead" %}Лид{% elif client.status == "active" %}Активный{% elif client.status == "inactive" %}Неактивный{% elif client.status == "closed" %}Закрыт{% endif %}
+        {{ client.get_status_display }}
       </div>
     </div>
   </button>

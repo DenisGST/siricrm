@@ -1,0 +1,85 @@
+{% load icons %}
+<div class="p-4">
+  <h2 class="text-xl font-bold mb-1">Галерея иконок</h2>
+  <p class="text-sm text-base-content/60 mb-6">
+    Используйте имя иконки в поле <code class="badge badge-ghost">icon</code> пунктов меню и других настройках.
+    Для брендовых иконок добавьте префикс <code class="badge badge-ghost">brand:</code>.
+  </p>
+
+  <!-- Поиск -->
+  <div class="mb-6">
+    <input type="text" id="icon-search"
+           class="input input-bordered input-sm w-64"
+           placeholder="Фильтр по названию…"
+           oninput="filterIcons(this.value)">
+  </div>
+
+  <!-- Lucide (line) -->
+  <h3 class="text-sm font-semibold text-base-content/50 uppercase tracking-wider mb-3">
+    Lucide Line — {{ line_icons|length }} иконок
+  </h3>
+  <div id="line-grid"
+       class="grid gap-2"
+       style="grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));">
+    {% for name in line_icons %}
+    <div class="icon-card flex items-center gap-3 p-3 rounded-lg border border-base-200 hover:border-primary hover:bg-base-50 cursor-pointer transition-colors"
+         data-name="{{ name }}"
+         onclick="copyIconName('{{ name }}', this)">
+      <span class="text-base-content/70 flex-shrink-0">{% icon name size=22 %}</span>
+      <span class="text-xs font-mono truncate">{{ name }}</span>
+    </div>
+    {% endfor %}
+  </div>
+
+  {% if brand_icons %}
+  <h3 class="text-sm font-semibold text-base-content/50 uppercase tracking-wider mb-3 mt-8">
+    Brand — {{ brand_icons|length }} иконок
+  </h3>
+  <div id="brand-grid"
+       class="grid gap-2"
+       style="grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));">
+    {% for name in brand_icons %}
+    <div class="icon-card flex items-center gap-3 p-3 rounded-lg border border-base-200 hover:border-primary hover:bg-base-50 cursor-pointer transition-colors"
+         data-name="{{ name }}"
+         onclick="copyIconName('brand:{{ name }}', this)">
+      <span class="text-base-content/70 flex-shrink-0">{% icon_brand name size=22 %}</span>
+      <span class="text-xs font-mono truncate">brand:{{ name }}</span>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <!-- Toast уведомление -->
+  <div id="copy-toast"
+       class="toast toast-end"
+       style="display:none;position:fixed;bottom:1.5rem;right:1.5rem;z-index:9999;">
+    <div class="alert alert-success py-2 px-4 text-sm">
+      <span id="copy-toast-text">Скопировано!</span>
+    </div>
+  </div>
+</div>
+
+<script>
+  function copyIconName(name, el) {
+    navigator.clipboard.writeText(name).then(() => {
+      // Подсветить карточку
+      el.classList.add('border-primary', 'bg-primary/5');
+      setTimeout(() => el.classList.remove('bg-primary/5'), 800);
+
+      // Toast
+      const toast = document.getElementById('copy-toast');
+      document.getElementById('copy-toast-text').textContent = `«${name}» скопировано`;
+      toast.style.display = 'block';
+      clearTimeout(toast._t);
+      toast._t = setTimeout(() => toast.style.display = 'none', 2000);
+    });
+  }
+
+  function filterIcons(q) {
+    q = q.toLowerCase();
+    document.querySelectorAll('.icon-card').forEach(card => {
+      const match = card.dataset.name.includes(q);
+      card.style.display = match ? '' : 'none';
+    });
+  }
+</script>

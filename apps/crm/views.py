@@ -11,8 +11,13 @@ from django.db import models, transaction
 from django.db.models import Q, Prefetch
 from django.utils import timezone
 
-from .models import Client, Message, Address, LegalEntity, ClientEmployee
-from .forms import ClientForm, LegalEntityForm
+from .models import (
+    Client, Message, Address, LegalEntity, ClientEmployee,
+    Service, ServiceName, PaymentProcedure, ServiceCommonStatus,
+    ServiceEmployeeStatus, ServiceTag, ServiceEmployeeState,
+    ServiceTagAssignment, ServiceLog, ClientEvent,
+)
+from .forms import ClientForm, LegalEntityForm, ServiceForm
 from apps.core.models import Employee, EmployeeLog, Department
 from apps.telegram.telegram_sender import create_message_and_store_file
 from .tasks import send_telegram_message_task
@@ -62,9 +67,10 @@ def telegram_send_message(request, client_id):
     send_telegram_message_task.delay(str(msg.id))
 
     if employee:
-        ClientEmployee.objects.filter(
+        ClientEmployee.objects.update_or_create(
             client=client, employee=employee,
-        ).update(messenger_status="waiting", status_changed_at=timezone.now())
+            defaults={"messenger_status": "waiting", "status_changed_at": timezone.now()},
+        )
         from apps.realtime.utils import push_messenger_status_update
         push_messenger_status_update(client)
 
@@ -133,9 +139,10 @@ def max_send_message(request, client_id):
     send_max_message_task.delay(str(msg.id))
 
     if employee:
-        ClientEmployee.objects.filter(
+        ClientEmployee.objects.update_or_create(
             client=client, employee=employee,
-        ).update(messenger_status="waiting", status_changed_at=timezone.now())
+            defaults={"messenger_status": "waiting", "status_changed_at": timezone.now()},
+        )
         from apps.realtime.utils import push_messenger_status_update
         push_messenger_status_update(client)
 
@@ -268,18 +275,6 @@ def telegram_clients_list(request):
     return render(request, "crm/partials/telegram_clients_list.html", context)
 
 
-def dashboard_view(request):
-    from apps.crm.bot_status import get_bot_status
-
-    bot_status = get_bot_status()
-    return render(
-        request,
-        "dashboard.html",
-        {
-            "bot_status": bot_status,
-        },
-    )
-
 
 @login_required
 def chat(request, client_id):
@@ -323,6 +318,9 @@ def dashboard(request):
                 settings, "TELEGRAM_BOT_USERNAME", ""
             ),
             "bot_status": get_bot_status(),
+            "employees_all": Employee.objects.select_related("user").order_by(
+                "user__last_name", "user__first_name"
+            ),
         },
     )
 
@@ -353,7 +351,9 @@ def kanban(request):
     created_to = request.GET.get("created_to") or ""
 
     base_qs = Client.objects.all()
-    if employee_id:
+    if employee_id == "__none__":
+        base_qs = base_qs.filter(employees__isnull=True)
+    elif employee_id:
         base_qs = base_qs.filter(employees__id=employee_id)
     if created_from:
         base_qs = base_qs.filter(created_at__gte=created_from)
@@ -370,17 +370,19 @@ def kanban(request):
         except Employee.DoesNotExist:
             base_qs = base_qs.none()
 
-    leads = list(base_qs.filter(status="lead").prefetch_related("employees"))
-    actives = list(base_qs.filter(status="active").prefetch_related("employees"))
-    inactives = list(base_qs.filter(status="inactive").select_related("assigned_employee"))
-    closeds = list(base_qs.filter(status="closed").prefetch_related("employees"))
+    _pfetch = ["employees", "services__name"]
+    unknowns = list(base_qs.filter(status="unknown").prefetch_related(*_pfetch))
+    leads = list(base_qs.filter(status="lead").prefetch_related(*_pfetch))
+    actives = list(base_qs.filter(status="active").prefetch_related(*_pfetch))
+    closeds = list(base_qs.filter(status="closed").prefetch_related(*_pfetch))
+    archives = list(base_qs.filter(status="archive").prefetch_related(*_pfetch))
 
-    for group in (leads, actives, inactives, closeds):
+    for group in (unknowns, leads, actives, closeds, archives):
         _annotate_ms_status(group, request.user)
 
     context = {
-        "leads": leads, "actives": actives,
-        "inactives": inactives, "closeds": closeds,
+        "unknowns": unknowns, "leads": leads, "actives": actives,
+        "closeds": closeds, "archives": archives,
         "filter_employee": employee_id,
         "filter_ms_status": ms_status,
         "filter_created_from": created_from,
@@ -401,7 +403,9 @@ def kanban_column(request, status):
     created_to = request.GET.get("created_to") or ""
 
     qs = Client.objects.filter(status=status)
-    if employee_id:
+    if employee_id == "__none__":
+        qs = qs.filter(employees__isnull=True)
+    elif employee_id:
         qs = qs.filter(employees__id=employee_id)
     if created_from:
         qs = qs.filter(created_at__gte=created_from)
@@ -417,7 +421,7 @@ def kanban_column(request, status):
         except Employee.DoesNotExist:
             qs = qs.none()
 
-    clients = list(qs.prefetch_related("employees").order_by("-last_message_at"))
+    clients = list(qs.prefetch_related("employees", "services__name").order_by("-last_message_at"))
     _annotate_ms_status(clients, request.user)
     return render(request, "crm/partials/kanban_column.html", {"clients": clients})
 
@@ -898,6 +902,10 @@ def cycle_dialog_status(request, client_id):
     ce.status_changed_at = timezone.now()
     ce.save(update_fields=["messenger_status", "status_changed_at"])
 
+    if next_status == "closed":
+        from apps.crm.event_logger import log_dialog_ended
+        log_dialog_ended(client, employee=employee)
+
     from apps.realtime.utils import push_messenger_status_update
     push_messenger_status_update(client)
 
@@ -1075,3 +1083,272 @@ def legal_entity_edit(request, le_id):
 def legal_entity_detail(request, le_id):
     le = get_object_or_404(LegalEntity, pk=le_id)
     return render(request, "crm/legal_entities/detail_modal.html", {"le": le})
+
+
+# ─────────────────────────────────────────────
+# Услуги (Service)
+# ─────────────────────────────────────────────
+
+def _current_employee(request):
+    try:
+        return request.user.employee
+    except Employee.DoesNotExist:
+        return None
+
+
+def _visible_services_qs(user):
+    """Услуги, к которым у пользователя есть доступ по services_allowed."""
+    qs = Service.objects.select_related(
+        "client", "agent", "name", "region", "common_status", "payment_procedure",
+    ).prefetch_related(
+        "employee_states__employee__user", "employee_states__status",
+        "tag_assignments__tag", "tag_assignments__employee",
+    )
+    if user.is_superuser:
+        return qs
+    emp = _current_employee_from_user(user)
+    if not emp:
+        return qs.none()
+    # admin/head_dep видят всё из своих отделов / всех; обычные — только где есть доступ к этой услуге
+    if emp.role in ("admin", "head_dep"):
+        return qs
+    allowed_ids = list(emp.services_allowed.values_list("id", flat=True))
+    return qs.filter(name_id__in=allowed_ids)
+
+
+def _current_employee_from_user(user):
+    try:
+        return user.employee
+    except Employee.DoesNotExist:
+        return None
+
+
+@login_required
+def services_list(request):
+    qs = _visible_services_qs(request.user).order_by("-created_at")
+    return render(request, "crm/services/list.html", {"services": qs[:200]})
+
+
+@login_required
+def service_edit(request, pk=None):
+    emp = _current_employee_from_user(request.user)
+    svc = get_object_or_404(Service, pk=pk) if pk else None
+
+    # Контроль доступа: нельзя редактировать услугу, к которой нет доступа.
+    if svc and emp and not request.user.is_superuser and emp.role not in ("admin", "head_dep"):
+        if not emp.services_allowed.filter(pk=svc.name_id).exists():
+            return HttpResponse("Нет доступа к услуге", status=403)
+
+    if request.method == "POST":
+        form = ServiceForm(request.POST, request.FILES, instance=svc, current_employee=emp)
+        if form.is_valid():
+            svc_new = form.save(commit=False)
+            uploaded = request.FILES.get("contract_file_upload")
+            if uploaded:
+                from apps.files.s3_utils import upload_file_to_s3
+                from apps.files.models import StoredFile
+                bucket, key = upload_file_to_s3(
+                    uploaded.read(), prefix="contracts",
+                    filename=uploaded.name, content_type=uploaded.content_type,
+                )
+                sf = StoredFile.objects.create(
+                    bucket=bucket, key=key, filename=uploaded.name,
+                    content_type=uploaded.content_type or "",
+                    size=uploaded.size,
+                )
+                svc_new.contract_file = sf
+            svc_new.save()
+            form.save_m2m()
+            resp = HttpResponse("")
+            resp["HX-Trigger"] = "serviceChanged"
+            return resp
+    else:
+        form = ServiceForm(instance=svc, current_employee=emp)
+
+    return render(request, "crm/services/form_modal.html", {
+        "form": form, "service": svc,
+    })
+
+
+@login_required
+@require_POST
+def service_delete(request, pk):
+    emp = _current_employee_from_user(request.user)
+    svc = get_object_or_404(Service, pk=pk)
+    if not request.user.is_superuser and (not emp or emp.role not in ("admin", "head_dep")):
+        return HttpResponse("Нет доступа", status=403)
+    svc.delete()
+    return HttpResponse("", headers={"HX-Trigger": "serviceChanged"})
+
+
+@login_required
+def service_client_search(request):
+    """HTMX-поиск клиента/агента для формы услуги."""
+    q = (request.GET.get("q") or "").strip()
+    target = request.GET.get("target") or "client"  # client | agent
+    clients = Client.objects.none()
+    if len(q) >= 2:
+        clients = (
+            Client.objects.filter(
+                Q(first_name__icontains=q)
+                | Q(last_name__icontains=q)
+                | Q(patronymic__icontains=q)
+                | Q(phone__icontains=q)
+                | Q(username__icontains=q)
+            ).order_by("last_name", "first_name")[:15]
+        )
+    return render(request, "crm/services/client_search_results.html", {
+        "clients": clients, "target": target, "query": q,
+    })
+
+
+# ─── Канбан по услугам (общие статусы) ───
+
+@login_required
+def services_kanban(request):
+    service_name_id = request.GET.get("service_name") or ""
+    service_names = ServiceName.objects.filter(is_active=True).order_by("short_name")
+    statuses = ServiceCommonStatus.objects.filter(is_active=True)
+    if service_name_id:
+        statuses = statuses.filter(service_name_id=service_name_id)
+    statuses = statuses.select_related("service_name").order_by("service_name__short_name", "order")
+    return render(request, "crm/kanban_services.html", {
+        "statuses": statuses,
+        "service_names": service_names,
+        "filter_service_name": service_name_id,
+    })
+
+
+@login_required
+def services_kanban_column(request, status_id):
+    status = get_object_or_404(ServiceCommonStatus, pk=status_id)
+    qs = _visible_services_qs(request.user).filter(common_status=status).order_by("-created_at")
+    return render(request, "crm/partials/kanban_services_column.html", {
+        "services": qs[:200], "status": status, "for_my_kanban": False,
+    })
+
+
+# ─── Мой канбан (статусы пер-сотрудник) ───
+
+@login_required
+def my_kanban(request):
+    emp = _current_employee_from_user(request.user)
+    if not emp:
+        return HttpResponse("Нужен профиль сотрудника", status=403)
+    service_name_id = request.GET.get("service_name") or ""
+    # Свои статусы
+    emp_statuses_qs = ServiceEmployeeStatus.objects.filter(employee=emp, is_active=True)
+    if service_name_id:
+        emp_statuses_qs = emp_statuses_qs.filter(common_status__service_name_id=service_name_id)
+    emp_statuses = emp_statuses_qs.select_related(
+        "common_status__service_name"
+    ).order_by("common_status__service_name__short_name", "common_status__order", "order")
+    # Перечень услуг — только те, к которым допущен сотрудник
+    service_names = emp.services_allowed.filter(is_active=True).order_by("short_name")
+    return render(request, "crm/kanban_my.html", {
+        "statuses": emp_statuses,
+        "service_names": service_names,
+        "filter_service_name": service_name_id,
+    })
+
+
+@login_required
+def my_kanban_column(request, status_id):
+    emp = _current_employee_from_user(request.user)
+    if not emp:
+        return HttpResponse("", status=403)
+    status = get_object_or_404(ServiceEmployeeStatus, pk=status_id, employee=emp)
+    # Услуги, где текущий сотрудник имеет такой статус.
+    service_ids = ServiceEmployeeState.objects.filter(
+        employee=emp, status=status,
+    ).values_list("service_id", flat=True)
+    qs = (
+        Service.objects.filter(id__in=list(service_ids))
+        .select_related("client", "name", "region", "common_status")
+        .prefetch_related(
+            "employee_states__employee__user", "employee_states__status",
+            "tag_assignments__tag", "tag_assignments__employee",
+        )
+        .order_by("-created_at")
+    )
+    return render(request, "crm/partials/kanban_services_column.html", {
+        "services": qs[:200], "status": status, "for_my_kanban": True, "current_employee": emp,
+    })
+
+
+@login_required
+def client_events_modal(request, client_id):
+    client = get_object_or_404(Client.objects.prefetch_related("employees__user"), pk=client_id)
+    events = ClientEvent.objects.filter(client=client).select_related(
+        "employee__user"
+    ).order_by("-created_at")
+    return render(request, "crm/partials/client_events_modal.html", {
+        "client": client,
+        "events": events,
+    })
+
+
+@login_required
+def client_assign_employee_picker(request, client_id):
+    """HTMX: возвращает попап с выбором ответственного сотрудника."""
+    client = get_object_or_404(Client, pk=client_id)
+    employees = Employee.objects.filter(is_active=True).select_related("user").order_by(
+        "user__last_name", "user__first_name"
+    )
+    current_id = request.GET.get("current")
+    if current_id:
+        current = Employee.objects.filter(pk=current_id).first()
+    else:
+        current = client.employees.first()
+    return render(request, "crm/partials/assign_employee_picker.html", {
+        "client": client,
+        "employees": employees,
+        "current": current,
+    })
+
+
+@login_required
+@require_POST
+def client_assign_employee(request, client_id):
+    """HTMX: назначает ответственного сотрудника клиенту."""
+    client = get_object_or_404(Client, pk=client_id)
+    employee_id = request.POST.get("employee_id")
+    if not employee_id:
+        return HttpResponseBadRequest("employee_id required")
+
+    new_employee = get_object_or_404(Employee, pk=employee_id, is_active=True)
+
+    # Определяем предыдущего ответственного из query param (выставляется бэйджем)
+    prev_id = request.POST.get("prev_employee_id") or request.GET.get("current")
+    prev_employee = Employee.objects.filter(pk=prev_id).select_related("user").first() if prev_id else None
+
+    _, created = ClientEmployee.objects.get_or_create(client=client, employee=new_employee)
+
+    # Лог события только если назначение реально изменилось
+    if created or (prev_employee and prev_employee != new_employee):
+        from apps.crm.models import ClientEvent
+        try:
+            actor = Employee.objects.get(user=request.user)
+        except Employee.DoesNotExist:
+            actor = None
+
+        if prev_employee and prev_employee != new_employee:
+            desc = (
+                f"Ответственный изменён: {prev_employee.user.get_full_name()} → "
+                f"{new_employee.user.get_full_name()}"
+            )
+        else:
+            desc = f"Назначен ответственный: {new_employee.user.get_full_name()}"
+
+        ClientEvent.objects.create(
+            client=client,
+            event_type="employee_assigned",
+            description=desc,
+            employee=actor,
+        )
+
+    # Возвращаем обновлённый бэйдж
+    return render(request, "crm/partials/assign_employee_badge.html", {
+        "client": client,
+        "emp": new_employee,
+    })

@@ -62,12 +62,13 @@ async def send_telegram_message(
         dict с полями success, message_id, error
     """
     client = None
+    _tmp_path = None
     try:
         # Создаём новый клиент для текущего event loop
         client = await get_telegram_client()
-        
+
         peer = PeerUser(telegram_id)
-        
+
         # Отправка текстового сообщения
         if message_type == "text" or (not file_path and not file_bytes):
             message = await client.send_message(
@@ -82,9 +83,21 @@ async def send_telegram_message(
                 'message_id': message.id,
                 'error': None
             }
-        
+
         # Отправка медиа
-        file_to_send = file_bytes if file_bytes else file_path
+        # Записываем bytes во временный файл с правильным расширением —
+        # Telethon надёжнее определяет тип по пути файла, чем по BytesIO.name
+        if file_bytes:
+            import tempfile
+            suffix = ('.' + file_name.rsplit('.', 1)[-1]) if (file_name and '.' in file_name) else ''
+            tmp = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
+            tmp.write(file_bytes)
+            tmp.flush()
+            tmp.close()
+            _tmp_path = tmp.name
+            file_to_send = tmp.name
+        else:
+            file_to_send = file_path
         
         if message_type == "voice":
             # Голосовое сообщение — загружаем файл и отправляем с voice=True
@@ -194,10 +207,15 @@ async def send_telegram_message(
         }
     
     finally:
-        # Обязательно отключаем клиент
         if client:
             try:
                 await client.disconnect()
+            except:
+                pass
+        if _tmp_path:
+            try:
+                import os as _os
+                _os.unlink(_tmp_path)
             except:
                 pass
 
