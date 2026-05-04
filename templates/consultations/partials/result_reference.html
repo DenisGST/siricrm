@@ -1,0 +1,38 @@
+<div id="consult-results-list"
+     hx-trigger="reloadConsultationResults from:body"
+     hx-get="{% url 'consultations:result_reference' %}"
+     hx-swap="outerHTML">
+
+  <div class="flex justify-between items-center mb-3">
+    <h3 class="font-semibold">Итоги консультаций ({{ items|length }})</h3>
+    <button class="btn btn-primary btn-sm"
+            hx-get="{% url 'consultations:result_add' %}"
+            hx-target="body" hx-swap="beforeend">+ Добавить</button>
+  </div>
+
+  <table class="table table-sm table-zebra">
+    <thead>
+      <tr><th>Наименование</th><th>Цвет</th><th>Порядок</th><th>Статус</th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for it in items %}
+      <tr>
+        <td><span class="badge {{ it.color }} badge-sm">{{ it.name }}</span></td>
+        <td><code class="text-xs">{{ it.color }}</code></td>
+        <td>{{ it.order }}</td>
+        <td>{% if it.is_active %}<span class="badge badge-success badge-xs">активен</span>{% else %}<span class="badge badge-ghost badge-xs">неактивен</span>{% endif %}</td>
+        <td class="text-right">
+          <button class="btn btn-xs btn-outline"
+                  hx-get="{% url 'consultations:result_edit' it.pk %}"
+                  hx-target="body" hx-swap="beforeend">Изменить</button>
+          <button class="btn btn-xs btn-error btn-outline"
+                  hx-post="{% url 'consultations:result_delete' it.pk %}"
+                  hx-confirm="Удалить «{{ it.name }}»?">Удалить</button>
+        </td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="5" class="text-center text-base-content/50">Нет записей</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>

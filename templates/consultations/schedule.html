@@ -1,0 +1,335 @@
+{% load icons %}
+<div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+  <h2 class="text-sm font-semibold" style="color:var(--ms-text-secondary)">График консультаций</h2>
+  <div class="flex items-center gap-2 flex-wrap">
+
+    <form hx-get="{% url 'consultations:schedule' %}"
+          hx-target="#content-area" hx-swap="innerHTML"
+          class="flex items-center gap-2">
+      {% if offset %}<input type="hidden" name="offset" value="{{ offset }}">{% endif %}
+      <select name="consultant"
+              style="height:1.6rem;font-size:0.72rem;padding:0 1.5rem 0 0.5rem;border:1px solid oklch(var(--bc)/0.2);border-radius:6px;background-color:transparent;cursor:pointer;appearance:auto;"
+              onchange="this.form.requestSubmit()">
+        <option value="">— выберите консультанта —</option>
+        {% for c in consultants %}
+          <option value="{{ c.id }}" {% if consultant_id == c.id|stringformat:"s" %}selected{% endif %}>
+            {{ c.user.last_name }} {{ c.user.first_name }}
+          </option>
+        {% endfor %}
+      </select>
+    </form>
+
+    <div class="flex items-center gap-1">
+      <button class="btn btn-xs btn-ghost"
+              hx-get="{% url 'consultations:schedule' %}?consultant={{ consultant_id }}&offset={{ offset|add:"-1" }}"
+              hx-target="#content-area" hx-swap="innerHTML">‹ Пред.</button>
+      <span class="text-xs text-base-content/50 px-1">
+        {{ days.0|date:"d.m" }} — {{ days.13|date:"d.m.Y" }}
+      </span>
+      <button class="btn btn-xs btn-ghost"
+              hx-get="{% url 'consultations:schedule' %}?consultant={{ consultant_id }}&offset={{ offset|add:"1" }}"
+              hx-target="#content-area" hx-swap="innerHTML">След. ›</button>
+      {% if offset %}
+      <button class="btn btn-xs btn-ghost"
+              hx-get="{% url 'consultations:schedule' %}?consultant={{ consultant_id }}"
+              hx-target="#content-area" hx-swap="innerHTML">Сегодня</button>
+      {% endif %}
+    </div>
+
+    <button class="btn btn-xs btn-outline gap-1"
+            hx-get="{% url 'consultations:history' %}{% if consultant_id %}?consultant={{ consultant_id }}{% endif %}"
+            hx-target="#content-area" hx-swap="innerHTML">
+      {% icon "history" size=12 %} История
+    </button>
+  </div>
+</div>
+
+{% if not consultant %}
+<div class="alert alert-info text-sm mt-4">Выберите консультанта для отображения графика.</div>
+{% else %}
+
+<div id="schedule-grid" class="overflow-x-auto"
+     hx-trigger="consultationChanged from:body"
+     hx-get="{% url 'consultations:schedule' %}?consultant={{ consultant_id }}&offset={{ offset }}"
+     hx-target="#schedule-grid"
+     hx-swap="outerHTML"
+     hx-select="#schedule-grid">
+
+  <table class="schedule-table table-fixed border-collapse text-sm" style="min-width:1000px;width:100%;">
+    <thead>
+      <tr>
+        <th class="w-14 text-center text-xs p-1"
+            style="position:sticky;left:0;z-index:3;background:#e5e7eb;border:1px solid #9ca3af;">Время</th>
+        {% for d in days %}
+        <th class="text-center text-xs p-1"
+            style="border:1px solid #9ca3af;{% if d == today %}background:#dbeafe;{% elif d|date:"w" == "0" or d|date:"w" == "6" %}background:#fefce8;{% else %}background:#e5e7eb;{% endif %}">
+          <div class="font-bold">{{ d|date:"D"|slice:":2" }}</div>
+          <div class="text-[10px]" style="{% if d == today %}color:#2563eb;font-weight:700;{% elif d|date:"w" == "0" or d|date:"w" == "6" %}color:#b45309;{% else %}color:#9ca3af;{% endif %}">
+            {{ d|date:"d.m" }}
+          </div>
+        </th>
+        {% endfor %}
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in rows %}
+      <tr>
+        <td class="text-center text-xs font-mono p-1 sch-time-cell"
+            style="position:sticky;left:0;z-index:2;background:#f9fafb;border:1px solid #9ca3af;color:#6b7280;">{{ row.hour }}:00</td>
+        {% for cell in row.cells %}
+        {% with con=cell.consultation %}
+        <td class="p-0.5 align-top overflow-hidden"
+            style="height:3rem;border:1px solid #d1d5db;
+                   {% if con %}
+                     {% if cell.is_past and con.status == 'booked' and not con.result %}background:#f87171;
+                     {% elif con.status == 'done' %}background:#dcfce7;
+                     {% elif con.status == 'cancelled' %}background:#f3f4f6;
+                     {% else %}background:#ffedd5;{% endif %}
+                   {% elif cell.is_past %}background:#f3f4f6;
+                   {% elif cell.date == today %}background:#eff6ff;
+                   {% elif cell.date|date:"w" == "0" or cell.date|date:"w" == "6" %}background:#fefce8;
+                   {% else %}background:#f0fdf4;{% endif %}"
+            data-consultant="{{ consultant.id }}"
+            data-dt="{{ cell.dt }}">
+
+          {% if con %}
+            <div class="rounded p-1 cursor-pointer text-xs leading-tight select-none draggable-card"
+                 draggable="{% if con.status == 'booked' %}true{% else %}false{% endif %}"
+                 data-consultation-pk="{{ con.pk }}"
+                 onclick="openResultModal('{{ con.pk }}')"
+                 style="border:1px solid {% if cell.is_past and con.status == 'booked' and not con.result %}#dc2626{% elif con.status == 'done' %}#86efac{% elif con.status == 'cancelled' %}#d1d5db{% else %}#fdba74{% endif %};
+                        {% if cell.is_past and con.status == 'booked' and not con.result %}color:#fff;{% endif %}">
+              <div class="font-semibold truncate">{{ con.client.last_name|default:"—" }} {{ con.client.first_name|default:"" }}</div>
+              {% if con.result %}
+              <span class="badge {{ con.result.color }} badge-xs mt-0.5">{{ con.result.name }}</span>
+              {% elif con.status == 'booked' %}
+              <span class="badge badge-xs mt-0.5"
+                    style="{% if cell.is_past %}background:#dc2626;color:#fff;border:none;{% else %}background:#fdba74;color:#7c2d12;border:none;{% endif %}">
+                {% if cell.is_past %}Не записан итог{% else %}Записан{% endif %}
+              </span>
+              {% endif %}
+              {% if con.comment %}
+              <div class="truncate mt-0.5" style="font-size:10px;opacity:.7;" title="{{ con.comment }}">{{ con.comment|truncatechars:30 }}</div>
+              {% endif %}
+            </div>
+          {% elif not cell.is_past %}
+            <div class="w-full h-full rounded cursor-pointer transition-colors"
+                 style="min-height:2.5rem;"
+                 onmouseover="this.style.background='rgba(37,99,235,.08)'"
+                 onmouseout="this.style.background=''"
+                 onclick="openBookModal('{{ consultant.id }}', '{{ cell.dt }}')">
+            </div>
+          {% endif %}
+        </td>
+        {% endwith %}
+        {% endfor %}
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% endif %}
+
+<!-- Контейнеры для модалок -->
+<div id="consult-book-modal"></div>
+<div id="consult-result-modal"></div>
+<div id="consult-move-modal"></div>
+<div id="consult-edit-modal"></div>
+<div id="consult-history-modal"></div>
+
+<script>
+function openBookModal(consultantId, dt) {
+  fetch('/consultations/book-modal/?consultant=' + consultantId + '&dt=' + dt)
+    .then(r => r.text()).then(html => {
+      var container = document.getElementById('consult-book-modal');
+      container.innerHTML = html;
+      htmx.process(container);
+      document.getElementById('consult-book-dialog')?.showModal();
+      initConsultSearch();
+    });
+}
+
+function initConsultSearch() {
+  var inp = document.getElementById('consult-search-input');
+  var res = document.getElementById('consult-search-results');
+  if (!inp || !res) return;
+
+  async function doSearch(q) {
+    if (q.length < 2) { res.style.display = 'none'; res.innerHTML = ''; return; }
+    var resp = await fetch('/consultations/client-search/?q=' + encodeURIComponent(q),
+                           {credentials: 'same-origin'});
+    if (!resp.ok) return;
+    var html = await resp.text();
+    if (!html.trim()) { res.style.display = 'none'; return; }
+    res.innerHTML = html;
+    var r = inp.getBoundingClientRect();
+    res.style.left  = r.left + 'px';
+    res.style.top   = (r.bottom + 2) + 'px';
+    res.style.width = r.width + 'px';
+    res.style.display = 'block';
+  }
+
+  inp.addEventListener('input', function() { doSearch(this.value.trim()); });
+  inp.addEventListener('focus', function() { if (this.value.trim().length >= 2) doSearch(this.value.trim()); });
+
+  res.addEventListener('click', function(e) {
+    var row = e.target.closest('[data-client-id]');
+    if (!row) return;
+    document.getElementById('consult-client-id').value = row.dataset.clientId;
+    document.getElementById('consult-client-name').textContent = row.dataset.clientName;
+    var sel = document.getElementById('consult-client-selected');
+    sel.classList.remove('hidden');
+    sel.style.display = 'flex';
+    inp.style.display = 'none';
+    res.style.display = 'none';
+    res.innerHTML = '';
+    document.getElementById('consult-book-submit').disabled = false;
+  });
+
+  document.addEventListener('mousedown', function closeRes(e) {
+    if (!inp.contains(e.target) && !res.contains(e.target)) {
+      res.style.display = 'none';
+    }
+  });
+
+  window.clearConsultClient = function() {
+    document.getElementById('consult-client-id').value = '';
+    var sel = document.getElementById('consult-client-selected');
+    sel.style.display = 'none';
+    sel.classList.add('hidden');
+    inp.style.display = '';
+    inp.value = '';
+    document.getElementById('consult-book-submit').disabled = true;
+  };
+}
+
+function openClientHistoryModal(clientId) {
+  fetch('/clients/' + clientId + '/events/')
+    .then(r => r.text()).then(function(html) {
+      var container = document.getElementById('consult-history-modal');
+      container.innerHTML = html;
+      htmx.process(container);
+      document.getElementById('client-events-modal')?.showModal();
+    });
+}
+
+function submitResultForm() {
+  var status = document.getElementById('consult-status-select')?.value;
+  var result = document.getElementById('consult-result-select')?.value;
+  var errBox = document.getElementById('consult-result-error');
+  if (status === 'done' && !result) {
+    errBox?.classList.remove('hidden');
+    var sel = document.getElementById('consult-result-select');
+    if (sel) { sel.style.borderColor = '#f87171'; sel.focus(); }
+    return;
+  }
+  if (errBox) errBox.classList.add('hidden');
+  var sel = document.getElementById('consult-result-select');
+  if (sel) sel.style.borderColor = '';
+  var form = document.getElementById('consult-result-form');
+  if (form) htmx.trigger(form, 'submit');
+}
+
+function openConsultEditModal(pk) {
+  fetch('/consultations/' + pk + '/edit/')
+    .then(r => r.text()).then(function(html) {
+      var container = document.getElementById('consult-edit-modal');
+      container.innerHTML = html;
+      htmx.process(container);
+      document.getElementById('consult-edit-dialog')?.showModal();
+    });
+}
+
+function openResultModal(pk) {
+  fetch('/consultations/' + pk + '/result/')
+    .then(r => r.text()).then(html => {
+      var container = document.getElementById('consult-result-modal');
+      container.innerHTML = html;
+      htmx.process(container);
+      document.getElementById('consult-result-dialog')?.showModal();
+      var statusSel = document.getElementById('consult-status-select');
+      if (statusSel) {
+        statusSel.addEventListener('change', function() {
+          if (this.value !== 'done') {
+            document.getElementById('consult-result-error')?.classList.add('hidden');
+            var s = document.getElementById('consult-result-select');
+            if (s) s.style.borderColor = '';
+          }
+        });
+      }
+    });
+}
+
+// Cross-highlight on hover
+(function() {
+  var tbl = document.querySelector('.schedule-table');
+  if (!tbl) return;
+  var _hl = [];
+  function clearHl() {
+    _hl.forEach(function(el) { el.removeAttribute('data-hl'); });
+    _hl = [];
+  }
+  tbl.addEventListener('mouseover', function(e) {
+    var td = e.target.closest('td[data-dt]');
+    clearHl();
+    if (!td) return;
+    var colIdx = Array.from(td.parentElement.children).indexOf(td);
+    var timeCell = td.parentElement.querySelector('.sch-time-cell');
+    var headerTh = tbl.querySelectorAll('thead th')[colIdx];
+    if (timeCell) { timeCell.setAttribute('data-hl', '1'); _hl.push(timeCell); }
+    if (headerTh) { headerTh.setAttribute('data-hl', '1'); _hl.push(headerTh); }
+  });
+  tbl.addEventListener('mouseleave', clearHl);
+})();
+
+// DnD
+(function() {
+  var _pk = null;
+  document.addEventListener('dragstart', function(e) {
+    var c = e.target.closest('[data-consultation-pk]');
+    if (!c) return;
+    _pk = c.dataset.consultationPk;
+    e.dataTransfer.effectAllowed = 'move';
+    setTimeout(() => c.classList.add('opacity-40'), 0);
+  });
+  document.addEventListener('dragend', function(e) {
+    var c = e.target.closest('[data-consultation-pk]');
+    if (c) c.classList.remove('opacity-40');
+    document.querySelectorAll('.cell-dnd-over').forEach(el => el.classList.remove('cell-dnd-over'));
+    _pk = null;
+  });
+  document.addEventListener('dragover', function(e) {
+    var td = e.target.closest('td[data-dt]');
+    if (td && _pk) { e.preventDefault(); td.classList.add('cell-dnd-over'); }
+  });
+  document.addEventListener('dragleave', function(e) {
+    var td = e.target.closest('td[data-dt]');
+    if (td && !td.contains(e.relatedTarget)) td.classList.remove('cell-dnd-over');
+  });
+  document.addEventListener('drop', function(e) {
+    var td = e.target.closest('td[data-dt]');
+    if (!td || !_pk) return;
+    e.preventDefault();
+    td.classList.remove('cell-dnd-over');
+    var pk = _pk;
+    var params = new URLSearchParams({datetime_start: td.dataset.dt, consultant_id: td.dataset.consultant});
+    fetch('/consultations/' + pk + '/move-modal/?' + params)
+      .then(r => r.text()).then(function(html) {
+        var container = document.getElementById('consult-move-modal');
+        container.innerHTML = html;
+        htmx.process(container);
+        document.getElementById('consult-move-dialog')?.showModal();
+      });
+  });
+})();
+</script>
+
+<style>
+.cell-dnd-over { background: oklch(var(--p)/0.15) !important; outline: 2px solid oklch(var(--p)); }
+.schedule-table th[data-hl], .schedule-table .sch-time-cell[data-hl] {
+  background: #bfdbfe !important;
+  color: #1d4ed8 !important;
+  font-weight: 700 !important;
+}
+</style>

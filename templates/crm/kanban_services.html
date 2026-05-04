@@ -1,32 +1,63 @@
 {% load static %}
-<div class="mb-4 flex flex-wrap items-center justify-between gap-2">
+<div class="mb-4 flex flex-wrap items-center gap-3">
   <h2 class="text-sm font-semibold" style="color:var(--ms-text-secondary)">Канбан по услугам</h2>
+
   <form hx-get="{% url 'services_kanban' %}" hx-target="#content-area" hx-swap="innerHTML"
         id="services-kanban-filter" class="flex items-center gap-2">
-    <select name="service_name" class="select select-bordered select-xs"
+
+    <select name="service_name"
+            style="height:1.6rem;font-size:0.72rem;padding:0 1.5rem 0 0.5rem;border:1px solid oklch(var(--bc)/0.2);border-radius:6px;background-color:transparent;cursor:pointer;appearance:auto;"
             onchange="this.form.requestSubmit()">
       <option value="">— все услуги —</option>
       {% for s in service_names %}
         <option value="{{ s.id }}" {% if filter_service_name == s.id|stringformat:"s" %}selected{% endif %}>{{ s.short_name }}</option>
       {% endfor %}
     </select>
+
+    <select name="employee"
+            style="height:1.6rem;font-size:0.72rem;padding:0 1.5rem 0 0.5rem;border:1px solid oklch(var(--bc)/0.2);border-radius:6px;background-color:transparent;cursor:pointer;appearance:auto;"
+            onchange="this.form.requestSubmit()">
+      <option value="">— все сотрудники —</option>
+      {% for e in employees_all %}
+        <option value="{{ e.id }}" {% if filter_employee == e.id|stringformat:"s" %}selected{% endif %}>
+          {{ e.user.last_name }} {{ e.user.first_name }}
+        </option>
+      {% endfor %}
+    </select>
+
+    <select name="department"
+            style="height:1.6rem;font-size:0.72rem;padding:0 1.5rem 0 0.5rem;border:1px solid oklch(var(--bc)/0.2);border-radius:6px;background-color:transparent;cursor:pointer;appearance:auto;"
+            onchange="this.form.requestSubmit()">
+      <option value="">— все отделы —</option>
+      {% for d in departments_all %}
+        <option value="{{ d.id }}" {% if filter_department == d.id|stringformat:"s" %}selected{% endif %}>
+          {{ d.name }}
+        </option>
+      {% endfor %}
+    </select>
+
   </form>
 </div>
 
 {% if statuses %}
-<div class="flex gap-4 overflow-x-auto pb-2">
+<div id="svc-kanban-grid" style="display:flex;flex-wrap:nowrap;gap:1rem;overflow-x:auto;padding-bottom:0.5rem;">
   {% for st in statuses %}
-  <div class="bg-base-200 rounded-lg p-3 min-w-[280px] flex-shrink-0">
+  <div class="bg-base-200 rounded-lg p-3" style="flex:1 1 200px;min-width:200px;"
+       data-status-id="{{ st.id }}"
+       data-service-name-id="{{ st.service_name_id }}"
+       data-container="svc-kanban-{{ st.id }}">
     <div class="flex items-center justify-between mb-2">
-      <h3 class="font-bold text-sm">
-        <span class="badge badge-outline badge-xs mr-1">{{ st.service_name.short_name }}</span>
-        {{ st.name }}
-      </h3>
+      <div>
+        <h3 class="font-bold text-sm">{{ st.name }}</h3>
+        {% if st.department %}<p class="text-xs text-base-content/50 mt-0.5">{{ st.department.name }}</p>{% endif %}
+      </div>
+      <span id="svc-kanban-count-{{ st.id }}" class="badge badge-sm badge-ghost">0</span>
     </div>
     <div id="svc-kanban-{{ st.id }}"
          class="space-y-2 min-h-[50px]"
          hx-get="{% url 'services_kanban_column' st.id %}"
          hx-trigger="load, serviceChanged from:body"
+         hx-include="#services-kanban-filter"
          hx-target="#svc-kanban-{{ st.id }}"
          hx-swap="innerHTML">
     </div>
@@ -38,3 +69,107 @@
   Нет активных статусов. Добавь их в <a class="link" href="/references/">Справочниках → Общие статусы услуг</a>.
 </div>
 {% endif %}
+
+<script>
+(function() {
+  var _dragCard    = null;
+  var _dragFromCol = null;
+
+  window.svcDragStart = function(e) {
+    _dragCard    = e.currentTarget;
+    _dragFromCol = _dragCard.closest('[data-status-id]');
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', _dragCard.dataset.serviceId || '');
+    setTimeout(function() { _dragCard && _dragCard.classList.add('kanban-dragging'); }, 0);
+  };
+
+  window.svcDragEnd = function(e) {
+    if (_dragCard) _dragCard.classList.remove('kanban-dragging');
+    document.querySelectorAll('.kanban-drop-over').forEach(function(el) {
+      el.classList.remove('kanban-drop-over');
+    });
+    _dragCard    = null;
+    _dragFromCol = null;
+  };
+
+  var grid = document.getElementById('svc-kanban-grid');
+  if (!grid) return;
+
+  grid.addEventListener('dragover', function(e) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    var col = e.target.closest('[data-status-id]');
+    if (!col || col === _dragFromCol) return;
+    // Запрещаем перенос в колонку другой услуги
+    if (_dragCard && col.dataset.serviceNameId !== _dragCard.dataset.serviceNameId) return;
+    document.querySelectorAll('.kanban-drop-over').forEach(function(el) {
+      if (el !== col) el.classList.remove('kanban-drop-over');
+    });
+    col.classList.add('kanban-drop-over');
+  });
+
+  grid.addEventListener('dragleave', function(e) {
+    var col = e.target.closest('[data-status-id]');
+    if (col && !col.contains(e.relatedTarget)) {
+      col.classList.remove('kanban-drop-over');
+    }
+  });
+
+  grid.addEventListener('drop', function(e) {
+    e.preventDefault();
+    document.querySelectorAll('.kanban-drop-over').forEach(function(el) {
+      el.classList.remove('kanban-drop-over');
+    });
+
+    if (!_dragCard) return;
+    var col = e.target.closest('[data-status-id]');
+    if (!col) return;
+    if (col === _dragFromCol) return;
+    if (col.dataset.serviceNameId !== _dragCard.dataset.serviceNameId) return;
+
+    var serviceId = _dragCard.dataset.serviceId;
+    var statusId  = col.dataset.statusId;
+
+    var fromContainer = _dragFromCol ? document.getElementById(_dragFromCol.dataset.container) : null;
+    var toContainer   = document.getElementById(col.dataset.container);
+
+    // Убираем плейсхолдер «пусто» в целевой колонке
+    if (toContainer) {
+      var ph = toContainer.querySelector('.svc-empty-placeholder');
+      if (ph) ph.remove();
+      toContainer.appendChild(_dragCard);
+    }
+
+    // Если в исходной колонке больше нет карточек — показываем «пусто»
+    if (fromContainer && fromContainer.querySelectorAll('.kanban-svc-card').length === 0) {
+      fromContainer.innerHTML = '<div class="svc-empty-placeholder text-xs text-base-content/40 text-center py-2">пусто</div>';
+    }
+
+    // Обновляем счётчики
+    _updateCounter(_dragFromCol, -1);
+    _updateCounter(col, +1);
+
+    // POST на сервер
+    var csrf = (document.cookie.match(/csrftoken=([^;]+)/) || [])[1] || '';
+    fetch('/services/' + serviceId + '/move/', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'X-CSRFToken': csrf,
+      },
+      body: 'status_id=' + encodeURIComponent(statusId),
+    }).then(function(r) {
+      if (!r.ok) document.body.dispatchEvent(new CustomEvent('serviceChanged'));
+    }).catch(function() {
+      document.body.dispatchEvent(new CustomEvent('serviceChanged'));
+    });
+  });
+
+  function _updateCounter(col, delta) {
+    if (!col) return;
+    var statusId = col.dataset.statusId;
+    var el = document.getElementById('svc-kanban-count-' + statusId);
+    if (el) el.textContent = Math.max(0, (parseInt(el.textContent) || 0) + delta);
+  }
+})();
+</script>

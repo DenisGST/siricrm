@@ -230,7 +230,7 @@ class PaymentProcedureForm(forms.ModelForm):
 class ServiceCommonStatusForm(forms.ModelForm):
     class Meta:
         model = ServiceCommonStatus
-        fields = ["service_name", "name", "order", "is_active"]
+        fields = ["service_name", "department", "name", "order", "is_active"]
 
 
 class ServiceEmployeeStatusForm(forms.ModelForm):

@@ -15,16 +15,14 @@
   </select>
 </div>
 
-<div style="display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:1rem;">
+<div id="kanban-grid" style="display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:1rem;">
 
-  <!-- Неизвестный -->
-  <div class="bg-base-200 rounded-lg p-3">
+  <div class="bg-base-200 rounded-lg p-3" data-status="unknown" data-container="kanban-unknown">
     <div class="flex items-center justify-between mb-2">
       <h2 class="font-bold text-sm uppercase">Неизвестный</h2>
-      <span class="badge badge-sm badge-ghost">{{ unknowns|length }}</span>
+      <span id="kanban-count-unknown" class="badge badge-sm badge-ghost">{{ unknowns|length }}</span>
     </div>
-    <div id="kanban-unknown"
-         class="space-y-2 min-h-[50px]"
+    <div id="kanban-unknown" class="space-y-2 min-h-[50px]"
          hx-get="{% url 'kanban_column' 'unknown' %}"
          hx-trigger="load, kanbanRefresh from:body"
          hx-include="#kanban-filter-form"
@@ -33,14 +31,12 @@
     </div>
   </div>
 
-  <!-- Лиды -->
-  <div class="bg-base-200 rounded-lg p-3">
+  <div class="bg-base-200 rounded-lg p-3" data-status="lead" data-container="kanban-lead">
     <div class="flex items-center justify-between mb-2">
       <h2 class="font-bold text-sm uppercase">Лиды</h2>
-      <span class="badge badge-sm badge-warning">{{ leads|length }}</span>
+      <span id="kanban-count-lead" class="badge badge-sm badge-warning">{{ leads|length }}</span>
     </div>
-    <div id="kanban-lead"
-         class="space-y-2 min-h-[50px]"
+    <div id="kanban-lead" class="space-y-2 min-h-[50px]"
          hx-get="{% url 'kanban_column' 'lead' %}"
          hx-trigger="load, kanbanRefresh from:body"
          hx-include="#kanban-filter-form"
@@ -49,14 +45,12 @@
     </div>
   </div>
 
-  <!-- Активные -->
-  <div class="bg-base-200 rounded-lg p-3">
+  <div class="bg-base-200 rounded-lg p-3" data-status="active" data-container="kanban-active">
     <div class="flex items-center justify-between mb-2">
       <h2 class="font-bold text-sm uppercase">Активные</h2>
-      <span class="badge badge-sm badge-success">{{ actives|length }}</span>
+      <span id="kanban-count-active" class="badge badge-sm badge-success">{{ actives|length }}</span>
     </div>
-    <div id="kanban-active"
-         class="space-y-2 min-h-[50px]"
+    <div id="kanban-active" class="space-y-2 min-h-[50px]"
          hx-get="{% url 'kanban_column' 'active' %}"
          hx-trigger="load, kanbanRefresh from:body"
          hx-include="#kanban-filter-form"
@@ -65,14 +59,12 @@
     </div>
   </div>
 
-  <!-- Закрытые -->
-  <div class="bg-base-200 rounded-lg p-3">
+  <div class="bg-base-200 rounded-lg p-3" data-status="closed" data-container="kanban-closed">
     <div class="flex items-center justify-between mb-2">
       <h2 class="font-bold text-sm uppercase">Закрытые</h2>
-      <span class="badge badge-sm badge-error">{{ closeds|length }}</span>
+      <span id="kanban-count-closed" class="badge badge-sm badge-error">{{ closeds|length }}</span>
     </div>
-    <div id="kanban-closed"
-         class="space-y-2 min-h-[50px]"
+    <div id="kanban-closed" class="space-y-2 min-h-[50px]"
          hx-get="{% url 'kanban_column' 'closed' %}"
          hx-trigger="load, kanbanRefresh from:body"
          hx-include="#kanban-filter-form"
@@ -81,14 +73,12 @@
     </div>
   </div>
 
-  <!-- Архивные -->
-  <div class="bg-base-200 rounded-lg p-3">
+  <div class="bg-base-200 rounded-lg p-3" data-status="archive" data-container="kanban-archive">
     <div class="flex items-center justify-between mb-2">
       <h2 class="font-bold text-sm uppercase">Архивные</h2>
-      <span class="badge badge-sm badge-neutral">{{ archives|length }}</span>
+      <span id="kanban-count-archive" class="badge badge-sm badge-neutral">{{ archives|length }}</span>
     </div>
-    <div id="kanban-archive"
-         class="space-y-2 min-h-[50px]"
+    <div id="kanban-archive" class="space-y-2 min-h-[50px]"
          hx-get="{% url 'kanban_column' 'archive' %}"
          hx-trigger="load, kanbanRefresh from:body"
          hx-include="#kanban-filter-form"
@@ -98,3 +88,103 @@
   </div>
 
 </div>
+
+<script>
+(function() {
+  var _dragCard    = null;
+  var _dragFromCol = null;
+
+  window.kanbanDragStart = function(e) {
+    _dragCard    = e.currentTarget;
+    _dragFromCol = _dragCard.closest('[data-status]');
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', _dragCard.dataset.clientId || '');
+    setTimeout(function() { _dragCard && _dragCard.classList.add('kanban-dragging'); }, 0);
+  };
+
+  window.kanbanDragEnd = function(e) {
+    if (_dragCard) _dragCard.classList.remove('kanban-dragging');
+    document.querySelectorAll('.kanban-drop-over').forEach(function(el) {
+      el.classList.remove('kanban-drop-over');
+    });
+    _dragCard    = null;
+    _dragFromCol = null;
+  };
+
+  var grid = document.getElementById('kanban-grid');
+  if (!grid) return;
+
+  grid.addEventListener('dragover', function(e) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    var col = e.target.closest('[data-status]');
+    if (!col || col === _dragFromCol) return;
+    document.querySelectorAll('.kanban-drop-over').forEach(function(el) {
+      if (el !== col) el.classList.remove('kanban-drop-over');
+    });
+    col.classList.add('kanban-drop-over');
+  });
+
+  grid.addEventListener('dragleave', function(e) {
+    var col = e.target.closest('[data-status]');
+    if (col && !col.contains(e.relatedTarget)) {
+      col.classList.remove('kanban-drop-over');
+    }
+  });
+
+  grid.addEventListener('drop', function(e) {
+    e.preventDefault();
+    document.querySelectorAll('.kanban-drop-over').forEach(function(el) {
+      el.classList.remove('kanban-drop-over');
+    });
+
+    if (!_dragCard) return;
+    var col = e.target.closest('[data-status]');
+    if (!col) return;
+
+    var newStatus = col.dataset.status;
+    var oldStatus = _dragFromCol ? _dragFromCol.dataset.status : null;
+    if (!newStatus || newStatus === oldStatus) return;
+
+    var clientId = _dragCard.dataset.clientId;
+
+    var fromContainer = _dragFromCol ? document.getElementById(_dragFromCol.dataset.container) : null;
+    var toContainer   = document.getElementById(col.dataset.container);
+
+    // Убираем плейсхолдер в целевой колонке и вставляем карточку
+    if (toContainer) {
+      var ph = toContainer.querySelector('.kanban-empty-placeholder');
+      if (ph) ph.remove();
+      toContainer.appendChild(_dragCard);
+    }
+
+    // Если исходная колонка опустела — показываем плейсхолдер
+    if (fromContainer && fromContainer.querySelectorAll('.kanban-card').length === 0) {
+      fromContainer.innerHTML = '<div class="kanban-empty-placeholder text-xs text-base-content/50">Нет клиентов</div>';
+    }
+
+    _updateCounter(oldStatus, -1);
+    _updateCounter(newStatus, +1);
+
+    var csrf = (document.cookie.match(/csrftoken=([^;]+)/) || [])[1] || '';
+    fetch('/clients/' + clientId + '/move/', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'X-CSRFToken': csrf,
+      },
+      body: 'status=' + encodeURIComponent(newStatus) + '&old_status=' + encodeURIComponent(oldStatus || ''),
+    }).then(function(r) {
+      if (!r.ok) document.body.dispatchEvent(new CustomEvent('kanbanRefresh'));
+    }).catch(function() {
+      document.body.dispatchEvent(new CustomEvent('kanbanRefresh'));
+    });
+  });
+
+  function _updateCounter(status, delta) {
+    if (!status) return;
+    var el = document.getElementById('kanban-count-' + status);
+    if (el) el.textContent = Math.max(0, (parseInt(el.textContent) || 0) + delta);
+  }
+})();
+</script>

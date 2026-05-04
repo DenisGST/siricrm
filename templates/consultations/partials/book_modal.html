@@ -1,0 +1,62 @@
+{% load crm_tags %}
+<dialog id="consult-book-dialog" class="modal modal-middle modal-open">
+
+  <!-- Результаты поиска — вне modal-box, position:fixed не обрезается -->
+  <div id="consult-search-results"
+       style="display:none;position:fixed;z-index:9999;
+              background:#fff;
+              border:1px solid oklch(var(--bc)/0.2);border-radius:8px;
+              box-shadow:0 8px 24px rgba(0,0,0,.2);max-height:240px;overflow-y:auto;"></div>
+
+  <div class="modal-box w-full max-w-md">
+    <div class="flex items-center justify-between mb-4">
+      <div>
+        <h3 class="font-bold text-lg">Записать на консультацию</h3>
+        <p class="text-sm text-base-content/60">
+          {{ consultant.user.last_name }} {{ consultant.user.first_name }}
+          · {{ dt|slice:"0:10" }} в {{ dt|slice:"11:16" }}
+        </p>
+      </div>
+      <button class="btn btn-sm btn-ghost btn-circle" onclick="this.closest('dialog').remove()">✕</button>
+    </div>
+
+    <form hx-post="{% url 'consultations:book' %}"
+          hx-target="#consult-book-modal"
+          hx-swap="innerHTML">
+      {% csrf_token %}
+      <input type="hidden" name="consultant_id" value="{{ consultant.id }}">
+      <input type="hidden" name="datetime_start" value="{{ dt }}">
+      <input type="hidden" name="client_id" id="consult-client-id">
+
+      <div class="mb-3">
+        <label class="label py-1"><span class="label-text font-medium">Клиент</span></label>
+        <input type="text" id="consult-search-input"
+               placeholder="Поиск по имени или телефону..."
+               class="input input-bordered input-sm w-full"
+               autocomplete="off">
+        <div id="consult-client-selected"
+             class="hidden mt-1 px-3 py-1.5 rounded-lg bg-primary/10 text-sm text-primary font-medium flex items-center gap-2">
+          <span id="consult-client-name"></span>
+          <button type="button" class="ml-auto opacity-50 hover:opacity-100 text-xs"
+                  onclick="clearConsultClient()">✕ сбросить</button>
+        </div>
+      </div>
+
+      <div class="mb-4">
+        <label class="label py-1"><span class="label-text font-medium">Комментарий</span></label>
+        <textarea name="comment" rows="2" placeholder="Краткая информация, тема консультации..."
+                  class="textarea textarea-bordered w-full textarea-sm"></textarea>
+      </div>
+
+      <div class="modal-action">
+        <button type="submit" class="btn btn-primary btn-sm" id="consult-book-submit" disabled>Записать</button>
+        <button type="button" class="btn btn-sm" onclick="this.closest('dialog').remove()">Отмена</button>
+      </div>
+    </form>
+  </div>
+  <form method="dialog" class="modal-backdrop">
+    <button onclick="this.closest('dialog').remove()">close</button>
+  </form>
+</dialog>
+
+<!-- JS инициализируется из schedule.html после вставки через innerHTML -->

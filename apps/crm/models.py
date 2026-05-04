@@ -378,6 +378,11 @@ class ClientEvent(models.Model):
         # --- Корреспонденция ---
         ("letter_outgoing",  "Направлено исходящее письмо"),
         ("letter_incoming",  "Получено входящее письмо"),
+        # --- Консультации ---
+        ("consultation_booked",      "Записан на консультацию"),
+        ("consultation_result",      "Результат консультации"),
+        ("consultation_transferred", "Консультация перенесена"),
+        ("consultation_edited",      "Консультация изменена"),
         # --- Система ---
         ("system",           "Системное событие"),
     ]
@@ -653,6 +658,13 @@ class ServiceCommonStatus(TimeStampedModel):
         on_delete=models.CASCADE,
         related_name="common_statuses",
         verbose_name="Услуга",
+    )
+    department = models.ForeignKey(
+        "core.Department",
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name="service_statuses",
+        verbose_name="Ответственный отдел",
     )
     name = models.CharField("Наименование статуса", max_length=100)
     order = models.PositiveIntegerField("Порядок", default=0)

@@ -1,5 +1,9 @@
 {% load icons crm_tags %}
-<div class="card bg-base-100 shadow-sm cursor-pointer"
+<div class="card bg-base-100 shadow-sm cursor-pointer kanban-card"
+     draggable="true"
+     data-client-id="{{ client.id }}"
+     ondragstart="kanbanDragStart(event)"
+     ondragend="kanbanDragEnd(event)"
      hx-get="{% url 'client_events_modal' client.id %}"
      hx-target="body"
      hx-swap="beforeend">
@@ -13,7 +17,7 @@
       {% with emp=client.employees.all.0 %}
         {% if emp %}
           <span id="assign-badge-btn-{{ client.id }}"
-                class="badge badge-outline text-xs shrink-0 ml-1 cursor-pointer kanban-emp-badge"
+                class="badge badge-ghost text-xs shrink-0 ml-1 cursor-pointer kanban-emp-badge"
                 hx-get="{% url 'client_assign_employee_picker' client.id %}?current={{ emp.id }}"
                 hx-target="body"
                 hx-swap="beforeend"

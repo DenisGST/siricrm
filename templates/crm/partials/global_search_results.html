@@ -2,17 +2,35 @@
 {% if empty and q|length >= 2 %}
   <div class="global-search-empty">Ничего не найдено</div>
 {% elif clients or legal_entities or messages %}
+
   {% if clients %}
     <div class="global-search-group-title">Клиенты</div>
     {% for c in clients %}
       <a href="#" class="global-search-item"
-         onclick="openTelegramChatModalForClient('{{ c.id }}'); closeGlobalSearch(); return false;">
+         onclick="focusKanbanClient('{{ c.id }}'); return false;">
         {% icon "user" size=14 %}
         <span class="gs-main">{{ c.last_name }} {{ c.first_name }} {{ c.patronymic }}</span>
         <span class="gs-aux">
           {% if c.username %}@{{ c.username }}{% elif c.phone %}{{ c.phone }}{% endif %}
         </span>
       </a>
+    {% endfor %}
+  {% endif %}
+
+  {% if clients %}
+    <div class="global-search-group-title">Чат</div>
+    {% for c in clients %}
+      {% if c.telegram_id or c.max_chat_id %}
+      <a href="#" class="global-search-item"
+         onclick="openTelegramChatModalForClient('{{ c.id }}'); closeGlobalSearch(); return false;">
+        {% icon "message-square" size=14 %}
+        <span class="gs-main">{{ c.last_name }} {{ c.first_name }} {{ c.patronymic }}</span>
+        <span class="gs-aux">
+          {% if c.telegram_id %}Telegram{% endif %}
+          {% if c.max_chat_id %}MAX{% endif %}
+        </span>
+      </a>
+      {% endif %}
     {% endfor %}
   {% endif %}
 
@@ -41,4 +59,5 @@
       </a>
     {% endfor %}
   {% endif %}
+
 {% endif %}

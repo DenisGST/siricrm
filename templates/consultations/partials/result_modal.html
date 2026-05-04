@@ -1,0 +1,115 @@
+{% load icons %}
+<dialog id="consult-result-dialog" class="modal modal-middle modal-open">
+  <div class="modal-box w-full max-w-lg">
+
+    <!-- Шапка -->
+    <div class="flex items-start justify-between mb-3">
+      <div>
+        <h3 class="font-bold text-base">{{ consultation.client.last_name }} {{ consultation.client.first_name }} {{ consultation.client.patronymic }}</h3>
+        <p class="text-xs text-base-content/50 mt-0.5">{{ consultation.datetime_start|date:"d.m.Y H:i" }} · {{ consultation.consultant.user.last_name }} {{ consultation.consultant.user.first_name }}</p>
+      </div>
+      <button class="btn btn-sm btn-ghost btn-circle" onclick="this.closest('dialog').remove()">✕</button>
+    </div>
+
+    <!-- Панель действий -->
+    <div class="flex flex-wrap gap-1.5 mb-4 pb-3" style="border-bottom:1px solid #e5e7eb;">
+
+      {% if consultation.client.phone %}
+      <a href="tel:{{ consultation.client.phone }}"
+         class="btn btn-xs gap-1.5" style="background:#f0fdf4;border-color:#86efac;color:#15803d;">
+        {% icon "phone" size=13 %}Позвонить
+      </a>
+      {% else %}
+      <button class="btn btn-xs gap-1.5" disabled title="Телефон не указан"
+              style="opacity:.45;">
+        {% icon "phone" size=13 %}Позвонить
+      </button>
+      {% endif %}
+
+      {% if consultation.client.telegram_id %}
+      <button class="btn btn-xs gap-1.5" style="background:#eff6ff;border-color:#93c5fd;color:#1d4ed8;"
+              onclick="this.closest('dialog').remove(); openTelegramChatModalForClient('{{ consultation.client.id }}')">
+        {% icon "message-circle" size=13 %}Чат
+      </button>
+      {% else %}
+      <button class="btn btn-xs gap-1.5" disabled title="Telegram не привязан"
+              style="opacity:.45;">
+        {% icon "message-circle" size=13 %}Чат
+      </button>
+      {% endif %}
+
+      <button class="btn btn-xs gap-1.5" style="background:#fefce8;border-color:#fde047;color:#854d0e;"
+              onclick="openConsultEditModal('{{ consultation.pk }}')">
+        {% icon "edit" size=13 %}Редактировать
+      </button>
+
+      <button class="btn btn-xs gap-1.5" style="background:#f5f3ff;border-color:#c4b5fd;color:#6d28d9;"
+              disabled title="Скоро будет доступно">
+        {% icon "clipboard-list" size=13 %}Анкета
+      </button>
+
+      <button class="btn btn-xs gap-1.5" style="background:#f0fdf4;border-color:#86efac;color:#166534;"
+              onclick="openClientHistoryModal('{{ consultation.client.id }}')">
+        {% icon "history" size=13 %}История
+      </button>
+
+    </div>
+
+    <!-- Комментарий оператора -->
+    {% if consultation.comment %}
+    <div class="mb-3 px-3 py-2 rounded-lg text-sm" style="background:#eff6ff;">
+      <span class="font-medium text-xs text-blue-700">Комментарий:</span>
+      <span class="text-sm ml-1">{{ consultation.comment }}</span>
+    </div>
+    {% endif %}
+
+    <!-- Форма результата -->
+    <form id="consult-result-form"
+          hx-post="{% url 'consultations:set_result' consultation.pk %}"
+          hx-target="#consult-result-modal"
+          hx-swap="innerHTML">
+      {% csrf_token %}
+
+      <div class="mb-3">
+        <label class="label py-1"><span class="label-text font-medium text-sm">Итог консультации</span></label>
+        <select id="consult-result-select" name="result_id" class="select select-bordered select-sm w-full">
+          <option value="">— не выбрано —</option>
+          {% for r in results %}
+            <option value="{{ r.id }}" {% if consultation.result_id == r.id %}selected{% endif %}>{{ r.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="mb-3">
+        <label class="label py-1"><span class="label-text font-medium text-sm">Заметки консультанта</span></label>
+        <textarea name="consultant_notes" rows="3"
+                  class="textarea textarea-bordered w-full textarea-sm"
+                  placeholder="Краткое резюме консультации...">{{ consultation.consultant_notes }}</textarea>
+      </div>
+
+      <div class="mb-4">
+        <label class="label py-1"><span class="label-text font-medium text-sm">Статус</span></label>
+        <select id="consult-status-select" name="status" class="select select-bordered select-sm w-full">
+          <option value="done"      {% if consultation.status == "done" %}selected{% endif %}>Проведена</option>
+          <option value="booked"    {% if consultation.status == "booked" %}selected{% endif %}>Записан (оставить)</option>
+          <option value="cancelled" {% if consultation.status == "cancelled" %}selected{% endif %}>Отменена</option>
+        </select>
+      </div>
+
+      <div id="consult-result-error" class="hidden mb-3 px-3 py-2 rounded-lg text-sm font-medium"
+           style="background:#fef2f2;color:#b91c1c;border:1px solid #fca5a5;">
+        Укажите итог консультации перед сохранением статуса «Проведена»
+      </div>
+
+      <div class="modal-action">
+        <button type="button" class="btn btn-primary btn-sm" onclick="submitResultForm(this)">Сохранить</button>
+        <button type="button" class="btn btn-sm" onclick="this.closest('dialog').remove()">Закрыть</button>
+      </div>
+    </form>
+
+  </div>
+
+  <form method="dialog" class="modal-backdrop">
+    <button onclick="this.closest('dialog').remove()">close</button>
+  </form>
+</dialog>

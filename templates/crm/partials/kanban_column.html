@@ -1,5 +1,7 @@
 {% for client in clients %}
   {% include "crm/partials/kanban_card.html" with client=client %}
 {% empty %}
-  <div class="text-xs text-base-content/50">Нет клиентов</div>
+  <div class="kanban-empty-placeholder text-xs text-base-content/50">Нет клиентов</div>
 {% endfor %}
+<span id="kanban-count-{{ status }}" hx-swap-oob="true"
+      class="badge badge-sm {% if status == 'lead' %}badge-warning{% elif status == 'active' %}badge-success{% elif status == 'closed' %}badge-error{% elif status == 'archive' %}badge-neutral{% else %}badge-ghost{% endif %}">{{ count }}</span>

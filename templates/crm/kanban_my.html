@@ -1,36 +1,98 @@
-<div class="mb-4 flex flex-wrap items-center justify-between gap-2">
+{% load static %}
+<div class="mb-3 flex flex-wrap items-center gap-3">
   <h2 class="text-sm font-semibold" style="color:var(--ms-text-secondary)">Мой Канбан</h2>
   <form hx-get="{% url 'my_kanban' %}" hx-target="#content-area" hx-swap="innerHTML"
-        id="my-kanban-filter" class="flex items-center gap-2">
-    <select name="service_name" class="select select-bordered select-xs"
+        id="my-kanban-filter" class="flex items-center gap-2 flex-wrap">
+
+    {% if can_view_others %}
+    <select name="viewed_employee"
+            style="height:1.6rem;font-size:0.72rem;padding:0 1.5rem 0 0.5rem;border:1px solid oklch(var(--bc)/0.2);border-radius:6px;background-color:transparent;cursor:pointer;appearance:auto;"
             onchange="this.form.requestSubmit()">
-      <option value="">— все доступные услуги —</option>
+      <option value="">— мой канбан —</option>
+      {% for e in employees_for_filter %}
+        <option value="{{ e.id }}" {% if viewed_emp_id == e.id|stringformat:"s" %}selected{% endif %}>
+          {% if e.department %}{{ e.department.name }} · {% endif %}{{ e.user.last_name }} {{ e.user.first_name }}
+        </option>
+      {% endfor %}
+    </select>
+    {% endif %}
+
+    <select name="service_name"
+            style="height:1.6rem;font-size:0.72rem;padding:0 1.5rem 0 0.5rem;border:1px solid oklch(var(--bc)/0.2);border-radius:6px;background-color:transparent;cursor:pointer;appearance:auto;"
+            onchange="this.form.requestSubmit()">
+      <option value="">— все услуги —</option>
       {% for s in service_names %}
         <option value="{{ s.id }}" {% if filter_service_name == s.id|stringformat:"s" %}selected{% endif %}>{{ s.short_name }}</option>
       {% endfor %}
     </select>
+
+    <select name="common_status"
+            style="height:1.6rem;font-size:0.72rem;padding:0 1.5rem 0 0.5rem;border:1px solid oklch(var(--bc)/0.2);border-radius:6px;background-color:transparent;cursor:pointer;appearance:auto;"
+            onchange="this.form.requestSubmit()">
+      <option value="">— все общие статусы —</option>
+      {% for cs in common_statuses %}
+        <option value="{{ cs.id }}" {% if filter_common_status == cs.id|stringformat:"s" %}selected{% endif %}>
+          {{ cs.service_name.short_name }} · {{ cs.name }}
+        </option>
+      {% endfor %}
+    </select>
+
   </form>
 </div>
 
-{% if statuses %}
-<div class="flex gap-4 overflow-x-auto pb-2">
-  {% for st in statuses %}
-  <div class="bg-base-200 rounded-lg p-3 min-w-[280px] flex-shrink-0">
-    <div class="flex items-center justify-between mb-2">
-      <h3 class="font-bold text-sm">
-        <span class="badge badge-outline badge-xs mr-1">{{ st.service_name.short_name }}</span>
-        {{ st.name }}
-      </h3>
+{% if viewed_emp %}
+<div class="mb-3 flex items-center gap-2 px-3 py-2 rounded-lg text-sm"
+     style="background:oklch(var(--wa)/0.1);border:1px solid oklch(var(--wa)/0.3);">
+  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none"
+       stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+       style="color:oklch(var(--wa));flex-shrink:0;">
+    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+    <circle cx="12" cy="12" r="3"/>
+  </svg>
+  <span style="color:oklch(var(--wa));">Просмотр канбана сотрудника:</span>
+  <span class="font-semibold">{{ viewed_emp.user.get_full_name }}</span>
+</div>
+{% endif %}
+
+{% if groups %}
+<div id="my-kanban-grid" style="display:flex;flex-wrap:nowrap;gap:0.75rem;overflow-x:auto;padding-bottom:0.5rem;align-items:flex-start;">
+
+  {% for group in groups %}
+  <!-- Группа: flex:N позволяет занимать пространство пропорционально кол-ву колонок -->
+  <div style="display:flex;flex-direction:column;gap:0.5rem;flex:{{ group.statuses|length }} 1 0;min-width:{{ group.statuses|length }}00px;">
+
+    <!-- Заголовок группы -->
+    <div style="padding:0.3rem 0.75rem;border-radius:6px;border-left:3px solid oklch(var(--p));background:oklch(var(--p)/0.08);white-space:nowrap;">
+      <span class="text-xs font-semibold" style="color:oklch(var(--p));">{{ group.common_status.service_name.short_name }}</span>
+      <span class="text-xs" style="color:var(--ms-text-secondary);margin:0 0.25rem;">·</span>
+      <span class="text-sm font-bold" style="color:var(--ms-text);">{{ group.common_status.name }}</span>
     </div>
-    <div id="my-kanban-{{ st.id }}"
-         class="space-y-2 min-h-[50px]"
-         hx-get="{% url 'my_kanban_column' st.id %}"
-         hx-trigger="load, serviceChanged from:body"
-         hx-target="#my-kanban-{{ st.id }}"
-         hx-swap="innerHTML">
+
+    <!-- Колонки статусов сотрудника внутри группы -->
+    <div style="display:flex;flex-direction:row;gap:0.75rem;flex:1;">
+      {% for st in group.statuses %}
+      <div class="bg-base-200 rounded-lg p-3" style="flex:1 1 0;min-width:180px;"
+           data-my-status-id="{{ st.id }}"
+           data-service-name-id="{{ st.common_status.service_name_id }}"
+           data-container="my-kanban-{{ st.id }}">
+        <div class="flex items-center justify-between mb-2">
+          <h3 class="font-bold text-sm">{{ st.name }}</h3>
+          <span id="my-kanban-count-{{ st.id }}" class="badge badge-sm badge-ghost">0</span>
+        </div>
+        <div id="my-kanban-{{ st.id }}"
+             class="space-y-2 min-h-[50px]"
+             hx-get="{% url 'my_kanban_column' st.id %}{% if viewed_emp_id %}?viewed_employee={{ viewed_emp_id }}{% endif %}"
+             hx-trigger="load, serviceChanged from:body"
+             hx-target="#my-kanban-{{ st.id }}"
+             hx-swap="innerHTML">
+        </div>
+      </div>
+      {% endfor %}
     </div>
+
   </div>
   {% endfor %}
+
 </div>
 {% else %}
 <div class="text-center text-base-content/60 p-8">
@@ -38,3 +100,96 @@
   <a class="link" href="/references/">Справочниках → Статусы сотрудников</a>.
 </div>
 {% endif %}
+
+<script>
+(function() {
+  var _dragCard    = null;
+  var _dragFromCol = null;
+
+  window.myDragStart = function(e) {
+    _dragCard    = e.currentTarget;
+    _dragFromCol = _dragCard.closest('[data-my-status-id]');
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', _dragCard.dataset.serviceId || '');
+    setTimeout(function() { _dragCard && _dragCard.classList.add('kanban-dragging'); }, 0);
+  };
+
+  window.myDragEnd = function(e) {
+    if (_dragCard) _dragCard.classList.remove('kanban-dragging');
+    document.querySelectorAll('.kanban-drop-over').forEach(function(el) {
+      el.classList.remove('kanban-drop-over');
+    });
+    _dragCard    = null;
+    _dragFromCol = null;
+  };
+
+  var grid = document.getElementById('my-kanban-grid');
+  if (!grid) return;
+
+  grid.addEventListener('dragover', function(e) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    var col = e.target.closest('[data-my-status-id]');
+    if (!col || col === _dragFromCol) return;
+    if (_dragCard && col.dataset.serviceNameId !== _dragCard.dataset.serviceNameId) return;
+    document.querySelectorAll('.kanban-drop-over').forEach(function(el) {
+      if (el !== col) el.classList.remove('kanban-drop-over');
+    });
+    col.classList.add('kanban-drop-over');
+  });
+
+  grid.addEventListener('dragleave', function(e) {
+    var col = e.target.closest('[data-my-status-id]');
+    if (col && !col.contains(e.relatedTarget)) {
+      col.classList.remove('kanban-drop-over');
+    }
+  });
+
+  grid.addEventListener('drop', function(e) {
+    e.preventDefault();
+    document.querySelectorAll('.kanban-drop-over').forEach(function(el) {
+      el.classList.remove('kanban-drop-over');
+    });
+
+    if (!_dragCard) return;
+    var col = e.target.closest('[data-my-status-id]');
+    if (!col || col === _dragFromCol) return;
+    if (col.dataset.serviceNameId !== _dragCard.dataset.serviceNameId) return;
+
+    var serviceId = _dragCard.dataset.serviceId;
+    var statusId  = col.dataset.myStatusId;
+
+    var fromContainer = _dragFromCol ? document.getElementById(_dragFromCol.dataset.container) : null;
+    var toContainer   = document.getElementById(col.dataset.container);
+
+    if (toContainer) {
+      var ph = toContainer.querySelector('.svc-empty-placeholder');
+      if (ph) ph.remove();
+      toContainer.appendChild(_dragCard);
+    }
+    if (fromContainer && fromContainer.querySelectorAll('.kanban-svc-card').length === 0) {
+      fromContainer.innerHTML = '<div class="svc-empty-placeholder text-xs text-base-content/40 text-center py-2">пусто</div>';
+    }
+
+    _updateCounter(_dragFromCol, -1);
+    _updateCounter(col, +1);
+
+    var csrf = (document.cookie.match(/csrftoken=([^;]+)/) || [])[1] || '';
+    fetch('/services/' + serviceId + '/my-move/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-CSRFToken': csrf },
+      body: 'status_id=' + encodeURIComponent(statusId),
+    }).then(function(r) {
+      if (!r.ok) document.body.dispatchEvent(new CustomEvent('serviceChanged'));
+    }).catch(function() {
+      document.body.dispatchEvent(new CustomEvent('serviceChanged'));
+    });
+  });
+
+  function _updateCounter(col, delta) {
+    if (!col) return;
+    var el = document.getElementById('my-kanban-count-' + col.dataset.myStatusId);
+    if (el) el.textContent = Math.max(0, (parseInt(el.textContent) || 0) + delta);
+  }
+})();
+</script>

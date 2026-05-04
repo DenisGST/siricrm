@@ -35,6 +35,7 @@ body {
   letter-spacing: 0;
   color: var(--ms-text);
   margin: 0;
+  min-width: 1200px;
 }
 
 /* ─── Twemoji ─── */
@@ -874,9 +875,36 @@ input:focus, textarea:focus, select:focus {
   grid-template-columns: repeat(8, minmax(0, 1fr));
 }
 
+/* Подсветка карточки при фокусе из поиска */
+@keyframes kanban-pulse {
+  0%   { box-shadow: 0 0 0 0   oklch(var(--p) / 0.6); }
+  50%  { box-shadow: 0 0 0 6px oklch(var(--p) / 0.2); }
+  100% { box-shadow: 0 0 0 0   oklch(var(--p) / 0); }
+}
+.kanban-highlight {
+  animation: kanban-pulse 1.1s ease-out 2;
+  outline: 2px solid oklch(var(--p));
+  outline-offset: 2px;
+}
+
+/* Drag-and-drop канбан */
+.kanban-card {
+  transition: opacity 0.15s, box-shadow 0.15s;
+}
+.kanban-card.kanban-dragging {
+  opacity: 0.4;
+  box-shadow: none;
+}
+.kanban-drop-over {
+  box-shadow: inset 0 0 0 2px oklch(var(--p)), 0 0 0 1px oklch(var(--p) / 0.3);
+  background-color: oklch(var(--p) / 0.06) !important;
+  border-radius: 8px;
+}
+
 /* Бэйдж ответственного сотрудника на карточке канбана */
 .kanban-emp-badge {
   transition: border-color 0.15s, box-shadow 0.15s, color 0.15s;
+  color: oklch(35% 0.12 260);
 }
 .kanban-emp-badge:hover {
   border-color: oklch(var(--p)) !important;

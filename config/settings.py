@@ -38,6 +38,7 @@ INSTALLED_APPS = [
     'apps.realtime',
     'apps.telegram',
     'apps.maxchat',
+    'apps.consultations',
 
 ]
 

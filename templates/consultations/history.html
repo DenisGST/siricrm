@@ -1,0 +1,102 @@
+{% load icons %}
+<div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+  <h2 class="text-sm font-semibold" style="color:var(--ms-text-secondary)">История консультаций</h2>
+  <button hx-get="{% url 'consultations:schedule' %}" hx-target="#content-area" hx-swap="innerHTML"
+          class="btn btn-xs btn-outline">
+    {% icon "calendar" size=12 %} График
+  </button>
+</div>
+
+<!-- Фильтры -->
+<form hx-get="{% url 'consultations:history' %}" hx-target="#content-area" hx-swap="innerHTML"
+      class="flex flex-wrap gap-2 mb-4 items-end">
+  <div>
+    <label class="label py-0.5"><span class="label-text text-xs">Консультант</span></label>
+    <select name="consultant" class="select select-bordered select-xs">
+      <option value="">Все</option>
+      {% for c in consultants %}
+        <option value="{{ c.id }}" {% if filter_consultant == c.id|stringformat:"s" %}selected{% endif %}>
+          {{ c.user.last_name }} {{ c.user.first_name }}
+        </option>
+      {% endfor %}
+    </select>
+  </div>
+  <div>
+    <label class="label py-0.5"><span class="label-text text-xs">Итог</span></label>
+    <select name="result" class="select select-bordered select-xs">
+      <option value="">Все</option>
+      {% for r in results %}
+        <option value="{{ r.id }}" {% if filter_result == r.id|stringformat:"s" %}selected{% endif %}>{{ r.name }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div>
+    <label class="label py-0.5"><span class="label-text text-xs">Статус</span></label>
+    <select name="status" class="select select-bordered select-xs">
+      <option value="">Все</option>
+      <option value="booked"    {% if filter_status == "booked" %}selected{% endif %}>Записан</option>
+      <option value="done"      {% if filter_status == "done" %}selected{% endif %}>Проведена</option>
+      <option value="cancelled"   {% if filter_status == "cancelled" %}selected{% endif %}>Отменена</option>
+      <option value="transferred" {% if filter_status == "transferred" %}selected{% endif %}>Перенесена</option>
+    </select>
+  </div>
+  <div>
+    <label class="label py-0.5"><span class="label-text text-xs">С</span></label>
+    <input type="date" name="date_from" value="{{ filter_date_from }}" class="input input-bordered input-xs">
+  </div>
+  <div>
+    <label class="label py-0.5"><span class="label-text text-xs">По</span></label>
+    <input type="date" name="date_to" value="{{ filter_date_to }}" class="input input-bordered input-xs">
+  </div>
+  <button type="submit" class="btn btn-primary btn-xs">Применить</button>
+  <button hx-get="{% url 'consultations:history' %}" hx-target="#content-area" hx-swap="innerHTML"
+          class="btn btn-ghost btn-xs">Сбросить</button>
+</form>
+
+<div class="overflow-x-auto">
+  <table class="table table-sm table-zebra">
+    <thead>
+      <tr>
+        <th>Дата и время</th>
+        <th>Консультант</th>
+        <th>Клиент</th>
+        <th>Записал</th>
+        <th>Статус</th>
+        <th>Итог</th>
+        <th>Комментарий</th>
+        <th>Заметки</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for c in consultations %}
+      <tr>
+        <td class="whitespace-nowrap text-xs font-mono">{{ c.datetime_start|date:"d.m.Y H:i" }}</td>
+        <td class="text-xs">{{ c.consultant.user.last_name }} {{ c.consultant.user.first_name }}</td>
+        <td class="text-xs">
+          {% if c.client %}{{ c.client.last_name }} {{ c.client.first_name }}{% else %}—{% endif %}
+        </td>
+        <td class="text-xs text-base-content/60">
+          {% if c.booked_by %}{{ c.booked_by.user.last_name }} {{ c.booked_by.user.first_name }}{% else %}—{% endif %}
+        </td>
+        <td>
+          {% if c.status == "booked" %}<span class="badge badge-warning badge-xs">Записан</span>
+          {% elif c.status == "done" %}<span class="badge badge-success badge-xs">Проведена</span>
+          {% elif c.status == "cancelled" %}<span class="badge badge-error badge-xs">Отменена</span>
+          {% elif c.status == "transferred" %}<span class="badge badge-neutral badge-xs">Перенесена</span>
+          {% endif %}
+          {% if c.transfer_reason %}<div class="text-[10px] text-base-content/50 mt-0.5" title="{{ c.transfer_reason }}">{{ c.transfer_reason|truncatechars:30 }}</div>{% endif %}
+        </td>
+        <td>
+          {% if c.result %}
+            <span class="badge {{ c.result.color }} badge-xs">{{ c.result.name }}</span>
+          {% else %}—{% endif %}
+        </td>
+        <td class="text-xs max-w-xs truncate" title="{{ c.comment }}">{{ c.comment|default:"—" }}</td>
+        <td class="text-xs max-w-xs truncate" title="{{ c.consultant_notes }}">{{ c.consultant_notes|default:"—" }}</td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="8" class="text-center text-base-content/50 py-8">Консультаций не найдено</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>

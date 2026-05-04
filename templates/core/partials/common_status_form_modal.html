@@ -15,6 +15,12 @@
       </div>
 
       <div>
+        <label class="label py-1"><span class="label-text">Ответственный отдел</span></label>
+        {{ form.department }}
+        {% if form.department.errors %}<span class="text-error text-xs">{{ form.department.errors.0 }}</span>{% endif %}
+      </div>
+
+      <div>
         <label class="label py-1"><span class="label-text">Наименование статуса</span></label>
         <input type="text" name="name" value="{{ form.name.value|default:'' }}"
                class="input input-bordered w-full input-sm" required>

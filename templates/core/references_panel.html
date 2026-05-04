@@ -23,6 +23,9 @@
     <a class="tab {% if active_tab == 'tags' %}tab-active{% endif %}"
        hx-get="{% url 'core:references_tags' %}" hx-target="#ref-content" hx-swap="innerHTML"
        onclick="setRefTab(this)">Теги сотрудников</a>
+    <a class="tab {% if active_tab == 'consultation_results' %}tab-active{% endif %}"
+       hx-get="{% url 'consultations:result_reference' %}" hx-target="#ref-content" hx-swap="innerHTML"
+       onclick="setRefTab(this)">Итоги консультаций</a>
   </div>
 
   <div id="ref-content"

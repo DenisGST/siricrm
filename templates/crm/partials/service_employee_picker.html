@@ -1,0 +1,117 @@
+{% load crm_tags %}
+<div id="svc-emp-picker-{{ service.pk }}">
+  <div class="fixed inset-0 z-40"
+       onclick="document.getElementById('svc-emp-picker-{{ service.pk }}').remove()"></div>
+  <div id="svc-emp-picker-panel-{{ service.pk }}"
+       class="fixed z-50 w-60 bg-base-100 border border-base-300 rounded-lg shadow-xl overflow-y-auto"
+       style="max-height:360px">
+
+    <div class="px-3 py-1.5 flex items-center justify-between border-b border-base-200 sticky top-0 bg-base-100 z-10">
+      <span class="text-xs font-semibold text-base-content/50">Исполнители</span>
+      <button type="button" class="text-base-content/40 hover:text-base-content text-sm leading-none"
+              onclick="document.getElementById('svc-emp-picker-{{ service.pk }}').remove()">✕</button>
+    </div>
+
+    {% for dept in departments %}
+      {% with dept_employees=dept.employees.all %}
+      {% if dept_employees %}
+        <!-- Отдел -->
+        <div class="px-3 pt-2 pb-0.5 flex items-center gap-1 cursor-pointer select-none"
+             onclick="this.nextElementSibling.classList.toggle('hidden')">
+          <svg id="svc-dept-arrow-{{ dept.id }}" xmlns="http://www.w3.org/2000/svg"
+               width="10" height="10" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"
+               style="transition:transform 0.15s"
+               class="text-base-content/40">
+            <polyline points="6 9 12 15 18 9"/>
+          </svg>
+          <span class="text-xs font-semibold text-base-content/60 uppercase tracking-wide">{{ dept.name }}</span>
+          <span class="badge badge-xs badge-ghost ml-auto">{{ dept_employees|length }}</span>
+        </div>
+        <!-- Сотрудники отдела -->
+        <div>
+          {% for emp in dept_employees %}
+          <button type="button"
+            class="w-full text-left pl-6 pr-3 py-1.5 text-sm hover:bg-base-200 flex items-center gap-2
+                   {% if emp.id in assigned_ids %}text-primary font-medium{% endif %}"
+            hx-post="{% url 'service_employee_toggle' service.pk %}"
+            hx-vals='{"employee_id": "{{ emp.id }}"}'
+            hx-target="#svc-emp-list-{{ service.pk }}"
+            hx-swap="outerHTML"
+            hx-on::after-request="document.getElementById('svc-emp-picker-{{ service.pk }}')?.remove()"
+            onclick="event.stopPropagation()">
+            <span class="w-3 text-center text-xs">{% if emp.id in assigned_ids %}✓{% endif %}</span>
+            {{ emp|short_name }}
+          </button>
+          {% endfor %}
+        </div>
+      {% endif %}
+      {% endwith %}
+    {% endfor %}
+
+    {% if no_dept %}
+      <div class="px-3 pt-2 pb-0.5 flex items-center gap-1 cursor-pointer select-none"
+           onclick="this.nextElementSibling.classList.toggle('hidden')">
+        <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24"
+             fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"
+             class="text-base-content/40">
+          <polyline points="6 9 12 15 18 9"/>
+        </svg>
+        <span class="text-xs font-semibold text-base-content/60 uppercase tracking-wide">Без отдела</span>
+        <span class="badge badge-xs badge-ghost ml-auto">{{ no_dept|length }}</span>
+      </div>
+      <div>
+        {% for emp in no_dept %}
+        <button type="button"
+          class="w-full text-left pl-6 pr-3 py-1.5 text-sm hover:bg-base-200 flex items-center gap-2
+                 {% if emp.id in assigned_ids %}text-primary font-medium{% endif %}"
+          hx-post="{% url 'service_employee_toggle' service.pk %}"
+          hx-vals='{"employee_id": "{{ emp.id }}"}'
+          hx-target="#svc-emp-list-{{ service.pk }}"
+          hx-swap="outerHTML"
+          hx-on::after-request="document.getElementById('svc-emp-picker-{{ service.pk }}')?.remove()"
+          onclick="event.stopPropagation()">
+          <span class="w-3 text-center text-xs">{% if emp.id in assigned_ids %}✓{% endif %}</span>
+          {{ emp|short_name }}
+        </button>
+        {% endfor %}
+      </div>
+    {% endif %}
+
+    <div class="h-1"></div>
+  </div>
+</div>
+
+<script>
+(function() {
+  var btn   = document.getElementById('svc-emp-add-btn-{{ service.pk }}');
+  var panel = document.getElementById('svc-emp-picker-panel-{{ service.pk }}');
+  if (btn && panel) {
+    var r = btn.getBoundingClientRect();
+    // Позиционируем справа если не влезает
+    var left = r.left;
+    if (left + 240 > window.innerWidth) left = window.innerWidth - 248;
+    panel.style.top  = (r.bottom + 4) + 'px';
+    panel.style.left = Math.max(4, left) + 'px';
+  }
+  // Закрытие по Escape
+  function onKey(e) {
+    if (e.key === 'Escape') {
+      var el = document.getElementById('svc-emp-picker-{{ service.pk }}');
+      if (el) el.remove();
+      document.removeEventListener('keydown', onKey);
+    }
+  }
+  document.addEventListener('keydown', onKey);
+  // Анимация стрелок при collapse
+  document.querySelectorAll('#svc-emp-picker-panel-{{ service.pk }} [onclick*="classList.toggle"]').forEach(function(header) {
+    header.addEventListener('click', function() {
+      var arrow = header.querySelector('svg');
+      if (arrow) {
+        var collapsed = header.nextElementSibling.classList.contains('hidden');
+        arrow.style.transform = collapsed ? '' : 'rotate(-90deg)';
+      }
+    });
+  });
+})();
+</script>

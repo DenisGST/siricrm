@@ -18,6 +18,7 @@
         <tr>
           <th>Услуга</th>
           <th>Наименование статуса</th>
+          <th>Ответственный отдел</th>
           <th>Порядок</th>
           <th>Статус</th>
           <th></th>
@@ -28,6 +29,7 @@
         <tr>
           <td><span class="badge badge-outline">{{ it.service_name.short_name }}</span></td>
           <td>{{ it.name }}</td>
+          <td>{{ it.department.name|default:"—" }}</td>
           <td>{{ it.order }}</td>
           <td>
             {% if it.is_active %}
@@ -46,7 +48,7 @@
           </td>
         </tr>
         {% empty %}
-        <tr><td colspan="5" class="text-center text-base-content/60">Статусов нет</td></tr>
+        <tr><td colspan="6" class="text-center text-base-content/60">Статусов нет</td></tr>
         {% endfor %}
       </tbody>
     </table>

@@ -1,0 +1,15 @@
+{% if clients %}
+  {% for c in clients %}
+  <div class="px-3 py-2 hover:bg-base-200 cursor-pointer text-sm"
+       data-client-id="{{ c.id }}"
+       data-client-name="{{ c.last_name }} {{ c.first_name }}">
+    <span class="font-medium">{{ c.last_name }} {{ c.first_name }}</span>
+    {% if c.patronymic %} {{ c.patronymic }}{% endif %}
+    {% if c.phone %}<span class="text-base-content/50 ml-2 text-xs">{{ c.phone }}</span>{% endif %}
+  </div>
+  {% endfor %}
+{% else %}
+  {% if q|length >= 2 %}
+  <div class="px-3 py-2 text-sm text-base-content/50">Ничего не найдено</div>
+  {% endif %}
+{% endif %}

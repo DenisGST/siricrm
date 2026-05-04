@@ -423,7 +423,11 @@ def kanban_column(request, status):
 
     clients = list(qs.prefetch_related("employees", "services__name").order_by("-last_message_at"))
     _annotate_ms_status(clients, request.user)
-    return render(request, "crm/partials/kanban_column.html", {"clients": clients})
+    return render(request, "crm/partials/kanban_column.html", {
+        "clients": clients,
+        "status": status,
+        "count": len(clients),
+    })
 
 
 @login_required
@@ -1142,6 +1146,7 @@ def service_edit(request, pk=None):
     if request.method == "POST":
         form = ServiceForm(request.POST, request.FILES, instance=svc, current_employee=emp)
         if form.is_valid():
+            is_new = svc is None
             svc_new = form.save(commit=False)
             uploaded = request.FILES.get("contract_file_upload")
             if uploaded:
@@ -1159,6 +1164,39 @@ def service_edit(request, pk=None):
                 svc_new.contract_file = sf
             svc_new.save()
             form.save_m2m()
+
+            if is_new and emp:
+                assigned = []
+
+                # Создатель услуги
+                ServiceEmployeeState.objects.get_or_create(service=svc_new, employee=emp)
+                assigned.append(emp)
+
+                # Руководитель отдела (если есть и отличается от создателя)
+                if emp.department_id:
+                    dept = emp.department
+                    if dept.manager_id:
+                        try:
+                            head = Employee.objects.get(user_id=dept.manager_id)
+                            if head != emp:
+                                ServiceEmployeeState.objects.get_or_create(
+                                    service=svc_new, employee=head
+                                )
+                                assigned.append(head)
+                        except Employee.DoesNotExist:
+                            pass
+
+                # Лог клиента
+                if svc_new.client_id and assigned:
+                    svc_label = svc_new.numb_dogovor or svc_new.name.short_name
+                    names = ", ".join(a.user.get_full_name() or a.user.username for a in assigned)
+                    ClientEvent.objects.create(
+                        client_id=svc_new.client_id,
+                        event_type="employee_assigned",
+                        description=f"Услуга {svc_label}: назначены исполнители — {names}",
+                        employee=emp,
+                    )
+
             resp = HttpResponse("")
             resp["HX-Trigger"] = "serviceChanged"
             return resp
@@ -1207,58 +1245,190 @@ def service_client_search(request):
 @login_required
 def services_kanban(request):
     service_name_id = request.GET.get("service_name") or ""
-    service_names = ServiceName.objects.filter(is_active=True).order_by("short_name")
+    employee_id     = request.GET.get("employee") or ""
+    department_id   = request.GET.get("department") or ""
+    service_names   = ServiceName.objects.filter(is_active=True).order_by("short_name")
+    employees_all   = Employee.objects.filter(is_active=True).select_related("user").order_by(
+        "user__last_name", "user__first_name"
+    )
+    departments_all = Department.objects.filter(is_active=True).order_by("name")
     statuses = ServiceCommonStatus.objects.filter(is_active=True)
     if service_name_id:
         statuses = statuses.filter(service_name_id=service_name_id)
-    statuses = statuses.select_related("service_name").order_by("service_name__short_name", "order")
+    if department_id:
+        statuses = statuses.filter(department_id=department_id)
+    statuses = statuses.select_related("service_name", "department").order_by(
+        "service_name__short_name", "order"
+    )
     return render(request, "crm/kanban_services.html", {
         "statuses": statuses,
         "service_names": service_names,
+        "employees_all": employees_all,
+        "departments_all": departments_all,
         "filter_service_name": service_name_id,
+        "filter_employee": employee_id,
+        "filter_department": department_id,
     })
 
 
 @login_required
 def services_kanban_column(request, status_id):
-    status = get_object_or_404(ServiceCommonStatus, pk=status_id)
-    qs = _visible_services_qs(request.user).filter(common_status=status).order_by("-created_at")
+    status      = get_object_or_404(ServiceCommonStatus, pk=status_id)
+    employee_id = request.GET.get("employee") or ""
+    qs = _visible_services_qs(request.user).filter(common_status=status)
+    if employee_id:
+        qs = qs.filter(employees__id=employee_id)
+    qs = qs.order_by("-created_at")
+    services = list(qs[:200])
     return render(request, "crm/partials/kanban_services_column.html", {
-        "services": qs[:200], "status": status, "for_my_kanban": False,
+        "services": services, "status": status,
+        "for_my_kanban": False, "count": len(services),
     })
+
+
+@login_required
+@require_POST
+def service_move(request, pk):
+    """Drag-and-drop: смена common_status услуги между колонками канбана."""
+    service    = get_object_or_404(Service, pk=pk)
+    status_id  = request.POST.get("status_id")
+    new_status = get_object_or_404(ServiceCommonStatus, pk=status_id)
+
+    if new_status.service_name_id != service.name_id:
+        return HttpResponseBadRequest("Нельзя переместить в статус другой услуги")
+
+    old_status = service.common_status
+    if old_status == new_status:
+        return HttpResponse(status=204)
+
+    service.common_status = new_status
+    service.save(update_fields=["common_status"])
+
+    try:
+        actor = Employee.objects.get(user=request.user)
+    except Employee.DoesNotExist:
+        actor = None
+
+    ServiceLog.objects.create(
+        service=service,
+        employee=actor,
+        action="common_status_change",
+        old_common_status=old_status,
+        new_common_status=new_status,
+    )
+
+    if service.client_id:
+        svc_label  = service.numb_dogovor or service.name.short_name
+        actor_name = actor.user.get_full_name() if actor else "система"
+        ClientEvent.objects.create(
+            client_id=service.client_id,
+            event_type="status_change",
+            description=(
+                f"Услуга {svc_label}: статус изменён "
+                f"«{old_status.name}» → «{new_status.name}»"
+            ),
+            old_value=old_status.name,
+            new_value=new_status.name,
+            employee=actor,
+        )
+
+    return HttpResponse(status=204)
 
 
 # ─── Мой канбан (статусы пер-сотрудник) ───
 
 @login_required
 def my_kanban(request):
-    emp = _current_employee_from_user(request.user)
-    if not emp:
+    from itertools import groupby as _groupby
+    current_emp = _current_employee_from_user(request.user)
+    if not current_emp:
         return HttpResponse("Нужен профиль сотрудника", status=403)
-    service_name_id = request.GET.get("service_name") or ""
-    # Свои статусы
+
+    # Права на просмотр чужих канбанов
+    CAN_VIEW_OTHERS = (
+        request.user.is_superuser or
+        current_emp.role in ("head_dep", "managing_partner", "admin")
+    )
+
+    service_name_id  = request.GET.get("service_name") or ""
+    common_status_id = request.GET.get("common_status") or ""
+    viewed_emp_id    = request.GET.get("viewed_employee") or ""
+
+    # Определяем чей канбан показываем
+    if CAN_VIEW_OTHERS and viewed_emp_id:
+        emp = get_object_or_404(Employee, pk=viewed_emp_id, is_active=True)
+    else:
+        emp = current_emp
+        viewed_emp_id = ""
+
     emp_statuses_qs = ServiceEmployeeStatus.objects.filter(employee=emp, is_active=True)
     if service_name_id:
         emp_statuses_qs = emp_statuses_qs.filter(common_status__service_name_id=service_name_id)
-    emp_statuses = emp_statuses_qs.select_related(
-        "common_status__service_name"
-    ).order_by("common_status__service_name__short_name", "common_status__order", "order")
-    # Перечень услуг — только те, к которым допущен сотрудник
+    if common_status_id:
+        emp_statuses_qs = emp_statuses_qs.filter(common_status_id=common_status_id)
+
+    emp_statuses = list(
+        emp_statuses_qs.select_related("common_status__service_name")
+        .order_by("common_status__service_name__short_name", "common_status__order", "order")
+    )
+
+    groups = []
+    for cs, statuses_iter in _groupby(emp_statuses, key=lambda s: s.common_status_id):
+        statuses_list = list(statuses_iter)
+        groups.append({
+            "common_status": statuses_list[0].common_status,
+            "statuses": statuses_list,
+        })
+
+    all_cs_ids = ServiceEmployeeStatus.objects.filter(
+        employee=emp, is_active=True
+    ).values_list("common_status_id", flat=True).distinct()
+    common_statuses = ServiceCommonStatus.objects.filter(
+        id__in=all_cs_ids
+    ).select_related("service_name").order_by("service_name__short_name", "order")
+
     service_names = emp.services_allowed.filter(is_active=True).order_by("short_name")
+
+    # Список сотрудников для фильтра (только для руководителей)
+    employees_for_filter = []
+    if CAN_VIEW_OTHERS:
+        employees_for_filter = (
+            Employee.objects.filter(is_active=True)
+            .exclude(pk=current_emp.pk)
+            .select_related("user", "department")
+            .order_by("department__name", "user__last_name", "user__first_name")
+        )
+
     return render(request, "crm/kanban_my.html", {
-        "statuses": emp_statuses,
+        "groups": groups,
         "service_names": service_names,
+        "common_statuses": common_statuses,
         "filter_service_name": service_name_id,
+        "filter_common_status": common_status_id,
+        "can_view_others": CAN_VIEW_OTHERS,
+        "employees_for_filter": employees_for_filter,
+        "viewed_emp": emp if emp != current_emp else None,
+        "viewed_emp_id": viewed_emp_id,
     })
 
 
 @login_required
 def my_kanban_column(request, status_id):
-    emp = _current_employee_from_user(request.user)
-    if not emp:
+    current_emp = _current_employee_from_user(request.user)
+    if not current_emp:
         return HttpResponse("", status=403)
+
+    viewed_emp_id = request.GET.get("viewed_employee") or ""
+    CAN_VIEW_OTHERS = (
+        request.user.is_superuser or
+        current_emp.role in ("head_dep", "managing_partner", "admin")
+    )
+    if CAN_VIEW_OTHERS and viewed_emp_id:
+        emp = get_object_or_404(Employee, pk=viewed_emp_id, is_active=True)
+    else:
+        emp = current_emp
+
     status = get_object_or_404(ServiceEmployeeStatus, pk=status_id, employee=emp)
-    # Услуги, где текущий сотрудник имеет такой статус.
     service_ids = ServiceEmployeeState.objects.filter(
         employee=emp, status=status,
     ).values_list("service_id", flat=True)
@@ -1271,9 +1441,61 @@ def my_kanban_column(request, status_id):
         )
         .order_by("-created_at")
     )
+    services = list(qs[:200])
     return render(request, "crm/partials/kanban_services_column.html", {
-        "services": qs[:200], "status": status, "for_my_kanban": True, "current_employee": emp,
+        "services": services, "status": status,
+        "for_my_kanban": True, "current_employee": emp,
+        "count": len(services),
+        "drag_fn_start": "myDragStart",
+        "drag_fn_end": "myDragEnd",
     })
+
+
+@login_required
+@require_POST
+def service_my_move(request, pk):
+    """Drag-and-drop в Моём канбане: смена личного статуса услуги."""
+    emp = _current_employee_from_user(request.user)
+    if not emp:
+        return HttpResponse("", status=403)
+
+    service    = get_object_or_404(Service, pk=pk)
+    status_id  = request.POST.get("status_id")
+    new_status = get_object_or_404(ServiceEmployeeStatus, pk=status_id, employee=emp)
+
+    state = ServiceEmployeeState.objects.filter(service=service, employee=emp).first()
+    if not state:
+        return HttpResponseBadRequest("Нет состояния для этой услуги")
+
+    old_status = state.status
+    if old_status == new_status:
+        return HttpResponse(status=204)
+
+    state.status = new_status
+    state.save(update_fields=["status"])
+
+    ServiceLog.objects.create(
+        service=service,
+        employee=emp,
+        action="status_change",
+        old_status=old_status,
+        new_status=new_status,
+    )
+
+    if service.client_id:
+        svc_label = service.numb_dogovor or service.name.short_name
+        ClientEvent.objects.create(
+            client_id=service.client_id,
+            event_type="status_change",
+            description=(
+                f"Услуга {svc_label}: мой статус изменён "
+                f"«{old_status.name if old_status else '—'}» → «{new_status.name}»"
+            ),
+            old_value=old_status.name if old_status else "",
+            new_value=new_status.name,
+            employee=emp,
+        )
+    return HttpResponse(status=204)
 
 
 @login_required
@@ -1351,4 +1573,148 @@ def client_assign_employee(request, client_id):
     return render(request, "crm/partials/assign_employee_badge.html", {
         "client": client,
         "emp": new_employee,
+    })
+
+
+@login_required
+@require_POST
+def client_move(request, client_id):
+    """Drag-and-drop: смена статуса клиента между колонками канбана."""
+    client = get_object_or_404(Client, pk=client_id)
+    new_status = request.POST.get("status", "")
+    valid = {c[0] for c in Client.STATUS_CHOICES}
+    if new_status not in valid:
+        return HttpResponseBadRequest("Invalid status")
+
+    old_status = client.status
+    if old_status == new_status:
+        return HttpResponse(status=204)
+
+    client.status = new_status
+    client.save(update_fields=["status"])
+
+    STATUS_LABELS = dict(Client.STATUS_CHOICES)
+    try:
+        actor = Employee.objects.get(user=request.user)
+    except Employee.DoesNotExist:
+        actor = None
+
+    from apps.crm.models import ClientEvent
+    ClientEvent.objects.create(
+        client=client,
+        event_type="status_change",
+        description=(
+            f"Статус изменён: {STATUS_LABELS.get(old_status, old_status)} "
+            f"→ {STATUS_LABELS.get(new_status, new_status)}"
+        ),
+        old_value=STATUS_LABELS.get(old_status, old_status),
+        new_value=STATUS_LABELS.get(new_status, new_status),
+        employee=actor,
+    )
+    return HttpResponse(status=204)
+
+
+@login_required
+def service_employee_picker(request, pk):
+    """HTMX: ��одалка назначения исполнителей услуги."""
+    service = get_object_or_404(Service, pk=pk)
+    return _render_assign_modal(request, service)
+
+
+def _render_assign_modal(request, service):
+    assigned_ids = set(
+        service.employee_states.values_list("employee_id", flat=True)
+    )
+    departments = (
+        Department.objects.filter(is_active=True)
+        .prefetch_related(
+            Prefetch(
+                "employees",
+                queryset=Employee.objects.filter(is_active=True)
+                    .select_related("user")
+                    .order_by("user__last_name", "user__first_name"),
+            )
+        )
+        .order_by("name")
+    )
+    no_dept = Employee.objects.filter(
+        is_active=True, department__isnull=True
+    ).select_related("user").order_by("user__last_name", "user__first_name")
+
+    return render(request, "crm/partials/service_assign_modal.html", {
+        "service": service,
+        "departments": departments,
+        "no_dept": no_dept,
+        "assigned_ids": assigned_ids,
+    })
+
+
+@login_required
+@require_POST
+def service_employee_toggle(request, pk):
+    """HTMX: добавить или убрать исполнителя услуги."""
+    service     = get_object_or_404(Service, pk=pk)
+    employee_id = request.POST.get("employee_id")
+    employee    = get_object_or_404(Employee, pk=employee_id, is_active=True)
+
+    state = ServiceEmployeeState.objects.filter(service=service, employee=employee).first()
+    if state:
+        state.delete()
+        action = "unassigned"
+    else:
+        ServiceEmployeeState.objects.create(service=service, employee=employee)
+        action = "assigned"
+
+    try:
+        actor = Employee.objects.get(user=request.user)
+    except Employee.DoesNotExist:
+        actor = None
+
+    ServiceLog.objects.create(
+        service=service,
+        employee=actor,
+        action=action,
+    )
+
+    if service.client_id:
+        emp_name = employee.user.get_full_name() or employee.user.username
+        svc_label = service.numb_dogovor or service.name.short_name
+        if action == "assigned":
+            desc = f"Услуга {svc_label}: назначен исполнитель — {emp_name}"
+        else:
+            desc = f"Услуга {svc_label}: снят исполнитель — {emp_name}"
+        ClientEvent.objects.create(
+            client_id=service.client_id,
+            event_type="employee_assigned",
+            description=desc,
+            employee=actor,
+        )
+
+    assigned_ids = list(
+        service.employee_states.values_list("employee_id", flat=True)
+    )
+    assigned_count = len(assigned_ids)
+
+    # JSON-ответ для fetch из модалки
+    if request.POST.get("from_modal"):
+        from django.http import JsonResponse as _JR
+        states_qs = service.employee_states.select_related("employee__user", "status").all()
+        from apps.crm.templatetags.crm_tags import short_name as _sn
+        badges_html = "".join(
+            f'<span class="badge badge-outline text-xs" '
+            f'title="{st.employee.user.get_full_name()}">'
+            f'{_sn(st.employee)}</span>'
+            for st in states_qs
+        ) or '<span class="text-xs text-base-content/40">исполнителей нет</span>'
+        return _JR({
+            "assigned": action == "assigned",
+            "employee_id": str(employee_id),
+            "assigned_count": assigned_count,
+            "badges_html": badges_html,
+        })
+
+    states = service.employee_states.select_related("employee__user", "status").all()
+    return render(request, "crm/partials/service_employee_list.html", {
+        "service": service,
+        "states": states,
     })

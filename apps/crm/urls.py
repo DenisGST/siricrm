@@ -33,6 +33,7 @@ urlpatterns = [
     path("clients/<uuid:client_id>/address/<uuid:address_id>/", views.address_form, name="address_edit"),
     path("clients/<uuid:client_id>/address/<uuid:address_id>/delete/", views.address_delete, name="address_delete"),
     path("clients/<uuid:client_id>/close-dialog/", views.cycle_dialog_status, name="close_dialog"),
+    path("clients/<uuid:client_id>/move/", views.client_move, name="client_move"),
     path("clients/<uuid:client_id>/assign-employee/", views.client_assign_employee_picker, name="client_assign_employee_picker"),
     path("clients/<uuid:client_id>/assign-employee/set/", views.client_assign_employee, name="client_assign_employee"),
     path("clients/<uuid:client_id>/messenger-status/", views.messenger_status_badge, name="messenger_status_badge"),
@@ -52,6 +53,10 @@ urlpatterns = [
     path("services/client-search/", views.service_client_search, name="service_client_search"),
 
     # Канбаны услуг
+    path("services/<uuid:pk>/move/", views.service_move, name="service_move"),
+    path("services/<uuid:pk>/my-move/", views.service_my_move, name="service_my_move"),
+    path("services/<uuid:pk>/employees/picker/", views.service_employee_picker, name="service_employee_picker"),
+    path("services/<uuid:pk>/employees/toggle/", views.service_employee_toggle, name="service_employee_toggle"),
     path("services-kanban/", views.services_kanban, name="services_kanban"),
     path("services-kanban/col/<uuid:status_id>/", views.services_kanban_column, name="services_kanban_column"),
     path("my-kanban/", views.my_kanban, name="my_kanban"),

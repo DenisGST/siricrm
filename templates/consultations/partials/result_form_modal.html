@@ -1,0 +1,46 @@
+<dialog id="consult-result-ref-modal" class="modal modal-middle modal-open">
+  <div class="modal-box w-full max-w-sm">
+    <h3 class="font-bold text-lg mb-4">{% if obj %}Редактировать{% else %}Новый итог{% endif %}</h3>
+    <form hx-post="{% if obj %}{% url 'consultations:result_edit' obj.pk %}{% else %}{% url 'consultations:result_add' %}{% endif %}"
+          hx-target="#consult-result-ref-modal" hx-swap="outerHTML" class="space-y-3">
+      {% csrf_token %}
+      <div>
+        <label class="label py-1"><span class="label-text">Наименование</span></label>
+        <input type="text" name="name" value="{{ form.name.value|default:'' }}"
+               class="input input-bordered input-sm w-full" required>
+      </div>
+      <div>
+        <label class="label py-1"><span class="label-text">Цвет (daisyUI класс)</span></label>
+        <input type="text" name="color" value="{{ form.color.value|default:'badge-neutral' }}"
+               class="input input-bordered input-sm w-full"
+               placeholder="badge-success, badge-error, badge-warning, badge-info...">
+        <div class="flex flex-wrap gap-1 mt-1">
+          {% for cls in "badge-neutral badge-success badge-error badge-warning badge-info badge-primary badge-secondary badge-accent"|split:" " %}
+          <span class="badge {{ cls }} badge-sm cursor-pointer"
+                onclick="document.querySelector('[name=color]').value='{{ cls }}'">{{ cls|slice:"6:" }}</span>
+          {% endfor %}
+        </div>
+      </div>
+      <div>
+        <label class="label py-1"><span class="label-text">Порядок</span></label>
+        <input type="number" name="order" value="{{ form.order.value|default:0 }}"
+               class="input input-bordered input-sm w-full">
+      </div>
+      <div>
+        <label class="label cursor-pointer justify-start gap-2">
+          <input type="checkbox" name="is_active" class="checkbox checkbox-sm"
+                 {% if form.is_active.value %}checked{% endif %}>
+          <span class="label-text">Активен</span>
+        </label>
+      </div>
+      <div class="modal-action">
+        <button type="submit" class="btn btn-primary btn-sm">Сохранить</button>
+        <button type="button" class="btn btn-sm" onclick="this.closest('dialog').remove()">Отмена</button>
+      </div>
+    </form>
+  </div>
+  <form method="dialog" class="modal-backdrop">
+    <button onclick="this.closest('dialog').remove()">close</button>
+  </form>
+</dialog>
+<script>document.getElementById('consult-result-ref-modal')?.showModal();</script>
