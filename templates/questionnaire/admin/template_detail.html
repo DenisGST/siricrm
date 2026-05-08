@@ -1,0 +1,79 @@
+{% load icons %}
+<div class="flex items-center gap-3 mb-4">
+  <button class="btn btn-xs btn-ghost"
+          hx-get="{% url 'questionnaire:template_list' %}"
+          hx-target="closest .p-4" hx-swap="innerHTML">
+    ‹ Назад
+  </button>
+  <h3 class="font-semibold text-sm">{{ tmpl.title }}</h3>
+  <span class="text-xs text-base-content/50">{{ tmpl.service_name.short_name }}</span>
+</div>
+
+<div id="tmpl-pages"
+     hx-trigger="reloadTemplate from:body"
+     hx-get="{% url 'questionnaire:template_detail' tmpl.pk %}"
+     hx-target="closest .p-4" hx-swap="innerHTML">
+
+  {% for page in pages %}
+  <div class="mb-4 border border-base-300 rounded-lg overflow-hidden">
+    <div class="flex items-center justify-between px-3 py-2 bg-base-200">
+      <span class="font-medium text-sm">
+        Стр. {{ forloop.counter }}: {{ page.title|default:"без названия" }}
+      </span>
+      <div class="flex gap-1">
+        <button class="btn btn-xs btn-ghost text-error"
+                hx-post="{% url 'questionnaire:page_delete' page.pk %}"
+                hx-confirm="Удалить страницу со всеми вопросами?"
+                hx-target="closest .p-4" hx-swap="innerHTML">
+          {% icon "trash" size=12 %}
+        </button>
+      </div>
+    </div>
+
+    <div class="p-3 space-y-2">
+      {% for q in page.questions.all %}
+      <div class="flex items-start justify-between gap-2 p-2 rounded bg-base-100">
+        <div class="flex-1 min-w-0">
+          <span class="text-xs font-mono text-base-content/40 mr-1">#{{ forloop.counter }}</span>
+          <span class="text-sm">{{ q.text }}</span>
+          <span class="badge badge-xs badge-ghost ml-1">{{ q.get_question_type_display }}</span>
+          {% if q.is_required %}<span class="badge badge-xs badge-error ml-1">обяз.</span>{% endif %}
+          {% for ch in q.choices.all %}
+            <div class="text-xs text-base-content/50 ml-4">· {{ ch.text }}</div>
+          {% endfor %}
+        </div>
+        <div class="flex gap-1 shrink-0">
+          <button class="btn btn-xs btn-ghost"
+                  hx-get="{% url 'questionnaire:question_edit' page.pk q.pk %}"
+                  hx-target="closest .p-4" hx-swap="innerHTML">
+            {% icon "pencil" size=12 %}
+          </button>
+          <button class="btn btn-xs btn-ghost text-error"
+                  hx-post="{% url 'questionnaire:question_delete' q.pk %}"
+                  hx-confirm="Удалить вопрос?"
+                  hx-target="closest .p-4" hx-swap="innerHTML">
+            {% icon "trash" size=12 %}
+          </button>
+        </div>
+      </div>
+      {% empty %}
+      <p class="text-xs text-base-content/40 text-center py-2">Нет вопросов</p>
+      {% endfor %}
+
+      <button class="btn btn-xs btn-outline w-full mt-1"
+              hx-get="{% url 'questionnaire:question_add' page.pk %}"
+              hx-target="closest .p-4" hx-swap="innerHTML">
+        + Добавить вопрос
+      </button>
+    </div>
+  </div>
+  {% empty %}
+  <p class="text-sm text-base-content/50 text-center py-4">Страниц пока нет</p>
+  {% endfor %}
+
+  <button class="btn btn-sm btn-outline w-full mt-2"
+          hx-get="{% url 'questionnaire:page_add' tmpl.pk %}"
+          hx-target="closest .p-4" hx-swap="innerHTML">
+    + Добавить страницу
+  </button>
+</div>

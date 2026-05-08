@@ -481,9 +481,15 @@ async def start_userbot():
 
                 if created:
                     logger.info(f"✨ Created new client {telegram_id} with phone {phone}")
-                    from apps.crm.models import ClientEmployee
+                    from apps.crm.models import ClientEmployee, ClientEvent
                     await sync_to_async(ClientEmployee.objects.get_or_create)(
                         client=db_client, employee=sirius_bot_employee,
+                    )
+                    await sync_to_async(ClientEvent.objects.create)(
+                        client=db_client,
+                        event_type="first_contact",
+                        description="Первое обращение через Telegram",
+                        employee=sirius_bot_employee,
                     )
                     logger.info(f"🤖 Assigned Sirius Bot to new client {telegram_id}")
                 else:

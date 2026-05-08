@@ -44,7 +44,14 @@
       {% if svcs %}
         <div class="flex flex-wrap gap-1 mt-1">
           {% for svc in svcs %}
-            <span class="badge badge-sm badge-ghost text-xs">{{ svc.name.short_name }}</span>
+            <span class="badge badge-ghost cursor-pointer hover:badge-primary transition-colors font-medium"
+                  style="font-size:0.8rem;padding:0.35rem 0.65rem;"
+                  hx-get="{% url 'service_edit' svc.pk %}"
+                  hx-target="body"
+                  hx-swap="beforeend"
+                  hx-on::after-request="document.getElementById('service-modal')?.showModal()"
+                  onclick="event.stopPropagation()"
+                  title="{{ svc.name.name }}">{{ svc.name.short_name }}</span>
           {% endfor %}
         </div>
       {% else %}
@@ -62,12 +69,56 @@
       <button
         type="button"
         class="kanban-action-btn"
-        title="Мессенджер"
+        title="Чат с клиентом"
         onclick="event.stopPropagation(); openTelegramChatModalForClient('{{ client.id }}')"
       >
         <span id="ms-status-kanban-{{ client.id }}" class="inline-flex">{% include "crm/partials/telegram_by_status.html" with status=client.ms_status %}</span>
       </button>
       {% endif %}
+      {% if client.phone %}
+      <a href="tel:{{ client.phone }}"
+         class="kanban-action-btn text-base-content/50"
+         title="{{ client.phone }}"
+         onclick="event.stopPropagation()">
+        {% icon "phone" size=18 %}
+      </a>
+      {% endif %}
+      <button
+        type="button"
+        class="kanban-action-btn text-base-content/50"
+        hx-get="{% url 'service_create' %}?client={{ client.id }}"
+        hx-target="body"
+        hx-swap="beforeend"
+        title="Новая услуга"
+        onclick="event.stopPropagation()"
+        hx-on:click="event.stopPropagation()"
+        hx-on::after-request="document.getElementById('service-modal')?.showModal()"
+      >
+        {% icon "file-plus" size=18 %}
+      </button>
+      <button
+        type="button"
+        class="kanban-action-btn text-base-content/50"
+        hx-get="{% url 'files:manager' client.id %}"
+        hx-target="body"
+        hx-swap="beforeend"
+        title="Файлы клиента"
+        onclick="event.stopPropagation()"
+        hx-on:click="event.stopPropagation()">
+        {% icon "folder" size=18 %}
+      </button>
+      <button
+        type="button"
+        class="kanban-action-btn text-base-content/50"
+        hx-get="{% url 'questionnaire:client_responses' client.id %}"
+        hx-target="#quiz-modal-container"
+        hx-swap="innerHTML"
+        title="Анкеты клиента"
+        onclick="event.stopPropagation()"
+        hx-on:click="event.stopPropagation()"
+      >
+        {% icon "file-text" size=18 %}
+      </button>
       <button
         type="button"
         class="kanban-action-btn text-base-content/50"

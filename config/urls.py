@@ -45,9 +45,10 @@ urlpatterns = [
     path('', include('apps.crm.urls')),
 
     # files view
-    path("files/", include("apps.files.urls")),
+    path("files/", include(("apps.files.urls", "files"))),
     
     path("", include("apps.core.urls")),
     path("consultations/", include("apps.consultations.urls", namespace="consultations")),
+    path("questionnaire/", include("apps.questionnaire.urls", namespace="questionnaire")),
     path("robots.txt", serve, {"document_root": settings.STATIC_ROOT, "path": "robots.txt"}),
 ]

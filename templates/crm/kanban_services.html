@@ -14,17 +14,6 @@
       {% endfor %}
     </select>
 
-    <select name="employee"
-            style="height:1.6rem;font-size:0.72rem;padding:0 1.5rem 0 0.5rem;border:1px solid oklch(var(--bc)/0.2);border-radius:6px;background-color:transparent;cursor:pointer;appearance:auto;"
-            onchange="this.form.requestSubmit()">
-      <option value="">— все сотрудники —</option>
-      {% for e in employees_all %}
-        <option value="{{ e.id }}" {% if filter_employee == e.id|stringformat:"s" %}selected{% endif %}>
-          {{ e.user.last_name }} {{ e.user.first_name }}
-        </option>
-      {% endfor %}
-    </select>
-
     <select name="department"
             style="height:1.6rem;font-size:0.72rem;padding:0 1.5rem 0 0.5rem;border:1px solid oklch(var(--bc)/0.2);border-radius:6px;background-color:transparent;cursor:pointer;appearance:auto;"
             onchange="this.form.requestSubmit()">
@@ -32,6 +21,17 @@
       {% for d in departments_all %}
         <option value="{{ d.id }}" {% if filter_department == d.id|stringformat:"s" %}selected{% endif %}>
           {{ d.name }}
+        </option>
+      {% endfor %}
+    </select>
+
+    <select name="employee"
+            style="height:1.6rem;font-size:0.72rem;padding:0 1.5rem 0 0.5rem;border:1px solid oklch(var(--bc)/0.2);border-radius:6px;background-color:transparent;cursor:pointer;appearance:auto;"
+            onchange="this.form.requestSubmit()">
+      <option value="">— все сотрудники —</option>
+      {% for e in employees_all %}
+        <option value="{{ e.id }}" {% if filter_employee == e.id|stringformat:"s" %}selected{% endif %}>
+          {{ e.user.last_name }} {{ e.user.first_name }}
         </option>
       {% endfor %}
     </select>
@@ -54,7 +54,7 @@
       <span id="svc-kanban-count-{{ st.id }}" class="badge badge-sm badge-ghost">0</span>
     </div>
     <div id="svc-kanban-{{ st.id }}"
-         class="space-y-2 min-h-[50px]"
+         class="space-y-2 min-h-[50px] kanban-col-body"
          hx-get="{% url 'services_kanban_column' st.id %}"
          hx-trigger="load, serviceChanged from:body"
          hx-include="#services-kanban-filter"

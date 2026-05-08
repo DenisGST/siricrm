@@ -1,0 +1,21 @@
+{% load icons file_tags %}
+{% for folder in node %}
+<li class="tree-item{% if active and folder.pk == active.pk %} tree-item--active{% endif %}">
+  <div class="tree-label"
+       hx-get="{% url 'files:folder_contents' folder.pk %}"
+       hx-target="#files-main"
+       hx-swap="innerHTML"
+       onclick="filesTreeSelect(this)">
+    <span class="tree-icon">{% if folder|has_children %}📂{% else %}📁{% endif %}</span>
+    <span class="tree-name">{{ folder.name }}</span>
+    {% if folder|has_children %}
+    <span class="tree-toggle" onclick="event.stopPropagation(); filesTreeToggle(this.closest('.tree-item'))">▸</span>
+    {% endif %}
+  </div>
+  {% if folder|has_children %}
+  <ul class="tree-children" style="display:none;">
+    {% include "files/partials/tree_node.html" with node=folder|children active=active %}
+  </ul>
+  {% endif %}
+</li>
+{% endfor %}

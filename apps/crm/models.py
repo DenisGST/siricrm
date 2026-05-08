@@ -378,11 +378,18 @@ class ClientEvent(models.Model):
         # --- Корреспонденция ---
         ("letter_outgoing",  "Направлено исходящее письмо"),
         ("letter_incoming",  "Получено входящее письмо"),
+        # --- Услуги ---
+        ("service_created",  "Услуга добавлена"),
+        ("service_deleted",  "Услуга удалена"),
         # --- Консультации ---
         ("consultation_booked",      "Записан на консультацию"),
         ("consultation_result",      "Результат консультации"),
         ("consultation_transferred", "Консультация перенесена"),
         ("consultation_edited",      "Консультация изменена"),
+        # --- Анкеты ---
+        ("questionnaire_created", "Анкета создана"),
+        ("questionnaire_edited",  "Анкета отредактирована"),
+        ("questionnaire_deleted", "Анкета удалена"),
         # --- Система ---
         ("system",           "Системное событие"),
     ]

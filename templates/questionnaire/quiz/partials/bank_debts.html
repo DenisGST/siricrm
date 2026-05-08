@@ -1,0 +1,18 @@
+{% comment %}
+  Variables: key, ans = {"entries": [...]}
+{% endcomment %}
+<div id="bd-{{ key }}">
+
+  <!-- Сохранённые записи -->
+  <div id="bank-list-{{ key }}">
+    {% for entry in ans.entries %}
+      {% include "questionnaire/quiz/partials/bank_entry.html" with idx=forloop.counter0 entry=entry key=key %}
+    {% endfor %}
+  </div>
+
+  <button type="button" onclick="bankAddEntry('{{ key }}')"
+          class="btn btn-sm btn-outline mt-1">+ Добавить банк</button>
+
+
+
+</div>

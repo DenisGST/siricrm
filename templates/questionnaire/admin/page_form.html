@@ -1,0 +1,22 @@
+{% load icons %}
+<div class="flex items-center gap-3 mb-4">
+  <button class="btn btn-xs btn-ghost"
+          hx-get="{% url 'questionnaire:template_detail' tmpl.pk %}"
+          hx-target="closest .p-4" hx-swap="innerHTML">‹ Назад</button>
+  <h3 class="font-semibold text-sm">Новая страница</h3>
+</div>
+<form hx-post="{% url 'questionnaire:page_add' tmpl.pk %}"
+      hx-target="closest .p-4" hx-swap="innerHTML" class="space-y-3">
+  {% csrf_token %}
+  <div>
+    <label class="label py-1"><span class="label-text">Заголовок страницы</span></label>
+    <input type="text" name="title" class="input input-bordered input-sm w-full"
+           placeholder="напр. «Общая информация»">
+  </div>
+  <div class="flex gap-2">
+    <button class="btn btn-primary btn-sm">Добавить</button>
+    <button type="button" class="btn btn-sm"
+            hx-get="{% url 'questionnaire:template_detail' tmpl.pk %}"
+            hx-target="closest .p-4" hx-swap="innerHTML">Отмена</button>
+  </div>
+</form>

@@ -68,10 +68,10 @@ class ServiceForm(forms.ModelForm):
     common_status = forms.ModelChoiceField(
         queryset=ServiceCommonStatus.objects.filter(is_active=True),
         required=False, label="Общий статус услуги",
-        widget=forms.Select(attrs=_sel),
+        widget=forms.Select(attrs={**_sel, "form": "svc-form"}),
     )
     agent = forms.ModelChoiceField(
-        queryset=Client.objects.all(), required=False, label="Агент",
+        queryset=Client.objects.none(), required=False, label="Агент",
     )
 
     class Meta:
@@ -95,13 +95,18 @@ class ServiceForm(forms.ModelForm):
     def __init__(self, *args, current_employee=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.current_employee = current_employee
-        # Ограничить common_status статусами выбранной услуги.
-        name_id = (self.data.get("name") or self.initial.get("name")
-                   or (self.instance.name_id if self.instance.pk else None))
-        if name_id:
-            self.fields["common_status"].queryset = ServiceCommonStatus.objects.filter(
-                service_name_id=name_id, is_active=True,
-            ).order_by("order", "name")
+        self.fields["common_status"].queryset = ServiceCommonStatus.objects.filter(
+            is_active=True,
+        ).order_by("order", "name")
+
+        # agent выбирается живым поиском — грузим только нужного клиента, не всю базу
+        agent_pk = (
+            self.data.get("agent")
+            or (self.instance.agent_id if self.instance and self.instance.pk else None)
+        )
+        self.fields["agent"].queryset = (
+            Client.objects.filter(pk=agent_pk) if agent_pk else Client.objects.none()
+        )
 
     def clean_name(self):
         sn = self.cleaned_data.get("name")

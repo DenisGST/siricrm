@@ -1,0 +1,34 @@
+{% comment %}Variables: key, ans = {has_sold: "no"/"yes", entries: [...]}{% endcomment %}
+{% with has_sold=ans.has_sold %}
+<div id="sold-{{ key }}">
+
+  <div class="space-y-2 mb-3">
+    <label class="flex items-center gap-2 cursor-pointer text-sm">
+      <input type="radio" name="{{ key }}_has" value="no"
+             style="accent-color:#0079d3;width:15px;height:15px;cursor:pointer;"
+             onchange="soldToggle('{{ key }}')"
+             {% if not has_sold or has_sold == "no" %}checked{% endif %}>
+      Сделок не было
+    </label>
+    <label class="flex items-center gap-2 cursor-pointer text-sm">
+      <input type="radio" name="{{ key }}_has" value="yes"
+             style="accent-color:#0079d3;width:15px;height:15px;cursor:pointer;"
+             onchange="soldToggle('{{ key }}')"
+             {% if has_sold == "yes" %}checked{% endif %}>
+      Были сделки по отчуждению — заполните детали ниже
+    </label>
+  </div>
+
+  <div id="sold-assets-{{ key }}"
+       {% if not has_sold or has_sold != "yes" %}style="display:none;"{% endif %}>
+    <div id="sold-list-{{ key }}">
+      {% for entry in ans.entries %}
+        {% include "questionnaire/quiz/partials/sold_entry.html" with idx=forloop.counter0 entry=entry key=key %}
+      {% endfor %}
+    </div>
+    <button type="button" onclick="soldAddEntry('{{ key }}')"
+            class="btn btn-sm btn-outline mt-1">+ Добавить сделку</button>
+  </div>
+
+</div>
+{% endwith %}

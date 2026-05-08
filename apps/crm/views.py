@@ -345,16 +345,19 @@ def _annotate_ms_status(clients, user):
 @login_required
 def kanban(request):
     # фильтры из querystring
-    employee_id = request.GET.get("employee") or ""
-    ms_status = request.GET.get("ms_status") or ""
+    employee_id         = request.GET.get("employee") or ""
+    service_employee_id = request.GET.get("service_employee") or ""
+    ms_status    = request.GET.get("ms_status") or ""
     created_from = request.GET.get("created_from") or ""
-    created_to = request.GET.get("created_to") or ""
+    created_to   = request.GET.get("created_to") or ""
 
     base_qs = Client.objects.all()
     if employee_id == "__none__":
         base_qs = base_qs.filter(employees__isnull=True)
     elif employee_id:
         base_qs = base_qs.filter(employees__id=employee_id)
+    if service_employee_id:
+        base_qs = base_qs.filter(services__employees__id=service_employee_id).distinct()
     if created_from:
         base_qs = base_qs.filter(created_at__gte=created_from)
     if created_to:
@@ -380,14 +383,16 @@ def kanban(request):
     for group in (unknowns, leads, actives, closeds, archives):
         _annotate_ms_status(group, request.user)
 
+    employees_all = Employee.objects.filter(is_active=True).select_related("user").order_by("user__last_name", "user__first_name")
     context = {
         "unknowns": unknowns, "leads": leads, "actives": actives,
         "closeds": closeds, "archives": archives,
-        "filter_employee": employee_id,
-        "filter_ms_status": ms_status,
-        "filter_created_from": created_from,
-        "filter_created_to": created_to,
-        "employees_all": Employee.objects.select_related("user").order_by("user__last_name", "user__first_name"),
+        "filter_employee":         employee_id,
+        "filter_service_employee": service_employee_id,
+        "filter_ms_status":        ms_status,
+        "filter_created_from":     created_from,
+        "filter_created_to":       created_to,
+        "employees_all":           employees_all,
     }
     template = "crm/kanban.html"
     if request.headers.get("HX-Request"):
@@ -397,16 +402,19 @@ def kanban(request):
 
 @login_required
 def kanban_column(request, status):
-    employee_id = request.GET.get("employee") or ""
-    ms_status = request.GET.get("ms_status") or ""
+    employee_id         = request.GET.get("employee") or ""
+    service_employee_id = request.GET.get("service_employee") or ""
+    ms_status    = request.GET.get("ms_status") or ""
     created_from = request.GET.get("created_from") or ""
-    created_to = request.GET.get("created_to") or ""
+    created_to   = request.GET.get("created_to") or ""
 
     qs = Client.objects.filter(status=status)
     if employee_id == "__none__":
         qs = qs.filter(employees__isnull=True)
     elif employee_id:
         qs = qs.filter(employees__id=employee_id)
+    if service_employee_id:
+        qs = qs.filter(services__employees__id=service_employee_id).distinct()
     if created_from:
         qs = qs.filter(created_at__gte=created_from)
     if created_to:
@@ -423,10 +431,19 @@ def kanban_column(request, status):
 
     clients = list(qs.prefetch_related("employees", "services__name").order_by("-last_message_at"))
     _annotate_ms_status(clients, request.user)
+
+    PAGE_SIZE = 25
+    total     = len(clients)
+    show_all  = request.GET.get("all") == "1"
+    shown     = clients if show_all else clients[:PAGE_SIZE]
+    has_more  = not show_all and total > PAGE_SIZE
+
     return render(request, "crm/partials/kanban_column.html", {
-        "clients": clients,
-        "status": status,
-        "count": len(clients),
+        "clients":   shown,
+        "status":    status,
+        "count":     total,
+        "has_more":  has_more,
+        "more_count": total - PAGE_SIZE if has_more else 0,
     })
 
 
@@ -1143,6 +1160,22 @@ def service_edit(request, pk=None):
         if not emp.services_allowed.filter(pk=svc.name_id).exists():
             return HttpResponse("Нет доступа к услуге", status=403)
 
+    preset_client_id = request.GET.get("client") or request.POST.get("_preset_client")
+    preset_client = Client.objects.filter(pk=preset_client_id).first() if preset_client_id else None
+
+    from apps.crm.models import ServiceEmployeeState, ServiceEmployeeStatus
+    import json
+    emp_state     = ServiceEmployeeState.objects.filter(service=svc, employee=emp).first() if svc and emp else None
+    emp_statuses  = ServiceEmployeeStatus.objects.filter(employee=emp, is_active=True).select_related(
+        "common_status"
+    ).order_by("common_status__order", "order", "name") if emp else ServiceEmployeeStatus.objects.none()
+
+    emp_statuses_by_common = {}
+    for s in emp_statuses:
+        key = str(s.common_status_id)
+        emp_statuses_by_common.setdefault(key, []).append({"id": str(s.id), "name": s.name})
+    emp_statuses_json = json.dumps(emp_statuses_by_common)
+
     if request.method == "POST":
         form = ServiceForm(request.POST, request.FILES, instance=svc, current_employee=emp)
         if form.is_valid():
@@ -1187,24 +1220,47 @@ def service_edit(request, pk=None):
                             pass
 
                 # Лог клиента
-                if svc_new.client_id and assigned:
+                if svc_new.client_id:
                     svc_label = svc_new.numb_dogovor or svc_new.name.short_name
-                    names = ", ".join(a.user.get_full_name() or a.user.username for a in assigned)
                     ClientEvent.objects.create(
                         client_id=svc_new.client_id,
-                        event_type="employee_assigned",
-                        description=f"Услуга {svc_label}: назначены исполнители — {names}",
+                        event_type="service_created",
+                        description=f"Добавлена услуга: {svc_label}",
+                        new_value=svc_new.name.short_name,
                         employee=emp,
                     )
+                    if assigned:
+                        names = ", ".join(a.user.get_full_name() or a.user.username for a in assigned)
+                        ClientEvent.objects.create(
+                            client_id=svc_new.client_id,
+                            event_type="employee_assigned",
+                            description=f"Услуга {svc_label}: назначены исполнители — {names}",
+                            employee=emp,
+                        )
+
+            # Сохраняем личный статус сотрудника
+            emp_status_id = request.POST.get("emp_status")
+            if emp and svc_new.pk:
+                state, _ = ServiceEmployeeState.objects.get_or_create(
+                    service=svc_new, employee=emp,
+                )
+                new_status = ServiceEmployeeStatus.objects.filter(pk=emp_status_id, employee=emp).first() if emp_status_id else None
+                if state.status != new_status:
+                    state.status     = new_status
+                    state.updated_by = emp
+                    state.save(update_fields=["status", "updated_by", "updated_at"])
 
             resp = HttpResponse("")
-            resp["HX-Trigger"] = "serviceChanged"
+            resp["HX-Trigger"] = '{"serviceChanged": "", "kanbanRefresh": ""}'
             return resp
     else:
-        form = ServiceForm(instance=svc, current_employee=emp)
+        initial = {"client": preset_client.pk} if preset_client else {}
+        form = ServiceForm(instance=svc, current_employee=emp, initial=initial)
 
     return render(request, "crm/services/form_modal.html", {
-        "form": form, "service": svc,
+        "form": form, "service": svc, "preset_client": preset_client,
+        "emp_state": emp_state, "emp_statuses": emp_statuses,
+        "emp_statuses_json": emp_statuses_json,
     })
 
 
@@ -1215,8 +1271,19 @@ def service_delete(request, pk):
     svc = get_object_or_404(Service, pk=pk)
     if not request.user.is_superuser and (not emp or emp.role not in ("admin", "head_dep")):
         return HttpResponse("Нет доступа", status=403)
+    client_id  = svc.client_id
+    svc_label  = svc.numb_dogovor or svc.name.short_name
+    svc_name   = svc.name.short_name
     svc.delete()
-    return HttpResponse("", headers={"HX-Trigger": "serviceChanged"})
+    if client_id:
+        ClientEvent.objects.create(
+            client_id=client_id,
+            event_type="service_deleted",
+            description=f"Удалена услуга: {svc_label}",
+            old_value=svc_name,
+            employee=emp,
+        )
+    return HttpResponse("", headers={"HX-Trigger": '{"serviceChanged": "", "kanbanRefresh": ""}'})
 
 
 @login_required

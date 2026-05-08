@@ -1,0 +1,141 @@
+{% comment %}
+  Variables: key, idx (int), entry (dict or "")
+{% endcomment %}
+<div class="mfo-entry rounded-lg mb-3"
+     style="border:1px solid #e2e8f0;background:#f8fafc;"
+     data-index="{{ idx }}" data-mfod-key="{{ key }}">
+
+  <div class="flex items-center justify-between px-3 py-2"
+       style="border-bottom:1px solid #e2e8f0;background:#f1f5f9;border-radius:8px 8px 0 0;">
+    <span class="text-xs font-semibold" style="color:#64748b;">МФО</span>
+    <button type="button" onclick="mfoRemoveEntry(this)"
+            class="btn btn-ghost btn-xs" style="color:#ef4444;padding:2px 6px;">✕</button>
+  </div>
+
+  <div class="p-3 space-y-3">
+
+    <!-- МФО -->
+    <div>
+      <div class="text-xs mb-1" style="color:#94a3b8;">МФО</div>
+      <input type="hidden" name="{{ key }}_m{{ idx }}_mfo_id"
+             id="mfo-hi-{{ key }}-m{{ idx }}" value="{{ entry.mfo_id|default:'' }}">
+      <div id="mfo-sd-{{ key }}-m{{ idx }}"
+           class="{% if not entry.mfo_name %}hidden{% endif %} items-center gap-2 px-2 py-1 rounded text-sm mb-1"
+           style="background:#eff6ff;color:#1d4ed8;{% if entry.mfo_name %}display:flex;{% endif %}">
+        <span id="mfo-sn-{{ key }}-m{{ idx }}">{{ entry.mfo_name|default:'' }}</span>
+        <button type="button" class="ml-auto opacity-60 hover:opacity-100 text-xs"
+                onclick="mfoClearSearch('{{ key }}','m{{ idx }}')">✕</button>
+      </div>
+      <input type="text" id="mfo-sr-{{ key }}-m{{ idx }}"
+             class="input input-bordered input-sm w-full mb-1"
+             placeholder="Начните вводить название МФО..."
+             data-mfo-key="{{ key }}" data-mfo-entry="m{{ idx }}"
+             autocomplete="off"
+             {% if entry.mfo_name %}style="display:none;"{% endif %}>
+      <input type="text" name="{{ key }}_m{{ idx }}_mfo_name"
+             id="mfo-nm-{{ key }}-m{{ idx }}"
+             class="input input-bordered input-xs w-full"
+             placeholder="Или введите вручную (если МФО нет в базе)"
+             value="{{ entry.mfo_name|default:'' }}">
+    </div>
+
+    <!-- Суммы -->
+    <div class="grid grid-cols-2 gap-2">
+      <div>
+        <div class="text-xs mb-1" style="color:#94a3b8;">Сумма займа (руб.)</div>
+        <input type="number" name="{{ key }}_m{{ idx }}_loan_amount"
+               class="input input-bordered input-sm w-full"
+               step="1" min="0" value="{{ entry.loan_amount|default:'' }}">
+      </div>
+      <div>
+        <div class="text-xs mb-1" style="color:#94a3b8;">Остаток долга (руб.)</div>
+        <input type="number" name="{{ key }}_m{{ idx }}_balance"
+               class="input input-bordered input-sm w-full"
+               step="1" min="0" value="{{ entry.balance|default:'' }}">
+      </div>
+    </div>
+
+    <!-- Даты -->
+    <div class="grid grid-cols-2 gap-2">
+      <div>
+        <div class="text-xs mb-1" style="color:#94a3b8;">Дата взятия займа</div>
+        <input type="date" name="{{ key }}_m{{ idx }}_date_taken"
+               class="input input-bordered input-sm w-full"
+               value="{{ entry.date_taken|default:'' }}">
+      </div>
+      <div>
+        <div class="text-xs mb-1" style="color:#94a3b8;">Дата последнего платежа</div>
+        <input type="date" name="{{ key }}_m{{ idx }}_last_payment_date"
+               class="input input-bordered input-sm w-full"
+               value="{{ entry.last_payment_date|default:'' }}">
+      </div>
+    </div>
+
+    <!-- Просрочки -->
+    <div>
+      <div class="text-xs mb-1" style="color:#94a3b8;">Просрочки</div>
+      <div class="flex gap-4">
+        <label class="flex items-center gap-1.5 cursor-pointer text-sm">
+          <input type="radio" name="{{ key }}_m{{ idx }}_overdue" value="no"
+                 style="accent-color:#0079d3;width:14px;height:14px;"
+                 {% if not entry.overdue or entry.overdue == "no" %}checked{% endif %}> Нет
+        </label>
+        <label class="flex items-center gap-1.5 cursor-pointer text-sm">
+          <input type="radio" name="{{ key }}_m{{ idx }}_overdue" value="yes"
+                 style="accent-color:#0079d3;width:14px;height:14px;"
+                 {% if entry.overdue == "yes" %}checked{% endif %}> Да
+        </label>
+      </div>
+    </div>
+
+    <!-- Решение суда -->
+    <div>
+      <div class="text-xs mb-1" style="color:#94a3b8;">Решение суда или исполнительная надпись нотариуса</div>
+      <div class="flex gap-4">
+        <label class="flex items-center gap-1.5 cursor-pointer text-sm">
+          <input type="radio" name="{{ key }}_m{{ idx }}_court_decision" value="no"
+                 style="accent-color:#0079d3;width:14px;height:14px;"
+                 {% if not entry.court_decision or entry.court_decision == "no" %}checked{% endif %}> Нет
+        </label>
+        <label class="flex items-center gap-1.5 cursor-pointer text-sm">
+          <input type="radio" name="{{ key }}_m{{ idx }}_court_decision" value="yes"
+                 style="accent-color:#0079d3;width:14px;height:14px;"
+                 {% if entry.court_decision == "yes" %}checked{% endif %}> Да
+        </label>
+      </div>
+    </div>
+
+    <!-- Коллекторы -->
+    <div>
+      <div class="text-xs mb-1" style="color:#94a3b8;">Передано коллекторам</div>
+      <div class="flex gap-4">
+        <label class="flex items-center gap-1.5 cursor-pointer text-sm">
+          <input type="radio" name="{{ key }}_m{{ idx }}_collectors" value="no"
+                 style="accent-color:#0079d3;width:14px;height:14px;"
+                 {% if not entry.collectors or entry.collectors == "no" %}checked{% endif %}> Нет
+        </label>
+        <label class="flex items-center gap-1.5 cursor-pointer text-sm">
+          <input type="radio" name="{{ key }}_m{{ idx }}_collectors" value="yes"
+                 style="accent-color:#0079d3;width:14px;height:14px;"
+                 {% if entry.collectors == "yes" %}checked{% endif %}> Да
+        </label>
+      </div>
+      <div id="mfo-col-{{ key }}-{{ idx }}" class="mt-2"
+           style="{% if entry.collectors != 'yes' %}display:none;{% endif %}">
+        <input type="text" name="{{ key }}_m{{ idx }}_collectors_name"
+               class="input input-bordered input-sm w-full"
+               placeholder="Название коллекторского агентства"
+               value="{{ entry.collectors_name|default:'' }}">
+      </div>
+    </div>
+
+    <!-- Комментарий -->
+    <div>
+      <div class="text-xs mb-1" style="color:#94a3b8;">Комментарий</div>
+      <textarea name="{{ key }}_m{{ idx }}_comment" rows="2"
+                class="textarea textarea-bordered textarea-sm w-full"
+                style="resize:vertical;">{{ entry.comment|default:'' }}</textarea>
+    </div>
+
+  </div>
+</div>

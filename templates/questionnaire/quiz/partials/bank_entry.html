@@ -1,0 +1,197 @@
+{% comment %}
+  Variables: key, idx (int or "__IDX__" for JS template), entry (dict or "")
+{% endcomment %}
+<div class="bank-entry rounded-lg mb-3"
+     style="border:1px solid #e2e8f0;background:#f8fafc;"
+     data-index="{{ idx }}" data-bd-key="{{ key }}">
+
+  <div class="flex items-center justify-between px-3 py-2"
+       style="border-bottom:1px solid #e2e8f0;background:#f1f5f9;border-radius:8px 8px 0 0;">
+    <span class="text-xs font-semibold" style="color:#64748b;">Кредит</span>
+    <button type="button" onclick="bankRemoveEntry(this)"
+            class="btn btn-ghost btn-xs" style="color:#ef4444;padding:2px 6px;">✕</button>
+  </div>
+
+  <div class="p-3 space-y-3">
+
+    <!-- Банк -->
+    <div>
+      <div class="text-xs mb-1" style="color:#94a3b8;">Банк</div>
+      <input type="hidden" name="{{ key }}_b{{ idx }}_bank_id"
+             id="bank-hi-{{ key }}-b{{ idx }}" value="{{ entry.bank_id|default:'' }}">
+      <div id="bank-sd-{{ key }}-b{{ idx }}"
+           class="{% if not entry.bank_name %}hidden{% endif %} items-center gap-2 px-2 py-1 rounded text-sm mb-1"
+           style="background:#eff6ff;color:#1d4ed8;{% if entry.bank_name %}display:flex;{% endif %}">
+        <span id="bank-sn-{{ key }}-b{{ idx }}">{{ entry.bank_name|default:'' }}</span>
+        <button type="button" class="ml-auto opacity-60 hover:opacity-100 text-xs"
+                onclick="bankClearSearch('{{ key }}','b{{ idx }}')">✕</button>
+      </div>
+      <input type="text" id="bank-sr-{{ key }}-b{{ idx }}"
+             class="input input-bordered input-sm w-full mb-1"
+             placeholder="Начните вводить название банка..."
+             data-bk-key="{{ key }}" data-bk-entry="b{{ idx }}"
+             autocomplete="off"
+             {% if entry.bank_name %}style="display:none;"{% endif %}>
+      <input type="text" name="{{ key }}_b{{ idx }}_bank_name"
+             id="bank-nm-{{ key }}-b{{ idx }}"
+             class="input input-bordered input-xs w-full"
+             placeholder="Или введите вручную (если банка нет в базе)"
+             value="{{ entry.bank_name|default:'' }}">
+    </div>
+
+    <!-- Суммы -->
+    <div class="grid grid-cols-2 gap-2">
+      <div>
+        <div class="text-xs mb-1" style="color:#94a3b8;">Сумма кредита (руб.)</div>
+        <input type="number" name="{{ key }}_b{{ idx }}_loan_amount"
+               class="input input-bordered input-sm w-full"
+               step="1" min="0" value="{{ entry.loan_amount|default:'' }}">
+      </div>
+      <div>
+        <div class="text-xs mb-1" style="color:#94a3b8;">Остаток долга (руб.)</div>
+        <input type="number" name="{{ key }}_b{{ idx }}_balance"
+               class="input input-bordered input-sm w-full"
+               step="1" min="0" value="{{ entry.balance|default:'' }}">
+      </div>
+    </div>
+
+    <!-- Даты -->
+    <div class="grid grid-cols-2 gap-2">
+      <div>
+        <div class="text-xs mb-1" style="color:#94a3b8;">Дата взятия кредита</div>
+        <input type="date" name="{{ key }}_b{{ idx }}_date_taken"
+               class="input input-bordered input-sm w-full"
+               value="{{ entry.date_taken|default:'' }}">
+      </div>
+      <div>
+        <div class="text-xs mb-1" style="color:#94a3b8;">Дата последнего платежа</div>
+        <input type="date" name="{{ key }}_b{{ idx }}_last_payment_date"
+               class="input input-bordered input-sm w-full"
+               value="{{ entry.last_payment_date|default:'' }}">
+      </div>
+    </div>
+
+    <!-- Тип кредита -->
+    <div>
+      <div class="text-xs mb-1" style="color:#94a3b8;">Тип кредита</div>
+      <div class="flex flex-wrap gap-x-6 gap-y-2">
+        <label class="flex items-center gap-1.5 cursor-pointer text-sm">
+          <input type="radio" name="{{ key }}_b{{ idx }}_loan_type" value="non_target"
+                 style="accent-color:#0079d3;width:14px;height:14px;"
+                 {% if not entry.loan_type or entry.loan_type == "non_target" %}checked{% endif %}>
+          Нецелевой
+        </label>
+        <label class="flex items-center gap-1.5 cursor-pointer text-sm">
+          <input type="radio" name="{{ key }}_b{{ idx }}_loan_type" value="target"
+                 style="accent-color:#0079d3;width:14px;height:14px;"
+                 {% if entry.loan_type == "target" %}checked{% endif %}>
+          Целевой
+        </label>
+        <label class="flex items-center gap-1.5 cursor-pointer text-sm">
+          <input type="radio" name="{{ key }}_b{{ idx }}_loan_type" value="pledged"
+                 style="accent-color:#0079d3;width:14px;height:14px;"
+                 {% if entry.loan_type == "pledged" %}checked{% endif %}>
+          Залоговый
+        </label>
+        <label class="flex items-center gap-1.5 cursor-pointer text-sm">
+          <input type="radio" name="{{ key }}_b{{ idx }}_loan_type" value="mortgage"
+                 style="accent-color:#0079d3;width:14px;height:14px;"
+                 {% if entry.loan_type == "mortgage" %}checked{% endif %}>
+          Ипотека
+        </label>
+      </div>
+    </div>
+
+    <!-- Просрочки -->
+    <div>
+      <div class="text-xs mb-1" style="color:#94a3b8;">Просрочки</div>
+      <div class="flex gap-4">
+        <label class="flex items-center gap-1.5 cursor-pointer text-sm">
+          <input type="radio" name="{{ key }}_b{{ idx }}_overdue" value="no"
+                 style="accent-color:#0079d3;width:14px;height:14px;"
+                 {% if not entry.overdue or entry.overdue == "no" %}checked{% endif %}>
+          Нет
+        </label>
+        <label class="flex items-center gap-1.5 cursor-pointer text-sm">
+          <input type="radio" name="{{ key }}_b{{ idx }}_overdue" value="yes"
+                 style="accent-color:#0079d3;width:14px;height:14px;"
+                 {% if entry.overdue == "yes" %}checked{% endif %}>
+          Да
+        </label>
+      </div>
+    </div>
+
+    <!-- Решение суда -->
+    <div>
+      <div class="text-xs mb-1" style="color:#94a3b8;">Решение суда или исполнительная надпись нотариуса</div>
+      <div class="flex gap-4">
+        <label class="flex items-center gap-1.5 cursor-pointer text-sm">
+          <input type="radio" name="{{ key }}_b{{ idx }}_court_decision" value="no"
+                 style="accent-color:#0079d3;width:14px;height:14px;"
+                 {% if not entry.court_decision or entry.court_decision == "no" %}checked{% endif %}>
+          Нет
+        </label>
+        <label class="flex items-center gap-1.5 cursor-pointer text-sm">
+          <input type="radio" name="{{ key }}_b{{ idx }}_court_decision" value="yes"
+                 style="accent-color:#0079d3;width:14px;height:14px;"
+                 {% if entry.court_decision == "yes" %}checked{% endif %}>
+          Да
+        </label>
+      </div>
+      <!-- Исполнительное производство -->
+      <div id="bank-enf-{{ key }}-{{ idx }}" class="mt-2 ml-4 pl-3"
+           style="border-left:2px solid #cbd5e1;{% if entry.court_decision != 'yes' %}display:none;{% endif %}">
+        <div class="text-xs mb-1" style="color:#94a3b8;">Исполнительное производство возбуждено</div>
+        <div class="flex gap-4">
+          <label class="flex items-center gap-1.5 cursor-pointer text-sm">
+            <input type="radio" name="{{ key }}_b{{ idx }}_enforcement" value="no"
+                   style="accent-color:#0079d3;width:14px;height:14px;"
+                   {% if not entry.enforcement or entry.enforcement == "no" %}checked{% endif %}>
+            Нет
+          </label>
+          <label class="flex items-center gap-1.5 cursor-pointer text-sm">
+            <input type="radio" name="{{ key }}_b{{ idx }}_enforcement" value="yes"
+                   style="accent-color:#0079d3;width:14px;height:14px;"
+                   {% if entry.enforcement == "yes" %}checked{% endif %}>
+            Да
+          </label>
+        </div>
+      </div>
+    </div>
+
+    <!-- Коллекторы -->
+    <div>
+      <div class="text-xs mb-1" style="color:#94a3b8;">Уведомление о передаче коллекторам</div>
+      <div class="flex gap-4">
+        <label class="flex items-center gap-1.5 cursor-pointer text-sm">
+          <input type="radio" name="{{ key }}_b{{ idx }}_collectors" value="no"
+                 style="accent-color:#0079d3;width:14px;height:14px;"
+                 {% if not entry.collectors or entry.collectors == "no" %}checked{% endif %}>
+          Нет
+        </label>
+        <label class="flex items-center gap-1.5 cursor-pointer text-sm">
+          <input type="radio" name="{{ key }}_b{{ idx }}_collectors" value="yes"
+                 style="accent-color:#0079d3;width:14px;height:14px;"
+                 {% if entry.collectors == "yes" %}checked{% endif %}>
+          Да
+        </label>
+      </div>
+      <div id="bank-col-{{ key }}-{{ idx }}" class="mt-2"
+           style="{% if entry.collectors != 'yes' %}display:none;{% endif %}">
+        <input type="text" name="{{ key }}_b{{ idx }}_collectors_name"
+               class="input input-bordered input-sm w-full"
+               placeholder="Название коллекторского агентства"
+               value="{{ entry.collectors_name|default:'' }}">
+      </div>
+    </div>
+
+    <!-- Комментарий -->
+    <div>
+      <div class="text-xs mb-1" style="color:#94a3b8;">Комментарий</div>
+      <textarea name="{{ key }}_b{{ idx }}_comment" rows="2"
+                class="textarea textarea-bordered textarea-sm w-full"
+                style="resize:vertical;">{{ entry.comment|default:'' }}</textarea>
+    </div>
+
+  </div>
+</div>

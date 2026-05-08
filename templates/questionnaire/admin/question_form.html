@@ -1,0 +1,132 @@
+{% load icons %}
+<div class="flex items-center gap-3 mb-4">
+  <button class="btn btn-xs btn-ghost"
+          hx-get="{% url 'questionnaire:template_detail' page.template.pk %}"
+          hx-target="closest .p-4" hx-swap="innerHTML">‹ Назад</button>
+  <h3 class="font-semibold text-sm">{% if q %}Редактировать вопрос{% else %}Новый вопрос{% endif %}</h3>
+</div>
+
+<form hx-post="{% if q %}{% url 'questionnaire:question_edit' page.pk q.pk %}{% else %}{% url 'questionnaire:question_add' page.pk %}{% endif %}"
+      hx-target="closest .p-4" hx-swap="innerHTML"
+      id="q-form" class="space-y-3">
+  {% csrf_token %}
+
+  <div>
+    <label class="label py-1"><span class="label-text font-medium">Текст вопроса *</span></label>
+    <textarea name="text" rows="2" class="textarea textarea-bordered w-full textarea-sm"
+              required>{{ q.text|default:"" }}</textarea>
+  </div>
+
+  <div class="grid grid-cols-2 gap-3">
+    <div>
+      <label class="label py-1"><span class="label-text">Тип вопроса</span></label>
+      <select name="question_type" id="q-type" class="select select-bordered select-sm w-full"
+              onchange="updateQFormFields()">
+        {% for val, label in question_types %}
+          <option value="{{ val }}" {% if q and q.question_type == val %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="flex items-end gap-3 pb-1">
+      <label class="flex items-center gap-2 cursor-pointer">
+        <input type="checkbox" name="is_required" class="checkbox checkbox-sm"
+               {% if q and q.is_required %}checked{% endif %}>
+        <span class="text-sm">Обязательный</span>
+      </label>
+      <label class="flex items-center gap-2 cursor-pointer" id="q-custom-text-wrap">
+        <input type="checkbox" name="allow_custom_text" class="checkbox checkbox-sm"
+               {% if q and q.allow_custom_text %}checked{% endif %}>
+        <span class="text-sm">Свой текст</span>
+      </label>
+    </div>
+  </div>
+
+  <div>
+    <label class="label py-1"><span class="label-text">Подсказка (под вопросом)</span></label>
+    <input type="text" name="hint" class="input input-bordered input-sm w-full"
+           value="{{ q.hint|default:'' }}">
+  </div>
+
+  <!-- Тип юрлица (для legal_entity_ref) -->
+  <div id="q-le-kind-wrap" style="display:none;">
+    <label class="label py-1"><span class="label-text">Тип юрлица (фильтр)</span></label>
+    <select name="legal_entity_kind" class="select select-bordered select-sm w-full">
+      <option value="">— все юрлица —</option>
+      {% for k in le_kinds %}
+        <option value="{{ k.pk }}" {% if q and q.legal_entity_kind_id == k.pk %}selected{% endif %}>{{ k.name }}</option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <!-- Варианты ответа (choice / multi_choice) -->
+  <div id="q-choices-wrap" style="display:none;">
+    <label class="label py-1"><span class="label-text font-medium">Варианты ответа</span></label>
+    <div id="q-choices-list" class="space-y-2 mb-2">
+      {% if q %}{% for ch in q.choices.all %}
+      <div class="flex gap-2 items-start">
+        <input type="text" name="choice_text" value="{{ ch.text }}"
+               class="input input-bordered input-xs flex-1" placeholder="Вариант">
+        <input type="checkbox" name="choice_extra" class="checkbox checkbox-xs mt-2"
+               {% if ch.has_extra_field %}checked{% endif %} title="Доп. поле">
+        <input type="text" name="choice_extra_hint" value="{{ ch.extra_field_hint }}"
+               class="input input-bordered input-xs w-28" placeholder="Подсказка доп.">
+        <button type="button" class="btn btn-xs btn-ghost text-error" onclick="this.closest('div').remove()">✕</button>
+      </div>
+      {% endfor %}{% endif %}
+    </div>
+    <button type="button" class="btn btn-xs btn-outline" onclick="addChoice()">+ Вариант</button>
+  </div>
+
+  <!-- Условный показ -->
+  <details class="border border-base-300 rounded-lg p-2">
+    <summary class="text-xs cursor-pointer text-base-content/60">Условный показ</summary>
+    <div class="mt-2 grid grid-cols-2 gap-2">
+      <div>
+        <label class="label py-1"><span class="label-text text-xs">Показывать если вопрос</span></label>
+        <select name="show_if_question" class="select select-bordered select-xs w-full">
+          <option value="">— всегда —</option>
+          {% for pq in page_questions %}
+            <option value="{{ pq.pk }}" {% if q and q.show_if_question_id == pq.pk %}selected{% endif %}>
+              {{ pq.text|truncatechars:50 }}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label class="label py-1"><span class="label-text text-xs">имеет значение</span></label>
+        <input type="text" name="show_if_value" class="input input-bordered input-xs w-full"
+               value="{{ q.show_if_value|default:'' }}" placeholder="напр. yes, choice_pk">
+      </div>
+    </div>
+  </details>
+
+  <div class="flex gap-2 pt-1">
+    <button class="btn btn-primary btn-sm">Сохранить</button>
+    <button type="button" class="btn btn-sm"
+            hx-get="{% url 'questionnaire:template_detail' page.template.pk %}"
+            hx-target="closest .p-4" hx-swap="innerHTML">Отмена</button>
+  </div>
+</form>
+
+<script>
+function updateQFormFields() {
+  var t = document.getElementById('q-type').value;
+  document.getElementById('q-choices-wrap').style.display =
+    (t === 'choice' || t === 'multi_choice') ? '' : 'none';
+  document.getElementById('q-le-kind-wrap').style.display =
+    (t === 'legal_entity_ref') ? '' : 'none';
+  document.getElementById('q-custom-text-wrap').style.display =
+    (t.endsWith('_ref')) ? '' : 'none';
+}
+function addChoice() {
+  var list = document.getElementById('q-choices-list');
+  var div  = document.createElement('div');
+  div.className = 'flex gap-2 items-start';
+  div.innerHTML = '<input type="text" name="choice_text" class="input input-bordered input-xs flex-1" placeholder="Вариант">'
+    + '<input type="checkbox" name="choice_extra" class="checkbox checkbox-xs mt-2" title="Доп. поле">'
+    + '<input type="text" name="choice_extra_hint" class="input input-bordered input-xs w-28" placeholder="Подсказка доп.">'
+    + '<button type="button" class="btn btn-xs btn-ghost text-error" onclick="this.closest(\'div\').remove()">✕</button>';
+  list.appendChild(div);
+}
+updateQFormFields();
+</script>

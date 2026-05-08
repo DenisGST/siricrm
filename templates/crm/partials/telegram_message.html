@@ -53,28 +53,28 @@
     {% if msg.message_type == "text" and not msg.file %}
       {{ msg.content|linebreaksbr }}
     {% elif msg.message_type == "image" and msg.file %}
-      <a href="{% url 'file_download' msg.file.id %}" target="_blank" class="block">
-        <img src="{% url 'file_download' msg.file.id %}" alt="{{ msg.file.filename }}" class="max-w-xs rounded-lg">
+      <a href="{% url 'files:stored_download' msg.file.id %}" target="_blank" class="block">
+        <img src="{% url 'files:stored_download' msg.file.id %}" alt="{{ msg.file.filename }}" class="max-w-xs rounded-lg">
       </a>
       {% if msg.content %}<div class="mt-1 text-xs opacity-80">{{ msg.content|linebreaksbr }}</div>{% endif %}
     {% elif msg.message_type == "document" and msg.file %}
-      <a href="{% url 'file_download' msg.file.id %}" target="_blank" class="flex items-center gap-2">
+      <a href="{% url 'files:stored_download' msg.file.id %}" target="_blank" class="flex items-center gap-2">
         📎 <span class="underline text-xs break-all">{{ msg.file.filename|default:"Файл" }}</span>
       </a>
       {% if msg.content %}<div class="mt-1 text-xs opacity-80">{{ msg.content|linebreaksbr }}</div>{% endif %}
     {% elif msg.message_type == "voice" and msg.file %}
       <div class="flex items-center gap-2">
-        🎤 <audio controls class="w-56"><source src="{% url 'file_download' msg.file.id %}" type="audio/ogg"></audio>
+        🎤 <audio controls class="w-56"><source src="{% url 'files:stored_download' msg.file.id %}" type="audio/ogg"></audio>
       </div>
       {% if msg.content %}<div class="mt-1 text-xs opacity-80">{{ msg.content|linebreaksbr }}</div>{% endif %}
     {% elif msg.message_type == "audio" and msg.file %}
       <div class="flex items-center gap-2">
-        🎵 <audio controls class="w-56"><source src="{% url 'file_download' msg.file.id %}"></audio>
+        🎵 <audio controls class="w-56"><source src="{% url 'files:stored_download' msg.file.id %}"></audio>
       </div>
       <div class="text-xs opacity-70 mt-1">{{ msg.file.filename|default:"Аудио" }}</div>
       {% if msg.content %}<div class="mt-1 text-xs opacity-80">{{ msg.content|linebreaksbr }}</div>{% endif %}
     {% elif msg.message_type == "video" and msg.file %}
-      <video controls class="w-64 rounded-lg"><source src="{% url 'file_download' msg.file.id %}"></video>
+      <video controls class="w-64 rounded-lg"><source src="{% url 'files:stored_download' msg.file.id %}"></video>
       {% if msg.content %}<div class="mt-1 text-xs opacity-80">{{ msg.content|linebreaksbr }}</div>{% endif %}
     {% else %}
       {{ msg.content|linebreaksbr }}

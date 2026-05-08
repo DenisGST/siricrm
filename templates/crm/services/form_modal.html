@@ -23,6 +23,56 @@
         {{ form.name }}
         {% if form.name.errors %}<span class="text-error text-xs">{{ form.name.errors.0 }}</span>{% endif %}
       </div>
+      <div style="width:200px;flex-shrink:0">
+        <select id="svc-common-status" name="common_status" form="svc-form"
+                class="select select-bordered select-sm w-full">
+          <option value="">— общий статус —</option>
+          {% for opt in form.common_status.field.queryset %}
+            <option value="{{ opt.pk }}"
+              {% if form.instance.common_status_id == opt.pk %}selected{% endif %}>
+              {{ opt.name }}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+      {% if emp_statuses %}
+      <div style="width:200px;flex-shrink:0">
+        <select id="svc-emp-status" name="emp_status" form="svc-form"
+                class="select select-bordered select-sm w-full">
+          <option value="">— мой статус —</option>
+          {% for s in emp_statuses %}
+            <option value="{{ s.id }}"
+                    data-common="{{ s.common_status_id }}"
+              {% if emp_state and emp_state.status_id == s.id %}selected{% endif %}>
+              {{ s.name }}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+      <script>
+      (function() {
+        var commonSel = document.getElementById('svc-common-status');
+        var empSel    = document.getElementById('svc-emp-status');
+        if (!commonSel || !empSel) return;
+        var allOpts = Array.from(empSel.querySelectorAll('option[data-common]'));
+        var currentEmpVal = empSel.value;
+
+        function filterEmpStatuses() {
+          var chosen = commonSel.value;
+          empSel.innerHTML = '<option value="">— мой статус —</option>';
+          var matched = allOpts.filter(function(o) { return !chosen || o.dataset.common === chosen; });
+          matched.forEach(function(o) { empSel.appendChild(o); });
+          // восстановить выбор если опция ещё присутствует
+          if (matched.find(function(o){ return o.value === currentEmpVal; })) {
+            empSel.value = currentEmpVal;
+          }
+        }
+
+        commonSel.addEventListener('change', function() { currentEmpVal = ''; filterEmpStatuses(); });
+        filterEmpStatuses();
+      })();
+      </script>
+      {% endif %}
       <label class="flex items-center gap-2 cursor-pointer ml-auto">
         <input type="checkbox" name="is_active" class="checkbox checkbox-sm" form="svc-form"
                {% if form.is_active.value or not service %}checked{% endif %}>
@@ -49,23 +99,27 @@
           <div class="space-y-3">
             <div>
               <label class="label py-1"><span class="label-text font-medium">Клиент *</span></label>
-              <input type="hidden" name="client" id="svc-client-id" value="{{ form.client.value|default:'' }}">
-              <input type="text" id="svc-client-search"
-                     class="input input-bordered w-full input-sm"
-                     placeholder="Фамилия, имя, телефон или @username…"
-                     value="{% if service and service.client %}{{ service.client.last_name }} {{ service.client.first_name }}{% if service.client.patronymic %} {{ service.client.patronymic }}{% endif %}{% endif %}"
-                     autocomplete="off">
+              {% if preset_client %}
+                <input type="hidden" name="client" id="svc-client-id" value="{{ preset_client.pk }}">
+                <input type="hidden" name="_preset_client" value="{{ preset_client.pk }}">
+                <div class="input input-bordered input-sm w-full flex items-center gap-2 bg-base-200 cursor-not-allowed"
+                     style="pointer-events:none;">
+                  <span class="font-medium text-sm">{{ preset_client.last_name }} {{ preset_client.first_name }}{% if preset_client.patronymic %} {{ preset_client.patronymic }}{% endif %}</span>
+                  {% if preset_client.phone %}<span class="text-xs text-base-content/50 ml-auto">{{ preset_client.phone }}</span>{% endif %}
+                </div>
+              {% else %}
+                <input type="hidden" name="client" id="svc-client-id" value="{{ form.client.value|default:'' }}">
+                <input type="text" id="svc-client-search"
+                       class="input input-bordered w-full input-sm"
+                       placeholder="Фамилия, имя, телефон или @username…"
+                       value="{% if service and service.client %}{{ service.client.last_name }} {{ service.client.first_name }}{% if service.client.patronymic %} {{ service.client.patronymic }}{% endif %}{% endif %}"
+                       autocomplete="off">
+              {% endif %}
               {% if form.client.errors %}<span class="text-error text-xs">{{ form.client.errors.0 }}</span>{% endif %}
             </div>
-            <div class="grid grid-cols-2 gap-3">
-              <div>
-                <label class="label py-1"><span class="label-text">Регион</span></label>
-                {{ form.region }}
-              </div>
-              <div>
-                <label class="label py-1"><span class="label-text">Общий статус</span></label>
-                {{ form.common_status }}
-              </div>
+            <div>
+              <label class="label py-1"><span class="label-text">Регион</span></label>
+              {{ form.region }}
             </div>
           </div>
 
@@ -195,6 +249,23 @@
       </div>
 
       <div class="modal-action mt-3 flex-shrink-0">
+        {% if service %}
+        <button type="button" class="btn btn-sm btn-outline gap-1 mr-auto"
+                hx-get="{% url 'questionnaire:service_responses' service.pk %}"
+                hx-target="#quiz-modal-container"
+                hx-swap="innerHTML">
+          Анкеты
+        </button>
+        {% endif %}
+        {% if service and request.user.is_superuser %}
+        <button type="button" class="btn btn-error btn-sm mr-auto"
+                hx-post="{% url 'service_delete' service.pk %}"
+                hx-confirm="Удалить услугу? Это действие необратимо."
+                hx-target="#service-modal"
+                hx-swap="delete">
+          Удалить
+        </button>
+        {% endif %}
         <button type="submit" class="btn btn-primary btn-sm">Сохранить</button>
         <button type="button" class="btn btn-sm" onclick="this.closest('dialog').remove()">Отмена</button>
       </div>

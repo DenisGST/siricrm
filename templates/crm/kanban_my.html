@@ -80,7 +80,7 @@
           <span id="my-kanban-count-{{ st.id }}" class="badge badge-sm badge-ghost">0</span>
         </div>
         <div id="my-kanban-{{ st.id }}"
-             class="space-y-2 min-h-[50px]"
+             class="space-y-2 min-h-[50px] kanban-col-body"
              hx-get="{% url 'my_kanban_column' st.id %}{% if viewed_emp_id %}?viewed_employee={{ viewed_emp_id }}{% endif %}"
              hx-trigger="load, serviceChanged from:body"
              hx-target="#my-kanban-{{ st.id }}"

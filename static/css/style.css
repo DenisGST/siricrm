@@ -931,3 +931,23 @@ input:focus, textarea:focus, select:focus {
   box-shadow: 0 0 0 2px oklch(var(--p) / 0.25);
   color: oklch(var(--p));
 }
+
+.kanban-col-body {
+  overflow-y: auto;
+  max-height: calc(100vh - 220px);
+  scrollbar-width: thin;
+  scrollbar-color: oklch(var(--bc) / 0.2) transparent;
+}
+.kanban-col-body::-webkit-scrollbar {
+  width: 5px;
+}
+.kanban-col-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+.kanban-col-body::-webkit-scrollbar-thumb {
+  background: oklch(var(--bc) / 0.2);
+  border-radius: 3px;
+}
+.kanban-col-body::-webkit-scrollbar-thumb:hover {
+  background: oklch(var(--bc) / 0.4);
+}

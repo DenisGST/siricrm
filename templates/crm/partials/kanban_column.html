@@ -3,5 +3,21 @@
 {% empty %}
   <div class="kanban-empty-placeholder text-xs text-base-content/50">Нет клиентов</div>
 {% endfor %}
+
+{% if has_more %}
+<div class="mt-2 pt-2 border-t border-base-200">
+  <button type="button"
+          class="btn btn-xs btn-ghost w-full text-base-content/50"
+          hx-get="{% url 'kanban_column' status %}?all=1"
+          hx-target="#kanban-{{ status }}"
+          hx-swap="innerHTML"
+          hx-include="#kanban-filter-form"
+          hx-indicator="find .htmx-indicator">
+    <span class="htmx-indicator loading loading-spinner loading-xs"></span>
+    Показать ещё {{ more_count }}
+  </button>
+</div>
+{% endif %}
+
 <span id="kanban-count-{{ status }}" hx-swap-oob="true"
       class="badge badge-sm {% if status == 'lead' %}badge-warning{% elif status == 'active' %}badge-success{% elif status == 'closed' %}badge-error{% elif status == 'archive' %}badge-neutral{% else %}badge-ghost{% endif %}">{{ count }}</span>

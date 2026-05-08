@@ -10,6 +10,7 @@ ENV PYTHONUNBUFFERED=1 \
 RUN apt-get update && apt-get install -y \
     gcc \
     postgresql-client \
+    fonts-dejavu \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies

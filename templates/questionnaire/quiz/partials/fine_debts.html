@@ -1,0 +1,42 @@
+{% comment %}Variables: key, ans = {entries: [{agency, reason, amount}]}{% endcomment %}
+<div id="fine-{{ key }}">
+
+  <div id="fine-list-{{ key }}">
+    {% for entry in ans.entries %}
+    <div class="fine-entry rounded-lg mb-2"
+         style="border:1px solid #e2e8f0;background:#f8fafc;"
+         data-fine-key="{{ key }}">
+      <div class="flex items-center justify-between px-3 py-1.5"
+           style="border-bottom:1px solid #e2e8f0;background:#f1f5f9;border-radius:8px 8px 0 0;">
+        <span class="text-xs font-semibold" style="color:#64748b;">Штраф {{ forloop.counter }}</span>
+        <button type="button" onclick="fineRemoveEntry(this)"
+                class="btn btn-ghost btn-xs" style="color:#ef4444;padding:2px 6px;">✕</button>
+      </div>
+      <div class="p-3 grid gap-2" style="grid-template-columns:2fr 3fr 1fr;">
+        <div>
+          <div class="text-xs mb-1" style="color:#94a3b8;">Госорган</div>
+          <input type="text" name="{{ key }}_f{{ forloop.counter0 }}_agency"
+                 class="input input-bordered input-sm w-full"
+                 value="{{ entry.agency|default:'' }}">
+        </div>
+        <div>
+          <div class="text-xs mb-1" style="color:#94a3b8;">За что штраф</div>
+          <input type="text" name="{{ key }}_f{{ forloop.counter0 }}_reason"
+                 class="input input-bordered input-sm w-full"
+                 value="{{ entry.reason|default:'' }}">
+        </div>
+        <div>
+          <div class="text-xs mb-1" style="color:#94a3b8;">Сумма штрафа</div>
+          <input type="number" name="{{ key }}_f{{ forloop.counter0 }}_amount"
+                 class="input input-bordered input-sm w-full"
+                 step="1" min="0" value="{{ entry.amount|default:'' }}">
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <button type="button" onclick="fineAddEntry('{{ key }}')"
+          class="btn btn-sm btn-outline mt-1">+ Добавить</button>
+
+</div>

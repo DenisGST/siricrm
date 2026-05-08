@@ -80,7 +80,7 @@ def max_webhook(request):
     )
     if created:
         logger.info("✨ Created MAX client %s (max_chat_id=%s)", client.id, user_id)
-        from apps.crm.models import ClientEmployee
+        from apps.crm.models import ClientEmployee, ClientEvent
         from apps.core.models import Employee
         from django.contrib.auth.models import User
         bot_user, _ = User.objects.get_or_create(
@@ -89,6 +89,12 @@ def max_webhook(request):
         )
         bot_emp, _ = Employee.objects.get_or_create(user=bot_user)
         ClientEmployee.objects.get_or_create(client=client, employee=bot_emp)
+        ClientEvent.objects.create(
+            client=client,
+            event_type="first_contact",
+            description="Первое обращение через MAX",
+            employee=bot_emp,
+        )
         logger.info("🤖 Assigned Sirius Bot to new MAX client %s", client.id)
     else:
         logger.info("✅ Found MAX client %s (max_chat_id=%s)", client.id, user_id)
@@ -188,6 +194,20 @@ def max_webhook(request):
             content_type=content_type or "application/octet-stream",
             size=len(file_bytes),
         )
+        # Авторутинг в папку клиента
+        try:
+            from apps.files.folder_utils import get_chat_folder
+            from apps.files.models import ClientFile
+            chat_folder = get_chat_folder(client, "received")
+            ClientFile.objects.create(
+                folder=chat_folder,
+                stored_file=stored,
+                name=filename,
+                size=len(file_bytes),
+                content_type=content_type or "application/octet-stream",
+            )
+        except Exception:
+            pass
 
         msg_obj = Message.objects.create(
             client=client,

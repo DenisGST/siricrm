@@ -14,7 +14,11 @@
       <h3 class="card-title text-sm leading-tight">
         {{ s.client.last_name }} {{ s.client.first_name }}{% if s.client.patronymic %}<br>{{ s.client.patronymic }}{% endif %}
       </h3>
-      <span class="badge badge-ghost badge-xs font-mono shrink-0 ml-1">{{ s.numb_dogovor|default:"—" }}</span>
+      <div class="flex items-center gap-1 shrink-0 ml-1">
+        <span class="badge badge-ghost cursor-default font-medium"
+              style="font-size:0.8rem;padding:0.35rem 0.65rem;">{{ s.name.short_name }}</span>
+        <span class="badge badge-ghost badge-xs font-mono">{{ s.numb_dogovor|default:"—" }}</span>
+      </div>
     </div>
 
     <div class="flex flex-wrap gap-2 text-xs text-base-content/70 mb-1" style="margin-top:-2px;">
@@ -64,6 +68,45 @@
       {% endfor %}
     </div>
     {% endif %}
+
+    <div class="flex gap-1 mt-1">
+      {% if s.client.phone %}
+      <a href="tel:{{ s.client.phone }}"
+         class="kanban-action-btn text-base-content/50"
+         title="Позвонить: {{ s.client.phone }}"
+         onclick="event.stopPropagation()">
+        {% icon "phone" size=15 %}
+      </a>
+      {% endif %}
+      {% if s.client.telegram_id %}
+      <button type="button"
+              class="kanban-action-btn text-base-content/50"
+              title="Чат с клиентом"
+              onclick="event.stopPropagation(); openTelegramChatModalForClient('{{ s.client.id }}')">
+        {% icon_brand "telegram" size=15 %}
+      </button>
+      {% endif %}
+      <button type="button"
+              class="kanban-action-btn text-base-content/50"
+              hx-get="{% url 'questionnaire:service_responses' s.pk %}"
+              hx-target="#quiz-modal-container"
+              hx-swap="innerHTML"
+              title="Анкеты"
+              onclick="event.stopPropagation()"
+              hx-on:click="event.stopPropagation()">
+        {% icon "file-text" size=15 %}
+      </button>
+      <button type="button"
+              class="kanban-action-btn text-base-content/50"
+              hx-get="{% url 'files:manager' s.client.id %}"
+              hx-target="body"
+              hx-swap="beforeend"
+              title="Файлы клиента"
+              onclick="event.stopPropagation()"
+              hx-on:click="event.stopPropagation()">
+        {% icon "folder" size=15 %}
+      </button>
+    </div>
 
   </div>
 </div>

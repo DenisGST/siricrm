@@ -1,0 +1,254 @@
+{% load quiz_tags %}
+{% with ans=answers|answer_for:q %}
+{% with key=q|question_key %}
+
+<div class="question-block rounded-lg overflow-hidden mb-3"
+     style="border:1px solid #e5e7eb;"
+     data-qkey="{{ key }}"
+     data-qtype="{{ q.question_type }}"
+     {% if q.is_required %}data-required="1"{% endif %}
+     {% if q.show_if_question %}data-show-if='{"q":"{{ q.show_if_question.pk }}","v":"{{ q.show_if_value }}"}'{% endif %}>
+
+  <!-- Вопрос -->
+  <div style="background:#f1f5f9;padding:8px 12px;border-bottom:1px solid #e5e7eb;">
+    <div class="text-sm font-medium" style="color:#1e293b;">
+      {{ q.text }}{% if q.is_required %}<span class="text-error ml-1">*</span>{% endif %}
+    </div>
+    {% if q.hint %}
+    <div class="text-xs mt-0.5 italic" style="color:#94a3b8;">{{ q.hint }}</div>
+    {% endif %}
+  </div>
+
+  <!-- Ответ -->
+  <div style="padding:12px 14px;background:#fff;">
+
+    {% if q.question_type == "text" %}
+      <input type="text" name="{{ key }}" class="input input-bordered input-sm w-full"
+             value="{{ ans.v|default:'' }}">
+
+    {% elif q.question_type == "textarea" %}
+      <textarea name="{{ key }}" rows="3" class="textarea textarea-bordered textarea-sm w-full"
+                style="resize:vertical;">{{ ans.v|default:'' }}</textarea>
+
+    {% elif q.question_type == "number" %}
+      <input type="number" name="{{ key }}" class="input input-bordered input-sm w-36"
+             value="{{ ans.v|default:'' }}">
+
+    {% elif q.question_type == "money" %}
+      <div class="flex items-center gap-2">
+        <input type="number" name="{{ key }}" step="0.01" class="input input-bordered input-sm w-36"
+               value="{{ ans.v|default:'' }}">
+        <span class="text-sm" style="color:#94a3b8;">руб.</span>
+      </div>
+
+    {% elif q.question_type == "date" %}
+      <input type="date" name="{{ key }}" class="input input-bordered input-sm w-40"
+             value="{{ ans.v|default:'' }}">
+
+    {% elif q.question_type == "yes_no" %}
+      {% with cur=ans.v|default:'' %}
+      <div class="flex gap-6">
+        <label class="flex items-center gap-2 cursor-pointer text-sm">
+          <input type="radio" name="{{ key }}" value="yes"
+                 style="accent-color:#0079d3;width:15px;height:15px;cursor:pointer;"
+                 {% if cur == "yes" %}checked{% endif %}>
+          Да
+        </label>
+        <label class="flex items-center gap-2 cursor-pointer text-sm">
+          <input type="radio" name="{{ key }}" value="no"
+                 style="accent-color:#0079d3;width:15px;height:15px;cursor:pointer;"
+                 {% if cur == "no" %}checked{% endif %}>
+          Нет
+        </label>
+        <label class="flex items-center gap-2 cursor-pointer text-sm">
+          <input type="radio" name="{{ key }}" value="unknown"
+                 style="accent-color:#0079d3;width:15px;height:15px;cursor:pointer;"
+                 {% if cur == "unknown" %}checked{% endif %}>
+          Не знаю
+        </label>
+      </div>
+      {% endwith %}
+
+    {% elif q.question_type == "choice" %}
+      {% with cur=ans.v|default:'' %}
+      <div class="space-y-2.5">
+        {% for ch in q.choices.all %}
+        <label class="flex items-start gap-2 cursor-pointer text-sm leading-6">
+          <input type="radio" name="{{ key }}" value="{{ ch.pk }}"
+                 style="accent-color:#0079d3;width:15px;height:15px;cursor:pointer;margin-top:4px;flex-shrink:0;"
+                 data-choice-pk="{{ ch.pk }}"
+                 {% if cur == ch.pk|stringformat:"s" or not cur and ch.text == q.default_value %}checked{% endif %}>
+          <span>{{ ch.text }}</span>
+        </label>
+        {% if ch.has_extra_field %}
+        <div class="ml-6 quiz-choice-extra" data-for-choice="{{ ch.pk }}" style="display:none;">
+          {% if ch.extra_field_type == "client_ref" or ch.extra_field_type == "employee_ref" or ch.extra_field_type == "agent_ref" %}
+            <input type="hidden" name="{{ key }}_extra_{{ ch.pk }}" id="qref-id-{{ ch.pk }}">
+            <div id="qref-selected-{{ ch.pk }}" class="hidden items-center gap-2 px-2 py-1 rounded text-xs mb-1"
+                 style="background:#eff6ff;color:#1d4ed8;">
+              <span id="qref-name-{{ ch.pk }}"></span>
+              <button type="button" class="ml-auto opacity-60 hover:opacity-100" onclick="quizRefClear('{{ ch.pk }}')">✕</button>
+            </div>
+            <input type="text" id="qref-search-{{ ch.pk }}"
+                   class="input input-bordered input-sm w-full"
+                   placeholder="{{ ch.extra_field_hint|default:'Начните вводить...' }}"
+                   data-ref-type="{{ ch.extra_field_type }}"
+                   data-ref-id="{{ ch.pk }}"
+                   autocomplete="off">
+            <input type="text" name="{{ key }}_extra_{{ ch.pk }}_text"
+                   class="input input-bordered input-sm w-full mt-1"
+                   placeholder="Или введите вручную">
+          {% else %}
+            <input type="text" name="{{ key }}_extra" class="input input-bordered input-sm w-full"
+                   placeholder="{{ ch.extra_field_hint|default:'Уточните...' }}"
+                   value="{{ ans.extra|default:'' }}">
+          {% endif %}
+        </div>
+        {% endif %}
+        {% endfor %}
+      </div>
+      {% endwith %}
+
+    {% elif q.question_type == "multi_choice" %}
+      <div class="space-y-2.5">
+        {% for ch in q.choices.all %}
+        <label class="flex items-start gap-2 cursor-pointer text-sm leading-6">
+          <input type="checkbox" name="{{ key }}" value="{{ ch.pk }}"
+                 style="accent-color:#0079d3;width:15px;height:15px;cursor:pointer;margin-top:4px;flex-shrink:0;"
+                 data-choice-pk="{{ ch.pk }}"
+                 {% if ans|answer_in:ch.pk %}checked{% endif %}>
+          <span>{{ ch.text }}</span>
+        </label>
+        {% if ch.has_extra_field %}
+        <div class="ml-6 mc-extra" data-for-cb="{{ ch.pk }}"
+             style="{% if not ans|answer_in:ch.pk %}display:none;{% endif %}">
+          {% if ch.extra_field_type == "name_amount" %}
+            <input type="text" name="{{ key }}_{{ ch.pk }}_extra"
+                   class="input input-bordered input-sm w-full mb-1"
+                   placeholder="Наименование / вид налога"
+                   value="{{ ans|mc_extra:ch.pk }}">
+            <div class="flex items-center gap-1">
+              <input type="number" name="{{ key }}_{{ ch.pk }}_extra_amount"
+                     class="input input-bordered input-sm flex-1"
+                     step="1" min="0" placeholder="0"
+                     value="{{ ans|mc_extra_amount:ch.pk }}">
+              <span class="text-xs" style="color:#94a3b8;">руб.</span>
+            </div>
+          {% else %}
+            <input type="text" name="{{ key }}_{{ ch.pk }}_extra" class="input input-bordered input-sm w-full"
+                   placeholder="{{ ch.extra_field_hint|default:'Уточните...' }}">
+          {% endif %}
+        </div>
+        {% endif %}
+        {% endfor %}
+      </div>
+      <div class="mt-2">
+        <input type="text" name="{{ key }}_comment" class="input input-bordered input-sm w-full"
+               placeholder="Комментарий..." value="{{ ans.comment|default:'' }}">
+      </div>
+
+    {% elif q.question_type == "full_name_date" %}
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <div class="text-xs mb-1" style="color:#94a3b8;">ФИО</div>
+          <input type="text" name="{{ key }}_fio" class="input input-bordered input-sm w-full"
+                 placeholder="Фамилия Имя Отчество" value="{{ ans.fio|default:'' }}">
+        </div>
+        <div>
+          <div class="text-xs mb-1" style="color:#94a3b8;">Дата рождения</div>
+          <input type="date" name="{{ key }}_dob" class="input input-bordered input-sm w-full"
+                 value="{{ ans.dob|default:'' }}">
+        </div>
+      </div>
+
+    {% elif q.question_type == "region_ref" %}
+      <select name="{{ key }}" class="select select-bordered select-sm w-full">
+        <option value="">— выберите регион —</option>
+        {% for r in regions %}
+          <option value="{{ r.pk }}" {% if ans.ref == r.pk|stringformat:"s" %}selected{% endif %}>{{ r.name }}</option>
+        {% endfor %}
+      </select>
+
+    {% elif q.question_type == "legal_entity_ref" %}
+      <select name="{{ key }}" class="select select-bordered select-sm w-full mb-2">
+        <option value="">— выберите организацию —</option>
+        {% for le in legal_entities %}
+          <option value="{{ le.pk }}" {% if ans.ref == le.pk|stringformat:"s" %}selected{% endif %}>{{ le.name }}</option>
+        {% endfor %}
+      </select>
+      {% if q.allow_custom_text %}
+      <input type="text" name="{{ key }}_text" class="input input-bordered input-sm w-full"
+             placeholder="Или введите название вручную" value="{{ ans.text|default:'' }}">
+      {% endif %}
+
+    {% elif q.question_type == "client_ref" %}
+      <select name="{{ key }}" class="select select-bordered select-sm w-full mb-2">
+        <option value="">— выберите клиента —</option>
+        {% for c in clients %}
+          <option value="{{ c.pk }}" {% if ans.ref == c.pk|stringformat:"s" %}selected{% endif %}>
+            {{ c.last_name }} {{ c.first_name }}{% if c.phone %} ({{ c.phone }}){% endif %}
+          </option>
+        {% endfor %}
+      </select>
+      {% if q.allow_custom_text %}
+      <input type="text" name="{{ key }}_text" class="input input-bordered input-sm w-full"
+             placeholder="Или введите ФИО вручную" value="{{ ans.text|default:'' }}">
+      {% endif %}
+
+    {% elif q.question_type == "employee_ref" %}
+      <select name="{{ key }}" class="select select-bordered select-sm w-full mb-2">
+        <option value="">— выберите сотрудника —</option>
+        {% for e in employees %}
+          <option value="{{ e.pk }}" {% if ans.ref == e.pk|stringformat:"s" %}selected{% endif %}>
+            {{ e.user.last_name }} {{ e.user.first_name }}
+          </option>
+        {% endfor %}
+      </select>
+      {% if q.allow_custom_text %}
+      <input type="text" name="{{ key }}_text" class="input input-bordered input-sm w-full"
+             placeholder="Или введите ФИО вручную" value="{{ ans.text|default:'' }}">
+      {% endif %}
+
+    {% elif q.question_type == "marital_status" %}
+      {% include "questionnaire/quiz/partials/marital_status.html" with key=key ans=ans %}
+
+    {% elif q.question_type == "bank_debts" %}
+      {% include "questionnaire/quiz/partials/bank_debts.html" with key=key ans=ans %}
+
+    {% elif q.question_type == "mfo_debts" %}
+      {% include "questionnaire/quiz/partials/mfo_debts.html" with key=key ans=ans %}
+
+    {% elif q.question_type == "property_assets" %}
+      {% include "questionnaire/quiz/partials/property_assets.html" with key=key ans=ans %}
+
+    {% elif q.question_type == "utility_debts" %}
+      {% include "questionnaire/quiz/partials/utility_debts.html" with key=key ans=ans %}
+
+    {% elif q.question_type == "fine_debts" %}
+      {% include "questionnaire/quiz/partials/fine_debts.html" with key=key ans=ans %}
+
+    {% elif q.question_type == "court_debts" %}
+      {% include "questionnaire/quiz/partials/court_debts.html" with key=key ans=ans %}
+
+    {% elif q.question_type == "other_debts" %}
+      {% include "questionnaire/quiz/partials/other_debts.html" with key=key ans=ans %}
+
+    {% elif q.question_type == "sold_assets" %}
+      {% include "questionnaire/quiz/partials/sold_assets.html" with key=key ans=ans %}
+
+    {% elif q.question_type == "tax_debts" %}
+      {% include "questionnaire/quiz/partials/tax_debts.html" with key=key ans=ans %}
+
+    {% elif q.question_type == "children_list" %}
+      {% include "questionnaire/quiz/partials/children_list.html" with key=key ans=ans %}
+
+    {% else %}
+      <input type="text" name="{{ key }}" class="input input-bordered input-sm w-full"
+             value="{{ ans.v|default:'' }}">
+    {% endif %}
+
+  </div>
+</div>
+
+{% endwith %}
+{% endwith %}

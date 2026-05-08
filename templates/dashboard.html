@@ -271,10 +271,19 @@
 
   <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
     <label class="form-control w-full">
-      <span class="label label-text !text-xs !py-0 !pb-1 opacity-70">Сотрудник</span>
+      <span class="label label-text !text-xs !py-0 !pb-1 opacity-70">Закреплён за</span>
       <select id="flt-employee" name="employee" class="select select-bordered select-sm">
         <option value="">Все</option>
         <option value="__none__">— Не назначен</option>
+        {% for e in employees_all %}
+          <option value="{{ e.id }}">{{ e.user.last_name }} {{ e.user.first_name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label class="form-control w-full">
+      <span class="label label-text !text-xs !py-0 !pb-1 opacity-70">Исполнитель услуги</span>
+      <select id="flt-service-employee" name="service_employee" class="select select-bordered select-sm">
+        <option value="">Все</option>
         {% for e in employees_all %}
           <option value="{{ e.id }}">{{ e.user.last_name }} {{ e.user.first_name }}</option>
         {% endfor %}
@@ -784,6 +793,1325 @@ document.addEventListener('htmx:afterRequest', (event) => {
   document.body.addEventListener('htmx:oobAfterSwap', function() { parseEmoji(); });
   document.body.addEventListener('htmx:wsAfterMessage', function() { parseEmoji(); });
 
+</script>
+
+<div id="quiz-modal-container"></div>
+
+<script>
+function openServiceQuiz(servicePk) {
+  fetch('/questionnaire/start/' + servicePk + '/', {credentials: 'same-origin'})
+    .then(function(r) {
+      if (!r.ok) { r.text().then(function(t){ alert(t || 'Анкета не настроена для этой услуги'); }); return null; }
+      return r.text();
+    })
+    .then(function(html) {
+      if (!html) return;
+      var container = document.getElementById('quiz-modal-container');
+      container.innerHTML = html;
+      htmx.process(container);
+      var dlg = document.getElementById('quiz-dialog');
+      if (dlg && !dlg.open) dlg.showModal();
+      quizEvalConditions();
+      initQuizChoiceExtras();
+      initMsAll();
+      bankInitAll();
+      mfoInitAll();
+    });
+}
+
+function closeQuiz() {
+  var dlg = document.getElementById('quiz-dialog');
+  if (dlg) dlg.close();
+  var c = document.getElementById('quiz-modal-container');
+  if (c) c.innerHTML = '';
+}
+
+function quizEvalConditions() {
+  document.querySelectorAll('[data-show-if]').forEach(function(el) {
+    try {
+      var cond = JSON.parse(el.dataset.showIf);
+      var show = false;
+      document.querySelectorAll('[name="q_' + cond.q + '"]').forEach(function(inp) {
+        if (inp.type === 'radio' || inp.type === 'checkbox') {
+          if (inp.checked && inp.value === cond.v) show = true;
+        } else if (inp.value === cond.v) show = true;
+      });
+      el.style.display = show ? '' : 'none';
+    } catch(e) {}
+  });
+}
+
+document.body.addEventListener('htmx:afterSwap', function(e) {
+  if (e.detail.target && e.detail.target.id === 'quiz-modal-container') {
+    var dlg = document.getElementById('quiz-dialog');
+    if (dlg && !dlg.open) dlg.showModal();
+    quizEvalConditions();
+    initQuizChoiceExtras();
+    initMsAll();
+  }
+});
+
+function quizRefClear(chPk) {
+  document.getElementById('qref-id-' + chPk).value = '';
+  var sel = document.getElementById('qref-selected-' + chPk);
+  sel.style.display = 'none'; sel.classList.add('hidden');
+  var inp = document.getElementById('qref-search-' + chPk);
+  inp.value = ''; inp.style.display = '';
+}
+
+function initQuizChoiceExtras() {
+  // Показываем суммы/уточнения у чекбоксов (multi_choice) только когда отмечены
+  document.querySelectorAll('#quiz-form input[type="checkbox"][data-choice-pk]').forEach(function(inp) {
+    if (inp._mcExtraInited) return;
+    inp._mcExtraInited = true;
+    var extra = document.querySelector('.mc-extra[data-for-cb="' + inp.dataset.choicePk + '"]');
+    if (!extra) return;
+    extra.style.display = inp.checked ? '' : 'none';
+    inp.addEventListener('change', function() {
+      extra.style.display = inp.checked ? '' : 'none';
+    });
+  });
+
+  // Показываем доп. поля для уже отмеченных вариантов
+  document.querySelectorAll('#quiz-form input[data-choice-pk]').forEach(function(inp) {
+    var extra = document.querySelector('.quiz-choice-extra[data-for-choice="' + inp.dataset.choicePk + '"]');
+    if (!extra) return;
+    if (inp.checked) { extra.style.display = ''; initQuizRefSearch(); }
+    inp.addEventListener('change', function() {
+      if (inp.type === 'radio') {
+        // Скрыть все доп. поля этой группы
+        document.querySelectorAll('input[name="' + inp.name + '"][data-choice-pk]').forEach(function(r) {
+          var ex = document.querySelector('.quiz-choice-extra[data-for-choice="' + r.dataset.choicePk + '"]');
+          if (ex) ex.style.display = 'none';
+        });
+      }
+      extra.style.display = inp.checked ? '' : 'none';
+      if (inp.checked) initQuizRefSearch();
+    });
+  });
+}
+
+function initQuizRefSearch() {
+  var res = document.getElementById('quiz-ref-results');
+  if (!res) return;
+  var _activeChPk = null;
+
+  function hideResults() { res.style.display = 'none'; res.innerHTML = ''; _activeChPk = null; }
+
+  document.querySelectorAll('[data-ref-type][data-ref-id]').forEach(function(inp) {
+    if (inp._quizRefInited) return;
+    inp._quizRefInited = true;
+    var chPk    = inp.dataset.refId;
+    var refType = inp.dataset.refType.replace('_ref', '');
+    var hiddenId = document.getElementById('qref-id-' + chPk);
+    var selDiv   = document.getElementById('qref-selected-' + chPk);
+    var selName  = document.getElementById('qref-name-' + chPk);
+    var timer    = null;
+
+    function doSearch(q) {
+      if (q.length < 2) { hideResults(); return; }
+      _activeChPk = chPk;
+      fetch('/questionnaire/ref-search/?type=' + refType + '&q=' + encodeURIComponent(q), {credentials: 'same-origin'})
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          if (_activeChPk !== chPk) return;
+          if (!data.results.length) { hideResults(); return; }
+          res.innerHTML = data.results.map(function(item) {
+            return '<div data-id="' + item.id + '" data-label="' + item.label.replace(/"/g, '&quot;') + '" '
+              + 'style="padding:8px 14px;cursor:pointer;font-size:13px;border-bottom:1px solid #f3f4f6;"'
+              + ' onmouseover="this.style.background=\'#eff6ff\'" onmouseout="this.style.background=\'\'">'
+              + item.label + '</div>';
+          }).join('');
+          res.setAttribute('data-active-pk', chPk);
+          var rect = inp.getBoundingClientRect();
+          res.style.left  = rect.left + 'px';
+          res.style.top   = (rect.bottom + 2) + 'px';
+          res.style.width = Math.max(rect.width, 240) + 'px';
+          res.style.display = 'block';
+        });
+    }
+
+    inp.addEventListener('input', function() {
+      clearTimeout(timer);
+      timer = setTimeout(function() { doSearch(inp.value.trim()); }, 200);
+    });
+    inp.addEventListener('focus', function() {
+      if (inp.value.trim().length >= 2) doSearch(inp.value.trim());
+    });
+    inp.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape') hideResults();
+    });
+  });
+
+  // Клик по результату — один раз на контейнер
+  if (!res._quizResultsInited) {
+    res._quizResultsInited = true;
+    res.addEventListener('mousedown', function(e) {
+      var row = e.target.closest('[data-id]');
+      if (!row) return;
+      var pk = res.getAttribute('data-active-pk');
+      if (!pk) return;
+      var hiddenId = document.getElementById('qref-id-' + pk);
+      var selDiv   = document.getElementById('qref-selected-' + pk);
+      var selName  = document.getElementById('qref-name-' + pk);
+      var searchInp = document.getElementById('qref-search-' + pk);
+      if (hiddenId) hiddenId.value = row.dataset.id;
+      if (selName)  selName.textContent = row.dataset.label;
+      if (selDiv)  { selDiv.classList.remove('hidden'); selDiv.style.display = 'flex'; }
+      if (searchInp) searchInp.style.display = 'none';
+      hideResults();
+    });
+    document.addEventListener('click', function(e) {
+      if (!e.target.closest('[data-ref-type]') && !e.target.closest('#quiz-ref-results')) hideResults();
+    });
+  }
+}
+document.body.addEventListener('change', function(e) {
+  if (e.target.closest('#quiz-dialog')) quizEvalConditions();
+});
+
+// ── Валидация квиза ──────────────────────────────────────────────────────────
+
+function quizValidate() {
+  var form = document.getElementById('quiz-form');
+  if (!form) return true;
+
+  // Сброс предыдущих ошибок
+  form.querySelectorAll('.question-block').forEach(function(b) {
+    b.style.borderColor = '#e5e7eb';
+    var m = b.querySelector('.q-err');
+    if (m) m.remove();
+  });
+
+  var firstErr = null;
+
+  form.querySelectorAll('.question-block[data-required]').forEach(function(block) {
+    // Скрытые вопросы (show_if не выполнен) пропускаем
+    if (block.style.display === 'none') return;
+
+    var qkey  = block.dataset.qkey;
+    var qtype = block.dataset.qtype;
+    var valid = true;
+
+    if (qtype === 'choice' || qtype === 'yes_no') {
+      valid = !!form.querySelector('[name="' + qkey + '"]:checked');
+    } else if (qtype === 'multi_choice') {
+      valid = !!form.querySelector('[name="' + qkey + '"]:checked');
+    } else if (qtype === 'region_ref' || qtype === 'legal_entity_ref' ||
+               qtype === 'client_ref'  || qtype === 'employee_ref') {
+      var sel = form.querySelector('[name="' + qkey + '"]');
+      valid = sel && sel.value !== '';
+    } else if (qtype === 'full_name_date') {
+      var fio = form.querySelector('[name="' + qkey + '_fio"]');
+      valid = fio && fio.value.trim() !== '';
+    } else if (qtype === 'marital_status') {
+      valid = true; // всегда есть выбранный radio
+    } else {
+      var inp = form.querySelector('[name="' + qkey + '"]');
+      valid = inp && inp.value.trim() !== '';
+    }
+
+    if (!valid) {
+      block.style.borderColor = '#ef4444';
+      var msg = document.createElement('div');
+      msg.className = 'q-err';
+      msg.style.cssText = 'color:#ef4444;font-size:11px;padding:4px 12px 6px;';
+      msg.textContent = 'Обязательное поле';
+      block.appendChild(msg);
+      if (!firstErr) firstErr = block;
+      // Сбросить при изменении
+      block.addEventListener('change', function() {
+        block.style.borderColor = '#e5e7eb';
+        var m = block.querySelector('.q-err');
+        if (m) m.remove();
+      }, {once: true});
+      block.addEventListener('input', function() {
+        block.style.borderColor = '#e5e7eb';
+        var m = block.querySelector('.q-err');
+        if (m) m.remove();
+      }, {once: true});
+    }
+  });
+
+  if (firstErr) {
+    firstErr.scrollIntoView({behavior: 'smooth', block: 'center'});
+    return false;
+  }
+  return true;
+}
+
+document.body.addEventListener('htmx:beforeRequest', function(e) {
+  if (e.target && e.target.id === 'quiz-form') {
+    if (!quizValidate()) e.preventDefault();
+  }
+});
+
+// ── Семейное положение (marital_status) ─────────────────────────────────────
+
+function initMsAll() {
+  // Radio toggle
+  document.querySelectorAll('input[data-ms-key]').forEach(function(inp) {
+    if (inp._msKeyInited) return;
+    inp._msKeyInited = true;
+    inp.addEventListener('change', function() { msToggle(inp.dataset.msKey); });
+  });
+  // Checkbox divorced toggle
+  document.querySelectorAll('input[data-ms-div-key]').forEach(function(inp) {
+    if (inp._msDivInited) return;
+    inp._msDivInited = true;
+    inp.addEventListener('change', function() { msDivorcedToggle(inp.dataset.msDivKey); });
+  });
+  initMsSearch();
+}
+
+function msToggle(key) {
+  var val = '';
+  document.querySelectorAll('[name="' + key + '_marital"]').forEach(function(r) {
+    if (r.checked) val = r.value;
+  });
+  var spouseBlock  = document.getElementById('ms-spouse-' + key);
+  var divRow       = document.getElementById('ms-divrow-' + key);
+  var divorcesBlock= document.getElementById('ms-divorces-' + key);
+  var divCb        = document.querySelector('[name="' + key + '_divorced"]');
+  if (val === 'never') {
+    if (spouseBlock)   spouseBlock.style.display   = 'none';
+    if (divRow)        divRow.style.display        = 'none';
+    if (divorcesBlock) divorcesBlock.style.display = 'none';
+    if (divCb)         divCb.checked               = false;
+  } else {
+    if (spouseBlock) spouseBlock.style.display = '';
+    if (divRow)      divRow.style.display      = '';
+    if (divCb && divCb.checked && divorcesBlock) divorcesBlock.style.display = '';
+  }
+}
+
+function msDivorcedToggle(key) {
+  var cb    = document.querySelector('[name="' + key + '_divorced"]');
+  var block = document.getElementById('ms-divorces-' + key);
+  if (!block || !cb) return;
+  block.style.display = cb.checked ? '' : 'none';
+  if (cb.checked && block.querySelectorAll('.ms-divorce-entry').length === 0) {
+    msAddDivorce(key);
+  }
+}
+
+function _msDivorceHtml(key, i) {
+  var n = i + 1;
+  var e = 'd' + i;
+  return '<div class="ms-divorce-entry mb-3 p-3 rounded-lg" style="border:1px solid #e2e8f0;background:#f8fafc;" data-index="' + i + '">'
+    + '<div class="flex items-center justify-between mb-2">'
+    + '<span class="text-xs font-medium" style="color:#64748b;">Развод ' + n + '</span>'
+    + '<button type="button" onclick="msRemoveDivorce(this)" class="btn btn-ghost btn-xs" style="color:#ef4444;padding:2px 6px;">✕</button>'
+    + '</div>'
+    + '<div class="mb-2">'
+    + '<div class="text-xs mb-0.5" style="color:#94a3b8;">Супруг / Супруга — поиск по базе</div>'
+    + '<input type="hidden" name="' + key + '_' + e + '_client_id" id="ms-hi-' + key + '-' + e + '" value="">'
+    + '<div id="ms-sd-' + key + '-' + e + '" class="hidden items-center gap-2 px-2 py-1 rounded text-sm mb-1" style="background:#eff6ff;color:#1d4ed8;display:none;">'
+    + '<span id="ms-sn-' + key + '-' + e + '"></span>'
+    + '<button type="button" class="ml-auto opacity-60 text-xs" onclick="msClearEntry(\'' + key + '\',\'' + e + '\')">✕</button>'
+    + '</div>'
+    + '<input type="text" id="ms-sr-' + key + '-' + e + '" class="input input-bordered input-sm w-full"'
+    + ' placeholder="Начните вводить фамилию..." data-ms-key="' + key + '" data-ms-entry="' + e + '" autocomplete="off">'
+    + '</div>'
+    + '<details class="mb-3"><summary class="text-xs cursor-pointer select-none" style="color:#0079d3;">Клиента нет в базе — добавить нового</summary>'
+    + '<div class="mt-2 p-2 rounded space-y-1" style="background:#f1f5f9;">'
+    + '<input type="text" class="input input-bordered input-xs w-full" placeholder="Фамилия" id="ms-nl-' + key + '-' + e + '">'
+    + '<input type="text" class="input input-bordered input-xs w-full" placeholder="Имя" id="ms-nf-' + key + '-' + e + '">'
+    + '<button type="button" class="btn btn-xs btn-primary" onclick="msQuickAdd(\'' + key + '\',\'' + e + '\')">Создать и выбрать</button>'
+    + '</div></details>'
+    + '<input type="hidden" name="' + key + '_' + e + '_name" id="ms-nm-' + key + '-' + e + '" value="">'
+    + '<div class="grid grid-cols-2 gap-2">'
+    + '<div><div class="text-xs mb-0.5" style="color:#94a3b8;">Дата свадьбы</div>'
+    + '<input type="date" name="' + key + '_' + e + '_marriage_date" class="input input-bordered input-sm w-full"></div>'
+    + '<div><div class="text-xs mb-0.5" style="color:#94a3b8;">Дата развода</div>'
+    + '<input type="date" name="' + key + '_' + e + '_divorce_date" class="input input-bordered input-sm w-full"></div>'
+    + '</div>'
+    + '</div>';
+}
+
+function msAddDivorce(key) {
+  var list = document.getElementById('ms-dlist-' + key);
+  if (!list) return;
+  var i = list.querySelectorAll('.ms-divorce-entry').length;
+  list.insertAdjacentHTML('beforeend', _msDivorceHtml(key, i));
+  initMsSearch();
+}
+
+function msRemoveDivorce(btn) {
+  var entry = btn.closest('.ms-divorce-entry');
+  if (entry) entry.remove();
+}
+
+function msClearEntry(key, entry) {
+  var hi = document.getElementById('ms-hi-' + key + '-' + entry);
+  var sd = document.getElementById('ms-sd-' + key + '-' + entry);
+  var sr = document.getElementById('ms-sr-' + key + '-' + entry);
+  var nm = document.getElementById('ms-nm-' + key + '-' + entry);
+  if (hi) hi.value = '';
+  if (nm) nm.value = '';
+  if (sd) { sd.style.display = 'none'; sd.classList.add('hidden'); }
+  if (sr) { sr.value = ''; sr.style.display = ''; }
+}
+
+function msQuickAdd(key, entry) {
+  var lastEl  = document.getElementById('ms-nl-' + key + '-' + entry);
+  var firstEl = document.getElementById('ms-nf-' + key + '-' + entry);
+  if (!lastEl || !lastEl.value.trim()) { alert('Введите фамилию'); return; }
+  var fd = new FormData();
+  fd.append('last_name',  lastEl.value.trim());
+  fd.append('first_name', firstEl ? firstEl.value.trim() : '');
+  var csrf = document.cookie.match(/csrftoken=([^;]+)/);
+  if (csrf) fd.append('csrfmiddlewaretoken', csrf[1]);
+  fetch('/questionnaire/quick-add-client/', {method: 'POST', body: fd, credentials: 'same-origin'})
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.error) { alert(data.error); return; }
+      var hi = document.getElementById('ms-hi-' + key + '-' + entry);
+      var sd = document.getElementById('ms-sd-' + key + '-' + entry);
+      var sn = document.getElementById('ms-sn-' + key + '-' + entry);
+      var sr = document.getElementById('ms-sr-' + key + '-' + entry);
+      var nm = document.getElementById('ms-nm-' + key + '-' + entry);
+      if (hi) hi.value = data.id;
+      if (nm) nm.value = data.label;
+      if (sn) sn.textContent = data.label;
+      if (sd) { sd.classList.remove('hidden'); sd.style.display = 'flex'; }
+      if (sr) sr.style.display = 'none';
+    });
+}
+
+// ── Долги перед банками (bank_debts) ────────────────────────────────────────
+
+function _bankRadio(key, i, field, value, label, checked) {
+  return '<label class="flex items-center gap-1.5 cursor-pointer text-sm">'
+    + '<input type="radio" name="' + key + '_b' + i + '_' + field + '" value="' + value + '"'
+    + ' style="accent-color:#0079d3;width:14px;height:14px;"'
+    + (checked ? ' checked' : '') + '>'
+    + label + '</label>';
+}
+
+function _bankEntryHtml(key, i) {
+  var e = 'b' + i;
+  return '<div class="bank-entry rounded-lg mb-3"'
+    + ' style="border:1px solid #e2e8f0;background:#f8fafc;"'
+    + ' data-index="' + i + '" data-bd-key="' + key + '">'
+    + '<div class="flex items-center justify-between px-3 py-2"'
+    + ' style="border-bottom:1px solid #e2e8f0;background:#f1f5f9;border-radius:8px 8px 0 0;">'
+    + '<span class="text-xs font-semibold" style="color:#64748b;">Кредит</span>'
+    + '<button type="button" onclick="bankRemoveEntry(this)"'
+    + ' class="btn btn-ghost btn-xs" style="color:#ef4444;padding:2px 6px;">✕</button>'
+    + '</div>'
+    + '<div class="p-3 space-y-3">'
+
+    + '<div><div class="text-xs mb-1" style="color:#94a3b8;">Банк</div>'
+    + '<input type="hidden" name="' + key + '_' + e + '_bank_id" id="bank-hi-' + key + '-' + e + '" value="">'
+    + '<div id="bank-sd-' + key + '-' + e + '" class="hidden items-center gap-2 px-2 py-1 rounded text-sm mb-1"'
+    + ' style="background:#eff6ff;color:#1d4ed8;display:none;">'
+    + '<span id="bank-sn-' + key + '-' + e + '"></span>'
+    + '<button type="button" class="ml-auto opacity-60 text-xs" onclick="bankClearSearch(\'' + key + '\',\'' + e + '\')">✕</button></div>'
+    + '<input type="text" id="bank-sr-' + key + '-' + e + '"'
+    + ' class="input input-bordered input-sm w-full mb-1"'
+    + ' placeholder="Начните вводить название банка..."'
+    + ' data-bk-key="' + key + '" data-bk-entry="' + e + '" autocomplete="off">'
+    + '<input type="text" name="' + key + '_' + e + '_bank_name" id="bank-nm-' + key + '-' + e + '"'
+    + ' class="input input-bordered input-xs w-full"'
+    + ' placeholder="Или введите вручную (если банка нет в базе)"></div>'
+
+    + '<div class="grid grid-cols-2 gap-2">'
+    + '<div><div class="text-xs mb-1" style="color:#94a3b8;">Сумма кредита (руб.)</div>'
+    + '<input type="number" name="' + key + '_b' + i + '_loan_amount"'
+    + ' class="input input-bordered input-sm w-full" step="1" min="0"></div>'
+    + '<div><div class="text-xs mb-1" style="color:#94a3b8;">Остаток долга (руб.)</div>'
+    + '<input type="number" name="' + key + '_b' + i + '_balance"'
+    + ' class="input input-bordered input-sm w-full" step="1" min="0"></div></div>'
+
+    + '<div class="grid grid-cols-2 gap-2">'
+    + '<div><div class="text-xs mb-1" style="color:#94a3b8;">Дата взятия кредита</div>'
+    + '<input type="date" name="' + key + '_b' + i + '_date_taken"'
+    + ' class="input input-bordered input-sm w-full"></div>'
+    + '<div><div class="text-xs mb-1" style="color:#94a3b8;">Дата последнего платежа</div>'
+    + '<input type="date" name="' + key + '_b' + i + '_last_payment_date"'
+    + ' class="input input-bordered input-sm w-full"></div></div>'
+
+    + '<div><div class="text-xs mb-1" style="color:#94a3b8;">Тип кредита</div>'
+    + '<div class="flex flex-wrap gap-x-6 gap-y-2">'
+    + _bankRadio(key, i, 'loan_type', 'non_target', 'Нецелевой', true)
+    + _bankRadio(key, i, 'loan_type', 'target',     'Целевой',    false)
+    + _bankRadio(key, i, 'loan_type', 'pledged',    'Залоговый',  false)
+    + _bankRadio(key, i, 'loan_type', 'mortgage',   'Ипотека',    false)
+    + '</div></div>'
+
+    + '<div><div class="text-xs mb-1" style="color:#94a3b8;">Просрочки</div>'
+    + '<div class="flex gap-4">'
+    + _bankRadio(key, i, 'overdue', 'no', 'Нет', true)
+    + _bankRadio(key, i, 'overdue', 'yes', 'Да', false)
+    + '</div></div>'
+
+    + '<div><div class="text-xs mb-1" style="color:#94a3b8;">Решение суда или исполнительная надпись нотариуса</div>'
+    + '<div class="flex gap-4">'
+    + _bankRadio(key, i, 'court_decision', 'no', 'Нет', true)
+    + _bankRadio(key, i, 'court_decision', 'yes', 'Да', false)
+    + '</div>'
+    + '<div id="bank-enf-' + key + '-' + i + '" class="mt-2 ml-4 pl-3"'
+    + ' style="border-left:2px solid #cbd5e1;display:none;">'
+    + '<div class="text-xs mb-1" style="color:#94a3b8;">Исполнительное производство возбуждено</div>'
+    + '<div class="flex gap-4">'
+    + _bankRadio(key, i, 'enforcement', 'no', 'Нет', true)
+    + _bankRadio(key, i, 'enforcement', 'yes', 'Да', false)
+    + '</div></div></div>'
+
+    + '<div><div class="text-xs mb-1" style="color:#94a3b8;">Уведомление о передаче коллекторам</div>'
+    + '<div class="flex gap-4">'
+    + _bankRadio(key, i, 'collectors', 'no', 'Нет', true)
+    + _bankRadio(key, i, 'collectors', 'yes', 'Да', false)
+    + '</div>'
+    + '<div id="bank-col-' + key + '-' + i + '" class="mt-2" style="display:none;">'
+    + '<input type="text" name="' + key + '_b' + i + '_collectors_name"'
+    + ' class="input input-bordered input-sm w-full"'
+    + ' placeholder="Название коллекторского агентства"></div></div>'
+
+    + '<div><div class="text-xs mb-1" style="color:#94a3b8;">Комментарий</div>'
+    + '<textarea name="' + key + '_b' + i + '_comment" rows="2"'
+    + ' class="textarea textarea-bordered textarea-sm w-full" style="resize:vertical;"></textarea></div>'
+
+    + '</div></div>';
+}
+
+function bankAddEntry(key) {
+  var list = document.getElementById('bank-list-' + key);
+  if (!list) return;
+  var i = list.querySelectorAll('.bank-entry').length;
+  list.insertAdjacentHTML('beforeend', _bankEntryHtml(key, i));
+  bankInitEntry(key, i);
+  bankSetupSearch(key, i);
+}
+
+function bankRemoveEntry(btn) {
+  var entry = btn.closest('.bank-entry');
+  if (entry) entry.remove();
+}
+
+function bankInitEntry(key, i) {
+  var enfBlock = document.getElementById('bank-enf-' + key + '-' + i);
+  document.querySelectorAll('[name="' + key + '_b' + i + '_court_decision"]').forEach(function(r) {
+    r.addEventListener('change', function() {
+      if (enfBlock) enfBlock.style.display = r.value === 'yes' ? '' : 'none';
+    });
+  });
+  var colBlock = document.getElementById('bank-col-' + key + '-' + i);
+  document.querySelectorAll('[name="' + key + '_b' + i + '_collectors"]').forEach(function(r) {
+    r.addEventListener('change', function() {
+      if (colBlock) colBlock.style.display = r.value === 'yes' ? '' : 'none';
+    });
+  });
+}
+
+function bankInitAll() {
+  document.querySelectorAll('.bank-entry[data-bd-key]').forEach(function(el) {
+    var key = el.dataset.bdKey;
+    var i   = parseInt(el.dataset.index);
+    bankInitEntry(key, i);
+    bankSetupSearch(key, i);
+  });
+}
+
+function bankClearSearch(key, entry) {
+  var hi = document.getElementById('bank-hi-' + key + '-' + entry);
+  var sd = document.getElementById('bank-sd-' + key + '-' + entry);
+  var sr = document.getElementById('bank-sr-' + key + '-' + entry);
+  if (hi) hi.value = '';
+  if (sd) { sd.style.display = 'none'; sd.classList.add('hidden'); }
+  if (sr) { sr.value = ''; sr.style.display = ''; sr.focus(); }
+}
+
+function bankSetupSearch(key, i) {
+  var e   = 'b' + i;
+  var inp = document.getElementById('bank-sr-' + key + '-' + e);
+  if (!inp || inp._bkInited) return;
+  inp._bkInited = true;
+  var timer = null;
+
+  function getRes() { return document.getElementById('quiz-ref-results'); }
+
+  function doSearch(q) {
+    var res = getRes(); if (!res) return;
+    if (q.length < 2) { res.style.display = 'none'; return; }
+    res._bkActiveKey   = key;
+    res._bkActiveEntry = e;
+    fetch('/questionnaire/ref-search/?type=bank&q=' + encodeURIComponent(q), {credentials: 'same-origin'})
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        var res2 = getRes(); if (!res2) return;
+        if (res2._bkActiveKey !== key || res2._bkActiveEntry !== e) return;
+        if (!data.results.length) { res2.style.display = 'none'; return; }
+        res2.innerHTML = data.results.map(function(item) {
+          return '<div data-id="' + item.id + '" data-label="' + item.label.replace(/"/g, '&quot;') + '"'
+            + ' style="padding:8px 14px;cursor:pointer;font-size:13px;border-bottom:1px solid #f3f4f6;"'
+            + ' onmouseover="this.style.background=\'#eff6ff\'" onmouseout="this.style.background=\'\'">'
+            + item.label + '</div>';
+        }).join('');
+        var rect = inp.getBoundingClientRect();
+        res2.style.left  = rect.left + 'px';
+        res2.style.top   = (rect.bottom + 2) + 'px';
+        res2.style.width = Math.max(rect.width, 240) + 'px';
+        res2.style.display = 'block';
+      });
+  }
+
+  inp.addEventListener('input', function() {
+    clearTimeout(timer);
+    timer = setTimeout(function() { doSearch(inp.value.trim()); }, 250);
+  });
+  inp.addEventListener('focus', function() {
+    if (inp.value.trim().length >= 2) doSearch(inp.value.trim());
+  });
+  inp.addEventListener('keydown', function(ev) {
+    if (ev.key === 'Escape') { var r = getRes(); if (r) r.style.display = 'none'; }
+  });
+  inp.addEventListener('blur', function() {
+    // Задержка чтобы mousedown на результате успел сработать
+    setTimeout(function() {
+      var r = getRes();
+      if (r && r._bkActiveKey === key && r._bkActiveEntry === e) {
+        r.style.display = 'none'; r._bkActiveKey = null; r._bkActiveEntry = null;
+      }
+    }, 200);
+  });
+
+  // Клик по результату — вешаем один раз на res, используем JS-свойства
+  var res = getRes();
+  if (res && !res._bkClickHandler) {
+    res._bkClickHandler = true;
+    res.addEventListener('mousedown', function(ev) {
+      var row = ev.target.closest('[data-id]');
+      if (!row || !res._bkActiveKey || !res._bkActiveEntry) return;
+      var k = res._bkActiveKey; var ent = res._bkActiveEntry;
+      var hi = document.getElementById('bank-hi-' + k + '-' + ent);
+      var sd = document.getElementById('bank-sd-' + k + '-' + ent);
+      var sn = document.getElementById('bank-sn-' + k + '-' + ent);
+      var sr = document.getElementById('bank-sr-' + k + '-' + ent);
+      var nm = document.getElementById('bank-nm-' + k + '-' + ent);
+      if (hi) hi.value = row.dataset.id;
+      if (nm) nm.value = row.dataset.label;
+      if (sn) sn.textContent = row.dataset.label;
+      if (sd) { sd.classList.remove('hidden'); sd.style.display = 'flex'; }
+      if (sr) sr.style.display = 'none';
+      res.style.display = 'none'; res.innerHTML = '';
+      res._bkActiveKey = null; res._bkActiveEntry = null;
+    });
+  }
+}
+
+// ── Долги перед МФО (mfo_debts) ─────────────────────────────────────────────
+
+function _radioHtml(name, value, label, checked) {
+  return '<label class="flex items-center gap-1.5 cursor-pointer text-sm">'
+    + '<input type="radio" name="' + name + '" value="' + value + '"'
+    + ' style="accent-color:#0079d3;width:14px;height:14px;"'
+    + (checked ? ' checked' : '') + '> ' + label + '</label>';
+}
+
+function _mfoEntryHtml(key, i) {
+  var e = 'm' + i;
+  var n = function(f) { return key + '_' + e + '_' + f; };
+  return '<div class="mfo-entry rounded-lg mb-3"'
+    + ' style="border:1px solid #e2e8f0;background:#f8fafc;"'
+    + ' data-index="' + i + '" data-mfod-key="' + key + '">'
+    + '<div class="flex items-center justify-between px-3 py-2"'
+    + ' style="border-bottom:1px solid #e2e8f0;background:#f1f5f9;border-radius:8px 8px 0 0;">'
+    + '<span class="text-xs font-semibold" style="color:#64748b;">МФО</span>'
+    + '<button type="button" onclick="mfoRemoveEntry(this)"'
+    + ' class="btn btn-ghost btn-xs" style="color:#ef4444;padding:2px 6px;">✕</button>'
+    + '</div><div class="p-3 space-y-3">'
+
+    + '<div><div class="text-xs mb-1" style="color:#94a3b8;">МФО</div>'
+    + '<input type="hidden" name="' + n('mfo_id') + '" id="mfo-hi-' + key + '-' + e + '" value="">'
+    + '<div id="mfo-sd-' + key + '-' + e + '" class="hidden items-center gap-2 px-2 py-1 rounded text-sm mb-1"'
+    + ' style="background:#eff6ff;color:#1d4ed8;display:none;">'
+    + '<span id="mfo-sn-' + key + '-' + e + '"></span>'
+    + '<button type="button" class="ml-auto opacity-60 text-xs" onclick="mfoClearSearch(\'' + key + '\',\'' + e + '\')">✕</button></div>'
+    + '<input type="text" id="mfo-sr-' + key + '-' + e + '"'
+    + ' class="input input-bordered input-sm w-full mb-1"'
+    + ' placeholder="Начните вводить название МФО..."'
+    + ' data-mfo-key="' + key + '" data-mfo-entry="' + e + '" autocomplete="off">'
+    + '<input type="text" name="' + n('mfo_name') + '" id="mfo-nm-' + key + '-' + e + '"'
+    + ' class="input input-bordered input-xs w-full"'
+    + ' placeholder="Или введите вручную (если МФО нет в базе)"></div>'
+
+    + '<div class="grid grid-cols-2 gap-2">'
+    + '<div><div class="text-xs mb-1" style="color:#94a3b8;">Сумма займа (руб.)</div>'
+    + '<input type="number" name="' + n('loan_amount') + '" class="input input-bordered input-sm w-full" step="1" min="0"></div>'
+    + '<div><div class="text-xs mb-1" style="color:#94a3b8;">Остаток долга (руб.)</div>'
+    + '<input type="number" name="' + n('balance') + '" class="input input-bordered input-sm w-full" step="1" min="0"></div></div>'
+
+    + '<div class="grid grid-cols-2 gap-2">'
+    + '<div><div class="text-xs mb-1" style="color:#94a3b8;">Дата взятия займа</div>'
+    + '<input type="date" name="' + n('date_taken') + '" class="input input-bordered input-sm w-full"></div>'
+    + '<div><div class="text-xs mb-1" style="color:#94a3b8;">Дата последнего платежа</div>'
+    + '<input type="date" name="' + n('last_payment_date') + '" class="input input-bordered input-sm w-full"></div></div>'
+
+    + '<div><div class="text-xs mb-1" style="color:#94a3b8;">Просрочки</div>'
+    + '<div class="flex gap-4">'
+    + _radioHtml(n('overdue'), 'no', 'Нет', true) + _radioHtml(n('overdue'), 'yes', 'Да', false)
+    + '</div></div>'
+
+    + '<div><div class="text-xs mb-1" style="color:#94a3b8;">Решение суда или исп. надпись нотариуса</div>'
+    + '<div class="flex gap-4">'
+    + _radioHtml(n('court_decision'), 'no', 'Нет', true) + _radioHtml(n('court_decision'), 'yes', 'Да', false)
+    + '</div></div>'
+
+    + '<div><div class="text-xs mb-1" style="color:#94a3b8;">Передано коллекторам</div>'
+    + '<div class="flex gap-4">'
+    + _radioHtml(n('collectors'), 'no', 'Нет', true) + _radioHtml(n('collectors'), 'yes', 'Да', false)
+    + '</div>'
+    + '<div id="mfo-col-' + key + '-' + i + '" class="mt-2" style="display:none;">'
+    + '<input type="text" name="' + n('collectors_name') + '"'
+    + ' class="input input-bordered input-sm w-full" placeholder="Название коллекторского агентства"></div></div>'
+
+    + '<div><div class="text-xs mb-1" style="color:#94a3b8;">Комментарий</div>'
+    + '<textarea name="' + n('comment') + '" rows="2"'
+    + ' class="textarea textarea-bordered textarea-sm w-full" style="resize:vertical;"></textarea></div>'
+
+    + '</div></div>';
+}
+
+function mfoAddEntry(key) {
+  var list = document.getElementById('mfo-list-' + key);
+  if (!list) return;
+  var i = list.querySelectorAll('.mfo-entry').length;
+  list.insertAdjacentHTML('beforeend', _mfoEntryHtml(key, i));
+  mfoInitEntry(key, i);
+  mfoSetupSearch(key, i);
+}
+
+function mfoRemoveEntry(btn) {
+  var entry = btn.closest('.mfo-entry');
+  if (entry) entry.remove();
+}
+
+function mfoInitEntry(key, i) {
+  var colBlock = document.getElementById('mfo-col-' + key + '-' + i);
+  document.querySelectorAll('[name="' + key + '_m' + i + '_collectors"]').forEach(function(r) {
+    r.addEventListener('change', function() {
+      if (colBlock) colBlock.style.display = r.value === 'yes' ? '' : 'none';
+    });
+  });
+}
+
+function mfoToggleMode(key) {
+  var mode = '';
+  document.querySelectorAll('[name="' + key + '_mode"]').forEach(function(r) {
+    if (r.checked) mode = r.value;
+  });
+  var knownBlock   = document.getElementById('mfod-known-'   + key);
+  var unknownBlock = document.getElementById('mfod-unknown-' + key);
+  if (knownBlock)   knownBlock.style.display   = mode === 'known'   ? '' : 'none';
+  if (unknownBlock) unknownBlock.style.display = mode === 'unknown' ? '' : 'none';
+}
+
+function mfoClearSearch(key, entry) {
+  var hi = document.getElementById('mfo-hi-' + key + '-' + entry);
+  var sd = document.getElementById('mfo-sd-' + key + '-' + entry);
+  var sr = document.getElementById('mfo-sr-' + key + '-' + entry);
+  if (hi) hi.value = '';
+  if (sd) { sd.style.display = 'none'; sd.classList.add('hidden'); }
+  if (sr) { sr.value = ''; sr.style.display = ''; sr.focus(); }
+}
+
+function mfoSetupSearch(key, i) {
+  var e   = 'm' + i;
+  var inp = document.getElementById('mfo-sr-' + key + '-' + e);
+  if (!inp || inp._mfoInited) return;
+  inp._mfoInited = true;
+  var timer = null;
+  function getRes() { return document.getElementById('quiz-ref-results'); }
+  function doSearch(q) {
+    var res = getRes(); if (!res) return;
+    if (q.length < 2) { res.style.display = 'none'; return; }
+    res._mfoActiveKey = key; res._mfoActiveEntry = e;
+    fetch('/questionnaire/ref-search/?type=mfo&q=' + encodeURIComponent(q), {credentials: 'same-origin'})
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        var r2 = getRes(); if (!r2 || r2._mfoActiveKey !== key || r2._mfoActiveEntry !== e) return;
+        if (!data.results.length) { r2.style.display = 'none'; return; }
+        r2.innerHTML = data.results.map(function(item) {
+          return '<div data-id="' + item.id + '" data-label="' + item.label.replace(/"/g,'&quot;') + '"'
+            + ' style="padding:8px 14px;cursor:pointer;font-size:13px;border-bottom:1px solid #f3f4f6;"'
+            + ' onmouseover="this.style.background=\'#eff6ff\'" onmouseout="this.style.background=\'\'">'+item.label+'</div>';
+        }).join('');
+        var rect = inp.getBoundingClientRect();
+        r2.style.left = rect.left+'px'; r2.style.top = (rect.bottom+2)+'px';
+        r2.style.width = Math.max(rect.width,240)+'px'; r2.style.display = 'block';
+      });
+  }
+  inp.addEventListener('input', function() { clearTimeout(timer); timer = setTimeout(function(){ doSearch(inp.value.trim()); }, 250); });
+  inp.addEventListener('focus', function() { if (inp.value.trim().length >= 2) doSearch(inp.value.trim()); });
+  inp.addEventListener('keydown', function(ev) { if (ev.key==='Escape') { var r=getRes(); if(r) r.style.display='none'; } });
+  inp.addEventListener('blur', function() {
+    setTimeout(function() {
+      var r = getRes();
+      if (r && r._mfoActiveKey === key && r._mfoActiveEntry === e) { r.style.display='none'; r._mfoActiveKey=null; r._mfoActiveEntry=null; }
+    }, 200);
+  });
+  var res = getRes();
+  if (res && !res._mfoClickHandler) {
+    res._mfoClickHandler = true;
+    res.addEventListener('mousedown', function(ev) {
+      var row = ev.target.closest('[data-id]');
+      if (!row || !res._mfoActiveKey || !res._mfoActiveEntry) return;
+      var k=res._mfoActiveKey, ent=res._mfoActiveEntry;
+      var hi=document.getElementById('mfo-hi-'+k+'-'+ent);
+      var sd=document.getElementById('mfo-sd-'+k+'-'+ent);
+      var sn=document.getElementById('mfo-sn-'+k+'-'+ent);
+      var sr=document.getElementById('mfo-sr-'+k+'-'+ent);
+      var nm=document.getElementById('mfo-nm-'+k+'-'+ent);
+      if(hi) hi.value=row.dataset.id; if(nm) nm.value=row.dataset.label;
+      if(sn) sn.textContent=row.dataset.label;
+      if(sd) { sd.classList.remove('hidden'); sd.style.display='flex'; }
+      if(sr) sr.style.display='none';
+      res.style.display='none'; res.innerHTML=''; res._mfoActiveKey=null; res._mfoActiveEntry=null;
+    });
+  }
+}
+
+function mfoInitAll() {
+  document.querySelectorAll('.mfo-entry[data-mfod-key]').forEach(function(el) {
+    var key = el.dataset.mfodKey;
+    var i   = parseInt(el.dataset.index);
+    mfoInitEntry(key, i);
+    mfoSetupSearch(key, i);
+  });
+}
+
+// ── Коммунальные платежи (utility_debts) ─────────────────────────────────────
+
+function _utilEntryHtml(key, i) {
+  var n = function(f) { return key + '_u' + i + '_' + f; };
+  return '<div class="util-entry rounded-lg mb-2"'
+    +' style="border:1px solid #e2e8f0;background:#f8fafc;"'
+    +' data-index="'+i+'" data-util-key="'+key+'">'
+    +'<div class="flex items-center justify-between px-3 py-1.5"'
+    +' style="border-bottom:1px solid #e2e8f0;background:#f1f5f9;border-radius:8px 8px 0 0;">'
+    +'<span class="text-xs font-semibold" style="color:#64748b;">Задолженность</span>'
+    +'<button type="button" onclick="utilRemoveEntry(this)"'
+    +' class="btn btn-ghost btn-xs" style="color:#ef4444;padding:2px 6px;">✕</button></div>'
+    +'<div class="p-3 grid gap-2" style="grid-template-columns:2fr 3fr 1fr;">'
+    +'<div><div class="text-xs mb-1" style="color:#94a3b8;">Ресурсная орг-я</div>'
+    +'<input type="text" name="'+n('org_name')+'" class="input input-bordered input-sm w-full"></div>'
+    +'<div><div class="text-xs mb-1" style="color:#94a3b8;">Наименование долга (за что)</div>'
+    +'<input type="text" name="'+n('debt_name')+'" class="input input-bordered input-sm w-full"></div>'
+    +'<div><div class="text-xs mb-1" style="color:#94a3b8;">Сумма долга</div>'
+    +'<input type="number" name="'+n('amount')+'" class="input input-bordered input-sm w-full" step="1" min="0"></div>'
+    +'</div></div>';
+}
+
+function utilAddEntry(key) {
+  var list = document.getElementById('util-list-' + key);
+  if (!list) return;
+  var i = list.querySelectorAll('.util-entry').length;
+  list.insertAdjacentHTML('beforeend', _utilEntryHtml(key, i));
+}
+
+function utilRemoveEntry(btn) {
+  var entry = btn.closest('.util-entry');
+  if (entry) entry.remove();
+}
+
+// ── Штрафы (fine_debts) ───────────────────────────────────────────────────────
+
+function _fineEntryHtml(key, i) {
+  var n = function(f){ return key+'_f'+i+'_'+f; };
+  return '<div class="fine-entry rounded-lg mb-2" style="border:1px solid #e2e8f0;background:#f8fafc;" data-fine-key="'+key+'">'
+    +'<div class="flex items-center justify-between px-3 py-1.5" style="border-bottom:1px solid #e2e8f0;background:#f1f5f9;border-radius:8px 8px 0 0;">'
+    +'<span class="text-xs font-semibold" style="color:#64748b;">Штраф '+(i+1)+'</span>'
+    +'<button type="button" onclick="fineRemoveEntry(this)"'
+    +' class="btn btn-ghost btn-xs" style="color:#ef4444;padding:2px 6px;">✕</button></div>'
+    +'<div class="p-3 grid gap-2" style="grid-template-columns:2fr 3fr 1fr;">'
+    +'<div><div class="text-xs mb-1" style="color:#94a3b8;">Госорган</div>'
+    +'<input type="text" name="'+n('agency')+'" class="input input-bordered input-sm w-full"></div>'
+    +'<div><div class="text-xs mb-1" style="color:#94a3b8;">За что штраф</div>'
+    +'<input type="text" name="'+n('reason')+'" class="input input-bordered input-sm w-full"></div>'
+    +'<div><div class="text-xs mb-1" style="color:#94a3b8;">Сумма штрафа</div>'
+    +'<input type="number" name="'+n('amount')+'" class="input input-bordered input-sm w-full" step="1" min="0"></div>'
+    +'</div></div>';
+}
+function fineAddEntry(key) {
+  var list = document.getElementById('fine-list-'+key);
+  var i = list.querySelectorAll('.fine-entry').length;
+  list.insertAdjacentHTML('beforeend', _fineEntryHtml(key, i));
+}
+function fineRemoveEntry(btn) {
+  var entry = btn.closest('.fine-entry');
+  if (entry) entry.remove();
+}
+
+// ── Задолженности по решению суда (court_debts) ───────────────────────────────
+
+function _courtEntryHtml(key, i) {
+  var n = function(f){ return key+'_c'+i+'_'+f; };
+  return '<div class="court-entry rounded-lg mb-2" style="border:1px solid #e2e8f0;background:#f8fafc;" data-court-key="'+key+'">'
+    +'<div class="flex items-center justify-between px-3 py-1.5" style="border-bottom:1px solid #e2e8f0;background:#f1f5f9;border-radius:8px 8px 0 0;">'
+    +'<span class="text-xs font-semibold" style="color:#64748b;">Решение '+(i+1)+'</span>'
+    +'<button type="button" onclick="courtRemoveEntry(this)"'
+    +' class="btn btn-ghost btn-xs" style="color:#ef4444;padding:2px 6px;">✕</button></div>'
+    +'<div class="p-3 grid gap-2" style="grid-template-columns:2fr 3fr 1fr;">'
+    +'<div><div class="text-xs mb-1" style="color:#94a3b8;">Наименование суда</div>'
+    +'<input type="text" name="'+n('court_name')+'" class="input input-bordered input-sm w-full"></div>'
+    +'<div><div class="text-xs mb-1" style="color:#94a3b8;">Решение по делу</div>'
+    +'<input type="text" name="'+n('decision')+'" class="input input-bordered input-sm w-full"></div>'
+    +'<div><div class="text-xs mb-1" style="color:#94a3b8;">Сумма долга</div>'
+    +'<input type="number" name="'+n('amount')+'" class="input input-bordered input-sm w-full" step="1" min="0"></div>'
+    +'</div></div>';
+}
+function courtAddEntry(key) {
+  var list = document.getElementById('court-list-'+key);
+  var i = list.querySelectorAll('.court-entry').length;
+  list.insertAdjacentHTML('beforeend', _courtEntryHtml(key, i));
+}
+function courtRemoveEntry(btn) {
+  var entry = btn.closest('.court-entry');
+  if (entry) entry.remove();
+}
+
+// ── Иные задолженности (other_debts) ─────────────────────────────────────────
+
+function _otherEntryHtml(key, i) {
+  var n = function(f){ return key+'_o'+i+'_'+f; };
+  return '<div class="other-entry rounded-lg mb-2" style="border:1px solid #e2e8f0;background:#f8fafc;" data-other-key="'+key+'">'
+    +'<div class="flex items-center justify-between px-3 py-1.5" style="border-bottom:1px solid #e2e8f0;background:#f1f5f9;border-radius:8px 8px 0 0;">'
+    +'<span class="text-xs font-semibold" style="color:#64748b;">Задолженность '+(i+1)+'</span>'
+    +'<button type="button" onclick="otherRemoveEntry(this)"'
+    +' class="btn btn-ghost btn-xs" style="color:#ef4444;padding:2px 6px;">✕</button></div>'
+    +'<div class="p-3 grid gap-2" style="grid-template-columns:4fr 1fr;">'
+    +'<div><div class="text-xs mb-1" style="color:#94a3b8;">Сущность задолженности</div>'
+    +'<input type="text" name="'+n('essence')+'" class="input input-bordered input-sm w-full"></div>'
+    +'<div><div class="text-xs mb-1" style="color:#94a3b8;">Сумма долга</div>'
+    +'<input type="number" name="'+n('amount')+'" class="input input-bordered input-sm w-full" step="1" min="0"></div>'
+    +'</div></div>';
+}
+function otherAddEntry(key) {
+  var list = document.getElementById('other-list-'+key);
+  var i = list.querySelectorAll('.other-entry').length;
+  list.insertAdjacentHTML('beforeend', _otherEntryHtml(key, i));
+}
+function otherRemoveEntry(btn) {
+  var entry = btn.closest('.other-entry');
+  if (entry) entry.remove();
+}
+
+// ── Имущество (property_assets) ──────────────────────────────────────────────
+
+var _propTypeOpts = '<option value="">— выберите тип —</option>'
+  +'<option value="residential">Жилая недвижимость</option>'
+  +'<option value="commercial">Коммерческая недвижимость</option>'
+  +'<option value="garage">Гараж</option>'
+  +'<option value="dacha">Дача</option>'
+  +'<option value="car">Автомобиль</option>'
+  +'<option value="equipment">Спецтехника</option>'
+  +'<option value="boat">Лодка</option>'
+  +'<option value="claim">Право требования</option>'
+  +'<option value="money">Деньги</option>'
+  +'<option value="other">Иное</option>';
+
+var _propAcqOpts = '<option value="">— выберите —</option>'
+  +'<option value="purchase">Договор купли-продажи</option>'
+  +'<option value="inheritance">По наследству</option>'
+  +'<option value="privatization">Приватизация</option>'
+  +'<option value="mortgage">Ипотека</option>'
+  +'<option value="gift">Дарение</option>'
+  +'<option value="other">Иное</option>';
+
+var _propAuctionOpts = '<option value="">— не определена —</option>'
+  +'<option value="sell">Продаём с торгов</option>'
+  +'<option value="exclude">Исключаем из КМ</option>'
+  +'<option value="other">Иное</option>';
+
+function _propEntryHtml(key, i) {
+  var n = function(f) { return key + '_p' + i + '_' + f; };
+  var radio = function(fname, val, label, chk) {
+    return '<label class="flex items-center gap-1.5 cursor-pointer text-sm">'
+      +'<input type="radio" name="'+n(fname)+'" value="'+val+'"'
+      +' style="accent-color:#0079d3;width:14px;height:14px;"'+(chk?' checked':'')+'> '+label+'</label>';
+  };
+  return '<div class="prop-entry rounded-lg mb-3"'
+    +' style="border:1px solid #e2e8f0;background:#f8fafc;"'
+    +' data-index="'+i+'" data-prop-key="'+key+'">'
+    +'<div class="flex items-center justify-between px-3 py-2"'
+    +' style="border-bottom:1px solid #e2e8f0;background:#f1f5f9;border-radius:8px 8px 0 0;">'
+    +'<span class="text-xs font-semibold" style="color:#64748b;">Имущество</span>'
+    +'<button type="button" onclick="propRemoveEntry(this)"'
+    +' class="btn btn-ghost btn-xs" style="color:#ef4444;padding:2px 6px;">✕</button></div>'
+    +'<div class="p-3 space-y-3">'
+
+    +'<div class="grid grid-cols-2 gap-2">'
+    +'<div><div class="text-xs mb-1" style="color:#94a3b8;">Тип имущества</div>'
+    +'<select name="'+n('asset_type')+'" class="select select-bordered select-sm w-full">'+_propTypeOpts+'</select></div>'
+    +'<div><div class="text-xs mb-1" style="color:#94a3b8;">Наименование / описание</div>'
+    +'<input type="text" name="'+n('name')+'" class="input input-bordered input-sm w-full"></div></div>'
+
+    +'<div class="grid grid-cols-2 gap-2">'
+    +'<div><div class="text-xs mb-1" style="color:#94a3b8;">Как приобреталось</div>'
+    +'<select name="'+n('acquisition')+'" class="select select-bordered select-sm w-full">'+_propAcqOpts+'</select></div>'
+    +'<div><div class="text-xs mb-1" style="color:#94a3b8;">Стоимость (руб.)</div>'
+    +'<input type="number" name="'+n('value')+'" class="input input-bordered input-sm w-full" step="1" min="0"></div></div>'
+
+    +'<div class="grid grid-cols-2 gap-2">'
+    +'<div><div class="text-xs mb-1" style="color:#94a3b8;">Залог</div>'
+    +'<div class="flex gap-4">'+radio('pledged','no','Нет',true)+radio('pledged','yes','Да',false)+'</div></div>'
+    +'<div><div class="text-xs mb-1" style="color:#94a3b8;">Приобретено в браке</div>'
+    +'<div class="flex gap-4">'+radio('in_marriage','no','Нет',true)+radio('in_marriage','yes','Да',false)+'</div></div></div>'
+
+    +'<div><div class="text-xs mb-1" style="color:#94a3b8;">Позиция по торгам</div>'
+    +'<select name="'+n('auction')+'" class="select select-bordered select-sm w-full">'+_propAuctionOpts+'</select></div>'
+
+    +'<div><div class="text-xs mb-1" style="color:#94a3b8;">Комментарий</div>'
+    +'<input type="text" name="'+n('comment')+'" class="input input-bordered input-sm w-full"></div>'
+
+    +'</div></div>';
+}
+
+function propAddEntry(key) {
+  var list = document.getElementById('prop-list-' + key);
+  if (!list) return;
+  var i = list.querySelectorAll('.prop-entry').length;
+  list.insertAdjacentHTML('beforeend', _propEntryHtml(key, i));
+}
+
+function propRemoveEntry(btn) {
+  var entry = btn.closest('.prop-entry');
+  if (entry) entry.remove();
+}
+
+function propToggle(key) {
+  var block   = document.getElementById('prop-assets-' + key);
+  var checked = document.querySelector('[name="' + key + '_has"]:checked');
+  if (block) block.style.display = (checked && checked.value === 'yes') ? '' : 'none';
+}
+
+function propInitAll() {
+  // Ничего дополнительного — toggle через onchange, add/remove через onclick
+}
+
+// ── Проданное имущество (sold_assets) ────────────────────────────────────────
+
+var _soldTypeOpts = '<option value="">— выберите —</option>'
+  +'<option value="residential">Жилая недвижимость</option>'
+  +'<option value="commercial">Коммерческая недвижимость</option>'
+  +'<option value="garage">Гараж</option>'
+  +'<option value="dacha">Дача</option>'
+  +'<option value="car">Автомобиль</option>'
+  +'<option value="special">Спецтехника</option>'
+  +'<option value="boat">Лодка</option>'
+  +'<option value="claim_right">Право требования</option>'
+  +'<option value="money">Деньги</option>'
+  +'<option value="other">Иное</option>';
+
+var _soldSaleOpts = '<option value="">— выберите —</option>'
+  +'<option value="purchase">Купля-продажа</option>'
+  +'<option value="gift">Дарение</option>'
+  +'<option value="other">Иное</option>';
+
+var _soldStrategyOpts = '<option value="">— выберите —</option>'
+  +'<option value="normal">Признаём сделку нормальной</option>'
+  +'<option value="challenge">Оспариваем</option>'
+  +'<option value="other">Иное</option>';
+
+var _soldBuyerOpts = '<option value="">— выберите —</option>'
+  +'<option value="relative">Родственнику</option>'
+  +'<option value="unknown">Неизвестному человеку</option>'
+  +'<option value="legal">Юридическому лицу</option>';
+
+function _soldEntryHtml(key, i) {
+  var n = function(f) { return key + '_s' + i + '_' + f; };
+  var radio = function(fname, val, label, chk) {
+    return '<label class="flex items-center gap-2 cursor-pointer text-sm">'
+      +'<input type="radio" name="'+n(fname)+'" value="'+val+'"'
+      +' style="accent-color:#0079d3;width:14px;height:14px;"'+(chk?' checked':'')+'> '+label+'</label>';
+  };
+  return '<div class="sold-entry rounded-lg mb-3"'
+    +' style="border:1px solid #e2e8f0;background:#f8fafc;"'
+    +' data-index="'+i+'" data-sold-key="'+key+'">'
+    +'<div class="flex items-center justify-between px-3 py-2"'
+    +' style="border-bottom:1px solid #e2e8f0;background:#f1f5f9;border-radius:8px 8px 0 0;">'
+    +'<span class="text-xs font-semibold" style="color:#64748b;">Сделка</span>'
+    +'<button type="button" onclick="soldRemoveEntry(this)"'
+    +' class="btn btn-ghost btn-xs" style="color:#ef4444;padding:2px 6px;">✕</button></div>'
+    +'<div class="p-3 space-y-3">'
+
+    +'<div class="grid grid-cols-2 gap-2">'
+    +'<div><div class="text-xs mb-1" style="color:#94a3b8;">Тип имущества</div>'
+    +'<select name="'+n('asset_type')+'" class="select select-bordered select-sm w-full">'+_soldTypeOpts+'</select></div>'
+    +'<div><div class="text-xs mb-1" style="color:#94a3b8;">Наименование</div>'
+    +'<input type="text" name="'+n('name')+'" class="input input-bordered input-sm w-full"></div></div>'
+
+    +'<div class="grid grid-cols-2 gap-2">'
+    +'<div><div class="text-xs mb-1" style="color:#94a3b8;">Как продано</div>'
+    +'<select name="'+n('sale_type')+'" class="select select-bordered select-sm w-full">'+_soldSaleOpts+'</select></div>'
+    +'<div><div class="text-xs mb-1" style="color:#94a3b8;">Стоимость (руб.)</div>'
+    +'<input type="number" name="'+n('value')+'" class="input input-bordered input-sm w-full" step="1" min="0"></div></div>'
+
+    +'<div class="grid grid-cols-2 gap-2">'
+    +'<div><div class="text-xs mb-1" style="color:#94a3b8;">Кому продано</div>'
+    +'<select name="'+n('buyer_type')+'" class="select select-bordered select-sm w-full">'+_soldBuyerOpts+'</select></div>'
+    +'<div><div class="text-xs mb-1" style="color:#94a3b8;">Готов предоставить договор и документы</div>'
+    +'<div class="flex gap-4 mt-1">'+radio('has_docs','yes','Да',true)+radio('has_docs','no','Нет',false)+'</div></div></div>'
+
+    +'<div><div class="text-xs mb-1" style="color:#94a3b8;">Что делаем</div>'
+    +'<select name="'+n('strategy')+'" class="select select-bordered select-sm w-full">'+_soldStrategyOpts+'</select></div>'
+
+    +'<div><div class="text-xs mb-1" style="color:#94a3b8;">Комментарий</div>'
+    +'<input type="text" name="'+n('comment')+'" class="input input-bordered input-sm w-full"></div>'
+
+    +'</div></div>';
+}
+
+function soldAddEntry(key) {
+  var list = document.getElementById('sold-list-' + key);
+  if (!list) return;
+  var i = list.querySelectorAll('.sold-entry').length;
+  list.insertAdjacentHTML('beforeend', _soldEntryHtml(key, i));
+}
+
+function soldRemoveEntry(btn) {
+  var entry = btn.closest('.sold-entry');
+  if (entry) entry.remove();
+}
+
+function soldToggle(key) {
+  var block   = document.getElementById('sold-assets-' + key);
+  var checked = document.querySelector('[name="' + key + '_has"]:checked');
+  if (block) block.style.display = (checked && checked.value === 'yes') ? '' : 'none';
+}
+
+// ── Неуплаченные налоги (tax_debts) ──────────────────────────────────────────
+
+function taxToggle(key) {
+  var block   = document.getElementById('tax-detail-' + key);
+  var checked = document.querySelector('[name="' + key + '_has"]:checked');
+  if (block) block.style.display = (checked && checked.value === 'yes') ? '' : 'none';
+}
+
+function taxOtherToggle(key) {
+  var cb    = document.getElementById('tax-other-cb-' + key);
+  var block = document.getElementById('tax-other-detail-' + key);
+  if (block) block.style.display = (cb && cb.checked) ? '' : 'none';
+}
+
+// ── Дети (children_list) ──────────────────────────────────────────────────────
+
+function _childEntryHtml(key, i) {
+  var n = function(f) { return key + '_ch' + i + '_' + f; };
+  return '<div class="child-entry rounded-lg mb-2"'
+    +' style="border:1px solid #e2e8f0;background:#f8fafc;" data-child-key="'+key+'">'
+    +'<div class="flex items-center justify-between px-3 py-1.5"'
+    +' style="border-bottom:1px solid #e2e8f0;background:#f1f5f9;border-radius:8px 8px 0 0;">'
+    +'<span class="text-xs font-semibold" style="color:#64748b;">Ребёнок '+(i+1)+'</span>'
+    +'<button type="button" onclick="childRemoveEntry(this)"'
+    +' class="btn btn-ghost btn-xs" style="color:#ef4444;padding:2px 6px;">✕</button></div>'
+    +'<div class="p-3 grid grid-cols-2 gap-3">'
+    +'<div><div class="text-xs mb-1" style="color:#94a3b8;">ФИО</div>'
+    +'<input type="text" name="'+n('fio')+'" class="input input-bordered input-sm w-full"'
+    +' placeholder="Фамилия Имя Отчество"></div>'
+    +'<div><div class="text-xs mb-1" style="color:#94a3b8;">Дата рождения</div>'
+    +'<input type="date" name="'+n('dob')+'" class="input input-bordered input-sm w-full"></div>'
+    +'</div></div>';
+}
+
+function childAddEntry(key) {
+  var list = document.getElementById('children-list-' + key);
+  if (!list) return;
+  var i = list.querySelectorAll('.child-entry').length;
+  list.insertAdjacentHTML('beforeend', _childEntryHtml(key, i));
+}
+
+function childRemoveEntry(btn) {
+  var entry = btn.closest('.child-entry');
+  if (entry) entry.remove();
+}
+
+function childrenToggle(key) {
+  var block   = document.getElementById('children-detail-' + key);
+  var checked = document.querySelector('[name="' + key + '_has"]:checked');
+  if (block) block.style.display = (checked && checked.value === 'yes') ? '' : 'none';
+}
+
+// ── Файловый менеджер — загрузка с прогрессом ────────────────────────────────
+
+function filesUploadStart(input) {
+  var bar      = document.getElementById('files-upload-bar');
+  var pct      = document.getElementById('files-upload-pct');
+  var progress = document.getElementById('files-upload-progress');
+  var lbl      = document.getElementById('files-upload-label-text');
+  if (!bar || !progress) return;
+
+  var files = input.files;
+  var names = files.length === 1
+    ? files[0].name
+    : files.length + ' файл' + (files.length < 5 ? 'а' : 'ов');
+
+  lbl.textContent  = 'Загрузка: ' + names;
+  bar.style.width  = '0%';
+  pct.textContent  = '0%';
+  progress.style.display = '';
+
+  // Слушаем прогресс на input-элементе
+  input.addEventListener('htmx:xhr:progress', function onProgress(e) {
+    if (e.detail.total > 0) {
+      var p = Math.round(e.detail.loaded / e.detail.total * 100);
+      bar.style.width = p + '%';
+      pct.textContent = p + '%';
+    }
+  }, { once: false });
+
+  // Скрываем после завершения
+  input.addEventListener('htmx:afterRequest', function onDone() {
+    bar.style.width  = '100%';
+    pct.textContent  = '100%';
+    setTimeout(function() {
+      progress.style.display = 'none';
+      bar.style.width = '0%';
+      pct.textContent = '0%';
+    }, 600);
+    input.removeEventListener('htmx:xhr:progress', onProgress);
+    input.removeEventListener('htmx:afterRequest', onDone);
+  }, { once: true });
+}
+
+function filesTreeSelect(label) {
+  document.querySelectorAll('.tree-item--active').forEach(function(el) {
+    el.classList.remove('tree-item--active');
+  });
+  label.closest('.tree-item').classList.add('tree-item--active');
+}
+
+function filesTreeToggle(item) {
+  var children = item.querySelector('.tree-children');
+  if (!children) return;
+  var open = item.classList.toggle('tree-item--open');
+  children.style.display = open ? '' : 'none';
+}
+
+function filesExpandToActive() {
+  document.querySelectorAll('.tree-item--active').forEach(function(item) {
+    var parent = item.parentElement.closest('.tree-item');
+    while (parent) {
+      parent.classList.add('tree-item--open');
+      var ch = parent.querySelector('.tree-children');
+      if (ch) ch.style.display = '';
+      parent = parent.parentElement.closest('.tree-item');
+    }
+  });
+}
+
+function filesNewFolder(parentPk, csrf) {
+  var name = prompt('Название новой папки:');
+  if (!name || !name.trim()) return;
+  var form = new FormData();
+  form.append('name', name.trim());
+  htmx.ajax('POST', '/files/folder/' + parentPk + '/mkdir/',
+    { target: '#files-main', swap: 'innerHTML', values: { name: name.trim() },
+      headers: { 'X-CSRFToken': csrf } });
+}
+
+function filesMoveDialog(filePk, csrf) {
+  document.getElementById('files-move-file-pk').value = filePk;
+  document.getElementById('files-move-csrf').value = csrf;
+  document.getElementById('files-move-dialog').showModal();
+}
+
+function filesMoveSubmit() {
+  var pk     = document.getElementById('files-move-file-pk').value;
+  var target = document.getElementById('files-move-target').value;
+  var csrf   = document.getElementById('files-move-csrf').value;
+  if (!pk || !target) return;
+  htmx.ajax('POST', '/files/file/' + pk + '/move/',
+    { target: '#files-main', swap: 'innerHTML',
+      values: { target_folder: target },
+      headers: { 'X-CSRFToken': csrf } });
+  document.getElementById('files-move-dialog').close();
+}
+
+document.addEventListener('htmx:afterSwap', function(e) {
+  if (e.detail.target && e.detail.target.id === 'files-main') {
+    filesExpandToActive();
+    // Переинициализируем htmx для новых элементов
+    htmx.process(document.getElementById('files-tree-panel'));
+  }
+});
+
+var _msActiveKey = null, _msActiveEntry = null;
+
+function initMsSearch() {
+  var res = document.getElementById('quiz-ref-results');
+  if (!res) return;
+
+  document.querySelectorAll('[data-ms-key][data-ms-entry]').forEach(function(inp) {
+    if (inp._msSearchInited) return;
+    inp._msSearchInited = true;
+    var key   = inp.dataset.msKey;
+    var entry = inp.dataset.msEntry;
+    var timer = null;
+
+    function doSearch(q) {
+      if (q.length < 2) { res.style.display = 'none'; return; }
+      _msActiveKey   = key;
+      _msActiveEntry = entry;
+      fetch('/questionnaire/ref-search/?type=client&q=' + encodeURIComponent(q), {credentials: 'same-origin'})
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          if (_msActiveKey !== key || _msActiveEntry !== entry) return;
+          if (!data.results.length) { res.style.display = 'none'; return; }
+          res.innerHTML = data.results.map(function(item) {
+            return '<div data-id="' + item.id + '" data-label="' + item.label.replace(/"/g,'&quot;') + '"'
+              + ' style="padding:8px 14px;cursor:pointer;font-size:13px;border-bottom:1px solid #f3f4f6;"'
+              + ' onmouseover="this.style.background=\'#eff6ff\'" onmouseout="this.style.background=\'\'">'
+              + item.label + '</div>';
+          }).join('');
+          res.setAttribute('data-ms-key',   key);
+          res.setAttribute('data-ms-entry', entry);
+          var rect = inp.getBoundingClientRect();
+          res.style.left  = rect.left + 'px';
+          res.style.top   = (rect.bottom + 2) + 'px';
+          res.style.width = Math.max(rect.width, 240) + 'px';
+          res.style.display = 'block';
+        });
+    }
+
+    inp.addEventListener('input', function() {
+      clearTimeout(timer);
+      timer = setTimeout(function() { doSearch(inp.value.trim()); }, 200);
+    });
+    inp.addEventListener('focus', function() {
+      if (inp.value.trim().length >= 2) doSearch(inp.value.trim());
+    });
+    inp.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape') res.style.display = 'none';
+    });
+  });
+
+  // Клик по результату
+  if (!res._msClickInited) {
+    res._msClickInited = true;
+    res.addEventListener('mousedown', function(e) {
+      var row = e.target.closest('[data-id]');
+      if (!row) return;
+      var k   = res.getAttribute('data-ms-key');
+      var ent = res.getAttribute('data-ms-entry');
+      if (!k || !ent) return;
+      var hi = document.getElementById('ms-hi-' + k + '-' + ent);
+      var sd = document.getElementById('ms-sd-' + k + '-' + ent);
+      var sn = document.getElementById('ms-sn-' + k + '-' + ent);
+      var sr = document.getElementById('ms-sr-' + k + '-' + ent);
+      var nm = document.getElementById('ms-nm-' + k + '-' + ent);
+      if (hi) hi.value = row.dataset.id;
+      if (nm) nm.value = row.dataset.label;
+      if (sn) sn.textContent = row.dataset.label;
+      if (sd) { sd.classList.remove('hidden'); sd.style.display = 'flex'; }
+      if (sr) sr.style.display = 'none';
+      res.style.display = 'none'; res.innerHTML = '';
+      _msActiveKey = null; _msActiveEntry = null;
+    });
+  }
+}
 </script>
 
 </body>

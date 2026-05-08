@@ -1,0 +1,59 @@
+{% comment %}
+  Variables: key, ans = {mode: "known"/"unknown", entries: [...], count: "", total_amount: ""}
+{% endcomment %}
+{% with mfo_mode=ans.mode %}
+<div id="mfod-{{ key }}">
+
+  <!-- Выбор режима -->
+  <div class="space-y-2 mb-3">
+    <label class="flex items-center gap-2 cursor-pointer text-sm">
+      <input type="radio" name="{{ key }}_mode" value="known"
+             style="accent-color:#0079d3;width:15px;height:15px;cursor:pointer;"
+             onchange="mfoToggleMode('{{ key }}')"
+             {% if mfo_mode == "known" %}checked{% endif %}>
+      Помню и могу перечислить МФО
+    </label>
+    <label class="flex items-center gap-2 cursor-pointer text-sm">
+      <input type="radio" name="{{ key }}_mode" value="unknown"
+             style="accent-color:#0079d3;width:15px;height:15px;cursor:pointer;"
+             onchange="mfoToggleMode('{{ key }}')"
+             {% if not mfo_mode or mfo_mode == "unknown" %}checked{% endif %}>
+      Не помню точно — знаю только количество и общую сумму
+    </label>
+  </div>
+
+  <!-- Список МФО -->
+  <div id="mfod-known-{{ key }}"
+       {% if mfo_mode != "known" %}style="display:none;"{% endif %}>
+    <div id="mfo-list-{{ key }}">
+      {% for entry in ans.entries %}
+        {% include "questionnaire/quiz/partials/mfo_entry.html" with idx=forloop.counter0 entry=entry key=key %}
+      {% endfor %}
+    </div>
+    <button type="button" onclick="mfoAddEntry('{{ key }}')"
+            class="btn btn-sm btn-outline mt-1">+ Добавить МФО</button>
+  </div>
+
+  <!-- Не помню -->
+  <div id="mfod-unknown-{{ key }}"
+       {% if mfo_mode == "known" %}style="display:none;"{% endif %}>
+    <div class="grid grid-cols-2 gap-3">
+      <div>
+        <div class="text-xs mb-1" style="color:#94a3b8;">Количество МФО</div>
+        <input type="number" name="{{ key }}_unknown_count"
+               class="input input-bordered input-sm w-full"
+               min="1" max="200" step="1"
+               value="{{ ans.count|default:'' }}">
+      </div>
+      <div>
+        <div class="text-xs mb-1" style="color:#94a3b8;">Примерная общая сумма (руб.)</div>
+        <input type="number" name="{{ key }}_unknown_amount"
+               class="input input-bordered input-sm w-full"
+               min="0" step="1"
+               value="{{ ans.total_amount|default:'' }}">
+      </div>
+    </div>
+  </div>
+
+</div>
+{% endwith %}

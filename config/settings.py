@@ -39,6 +39,7 @@ INSTALLED_APPS = [
     'apps.telegram',
     'apps.maxchat',
     'apps.consultations',
+    'apps.questionnaire',
 
 ]
 

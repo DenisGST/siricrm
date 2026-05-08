@@ -1,0 +1,71 @@
+{% load icons %}
+<dialog id="quiz-dialog" class="modal modal-middle modal-open">
+
+  <div id="quiz-ref-results"
+       style="display:none;position:fixed;z-index:9999;background:#fff;
+              border:1px solid #d1d5db;border-radius:8px;
+              box-shadow:0 6px 20px rgba(0,0,0,.18);
+              max-height:220px;overflow-y:auto;min-width:220px;font-size:13px;"></div>
+
+  <div class="modal-box w-full" style="padding:1rem;max-width:43rem;">
+
+    <!-- Шапка -->
+    <div class="flex items-center justify-between mb-2">
+      <div>
+        <h3 class="font-semibold text-sm">{{ response.template.title }}</h3>
+        <p class="text-xs mt-0.5" style="color:#9ca3af;">
+          {{ response.service.client.last_name }} {{ response.service.client.first_name }}
+          {% if response.service.numb_dogovor %}· {{ response.service.numb_dogovor }}{% endif %}
+        </p>
+      </div>
+      <button type="button" class="btn btn-xs btn-ghost btn-circle" onclick="closeQuiz()">✕</button>
+    </div>
+
+    <!-- Прогресс -->
+    <div class="flex items-center gap-2 mb-3">
+      <div class="flex gap-0.5 flex-1">
+        {% for i in page_range %}
+          <div class="h-1 flex-1 rounded-full"
+               style="background:{% if i <= page_num %}#0079d3{% else %}#e5e7eb{% endif %};"></div>
+        {% endfor %}
+      </div>
+      <span class="text-xs shrink-0" style="color:#9ca3af;">{{ page_num|add:1 }}/{{ total_pages }}</span>
+    </div>
+
+    {% if page.title %}
+    <div class="text-xs font-semibold uppercase tracking-wide mb-2 pb-1.5 border-b border-base-300"
+         style="color:#6b7280;">{{ page.title }}</div>
+    {% endif %}
+
+    <!-- Форма -->
+    <form hx-post="{% url 'questionnaire:quiz_save_page' response.pk page_num %}"
+          hx-target="#quiz-modal-container"
+          hx-swap="innerHTML"
+          id="quiz-form">
+      {% csrf_token %}
+      <div class="space-y-3" style="max-height:calc(100vh - 220px);overflow-y:auto;padding-right:4px;">
+        {% for q in page.questions.all %}
+          {% if not q.parent_group %}
+            {% include "questionnaire/quiz/question.html" with q=q answers=answers %}
+          {% endif %}
+        {% endfor %}
+      </div>
+
+      <div class="flex gap-2 mt-5 pt-3 border-t border-base-300">
+        {% if prev_num is not None %}
+        <button type="button" class="btn btn-xs btn-ghost"
+                hx-get="{% url 'questionnaire:quiz_page' response.pk prev_num %}"
+                hx-target="#quiz-modal-container"
+                hx-swap="innerHTML">‹ Назад</button>
+        {% endif %}
+        <div class="flex-1"></div>
+        {% if is_last %}
+        <button type="submit" class="btn btn-xs btn-success">Завершить ✓</button>
+        {% else %}
+        <button type="submit" class="btn btn-xs btn-primary">Далее ›</button>
+        {% endif %}
+      </div>
+    </form>
+  </div>
+  <div class="modal-backdrop" onclick="closeQuiz()"></div>
+</dialog>

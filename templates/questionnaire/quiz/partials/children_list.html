@@ -1,0 +1,58 @@
+{% comment %}Variables: key, ans = {has_children: "no"/"yes", entries: [{fio, dob}]}{% endcomment %}
+{% with has_children=ans.has_children %}
+<div id="children-{{ key }}">
+
+  <div class="space-y-2 mb-3">
+    <label class="flex items-center gap-2 cursor-pointer text-sm">
+      <input type="radio" name="{{ key }}_has" value="no"
+             style="accent-color:#0079d3;width:15px;height:15px;cursor:pointer;"
+             onchange="childrenToggle('{{ key }}')"
+             {% if not has_children or has_children == "no" %}checked{% endif %}>
+      Нет
+    </label>
+    <label class="flex items-center gap-2 cursor-pointer text-sm">
+      <input type="radio" name="{{ key }}_has" value="yes"
+             style="accent-color:#0079d3;width:15px;height:15px;cursor:pointer;"
+             onchange="childrenToggle('{{ key }}')"
+             {% if has_children == "yes" %}checked{% endif %}>
+      Да — добавьте детей ниже
+    </label>
+  </div>
+
+  <div id="children-detail-{{ key }}"
+       {% if not has_children or has_children != "yes" %}style="display:none;"{% endif %}>
+    <div id="children-list-{{ key }}">
+      {% for entry in ans.entries %}
+      <div class="child-entry rounded-lg mb-2"
+           style="border:1px solid #e2e8f0;background:#f8fafc;"
+           data-child-key="{{ key }}">
+        <div class="flex items-center justify-between px-3 py-1.5"
+             style="border-bottom:1px solid #e2e8f0;background:#f1f5f9;border-radius:8px 8px 0 0;">
+          <span class="text-xs font-semibold" style="color:#64748b;">Ребёнок {{ forloop.counter }}</span>
+          <button type="button" onclick="childRemoveEntry(this)"
+                  class="btn btn-ghost btn-xs" style="color:#ef4444;padding:2px 6px;">✕</button>
+        </div>
+        <div class="p-3 grid grid-cols-2 gap-3">
+          <div>
+            <div class="text-xs mb-1" style="color:#94a3b8;">ФИО</div>
+            <input type="text" name="{{ key }}_ch{{ forloop.counter0 }}_fio"
+                   class="input input-bordered input-sm w-full"
+                   placeholder="Фамилия Имя Отчество"
+                   value="{{ entry.fio|default:'' }}">
+          </div>
+          <div>
+            <div class="text-xs mb-1" style="color:#94a3b8;">Дата рождения</div>
+            <input type="date" name="{{ key }}_ch{{ forloop.counter0 }}_dob"
+                   class="input input-bordered input-sm w-full"
+                   value="{{ entry.dob|default:'' }}">
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    <button type="button" onclick="childAddEntry('{{ key }}')"
+            class="btn btn-sm btn-outline mt-1">+ Добавить ребёнка</button>
+  </div>
+
+</div>
+{% endwith %}

@@ -1,0 +1,55 @@
+{% load icons %}
+<div class="flex items-center justify-between mb-4">
+  <h3 class="font-semibold text-sm">Шаблоны анкет</h3>
+</div>
+
+{% if service_names_without %}
+<div class="mb-4 p-3 rounded-lg" style="background:#eff6ff;border:1px solid #93c5fd;">
+  <p class="text-xs font-medium text-blue-700 mb-2">Создать анкету для услуги:</p>
+  <form hx-post="{% url 'questionnaire:template_create' %}"
+        hx-target="closest .p-4" hx-swap="innerHTML"
+        class="flex gap-2 flex-wrap items-end">
+    {% csrf_token %}
+    <select name="service_name" class="select select-bordered select-xs">
+      <option value="">— выберите услугу —</option>
+      {% for sn in service_names_without %}
+        <option value="{{ sn.id }}">{{ sn.short_name }}</option>
+      {% endfor %}
+    </select>
+    <input type="text" name="title" placeholder="Название анкеты"
+           class="input input-bordered input-xs w-48">
+    <button class="btn btn-primary btn-xs">Создать</button>
+  </form>
+</div>
+{% endif %}
+
+<div class="space-y-2"
+     hx-trigger="reloadTemplates from:body"
+     hx-get="{% url 'questionnaire:template_list' %}"
+     hx-target="closest .p-4" hx-swap="innerHTML">
+  {% for tmpl in templates %}
+  <div class="flex items-center justify-between p-3 rounded-lg bg-base-100 shadow-sm">
+    <div>
+      <span class="font-medium text-sm">{{ tmpl.title }}</span>
+      <span class="text-xs text-base-content/50 ml-2">{{ tmpl.service_name.short_name }}</span>
+      <span class="badge badge-xs ml-2 {% if tmpl.is_active %}badge-success{% else %}badge-ghost{% endif %}">
+        {% if tmpl.is_active %}активна{% else %}отключена{% endif %}
+      </span>
+    </div>
+    <div class="flex gap-1">
+      <button class="btn btn-xs btn-ghost"
+              hx-post="{% url 'questionnaire:template_toggle' tmpl.pk %}"
+              hx-target="closest .p-4" hx-swap="innerHTML">
+        {% if tmpl.is_active %}Откл.{% else %}Вкл.{% endif %}
+      </button>
+      <a class="btn btn-xs btn-outline"
+         hx-get="{% url 'questionnaire:template_detail' tmpl.pk %}"
+         hx-target="closest .p-4" hx-swap="innerHTML">
+        {% icon "edit" size=12 %} Редактировать
+      </a>
+    </div>
+  </div>
+  {% empty %}
+  <p class="text-sm text-base-content/50 text-center py-6">Анкет пока нет</p>
+  {% endfor %}
+</div>

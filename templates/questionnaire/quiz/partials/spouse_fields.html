@@ -1,0 +1,67 @@
+{% comment %}
+  Variables: key (from parent), entry ("cs" or "d0","d1"...), sp (saved data dict), show_divorce (bool)
+{% endcomment %}
+
+{% with sp_cid=sp.client_id sp_name=sp.name sp_mdate=sp.marriage_date sp_ddate=sp.divorce_date %}
+
+<!-- Выбор клиента из базы -->
+<div class="mb-2">
+  <div class="text-xs mb-0.5" style="color:#94a3b8;">Супруг / Супруга — поиск по базе</div>
+
+  <input type="hidden" name="{{ key }}_{{ entry }}_client_id"
+         id="ms-hi-{{ key }}-{{ entry }}" value="{{ sp_cid|default:'' }}">
+
+  <div id="ms-sd-{{ key }}-{{ entry }}"
+       class="{% if not sp_name %}hidden{% endif %} items-center gap-2 px-2 py-1 rounded text-sm mb-1"
+       style="background:#eff6ff;color:#1d4ed8;{% if sp_name %}display:flex;{% endif %}">
+    <span id="ms-sn-{{ key }}-{{ entry }}">{{ sp_name|default:'' }}</span>
+    <button type="button" class="ml-auto opacity-60 hover:opacity-100 text-xs"
+            onclick="msClearEntry('{{ key }}','{{ entry }}')">✕</button>
+  </div>
+
+  <input type="text" id="ms-sr-{{ key }}-{{ entry }}"
+         class="input input-bordered input-sm w-full"
+         placeholder="Начните вводить фамилию..."
+         data-ms-key="{{ key }}" data-ms-entry="{{ entry }}"
+         autocomplete="off"
+         {% if sp_name %}style="display:none;"{% endif %}>
+</div>
+
+<!-- Быстрое добавление нового клиента -->
+<details class="mb-3">
+  <summary class="text-xs cursor-pointer select-none" style="color:#0079d3;">
+    Клиента нет в базе — добавить нового
+  </summary>
+  <div class="mt-2 p-2 rounded space-y-1" style="background:#f1f5f9;">
+    <input type="text" class="input input-bordered input-xs w-full"
+           placeholder="Фамилия" id="ms-nl-{{ key }}-{{ entry }}">
+    <input type="text" class="input input-bordered input-xs w-full"
+           placeholder="Имя" id="ms-nf-{{ key }}-{{ entry }}">
+    <button type="button" class="btn btn-xs btn-primary"
+            onclick="msQuickAdd('{{ key }}','{{ entry }}')">Создать и выбрать</button>
+  </div>
+</details>
+
+<!-- Также сохраняем имя как текст (на случай если client_id не выбран) -->
+<input type="hidden" name="{{ key }}_{{ entry }}_name"
+       id="ms-nm-{{ key }}-{{ entry }}" value="{{ sp_name|default:'' }}">
+
+<!-- Даты -->
+<div class="grid {% if entry != 'cs' %}grid-cols-2{% else %}grid-cols-1{% endif %} gap-2">
+  <div>
+    <div class="text-xs mb-0.5" style="color:#94a3b8;">Дата свадьбы</div>
+    <input type="date" name="{{ key }}_{{ entry }}_marriage_date"
+           class="input input-bordered input-sm w-full"
+           value="{{ sp_mdate|default:'' }}">
+  </div>
+  {% if entry != 'cs' %}
+  <div>
+    <div class="text-xs mb-0.5" style="color:#94a3b8;">Дата развода</div>
+    <input type="date" name="{{ key }}_{{ entry }}_divorce_date"
+           class="input input-bordered input-sm w-full"
+           value="{{ sp_ddate|default:'' }}">
+  </div>
+  {% endif %}
+</div>
+
+{% endwith %}

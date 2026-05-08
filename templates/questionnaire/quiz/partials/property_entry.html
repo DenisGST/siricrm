@@ -1,0 +1,117 @@
+{% comment %}Variables: key, idx (int), entry (dict or ""){% endcomment %}
+<div class="prop-entry rounded-lg mb-3"
+     style="border:1px solid #e2e8f0;background:#f8fafc;"
+     data-index="{{ idx }}" data-prop-key="{{ key }}">
+
+  <div class="flex items-center justify-between px-3 py-2"
+       style="border-bottom:1px solid #e2e8f0;background:#f1f5f9;border-radius:8px 8px 0 0;">
+    <span class="text-xs font-semibold" style="color:#64748b;">Имущество</span>
+    <button type="button" onclick="propRemoveEntry(this)"
+            class="btn btn-ghost btn-xs" style="color:#ef4444;padding:2px 6px;">✕</button>
+  </div>
+
+  <div class="p-3 space-y-3">
+
+    <!-- Тип + Наименование -->
+    <div class="grid grid-cols-2 gap-2">
+      <div>
+        <div class="text-xs mb-1" style="color:#94a3b8;">Тип имущества</div>
+        <select name="{{ key }}_p{{ idx }}_asset_type" class="select select-bordered select-sm w-full">
+          <option value="">— выберите тип —</option>
+          <option value="residential"  {% if entry.asset_type == "residential"  %}selected{% endif %}>Жилая недвижимость</option>
+          <option value="commercial"   {% if entry.asset_type == "commercial"   %}selected{% endif %}>Коммерческая недвижимость</option>
+          <option value="garage"       {% if entry.asset_type == "garage"       %}selected{% endif %}>Гараж</option>
+          <option value="dacha"        {% if entry.asset_type == "dacha"        %}selected{% endif %}>Дача</option>
+          <option value="car"          {% if entry.asset_type == "car"          %}selected{% endif %}>Автомобиль</option>
+          <option value="equipment"    {% if entry.asset_type == "equipment"    %}selected{% endif %}>Спецтехника</option>
+          <option value="boat"         {% if entry.asset_type == "boat"         %}selected{% endif %}>Лодка</option>
+          <option value="claim"        {% if entry.asset_type == "claim"        %}selected{% endif %}>Право требования</option>
+          <option value="money"        {% if entry.asset_type == "money"        %}selected{% endif %}>Деньги</option>
+          <option value="other"        {% if entry.asset_type == "other"        %}selected{% endif %}>Иное</option>
+        </select>
+      </div>
+      <div>
+        <div class="text-xs mb-1" style="color:#94a3b8;">Наименование / описание</div>
+        <input type="text" name="{{ key }}_p{{ idx }}_name"
+               class="input input-bordered input-sm w-full"
+               value="{{ entry.name|default:'' }}">
+      </div>
+    </div>
+
+    <!-- Как приобреталось + Стоимость -->
+    <div class="grid grid-cols-2 gap-2">
+      <div>
+        <div class="text-xs mb-1" style="color:#94a3b8;">Как приобреталось</div>
+        <select name="{{ key }}_p{{ idx }}_acquisition" class="select select-bordered select-sm w-full">
+          <option value="">— выберите —</option>
+          <option value="purchase"      {% if entry.acquisition == "purchase"      %}selected{% endif %}>Договор купли-продажи</option>
+          <option value="inheritance"   {% if entry.acquisition == "inheritance"   %}selected{% endif %}>По наследству</option>
+          <option value="privatization" {% if entry.acquisition == "privatization" %}selected{% endif %}>Приватизация</option>
+          <option value="mortgage"      {% if entry.acquisition == "mortgage"      %}selected{% endif %}>Ипотека</option>
+          <option value="gift"          {% if entry.acquisition == "gift"          %}selected{% endif %}>Дарение</option>
+          <option value="other"         {% if entry.acquisition == "other"         %}selected{% endif %}>Иное</option>
+        </select>
+      </div>
+      <div>
+        <div class="text-xs mb-1" style="color:#94a3b8;">Стоимость (руб.)</div>
+        <input type="number" name="{{ key }}_p{{ idx }}_value"
+               class="input input-bordered input-sm w-full"
+               step="1" min="0" value="{{ entry.value|default:'' }}">
+      </div>
+    </div>
+
+    <!-- Залог + В браке -->
+    <div class="grid grid-cols-2 gap-2">
+      <div>
+        <div class="text-xs mb-1" style="color:#94a3b8;">Залог</div>
+        <div class="flex gap-4">
+          <label class="flex items-center gap-1.5 cursor-pointer text-sm">
+            <input type="radio" name="{{ key }}_p{{ idx }}_pledged" value="no"
+                   style="accent-color:#0079d3;width:14px;height:14px;"
+                   {% if not entry.pledged or entry.pledged == "no" %}checked{% endif %}> Нет
+          </label>
+          <label class="flex items-center gap-1.5 cursor-pointer text-sm">
+            <input type="radio" name="{{ key }}_p{{ idx }}_pledged" value="yes"
+                   style="accent-color:#0079d3;width:14px;height:14px;"
+                   {% if entry.pledged == "yes" %}checked{% endif %}> Да
+          </label>
+        </div>
+      </div>
+      <div>
+        <div class="text-xs mb-1" style="color:#94a3b8;">Приобретено в браке</div>
+        <div class="flex gap-4">
+          <label class="flex items-center gap-1.5 cursor-pointer text-sm">
+            <input type="radio" name="{{ key }}_p{{ idx }}_in_marriage" value="no"
+                   style="accent-color:#0079d3;width:14px;height:14px;"
+                   {% if not entry.in_marriage or entry.in_marriage == "no" %}checked{% endif %}> Нет
+          </label>
+          <label class="flex items-center gap-1.5 cursor-pointer text-sm">
+            <input type="radio" name="{{ key }}_p{{ idx }}_in_marriage" value="yes"
+                   style="accent-color:#0079d3;width:14px;height:14px;"
+                   {% if entry.in_marriage == "yes" %}checked{% endif %}> Да
+          </label>
+        </div>
+      </div>
+    </div>
+
+    <!-- Торги -->
+    <div>
+      <div class="text-xs mb-1" style="color:#94a3b8;">Позиция по торгам</div>
+      <select name="{{ key }}_p{{ idx }}_auction" class="select select-bordered select-sm w-full">
+        <option value="">— не определена —</option>
+        <option value="sell"    {% if entry.auction == "sell"    %}selected{% endif %}>Продаём с торгов</option>
+        <option value="exclude" {% if entry.auction == "exclude" %}selected{% endif %}>Исключаем из КМ</option>
+        <option value="other"   {% if entry.auction == "other"   %}selected{% endif %}>Иное</option>
+      </select>
+    </div>
+
+    <!-- Комментарий -->
+    <div>
+      <div class="text-xs mb-1" style="color:#94a3b8;">Комментарий</div>
+      <input type="text" name="{{ key }}_p{{ idx }}_comment"
+             class="input input-bordered input-sm w-full"
+             value="{{ entry.comment|default:'' }}">
+    </div>
+
+  </div>
+</div>

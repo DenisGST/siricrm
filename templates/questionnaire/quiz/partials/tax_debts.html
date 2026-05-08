@@ -1,0 +1,107 @@
+{% comment %}Variables: key, ans = {has_debt, types, a_commercial, a_property_realty, a_property_car, a_ndfl, other_name, other_amount}{% endcomment %}
+{% with has_debt=ans.has_debt %}
+<div id="tax-{{ key }}">
+
+  <div class="space-y-2 mb-3">
+    <label class="flex items-center gap-2 cursor-pointer text-sm">
+      <input type="radio" name="{{ key }}_has" value="no"
+             style="accent-color:#0079d3;width:15px;height:15px;cursor:pointer;"
+             onchange="taxToggle('{{ key }}')"
+             {% if not has_debt or has_debt == "no" %}checked{% endif %}>
+      Задолженности по налогам нет
+    </label>
+    <label class="flex items-center gap-2 cursor-pointer text-sm">
+      <input type="radio" name="{{ key }}_has" value="yes"
+             style="accent-color:#0079d3;width:15px;height:15px;cursor:pointer;"
+             onchange="taxToggle('{{ key }}')"
+             {% if has_debt == "yes" %}checked{% endif %}>
+      Имеется задолженность — укажите виды ниже
+    </label>
+  </div>
+
+  <div id="tax-detail-{{ key }}"
+       {% if not has_debt or has_debt != "yes" %}style="display:none;"{% endif %}>
+
+    {% with types=ans.types|default:'' %}
+
+    <div class="flex items-center gap-3 mb-2">
+      <label class="flex items-center gap-2 cursor-pointer text-sm" style="min-width:300px;">
+        <input type="checkbox" name="{{ key }}_t_commercial" value="1"
+               style="accent-color:#0079d3;width:15px;height:15px;cursor:pointer;flex-shrink:0;"
+               {% if 'commercial' in types %}checked{% endif %}>
+        Коммерческие (закрытие ИП)
+      </label>
+      <input type="number" name="{{ key }}_a_commercial" class="input input-bordered input-sm w-32"
+             step="1" min="0" placeholder="Сумма" value="{{ ans.a_commercial|default:'' }}">
+      <span class="text-xs" style="color:#94a3b8;">руб.</span>
+    </div>
+
+    <div class="flex items-center gap-3 mb-2">
+      <label class="flex items-center gap-2 cursor-pointer text-sm" style="min-width:300px;">
+        <input type="checkbox" name="{{ key }}_t_property_realty" value="1"
+               style="accent-color:#0079d3;width:15px;height:15px;cursor:pointer;flex-shrink:0;"
+               {% if 'property_realty' in types %}checked{% endif %}>
+        Имущественные — недвижимость
+      </label>
+      <input type="number" name="{{ key }}_a_property_realty" class="input input-bordered input-sm w-32"
+             step="1" min="0" placeholder="Сумма" value="{{ ans.a_property_realty|default:'' }}">
+      <span class="text-xs" style="color:#94a3b8;">руб.</span>
+    </div>
+
+    <div class="flex items-center gap-3 mb-2">
+      <label class="flex items-center gap-2 cursor-pointer text-sm" style="min-width:300px;">
+        <input type="checkbox" name="{{ key }}_t_property_car" value="1"
+               style="accent-color:#0079d3;width:15px;height:15px;cursor:pointer;flex-shrink:0;"
+               {% if 'property_car' in types %}checked{% endif %}>
+        Имущественные — автомобиль
+      </label>
+      <input type="number" name="{{ key }}_a_property_car" class="input input-bordered input-sm w-32"
+             step="1" min="0" placeholder="Сумма" value="{{ ans.a_property_car|default:'' }}">
+      <span class="text-xs" style="color:#94a3b8;">руб.</span>
+    </div>
+
+    <div class="flex items-center gap-3 mb-2">
+      <label class="flex items-center gap-2 cursor-pointer text-sm" style="min-width:300px;">
+        <input type="checkbox" name="{{ key }}_t_ndfl" value="1"
+               style="accent-color:#0079d3;width:15px;height:15px;cursor:pointer;flex-shrink:0;"
+               {% if 'ndfl' in types %}checked{% endif %}>
+        Налог на доходы (НДФЛ)
+      </label>
+      <input type="number" name="{{ key }}_a_ndfl" class="input input-bordered input-sm w-32"
+             step="1" min="0" placeholder="Сумма" value="{{ ans.a_ndfl|default:'' }}">
+      <span class="text-xs" style="color:#94a3b8;">руб.</span>
+    </div>
+
+    <div class="mb-2">
+      <div class="flex items-center gap-3">
+        <label class="flex items-center gap-2 cursor-pointer text-sm" style="min-width:300px;">
+          <input type="checkbox" name="{{ key }}_t_other" value="1"
+                 style="accent-color:#0079d3;width:15px;height:15px;cursor:pointer;flex-shrink:0;"
+                 id="tax-other-cb-{{ key }}"
+                 onchange="taxOtherToggle('{{ key }}')"
+                 {% if 'other' in types %}checked{% endif %}>
+          Иные налоги
+        </label>
+      </div>
+      <div id="tax-other-detail-{{ key }}" class="ml-5 mt-1 grid grid-cols-2 gap-2"
+           {% if 'other' not in types %}style="display:none;"{% endif %}>
+        <div>
+          <div class="text-xs mb-1" style="color:#94a3b8;">Наименование / вид налога</div>
+          <input type="text" name="{{ key }}_other_name"
+                 class="input input-bordered input-sm w-full"
+                 value="{{ ans.other_name|default:'' }}">
+        </div>
+        <div>
+          <div class="text-xs mb-1" style="color:#94a3b8;">Сумма (руб.)</div>
+          <input type="number" name="{{ key }}_other_amount"
+                 class="input input-bordered input-sm w-full"
+                 step="1" min="0" value="{{ ans.other_amount|default:'' }}">
+        </div>
+      </div>
+    </div>
+
+    {% endwith %}
+  </div>
+
+</div>
+{% endwith %}

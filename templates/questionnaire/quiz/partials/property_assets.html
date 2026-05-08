@@ -1,0 +1,34 @@
+{% comment %}Variables: key, ans = {has_assets: "no"/"yes", entries: [...]}{% endcomment %}
+{% with has_assets=ans.has_assets %}
+<div id="prop-{{ key }}">
+
+  <div class="space-y-2 mb-3">
+    <label class="flex items-center gap-2 cursor-pointer text-sm">
+      <input type="radio" name="{{ key }}_has" value="no"
+             style="accent-color:#0079d3;width:15px;height:15px;cursor:pointer;"
+             onchange="propToggle('{{ key }}')"
+             {% if not has_assets or has_assets == "no" %}checked{% endif %}>
+      Нет и никогда не было
+    </label>
+    <label class="flex items-center gap-2 cursor-pointer text-sm">
+      <input type="radio" name="{{ key }}_has" value="yes"
+             style="accent-color:#0079d3;width:15px;height:15px;cursor:pointer;"
+             onchange="propToggle('{{ key }}')"
+             {% if has_assets == "yes" %}checked{% endif %}>
+      Имею имущество — заполните детали ниже
+    </label>
+  </div>
+
+  <div id="prop-assets-{{ key }}"
+       {% if not has_assets or has_assets != "yes" %}style="display:none;"{% endif %}>
+    <div id="prop-list-{{ key }}">
+      {% for entry in ans.entries %}
+        {% include "questionnaire/quiz/partials/property_entry.html" with idx=forloop.counter0 entry=entry key=key %}
+      {% endfor %}
+    </div>
+    <button type="button" onclick="propAddEntry('{{ key }}')"
+            class="btn btn-sm btn-outline mt-1">+ Добавить имущество</button>
+  </div>
+
+</div>
+{% endwith %}

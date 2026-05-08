@@ -1,0 +1,80 @@
+{% load quiz_tags %}
+{% comment %}
+  Variables in scope: key (question_key), ans (answer dict)
+  ans = {marital, divorced, current_spouse: {client_id,name,marriage_date}, divorces: [...]}
+{% endcomment %}
+
+{% with ms_marital=ans.marital ms_divorced=ans.divorced ms_cs=ans.current_spouse ms_divs=ans.divorces %}
+
+<div id="ms-{{ key }}" class="space-y-3">
+
+  <!-- Текущее семейное положение -->
+  <div class="space-y-2">
+    <label class="flex items-center gap-2 cursor-pointer text-sm">
+      <input type="radio" name="{{ key }}_marital" value="never"
+             style="accent-color:#0079d3;width:15px;height:15px;cursor:pointer;"
+             data-ms-key="{{ key }}"
+             {% if not ms_marital or ms_marital == "never" %}checked{% endif %}>
+      Никогда не был/а в браке
+    </label>
+    <label class="flex items-center gap-2 cursor-pointer text-sm">
+      <input type="radio" name="{{ key }}_marital" value="married"
+             style="accent-color:#0079d3;width:15px;height:15px;cursor:pointer;"
+             data-ms-key="{{ key }}"
+             {% if ms_marital == "married" %}checked{% endif %}>
+      Замужем / женат (в настоящее время)
+    </label>
+  </div>
+
+  <!-- Чекбокс разведён/а -->
+  <div id="ms-divrow-{{ key }}"
+       {% if not ms_marital or ms_marital == "never" %}style="display:none;"{% endif %}>
+    <label class="flex items-center gap-2 cursor-pointer text-sm">
+      <input type="checkbox" name="{{ key }}_divorced" value="1"
+             style="accent-color:#0079d3;width:15px;height:15px;cursor:pointer;"
+             data-ms-div-key="{{ key }}"
+             {% if ms_divorced %}checked{% endif %}>
+      Разведён/а (был/а в браке ранее)
+    </label>
+  </div>
+
+  <!-- Текущий супруг/супруга -->
+  <div id="ms-spouse-{{ key }}"
+       {% if ms_marital != "married" %}style="display:none;"{% endif %}>
+    <div class="text-xs font-semibold uppercase tracking-wide mb-2" style="color:#64748b;">
+      Текущий супруг / Супруга
+    </div>
+    <div class="p-3 rounded-lg" style="border:1px solid #e2e8f0;background:#f8fafc;">
+      {% include "questionnaire/quiz/partials/spouse_fields.html" with entry="cs" sp=ms_cs key=key %}
+    </div>
+  </div>
+
+  <!-- Бывшие супруги (разводы) -->
+  <div id="ms-divorces-{{ key }}"
+       {% if not ms_divorced %}style="display:none;"{% endif %}>
+    <div class="text-xs font-semibold uppercase tracking-wide mb-2" style="color:#64748b;">
+      Бывшие супруги
+    </div>
+    <div id="ms-dlist-{{ key }}">
+      {% for d in ms_divs %}
+      {% with entry=forloop.counter0|ms_entry %}
+      <div class="ms-divorce-entry mb-3 p-3 rounded-lg"
+           style="border:1px solid #e2e8f0;background:#f8fafc;"
+           data-index="{{ forloop.counter0 }}">
+        <div class="flex items-center justify-between mb-2">
+          <span class="text-xs font-medium" style="color:#64748b;">Развод {{ forloop.counter }}</span>
+          <button type="button" onclick="msRemoveDivorce(this)"
+                  class="btn btn-ghost btn-xs" style="color:#ef4444;padding:2px 6px;">✕</button>
+        </div>
+        {% include "questionnaire/quiz/partials/spouse_fields.html" with entry=entry sp=d key=key %}
+      </div>
+      {% endwith %}
+      {% endfor %}
+    </div>
+    <button type="button" onclick="msAddDivorce('{{ key }}')"
+            class="btn btn-xs btn-outline mt-1">+ Добавить запись о разводе</button>
+  </div>
+
+</div>
+
+{% endwith %}
