@@ -169,6 +169,11 @@ CELERY_TIMEZONE = TIME_ZONE
 CELERY_TASK_TRACK_STARTED = True
 CELERY_TASK_TIME_LIMIT = 30 * 60
 
+# Routing: задачи devops.* идут в очередь devops (исполняется devops-runner контейнером)
+CELERY_TASK_ROUTES = {
+    "devops.*": {"queue": "devops"},
+}
+
 # --- Telegram ---
 TELEGRAM_API_ID = config("TELEGRAM_API_ID", default="")
 TELEGRAM_API_HASH = config("TELEGRAM_API_HASH", default="")
