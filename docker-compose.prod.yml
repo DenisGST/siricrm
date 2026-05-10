@@ -174,7 +174,7 @@ services:
 
   devops-runner:
     build: .
-    command: celery -A config worker -Q devops -l info --concurrency=1
+    command: celery -A config worker -Q devops -l info --concurrency=2
     volumes:
       - .:/app
       - /var/run/docker.sock:/var/run/docker.sock

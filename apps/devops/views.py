@@ -9,7 +9,14 @@ from django.utils import timezone
 from django.views.decorators.http import require_POST
 
 from .agent_client import AgentClient
-from .models import DevopsAction, Environment
+from .models import DevopsAction, DevopsAgentJob, Environment
+from .tasks import run_agent_job
+
+# Action types, выполняемые ЛОКАЛЬНО на этом сервере (не через prod-агента).
+# Параметры передаются в handler.
+LOCAL_ACTIONS = {
+    "pull_db": lambda env: {"source_env_id": env.id},
+}
 
 logger = logging.getLogger(__name__)
 
@@ -43,14 +50,27 @@ def run_action(request, env_id: int, action_type: str):
     )
 
     try:
-        client = AgentClient(env)
-        job = client.create_job(action_type)
-        action.remote_job_id = job["id"]
+        if action_type in LOCAL_ACTIONS:
+            # Запускаем локально: создаём DevopsAgentJob + ставим в Celery
+            params = LOCAL_ACTIONS[action_type](env)
+            job = DevopsAgentJob.objects.create(
+                action_type=action_type,
+                params=params,
+                status=DevopsAgentJob.Status.QUEUED,
+            )
+            run_agent_job.delay(str(job.pk))
+            action.remote_job_id = str(job.pk)
+            action.params = params
+        else:
+            # Шлём на удалённый агент
+            client = AgentClient(env)
+            job = client.create_job(action_type)
+            action.remote_job_id = job["id"]
         action.status = DevopsAction.Status.RUNNING
-        action.save(update_fields=["remote_job_id", "status"])
-    except Exception as exc:
+        action.save(update_fields=["remote_job_id", "params", "status"])
+    except Exception:
         action.status = DevopsAction.Status.FAILED
-        action.output = f"Не удалось отправить job на агент:\n{traceback.format_exc()}"
+        action.output = f"Не удалось запустить:\n{traceback.format_exc()}"
         action.finished_at = timezone.now()
         action.save(update_fields=["status", "output", "finished_at"])
         logger.exception("Failed to enqueue action")
@@ -69,7 +89,7 @@ def action_detail(request, action_id):
 
 @user_passes_test(_is_superuser)
 def action_poll(request, action_id):
-    """HTMX polling: опрашивает prod-агент, обновляет action, рендерит partial."""
+    """HTMX polling: опрашивает либо локальный DevopsAgentJob, либо prod-агент."""
     action = get_object_or_404(
         DevopsAction.objects.select_related("environment"),
         pk=action_id,
@@ -86,16 +106,26 @@ def action_poll(request, action_id):
         return render(request, "devops/partials/action_card.html", {"action": action})
 
     try:
-        client = AgentClient(action.environment)
-        job = client.get_job(action.remote_job_id)
+        if action.action_type in LOCAL_ACTIONS:
+            # Читаем локальный DevopsAgentJob напрямую из БД
+            job_obj = DevopsAgentJob.objects.get(pk=action.remote_job_id)
+            job = {
+                "status": job_obj.status,
+                "output": job_obj.output,
+                "result": job_obj.result,
+            }
+        else:
+            client = AgentClient(action.environment)
+            job = client.get_job(action.remote_job_id)
     except Exception:
-        # Сетевые ошибки не считаем фатальными — следующий polling попробует снова
-        logger.warning("agent poll error for action %s", action.pk, exc_info=True)
+        logger.warning("poll error for action %s", action.pk, exc_info=True)
         return render(request, "devops/partials/action_card.html", {"action": action})
 
     remote_status = job.get("status")
     action.output = job.get("output") or ""
-    action.params = job.get("result") or {}  # храним result в params для простоты UI
+    # Храним result в params (визуально показываем как "Сырой результат")
+    if job.get("result"):
+        action.params = {**(action.params or {}), "result": job["result"]}
     if remote_status == "done":
         action.status = DevopsAction.Status.DONE
         action.finished_at = timezone.now()

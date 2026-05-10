@@ -2,6 +2,15 @@
 {% block title %}DevOps · SiriCRM{% endblock %}
 
 {% block content %}
+<script>
+function confirmPull(form) {
+  const ans = prompt(
+    "ВНИМАНИЕ: эта операция дропнет ВСЮ БД на этом сервере и заменит её копией с источника.\n" +
+    "Чтобы подтвердить, наберите PULL"
+  );
+  return ans === "PULL";
+}
+</script>
 <div class="container mx-auto p-6 max-w-6xl">
   <h1 class="text-2xl font-bold mb-6">🛠 DevOps Panel</h1>
 
@@ -31,8 +40,12 @@
             {% csrf_token %}
             <button class="btn btn-sm btn-ghost gap-1">📋 List backups</button>
           </form>
-          <button class="btn btn-sm btn-disabled" disabled title="этап 3.7">📥 Pull → dev</button>
-          <button class="btn btn-sm btn-disabled" disabled title="этап 3.8">🚀 Deploy</button>
+          <form method="post" action="{% url 'devops:run_action' env.id 'pull_db' %}"
+                onsubmit="return confirmPull(this);">
+            {% csrf_token %}
+            <button class="btn btn-sm btn-warning gap-1">📥 Pull → dev</button>
+          </form>
+          <button class="btn btn-sm btn-disabled" disabled title="этап 3.7">🚀 Deploy</button>
         </div>
       </div>
     </div>
