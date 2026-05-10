@@ -238,6 +238,13 @@ async def keep_connected():
 async def start_userbot():
     """Запускает userbot для отслеживания прочтений и входящих сообщений."""
 
+    # Если ни phone, ни session string не заданы — userbot отключён (типично для dev).
+    # Не падаем в restart-loop, а просто спим бесконечно, чтобы контейнер был жив.
+    if not settings.TELEGRAM_PHONE and not session_string:
+        logger.warning("⚠️ TELEGRAM_PHONE и TELEGRAM_SESSION_STRING не заданы — userbot отключён")
+        while True:
+            await asyncio.sleep(3600)
+
     # ========= Инициализация системного бота =========
     sirius_bot_employee = await _get_or_create_sirius_bot_employee()
     logger.info(f"🤖 Sirius Bot employee initialized (id={sirius_bot_employee.pk})")
