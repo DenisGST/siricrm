@@ -86,7 +86,8 @@ def run_backup(params: dict) -> dict:
     output_lines.append(f"Загрузка в S3 (bucket={bucket}, key={s3_key})...")
     s3 = _s3_client()
     with local_path.open("rb") as f:
-        s3.upload_fileobj(f, bucket, s3_key)
+        body = f.read()
+    s3.put_object(Bucket=bucket, Key=s3_key, Body=body, ContentType="application/gzip")
     output_lines.append(f"  S3 upload OK")
 
     return {
