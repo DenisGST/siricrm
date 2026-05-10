@@ -10,6 +10,13 @@ function confirmPull(form) {
   );
   return ans === "PULL";
 }
+function confirmDeploy(form) {
+  const ans = prompt(
+    "ВНИМАНИЕ: будет git pull + миграции + restart web/celery контейнеров на целевом сервере.\n" +
+    "Возможен короткий даунтайм. Чтобы подтвердить, наберите DEPLOY"
+  );
+  return ans === "DEPLOY";
+}
 </script>
 <div class="container mx-auto p-6 max-w-6xl">
   <h1 class="text-2xl font-bold mb-6">🛠 DevOps Panel</h1>
@@ -45,7 +52,11 @@ function confirmPull(form) {
             {% csrf_token %}
             <button class="btn btn-sm btn-warning gap-1">📥 Pull → dev</button>
           </form>
-          <button class="btn btn-sm btn-disabled" disabled title="этап 3.7">🚀 Deploy</button>
+          <form method="post" action="{% url 'devops:run_action' env.id 'deploy' %}"
+                onsubmit="return confirmDeploy(this);">
+            {% csrf_token %}
+            <button class="btn btn-sm btn-error gap-1">🚀 Deploy</button>
+          </form>
         </div>
       </div>
     </div>
