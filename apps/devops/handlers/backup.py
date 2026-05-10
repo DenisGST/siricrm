@@ -87,8 +87,19 @@ def run_backup(params: dict) -> dict:
     s3 = _s3_client()
     with local_path.open("rb") as f:
         body = f.read()
-    s3.put_object(Bucket=bucket, Key=s3_key, Body=body, ContentType="application/gzip")
-    output_lines.append(f"  S3 upload OK")
+
+    # Beget Cloud S3 валится на XAmzContentSHA256Mismatch при boto3 PUT
+    # (и upload_fileobj, и put_object). Обход — pre-signed URL + requests.put.
+    import requests
+    url = s3.generate_presigned_url(
+        "put_object",
+        Params={"Bucket": bucket, "Key": s3_key, "ContentType": "application/gzip"},
+        ExpiresIn=600,
+    )
+    resp = requests.put(url, data=body, headers={"Content-Type": "application/gzip"}, timeout=120)
+    if not resp.ok:
+        raise RuntimeError(f"S3 PUT failed: HTTP {resp.status_code} — {resp.text[:300]}")
+    output_lines.append(f"  S3 upload OK ({resp.status_code})")
 
     return {
         "output": "\n".join(output_lines),
