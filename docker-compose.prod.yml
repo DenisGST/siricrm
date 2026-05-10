@@ -1,13 +1,14 @@
 # =============================================================================
-# Production stack для SiriCRM
+# Production stack для SiriCRM (тот же стек на prod и dev — отличаются только .env)
 #
 # Запуск:
-#   docker compose -f docker-compose.prod.yml --env-file .env.prod up -d
+#   ENV_FILE=.env.prod docker compose -f docker-compose.prod.yml --env-file .env.prod up -d
+#   ENV_FILE=.env.dev  docker compose -f docker-compose.prod.yml --env-file .env.dev  up -d
 #
 # Перед первым запуском:
-#   1. Заполнить .env.prod (скопировать из .env.prod.example)
-#   2. Получить SSL сертификат: ./scripts/init-letsencrypt.sh
-#   3. Применить миграции: docker compose -f docker-compose.prod.yml exec web python manage.py migrate
+#   1. Заполнить .env.{prod|dev} (скопировать из соответствующего .example)
+#   2. Получить SSL: ENV_FILE=.env.{prod|dev} ./scripts/init-letsencrypt.sh
+#   3. Миграции применяются автоматически при старте web-контейнера
 # =============================================================================
 
 services:
@@ -63,7 +64,7 @@ services:
     expose:
       - "8000"
     env_file:
-      - .env.prod
+      - ${ENV_FILE:-.env.prod}
     environment:
       DJANGO_ENV: prod
     depends_on:
@@ -84,7 +85,7 @@ services:
     volumes:
       - .:/app
     env_file:
-      - .env.prod
+      - ${ENV_FILE:-.env.prod}
     environment:
       DJANGO_ENV: prod
     depends_on:
@@ -104,7 +105,7 @@ services:
     volumes:
       - .:/app
     env_file:
-      - .env.prod
+      - ${ENV_FILE:-.env.prod}
     environment:
       DJANGO_ENV: prod
     depends_on:
@@ -124,7 +125,7 @@ services:
     volumes:
       - .:/app
     env_file:
-      - .env.prod
+      - ${ENV_FILE:-.env.prod}
     environment:
       DJANGO_ENV: prod
     depends_on:
@@ -182,7 +183,7 @@ services:
       - .:/app
       - ./backups:/app/backups
     env_file:
-      - .env.prod
+      - ${ENV_FILE:-.env.prod}
     environment:
       DJANGO_ENV: prod
     depends_on:
