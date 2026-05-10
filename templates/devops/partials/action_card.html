@@ -1,0 +1,57 @@
+{% comment %}
+Карточка результата action. При status=running/queued — этот же элемент возвращает себя
+до тех пор, пока не закончится. После done/failed — hx-trigger пропадает.
+{% endcomment %}
+<div id="action-card"
+     {% if action.status == "running" or action.status == "queued" %}
+     hx-get="{% url 'devops:action_poll' action.id %}"
+     hx-trigger="every 2s"
+     hx-swap="outerHTML"
+     {% endif %}>
+
+  <div class="card bg-base-100 shadow">
+    <div class="card-body">
+      <div class="flex items-center justify-between mb-2">
+        <div class="text-sm opacity-70">
+          Запустил: <strong>{{ action.started_by|default:"—" }}</strong> ·
+          {{ action.started_at|date:"d.m.Y H:i:s" }}
+          {% if action.finished_at %} → {{ action.finished_at|date:"H:i:s" }}{% endif %}
+        </div>
+        <div>
+          {% if action.status == "done" %}<span class="badge badge-success">✓ {{ action.get_status_display }}</span>
+          {% elif action.status == "failed" %}<span class="badge badge-error">✕ {{ action.get_status_display }}</span>
+          {% elif action.status == "running" %}<span class="badge badge-warning">⟳ {{ action.get_status_display }}</span>
+          {% else %}<span class="badge badge-ghost">{{ action.get_status_display }}</span>{% endif %}
+        </div>
+      </div>
+
+      {% if action.remote_job_id %}
+      <div class="text-xs opacity-50 mb-2">remote job: <code>{{ action.remote_job_id }}</code></div>
+      {% endif %}
+
+      {% if action.output %}
+      <div class="mt-2">
+        <div class="text-sm font-semibold mb-1">Output</div>
+        <pre class="bg-base-200 rounded p-3 text-xs overflow-x-auto whitespace-pre-wrap">{{ action.output }}</pre>
+      </div>
+      {% endif %}
+
+      {% if action.params %}
+      <details class="mt-2">
+        <summary class="text-sm opacity-70 cursor-pointer">Сырой результат (JSON)</summary>
+        <pre class="bg-base-200 rounded p-3 text-xs overflow-x-auto mt-1">{{ action.params|safe }}</pre>
+      </details>
+      {% endif %}
+    </div>
+  </div>
+
+  {% if action.status == "done" or action.status == "failed" %}
+  <div class="mt-3 flex gap-2">
+    <a href="{% url 'devops:dashboard' %}" class="btn btn-sm btn-ghost">← К дашборду</a>
+    <form method="post" action="{% url 'devops:run_action' action.environment.id action.action_type %}">
+      {% csrf_token %}
+      <button class="btn btn-sm btn-primary">↻ Запустить ещё раз</button>
+    </form>
+  </div>
+  {% endif %}
+</div>
