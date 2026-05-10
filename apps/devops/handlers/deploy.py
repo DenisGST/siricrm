@@ -19,6 +19,8 @@ from apps.devops.tasks import register_handler
 REPO_DIR = "/app"
 RESTART_CONTAINERS = ["siricrm-web-1", "siricrm-celery-1", "siricrm-celery-beat-1"]
 HEALTH_URL = "http://web:8000/health/"
+# Host header нужен для прохождения ALLOWED_HOSTS на стороне Django.
+# Берём первый из ALLOWED_HOSTS env или дефолт.
 
 
 def _run(cmd: list[str], cwd: str = REPO_DIR, timeout: int = 60) -> tuple[int, str]:
@@ -99,10 +101,11 @@ def run_deploy(params: dict) -> dict:
 
         # 4. Healthcheck (после restart)
         log.append("\n=== Healthcheck ===")
+        host_header = (os.environ.get("ALLOWED_HOSTS", "") or "localhost").split(",")[0].strip()
         time.sleep(8)
         for attempt in range(1, 6):
             try:
-                r = requests.get(HEALTH_URL, timeout=5)
+                r = requests.get(HEALTH_URL, headers={"Host": host_header}, timeout=5)
                 log.append(f"  attempt {attempt}: HTTP {r.status_code} → {r.text[:200]}")
                 if r.status_code == 200:
                     result["healthcheck"] = "ok"
