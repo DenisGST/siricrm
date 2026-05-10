@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% load icons %}
+{% block title %}DevOps · SiriCRM{% endblock %}
+
+{% block content %}
+<div class="container mx-auto p-6 max-w-6xl">
+  <div class="flex items-center justify-between mb-6">
+    <h1 class="text-2xl font-bold">🛠 DevOps Panel</h1>
+    <div class="badge badge-warning">MVP — каркас (этап 3.1)</div>
+  </div>
+
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+    {% for env in envs %}
+    <div class="card bg-base-100 shadow">
+      <div class="card-body">
+        <h2 class="card-title">{{ env.name|upper }}</h2>
+        <p class="text-sm opacity-70">{{ env.base_url }}</p>
+        <p class="text-xs opacity-50">Token env: <code>{{ env.agent_token_env }}</code></p>
+      </div>
+    </div>
+    {% empty %}
+    <div class="alert alert-info">
+      Окружения не настроены. Добавьте через админку: <a class="link" href="/admin/devops/environment/add/">/admin/devops/environment/add/</a>
+    </div>
+    {% endfor %}
+  </div>
+
+  <div class="card bg-base-100 shadow">
+    <div class="card-body">
+      <h2 class="card-title text-lg">Последние действия</h2>
+      {% if actions %}
+        <table class="table table-sm">
+          <thead>
+            <tr>
+              <th>Когда</th><th>Тип</th><th>Окружение</th><th>Кто</th><th>Статус</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for a in actions %}
+            <tr>
+              <td class="text-xs">{{ a.started_at|date:"d.m.Y H:i" }}</td>
+              <td>{{ a.get_action_type_display }}</td>
+              <td><span class="badge">{{ a.environment.name }}</span></td>
+              <td>{{ a.started_by|default:"—" }}</td>
+              <td>
+                {% if a.status == "done" %}<span class="badge badge-success">{{ a.get_status_display }}</span>
+                {% elif a.status == "failed" %}<span class="badge badge-error">{{ a.get_status_display }}</span>
+                {% elif a.status == "running" %}<span class="badge badge-warning">{{ a.get_status_display }}</span>
+                {% else %}<span class="badge badge-ghost">{{ a.get_status_display }}</span>{% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      {% else %}
+        <p class="opacity-60 text-sm">Действий пока нет.</p>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

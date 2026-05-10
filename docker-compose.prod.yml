@@ -172,6 +172,26 @@ services:
       sh -c "trap exit TERM; while :; do certbot renew --webroot -w /var/www/certbot --quiet; sleep 12h & wait $${!}; done"
     restart: always
 
+  devops-runner:
+    build: .
+    command: celery -A config worker -Q devops -l info --concurrency=1
+    volumes:
+      - .:/app
+      - /var/run/docker.sock:/var/run/docker.sock
+    env_file:
+      - ${ENV_FILE:-.env.prod}
+    environment:
+      DJANGO_ENV: prod
+    depends_on:
+      - db
+      - redis
+    restart: always
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
   backup:
     build: .
     command: >

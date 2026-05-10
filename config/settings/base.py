@@ -43,7 +43,12 @@ INSTALLED_APPS = [
     "apps.maxchat",
     "apps.consultations",
     "apps.questionnaire",
+    "apps.devops",
 ]
+
+# --- DevOps panel ---
+DEVOPS_AGENT_TOKEN = config("DEVOPS_AGENT_TOKEN", default="")
+DEVOPS_AGENT_TOKEN_PROD = config("DEVOPS_AGENT_TOKEN_PROD", default="")
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
