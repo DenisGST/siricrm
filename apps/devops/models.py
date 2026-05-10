@@ -43,6 +43,7 @@ class DevopsAction(models.Model):
     class ActionType(models.TextChoices):
         STATUS = "status", "Статус"
         BACKUP = "backup", "Бэкап БД"
+        LIST_BACKUPS = "list_backups", "Список бэкапов"
         PULL_DB = "pull_db", "Pull prod → dev"
         DEPLOY = "deploy", "Деплой"
 
