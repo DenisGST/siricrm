@@ -5,6 +5,8 @@ from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 from django.views.static import serve
 from django.conf import settings
 
+from apps.core.health import health_check
+
 from apps.crm.api import (
     ClientViewSet,
     MessageViewSet,
@@ -26,6 +28,9 @@ api_router.register(r'messages', MessageViewSet, basename='message')
 api_router.register(r'logs', EmployeeLogViewSet, basename='log')
 
 urlpatterns = [
+    # Health check (для мониторинга / nginx)
+    path("health/", health_check, name="health"),
+
     # Admin
     path('admin/', admin.site.urls),
 

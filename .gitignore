@@ -26,9 +26,17 @@ static_collected/
 
 # Local settings / secrets
 .env
+.env.prod
+.env.dev
+.env.*.local
 *.local.py
 settings_local.py
 *.session*
+
+# Backups
+backups/
+*.sql
+*.sql.gz
 
 # IDE / Editor
 .vscode/
