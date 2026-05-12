@@ -7,6 +7,7 @@ app_name = "devops"
 urlpatterns = [
     # UI (на dev)
     path("", views.dashboard, name="dashboard"),
+    path("history/", views.history_partial, name="history_partial"),
     path("run/<int:env_id>/<str:action_type>/", views.run_action, name="run_action"),
     path("actions/<uuid:action_id>/", views.action_detail, name="action_detail"),
     path("actions/<uuid:action_id>/poll/", views.action_poll, name="action_poll"),

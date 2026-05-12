@@ -14,6 +14,24 @@
       const t = document.cookie.split('; ').find(r => r.startsWith('csrftoken='))?.split('=')[1];
       if (t) e.detail.headers['X-CSRFToken'] = t;
     });
+    // Модалка подтверждения опасного действия: разблокирует submit, когда введено
+    // кодовое слово (и, если есть, отмечен чекбокс [data-gate]).
+    function dgConfirm(id){
+      const m = document.getElementById(id);
+      if(!m) return;
+      const inp = m.querySelector('input[name=confirm]');
+      const gate = m.querySelector('[data-gate]');
+      const btn = m.querySelector('button[type=submit]');
+      function check(){
+        const wordOk = inp.value.trim() === inp.dataset.word;
+        const gateOk = !gate || gate.checked;
+        btn.disabled = !(wordOk && gateOk);
+      }
+      inp.value=''; if(gate) gate.checked=false; check();
+      inp.oninput = check; if(gate) gate.onchange = check;
+      m.showModal();
+      setTimeout(function(){ inp.focus(); }, 60);
+    }
   </script>
 </head>
 <body class="min-h-screen bg-base-200">

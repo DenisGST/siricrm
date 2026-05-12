@@ -1,6 +1,7 @@
 {% comment %}
-Карточка результата action. При status=running/queued — этот же элемент возвращает себя
-до тех пор, пока не закончится. После done/failed — hx-trigger пропадает.
+Карточка результата action. Пока status=running/queued — элемент сам себя
+опрашивает раз в 2с; после done/failed — hx-trigger пропадает.
+Контекст: action, readonly_render_types.
 {% endcomment %}
 <div id="action-card"
      {% if action.status == "running" or action.status == "queued" %}
@@ -10,48 +11,47 @@
      {% endif %}>
 
   <div class="card bg-base-100 shadow">
-    <div class="card-body">
-      <div class="flex items-center justify-between mb-2">
+    <div class="card-body gap-3">
+      <div class="flex items-center justify-between">
         <div class="text-sm opacity-70">
-          Запустил: <strong>{{ action.started_by|default:"—" }}</strong> ·
+          Запустил <strong>{{ action.started_by|default:"—" }}</strong> ·
           {{ action.started_at|date:"d.m.Y H:i:s" }}
-          {% if action.finished_at %} → {{ action.finished_at|date:"H:i:s" }}{% endif %}
+          {% if action.finished_at %} → {{ action.finished_at|date:"H:i:s" }} ({{ action.started_at|timesince:action.finished_at }}){% endif %}
         </div>
         <div>
-          {% if action.status == "done" %}<span class="badge badge-success">✓ {{ action.get_status_display }}</span>
-          {% elif action.status == "failed" %}<span class="badge badge-error">✕ {{ action.get_status_display }}</span>
-          {% elif action.status == "running" %}<span class="badge badge-warning">⟳ {{ action.get_status_display }}</span>
+          {% if action.status == "done" %}<span class="badge badge-success gap-1">✓ готово</span>
+          {% elif action.status == "failed" %}<span class="badge badge-error gap-1">✕ ошибка</span>
+          {% elif action.status == "running" %}<span class="badge badge-warning gap-1"><span class="loading loading-spinner loading-xs"></span> выполняется</span>
           {% else %}<span class="badge badge-ghost">{{ action.get_status_display }}</span>{% endif %}
         </div>
       </div>
 
-      {% if action.remote_job_id %}
-      <div class="text-xs opacity-50 mb-2">remote job: <code>{{ action.remote_job_id }}</code></div>
-      {% endif %}
-
-      {% if action.output %}
-      <div class="mt-2">
-        <div class="text-sm font-semibold mb-1">Output</div>
+      {% if action.action_type in readonly_render_types %}
+        {% include "devops/partials/_result.html" %}
+        {% if action.output %}
+        <details class="mt-1"><summary class="text-xs opacity-50 cursor-pointer">текстовый лог</summary>
+          <pre class="bg-base-200 rounded p-3 text-xs overflow-x-auto whitespace-pre-wrap mt-1">{{ action.output }}</pre></details>
+        {% endif %}
+      {% else %}
+        {% if action.output %}
         <pre class="bg-base-200 rounded p-3 text-xs overflow-x-auto whitespace-pre-wrap">{{ action.output }}</pre>
-      </div>
+        {% elif action.status == "running" or action.status == "queued" %}
+        <div class="text-sm opacity-60 flex items-center gap-2"><span class="loading loading-dots loading-sm"></span> ждём вывод…</div>
+        {% endif %}
+        {% include "devops/partials/_result.html" %}
       {% endif %}
 
-      {% if action.params.result %}
-      <details class="mt-2">
-        <summary class="text-sm opacity-70 cursor-pointer">Сырой результат (JSON)</summary>
-        <pre class="bg-base-200 rounded p-3 text-xs overflow-x-auto mt-1">{{ action.params.result|safe }}</pre>
-      </details>
-      {% endif %}
+      {% if action.remote_job_id %}<div class="text-xs opacity-40">job id: <code>{{ action.remote_job_id }}</code></div>{% endif %}
     </div>
   </div>
 
   {% if action.status == "done" or action.status == "failed" %}
-  <div class="mt-3 flex gap-2">
+  <div class="mt-3 flex flex-wrap gap-2 items-center">
     <a href="{% url 'devops:dashboard' %}" class="btn btn-sm btn-ghost">← К дашборду</a>
-    <form method="post" action="{% url 'devops:run_action' action.environment.id action.action_type %}">
-      {% csrf_token %}
-      <button class="btn btn-sm btn-primary">↻ Запустить ещё раз</button>
-    </form>
+    {% if action.action_type in readonly_render_types %}
+      <form method="post" action="{% url 'devops:run_action' action.environment.id action.action_type %}">{% csrf_token %}
+        <button class="btn btn-sm btn-outline">↻ Запустить ещё раз</button></form>
+    {% endif %}
   </div>
   {% endif %}
 </div>

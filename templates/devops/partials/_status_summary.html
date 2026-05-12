@@ -1,0 +1,45 @@
+{% comment %}Компактная сводка состояния окружения. Контекст: env (с .latest_status).{% endcomment %}
+<div class="rounded-lg border {% if env.name == 'prod' %}border-error/40 bg-error/5{% else %}border-base-300 bg-base-100{% endif %} p-4">
+  <div class="flex items-center gap-2 mb-2">
+    <span class="badge badge-sm {% if env.name == 'prod' %}badge-error{% else %}badge-info{% endif %}">{{ env.name|upper }}</span>
+    <span class="font-semibold">{{ env.base_url }}</span>
+    {% if env.name == 'dev' %}<span class="text-xs opacity-50">— этот сервер</span>
+    {% elif env.name == 'prod' %}<span class="text-xs text-error/80">— боевой</span>{% endif %}
+  </div>
+
+  {% with a=env.latest_status %}
+  {% if a and a.params.result %}
+    {% with r=a.params.result %}
+    <div class="text-xs leading-relaxed space-y-1">
+      <div>
+        <span class="opacity-50">git:</span> <code>{{ r.git.branch }}</code> @ <code>{{ r.git.commit }}</code>
+        {% if r.git.dirty %}<span class="text-warning">· незакоммичено!</span>{% endif %}
+        {% if r.git.has_upstream %}
+          {% if r.git.behind %}<span class="text-warning font-medium">· отстаёт на {{ r.git.behind }} — есть что деплоить</span>
+          {% elif r.git.ahead %}<span class="opacity-60">· опережает remote на {{ r.git.ahead }}</span>
+          {% else %}<span class="text-success">· в синхроне</span>{% endif %}
+        {% endif %}
+      </div>
+      <div class="opacity-70 truncate" title="{{ r.git.commit_message }}">{{ r.git.commit_message }}</div>
+      <div class="flex flex-wrap gap-x-4 gap-y-1 pt-1">
+        <span><span class="opacity-50">контейнеры:</span>
+          <span class="{% if r.containers_ok %}text-success{% else %}text-error font-medium{% endif %}">{{ r.containers_running|default:"?" }}/{{ r.containers_total|default:"?" }}</span> up</span>
+        <span><span class="opacity-50">миграции ждут:</span> <span class="{% if r.migrations.pending %}text-warning font-medium{% endif %}">{{ r.migrations.pending }}</span></span>
+        <span><span class="opacity-50">диск:</span> <span class="{% if r.disk.used_pct >= 85 %}text-error font-medium{% elif r.disk.used_pct >= 70 %}text-warning{% endif %}">{{ r.disk.used_pct }}%</span> <span class="opacity-40">({{ r.disk.free_gb }}G свободно)</span></span>
+        <span class="opacity-50">env={{ r.versions.env }}, Django {{ r.versions.django }}</span>
+      </div>
+    </div>
+    {% endwith %}
+    <div class="flex items-center gap-3 mt-3">
+      <form method="post" action="{% url 'devops:run_action' env.id 'status' %}">{% csrf_token %}
+        <button class="btn btn-xs btn-outline gap-1">↻ Обновить</button></form>
+      <a href="{% url 'devops:action_detail' a.id %}" class="link link-hover text-xs opacity-60">подробнее →</a>
+      <span class="text-xs opacity-40 ml-auto">{{ a.started_at|timesince }} назад</span>
+    </div>
+  {% else %}
+    <div class="text-xs opacity-50 mb-3">состояние ещё не запрашивали</div>
+    <form method="post" action="{% url 'devops:run_action' env.id 'status' %}">{% csrf_token %}
+      <button class="btn btn-xs btn-outline gap-1">↻ Проверить состояние</button></form>
+  {% endif %}
+  {% endwith %}
+</div>

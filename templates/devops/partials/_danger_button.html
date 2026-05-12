@@ -1,0 +1,41 @@
+{% comment %}
+Кнопка опасного действия + модалка подтверждения.
+Контекст: env, action, word, title, desc, label.
+Опционально: btn_class (def. btn-error), icon, double (bool), confirm_label, branch_field (bool).
+{% endcomment %}
+<button type="button" class="btn btn-sm {{ btn_class|default:'btn-error' }} gap-1"
+        onclick="dgConfirm('dlg-{{ action }}-{{ env.id }}')">{% if icon %}{{ icon }} {% endif %}{{ label }}</button>
+
+<dialog id="dlg-{{ action }}-{{ env.id }}" class="modal">
+  <div class="modal-box">
+    <h3 class="font-bold text-lg text-error">⚠ {{ title }}</h3>
+    <p class="text-xs opacity-60 mt-1">Окружение: <strong>{{ env.name|upper }}</strong> · {{ env.base_url }}</p>
+    <p class="py-3 text-sm whitespace-pre-line opacity-90">{{ desc }}</p>
+    <form method="post" action="{% url 'devops:run_action' env.id action %}">
+      {% csrf_token %}
+      {% if branch_field %}
+      <label class="form-control mb-2">
+        <span class="label-text text-sm">Ветка (пусто — текущая):</span>
+        <input name="branch" placeholder="feat/production-ready" autocomplete="off"
+               class="input input-bordered input-sm w-full font-mono">
+      </label>
+      {% endif %}
+      {% if double %}
+      <label class="label cursor-pointer justify-start gap-2 mb-2 p-0">
+        <input type="checkbox" class="checkbox checkbox-sm checkbox-error" data-gate>
+        <span class="label-text text-sm">Понимаю последствия и подтверждаю</span>
+      </label>
+      {% endif %}
+      <p class="text-sm mb-1">Введите <code class="font-mono bg-base-200 px-1 rounded">{{ word }}</code> для подтверждения:</p>
+      <input name="confirm" data-word="{{ word }}" autocomplete="off" spellcheck="false"
+             class="input input-bordered input-sm w-full font-mono">
+      <div class="modal-action mt-4">
+        <button type="button" class="btn btn-sm btn-ghost" onclick="this.closest('dialog').close()">Отмена</button>
+        <button type="submit" class="btn btn-sm {{ btn_class|default:'btn-error' }}" disabled>
+          {{ confirm_label|default:'Подтвердить' }}
+        </button>
+      </div>
+    </form>
+  </div>
+  <form method="dialog" class="modal-backdrop"><button>закрыть</button></form>
+</dialog>

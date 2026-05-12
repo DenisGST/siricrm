@@ -146,9 +146,18 @@ def run_pull_db(params: dict) -> dict:
     source_env = Environment.objects.get(pk=source_env_id)
     log = [f"Источник: {source_env.name} ({source_env.base_url})"]
 
+    # 0. Защитный бэкап текущей (dev) БД — на случай если что-то пойдёт не так.
+    log.append("=== Защитный бэкап текущей БД ===")
+    try:
+        from apps.devops.handlers.backup import run_backup
+        sb = run_backup({})
+        log.append(sb.get("output", ""))
+    except Exception as e:
+        raise RuntimeError(f"Защитный бэкап не удался, pull_db отменён: {e}")
+
     # 1. Просим source_env сделать backup
     client = AgentClient(source_env)
-    log.append("Запрос backup на источнике...")
+    log.append("\n=== Запрос backup на источнике ===")
     remote_job = client.create_job("backup")
     remote_job_id = remote_job["id"]
     log.append(f"  remote job: {remote_job_id}")
