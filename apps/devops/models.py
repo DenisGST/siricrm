@@ -44,8 +44,12 @@ class DevopsAction(models.Model):
         STATUS = "status", "Статус"
         BACKUP = "backup", "Бэкап БД"
         LIST_BACKUPS = "list_backups", "Список бэкапов"
-        PULL_DB = "pull_db", "Pull prod → dev"
+        S3_STATS = "s3_stats", "S3: статистика"
+        PULL_DB = "pull_db", "Скопировать БД сюда (prod → dev)"
+        PUSH_DB = "push_db", "Залить эту БД в цель (dev → prod)"
         DEPLOY = "deploy", "Деплой"
+        GIT_LOG = "git_log", "Версии (git log)"
+        ROLLBACK = "rollback", "Откат версии"
         REBUILD = "rebuild", "Rebuild образов"
 
     class Status(models.TextChoices):

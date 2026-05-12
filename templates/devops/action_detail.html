@@ -2,22 +2,15 @@
 {% block title %}{{ action.get_action_type_display }} · DevOps{% endblock %}
 
 {% block content %}
-<div class="container mx-auto p-6 max-w-4xl">
-  <div class="flex items-center mb-4 gap-3">
-    <a href="{% url 'devops:dashboard' %}" class="btn btn-sm btn-ghost">← Назад</a>
-    <h1 class="text-xl font-bold">
+<div class="container mx-auto p-4 md:p-6 max-w-4xl space-y-4">
+  <div class="flex items-center gap-3 flex-wrap">
+    <a href="{% url 'devops:dashboard' %}" class="btn btn-sm btn-ghost">← К дашборду</a>
+    <h1 class="text-xl font-bold flex items-center gap-2">
       {{ action.get_action_type_display }}
-      <span class="text-base opacity-60">→ {{ action.environment.name }}</span>
+      <span class="badge {% if action.environment.name == 'prod' %}badge-error{% else %}badge-ghost{% endif %}">{{ action.environment.name }}</span>
     </h1>
   </div>
 
-  <div id="action-card"
-       {% if action.status == "running" or action.status == "queued" %}
-       hx-get="{% url 'devops:action_poll' action.id %}"
-       hx-trigger="load delay:1s, every 2s"
-       hx-swap="outerHTML"
-       {% endif %}>
-    {% include "devops/partials/action_card.html" %}
-  </div>
+  {% include "devops/partials/action_card.html" %}
 </div>
 {% endblock %}

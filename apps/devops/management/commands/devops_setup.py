@@ -8,10 +8,12 @@ class Command(BaseCommand):
     help = "Initialize Environment rows for DevOps panel"
 
     def handle(self, *args, **opts):
-        # 'self' — указывает на этот же сервер, для тестирования и для случая когда
-        # dev и prod пока на одной машине.
+        # Подчищаем старое имя 'self', если осталось с прежних версий.
+        Environment.objects.filter(name="self").update(name="dev")
+
+        # 'dev' — этот сервер (где живёт панель и ведётся разработка).
         env, created = Environment.objects.update_or_create(
-            name="self",
+            name="dev",
             defaults={
                 "base_url": "https://crmsiri.ru",
                 "agent_token_env": "DEVOPS_AGENT_TOKEN",
@@ -19,16 +21,16 @@ class Command(BaseCommand):
             },
         )
         verb = "создано" if created else "обновлено"
-        self.stdout.write(self.style.SUCCESS(f"Environment 'self' {verb}: {env.base_url}"))
+        self.stdout.write(self.style.SUCCESS(f"Environment 'dev' {verb}: {env.base_url}"))
 
-        # 'prod' — будущий боевой сервер. Пока is_active=False до развертывания.
+        # 'prod' — боевой сервер siricrm.ru. Деплой/бэкапы/синк БД идут через его агента.
         env, created = Environment.objects.update_or_create(
             name="prod",
             defaults={
                 "base_url": "https://siricrm.ru",
                 "agent_token_env": "DEVOPS_AGENT_TOKEN_PROD",
-                "is_active": False,
+                "is_active": True,
             },
         )
         verb = "создано" if created else "обновлено"
-        self.stdout.write(self.style.SUCCESS(f"Environment 'prod' {verb}: {env.base_url} (inactive)"))
+        self.stdout.write(self.style.SUCCESS(f"Environment 'prod' {verb}: {env.base_url}"))

@@ -1,0 +1,31 @@
+{% comment %}Таблица истории действий. Контекст: actions, readonly_actions.{% endcomment %}
+<div id="history-table" hx-get="{% url 'devops:history_partial' %}" hx-trigger="every 10s" hx-swap="outerHTML">
+{% if actions %}
+  <div class="overflow-x-auto">
+  <table class="table table-sm">
+    <thead><tr>
+      <th>Когда</th><th>Действие</th><th>Окружение</th><th>Кто</th><th>Статус</th><th></th>
+    </tr></thead>
+    <tbody>
+    {% for a in actions %}
+      <tr class="{% if a.action_type in readonly_actions %}opacity-60{% endif %}">
+        <td class="text-xs whitespace-nowrap">{{ a.started_at|date:"d.m H:i:s" }}</td>
+        <td class="whitespace-nowrap">{{ a.get_action_type_display }}</td>
+        <td><span class="badge badge-sm {% if a.environment.name == 'prod' %}badge-error{% else %}badge-ghost{% endif %}">{{ a.environment.name }}</span></td>
+        <td class="text-xs">{{ a.started_by|default:"—" }}</td>
+        <td>
+          {% if a.status == "done" %}<span class="badge badge-success badge-sm">готово</span>
+          {% elif a.status == "failed" %}<span class="badge badge-error badge-sm">ошибка</span>
+          {% elif a.status == "running" %}<span class="badge badge-warning badge-sm gap-1"><span class="loading loading-spinner loading-xs"></span>выполняется</span>
+          {% else %}<span class="badge badge-ghost badge-sm">{{ a.get_status_display }}</span>{% endif %}
+        </td>
+        <td><a href="{% url 'devops:action_detail' a.id %}" class="link link-primary text-xs">открыть →</a></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+{% else %}
+  <p class="opacity-60 text-sm">Действий пока нет.</p>
+{% endif %}
+</div>

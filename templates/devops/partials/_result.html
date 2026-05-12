@@ -1,0 +1,171 @@
+{% comment %}
+Богатый рендер результата действия. Контекст: action (с .action_type, .params.result).
+Если структурированного результата нет — ничего не выводит (текстовый лог показывается отдельно).
+{% endcomment %}
+{% with r=action.params.result %}
+{% if r %}
+
+{# ─────────────── STATUS ─────────────── #}
+{% if action.action_type == "status" %}
+  <div class="grid gap-3 md:grid-cols-2">
+    <div class="rounded border border-base-300 p-3">
+      <div class="text-xs font-semibold opacity-60 uppercase mb-1">Git</div>
+      <div class="text-sm"><code>{{ r.git.branch }}</code> @ <code>{{ r.git.commit }}</code>
+        {% if r.git.dirty %}<span class="badge badge-warning badge-xs">незакоммичено</span>{% endif %}</div>
+      <div class="text-xs opacity-70 mt-1">{{ r.git.commit_message }}</div>
+      <div class="text-xs opacity-50">{{ r.git.commit_date }}</div>
+      {% if r.git.has_upstream %}
+      <div class="text-xs mt-1">
+        {% if r.git.behind %}<span class="text-warning">↓ отстаёт на {{ r.git.behind }} коммитов от remote (есть что деплоить)</span>
+        {% elif r.git.ahead %}<span class="opacity-60">↑ опережает remote на {{ r.git.ahead }}</span>
+        {% else %}<span class="text-success">✓ в синхроне с remote</span>{% endif %}
+      </div>
+      {% endif %}
+    </div>
+    <div class="rounded border border-base-300 p-3">
+      <div class="text-xs font-semibold opacity-60 uppercase mb-1">Система</div>
+      <div class="text-sm">Диск: <strong>{{ r.disk.used_gb }}G</strong> / {{ r.disk.total_gb }}G
+        <span class="{% if r.disk.used_pct >= 85 %}text-error{% elif r.disk.used_pct >= 70 %}text-warning{% endif %}">({{ r.disk.used_pct }}%)</span>,
+        свободно {{ r.disk.free_gb }}G</div>
+      <progress class="progress {% if r.disk.used_pct >= 85 %}progress-error{% elif r.disk.used_pct >= 70 %}progress-warning{% else %}progress-success{% endif %} w-full h-2 mt-1" value="{{ r.disk.used_pct }}" max="100"></progress>
+      <div class="text-sm mt-2">Миграции: применено <strong>{{ r.migrations.applied }}</strong>,
+        ждут <strong class="{% if r.migrations.pending %}text-warning{% endif %}">{{ r.migrations.pending }}</strong></div>
+      {% if r.migrations.pending_list %}<ul class="text-xs opacity-60 list-disc ml-4">{% for m in r.migrations.pending_list %}<li>{{ m }}</li>{% endfor %}</ul>{% endif %}
+      <div class="text-xs opacity-50 mt-2">Python {{ r.versions.python }} · Django {{ r.versions.django }} · DJANGO_ENV={{ r.versions.env }}</div>
+    </div>
+  </div>
+  <div class="rounded border border-base-300 p-3 mt-3">
+    <div class="text-xs font-semibold opacity-60 uppercase mb-2">Контейнеры
+      {% if r.containers_total %}<span class="{% if r.containers_ok %}text-success{% else %}text-error{% endif %}">— {{ r.containers_running }}/{{ r.containers_total }} running</span>{% endif %}</div>
+    <div class="overflow-x-auto"><table class="table table-xs">
+      <thead><tr><th>Контейнер</th><th>Статус</th><th>Образ</th><th>Запущен</th></tr></thead>
+      <tbody>
+      {% for c in r.containers %}
+        <tr class="{% if c.error or c.status != 'running' %}text-error{% endif %}">
+          <td class="font-mono">{{ c.name }}</td>
+          <td>{{ c.status }}{% if c.health %} <span class="badge badge-ghost badge-xs">{{ c.health }}</span>{% endif %}{% if c.restarts %} <span class="badge badge-warning badge-xs">⟳{{ c.restarts }}</span>{% endif %}{% if c.error %} <span class="text-xs">{{ c.error }}</span>{% endif %}</td>
+          <td class="font-mono text-xs opacity-60">{{ c.image }}</td>
+          <td class="text-xs opacity-50">{{ c.started_at }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table></div>
+  </div>
+
+{# ─────────────── S3 STATS ─────────────── #}
+{% elif action.action_type == "s3_stats" %}
+  {% for b in r.buckets %}
+  <div class="rounded border border-base-300 p-3 {% if not forloop.first %}mt-3{% endif %}">
+    <div class="flex flex-wrap items-baseline gap-2">
+      <span class="font-mono font-semibold">{{ b.bucket }}</span>
+      <span class="badge badge-ghost badge-xs">{{ b.roles|join:"/" }}</span>
+      <span class="ml-auto text-sm"><strong>{{ b.objects }}</strong> объектов · <strong>{{ b.size_mb }}</strong> MB ({{ b.size_gb }} GB)</span>
+    </div>
+    {% if b.truncated %}<div class="text-xs text-warning mt-1">⚠ показаны не все объекты (лимит)</div>{% endif %}
+    {% if b.prefixes %}
+    <div class="overflow-x-auto mt-2"><table class="table table-xs">
+      <thead><tr><th>Префикс</th><th class="text-right">Объектов</th><th class="text-right">Размер, MB</th></tr></thead>
+      <tbody>{% for p in b.prefixes %}<tr><td class="font-mono">{{ p.prefix }}</td><td class="text-right">{{ p.count }}</td><td class="text-right">{{ p.size_mb }}</td></tr>{% endfor %}</tbody>
+    </table></div>
+    {% endif %}
+  </div>
+  {% endfor %}
+  {% for e in r.errors %}<div class="alert alert-error mt-3 text-sm"><span>Бакет {{ e.bucket }}: {{ e.error }}</span></div>{% endfor %}
+
+{# ─────────────── GIT LOG (выбор версии для отката) ─────────────── #}
+{% elif action.action_type == "git_log" %}
+  <div class="rounded border border-base-300 p-3">
+    <div class="text-sm mb-2">Ветка <code>{{ r.branch }}</code> · текущий <code>{{ r.head }}</code>.
+      Выберите коммит и нажмите «откатить». Перед откатом сделается защитный бэкап БД; при необходимости миграции будут реверснуты автоматически.</div>
+    <div class="overflow-x-auto"><table class="table table-xs">
+      <thead><tr><th>Коммит</th><th>Дата</th><th>Автор</th><th>Сообщение</th><th></th></tr></thead>
+      <tbody>
+      {% for c in r.commits %}
+        <tr class="{% if c.is_head %}bg-base-200{% endif %}">
+          <td class="font-mono">{{ c.sha }}{% if c.refs %}<br><span class="badge badge-ghost badge-xs">{{ c.refs }}</span>{% endif %}</td>
+          <td class="text-xs opacity-60 whitespace-nowrap">{{ c.date }}</td>
+          <td class="text-xs">{{ c.author }}</td>
+          <td>{{ c.message }}</td>
+          <td class="whitespace-nowrap">
+            {% if c.is_head %}<span class="badge badge-success badge-sm">текущая</span>
+            {% else %}
+              <button type="button" class="btn btn-xs btn-error btn-outline"
+                      onclick="dgConfirm('dlg-rollback-{{ action.environment.id }}-{{ c.sha }}')">↩ откатить</button>
+              <dialog id="dlg-rollback-{{ action.environment.id }}-{{ c.sha }}" class="modal">
+                <div class="modal-box">
+                  <h3 class="font-bold text-lg text-error">⚠ Откат {{ action.environment.name|upper }} на {{ c.sha }}</h3>
+                  <p class="text-xs opacity-60 mt-1">{{ action.environment.base_url }}</p>
+                  <p class="py-2 text-sm">Код будет переведён на коммит <code>{{ c.sha }}</code> — «{{ c.message }}».
+                    Сначала — защитный бэкап БД. Если между версиями менялись миграции — будет попытка реверснуть их автоматически; если не выйдет, откат прервётся (код не изменится).
+                    Затем restart web/celery → healthcheck. Короткий даунтайм.</p>
+                  <form method="post" action="{% url 'devops:run_action' action.environment.id 'rollback' %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="target_commit" value="{{ c.full_sha }}">
+                    <label class="label cursor-pointer justify-start gap-2 mb-2 p-0">
+                      <input type="checkbox" class="checkbox checkbox-sm checkbox-error" data-gate>
+                      <span class="label-text text-sm">Понимаю, что это откат боевого кода/БД</span>
+                    </label>
+                    <p class="text-sm mb-1">Введите <code class="font-mono bg-base-200 px-1 rounded">ROLLBACK</code> для подтверждения:</p>
+                    <input name="confirm" data-word="ROLLBACK" autocomplete="off" spellcheck="false"
+                           class="input input-bordered input-sm w-full font-mono">
+                    <div class="modal-action mt-4">
+                      <button type="button" class="btn btn-sm btn-ghost" onclick="this.closest('dialog').close()">Отмена</button>
+                      <button type="submit" class="btn btn-sm btn-error" disabled>Откатить на {{ c.sha }}</button>
+                    </div>
+                  </form>
+                </div>
+                <form method="dialog" class="modal-backdrop"><button>закрыть</button></form>
+              </dialog>
+            {% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table></div>
+  </div>
+
+{# ─────────────── BACKUP / PULL_DB / PUSH_DB ─────────────── #}
+{% elif action.action_type == "backup" or action.action_type == "pull_db" or action.action_type == "push_db" %}
+  <div class="rounded border border-base-300 p-3 text-sm space-y-1">
+    {% if r.filename %}<div><span class="opacity-50">Файл:</span> <code>{{ r.filename }}</code></div>{% endif %}
+    {% if r.s3_key %}<div><span class="opacity-50">S3:</span> <code>{{ r.s3_bucket }}/{{ r.s3_key }}</code></div>{% endif %}
+    {% if r.size_mb %}<div><span class="opacity-50">Размер:</span> {{ r.size_mb }} MB</div>{% endif %}
+    {% if r.source_env %}<div><span class="opacity-50">Источник:</span> {{ r.source_env }}</div>{% endif %}
+    {% if r.target_env %}<div><span class="opacity-50">Цель:</span> {{ r.target_env }}</div>{% endif %}
+    {% if r.dump %}<div><span class="opacity-50">Дамп dev:</span> <code>{{ r.dump.filename }}</code> ({{ r.dump.size_mb }} MB)</div>{% endif %}
+    {% if r.remote_result.safety_backup %}<div><span class="opacity-50">Защитный бэкап цели:</span> <code>{{ r.remote_result.safety_backup.filename }}</code></div>{% endif %}
+    {% if r.remote_result %}<div><span class="text-success">✓ БД на цели восстановлена</span></div>{% endif %}
+    {% if r.safety_backup %}<div><span class="opacity-50">Защитный бэкап:</span> <code>{{ r.safety_backup.filename }}</code></div>{% endif %}
+    {% if r.local_path %}<div><span class="opacity-50">Локально:</span> <code>{{ r.local_path }}</code></div>{% endif %}
+    {% if r.download_url %}<div><a href="{{ r.download_url }}" class="link link-primary" target="_blank" rel="noopener">↓ Скачать дамп (ссылка временная)</a></div>{% endif %}
+  </div>
+
+{# ─────────────── LIST BACKUPS ─────────────── #}
+{% elif action.action_type == "list_backups" %}
+  <div class="grid gap-3 md:grid-cols-2">
+    <div class="rounded border border-base-300 p-3">
+      <div class="text-xs font-semibold opacity-60 uppercase mb-2">Локально ({{ r.local|length }})</div>
+      <table class="table table-xs"><tbody>{% for f in r.local %}<tr><td class="font-mono">{{ f.filename }}</td><td class="text-right opacity-60">{{ f.size_bytes }}</td></tr>{% empty %}<tr><td class="opacity-40">пусто</td></tr>{% endfor %}</tbody></table>
+    </div>
+    <div class="rounded border border-base-300 p-3">
+      <div class="text-xs font-semibold opacity-60 uppercase mb-2">S3 · {{ r.bucket }} ({{ r.s3|length }})</div>
+      <table class="table table-xs"><tbody>{% for f in r.s3 %}<tr>{% if f.error %}<td class="text-error">{{ f.error }}</td>{% else %}<td class="font-mono">{{ f.filename }}</td><td class="text-right opacity-60">{{ f.size_bytes }}</td>{% endif %}</tr>{% empty %}<tr><td class="opacity-40">пусто</td></tr>{% endfor %}</tbody></table>
+    </div>
+  </div>
+
+{# ─────────────── DEPLOY / REBUILD / ROLLBACK ─────────────── #}
+{% elif action.action_type == "deploy" or action.action_type == "rebuild" or action.action_type == "rollback" %}
+  <div class="rounded border border-base-300 p-3 text-sm space-y-1">
+    {% if r.head %}<div><span class="opacity-50">HEAD:</span> <code>{{ r.head }}</code></div>{% endif %}
+    {% if r.from_head %}<div><span class="opacity-50">Было:</span> <code>{{ r.from_head }}</code></div>{% endif %}
+    {% if r.restarted %}<div><span class="opacity-50">Перезапущено:</span> {{ r.restarted|join:", " }}</div>{% endif %}
+    {% if r.recreated %}<div><span class="opacity-50">Пересоздано:</span> {{ r.recreated|join:", " }}</div>{% endif %}
+    {% if r.healthcheck %}<div><span class="opacity-50">Healthcheck:</span>
+      {% if r.healthcheck == "ok" %}<span class="badge badge-success badge-sm">ok</span>{% else %}<span class="badge badge-error badge-sm">{{ r.healthcheck }}</span>{% endif %}</div>{% endif %}
+    {% if r.migrations_rolled_back %}<div><span class="opacity-50">Откат миграций:</span> {{ r.migrations_rolled_back|join:", " }}</div>{% endif %}
+    {% if r.migrations_warning %}<div class="text-warning">⚠ {{ r.migrations_warning }}</div>{% endif %}
+  </div>
+{% endif %}
+
+{% endif %}
+{% endwith %}
