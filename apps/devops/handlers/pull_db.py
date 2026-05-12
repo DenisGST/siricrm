@@ -1,0 +1,195 @@
+"""Pull DB: запросить backup у source_env, скачать, restore на ЭТОМ сервере.
+
+Этот handler ВСЕГДА выполняется на dev-стороне (целевом). Запрашивает backup
+у source environment через AgentClient, дожидается, скачивает с S3,
+дропает текущую схему и применяет дамп.
+
+ОПАСНО: полностью перезаписывает БД на этом сервере!
+"""
+import gzip
+import os
+import time
+from io import BytesIO
+from pathlib import Path
+
+import boto3
+import requests
+from botocore.client import Config
+from django.utils import timezone
+
+from apps.devops.agent_client import AgentClient
+from apps.devops.models import Environment
+from apps.devops.tasks import register_handler
+
+
+BACKUP_DIR = Path("/app/backups")
+
+
+def _docker_client():
+    import docker
+    return docker.from_env()
+
+
+def _s3_client():
+    return boto3.client(
+        "s3",
+        endpoint_url=os.environ["AWS_S3_BASE_URL"],
+        aws_access_key_id=os.environ["AWS_ACCESS_KEY_ID"],
+        aws_secret_access_key=os.environ["AWS_SECRET_ACCESS_KEY"],
+        region_name=os.environ.get("AWS_S3_REGION_NAME", "us-east-1"),
+        config=Config(
+            signature_version="s3v4",
+            s3={"payload_signing_enabled": False, "addressing_style": "path"},
+        ),
+    )
+
+
+def _wait_for_remote_job(client: AgentClient, remote_job_id: str,
+                        log: list[str], timeout_sec: int = 600) -> dict:
+    started = time.monotonic()
+    while True:
+        if time.monotonic() - started > timeout_sec:
+            raise TimeoutError(f"Remote job {remote_job_id} not finished in {timeout_sec}s")
+        job = client.get_job(remote_job_id)
+        st = job.get("status")
+        if st == "done":
+            return job
+        if st == "failed":
+            raise RuntimeError(f"Remote job failed: {job.get('output', '')[:500]}")
+        log.append(f"  ...remote status={st}")
+        time.sleep(2)
+
+
+def _download_from_s3(s3_bucket: str, s3_key: str) -> bytes:
+    """Скачивает объект через pre-signed URL (обход багов Beget)."""
+    s3 = _s3_client()
+    url = s3.generate_presigned_url(
+        "get_object",
+        Params={"Bucket": s3_bucket, "Key": s3_key},
+        ExpiresIn=600,
+    )
+    resp = requests.get(url, timeout=300, stream=False)
+    resp.raise_for_status()
+    return resp.content
+
+
+def _restore_dump(sql_bytes: bytes, log: list[str]) -> None:
+    """psql -c 'DROP SCHEMA' + восстанавливаем дамп через docker exec."""
+    db_user = os.environ["POSTGRES_USER"]
+    db_name = os.environ["POSTGRES_DB"]
+    db_password = os.environ["POSTGRES_PASSWORD"]
+
+    client = _docker_client()
+    db_container = None
+    for name in ["siricrm-db-1", "siricrm_db_1"]:
+        try:
+            db_container = client.containers.get(name)
+            break
+        except Exception:
+            continue
+    if db_container is None:
+        raise RuntimeError("DB container not found")
+
+    # Шаг 1: дроп схемы public
+    log.append("  Дроп схемы public...")
+    drop_sql = (
+        "DROP SCHEMA IF EXISTS public CASCADE; "
+        "CREATE SCHEMA public; "
+        f"GRANT ALL ON SCHEMA public TO {db_user};"
+    )
+    exit_code, output = db_container.exec_run(
+        cmd=["psql", "-U", db_user, "-d", db_name, "-c", drop_sql],
+        environment={"PGPASSWORD": db_password},
+    )
+    if exit_code != 0:
+        raise RuntimeError(f"DROP SCHEMA failed: {output[:500]!r}")
+
+    # Шаг 2: применяем дамп через psql stdin
+    log.append(f"  Восстановление {len(sql_bytes):,} байт SQL через psql stdin...")
+    # Создаём exec instance, потом через socket пишем stdin
+    exec_id = db_container.client.api.exec_create(
+        db_container.id,
+        cmd=["psql", "-U", db_user, "-d", db_name, "-q", "--single-transaction"],
+        environment={"PGPASSWORD": db_password},
+        stdin=True,
+        stdout=True,
+        stderr=True,
+    )["Id"]
+    sock = db_container.client.api.exec_start(exec_id, socket=True, demux=False)
+    sock = sock._sock if hasattr(sock, "_sock") else sock
+    try:
+        sock.sendall(sql_bytes)
+        sock.shutdown(1)  # SHUT_WR — psql завершит транзакцию
+    except Exception as e:
+        log.append(f"  socket write error: {e}")
+    finally:
+        sock.close()
+
+    # Подождём завершения exec
+    for _ in range(60):
+        info = db_container.client.api.exec_inspect(exec_id)
+        if not info["Running"]:
+            if info["ExitCode"] != 0:
+                raise RuntimeError(f"psql restore exited with code {info['ExitCode']}")
+            break
+        time.sleep(0.5)
+    else:
+        raise TimeoutError("psql restore did not finish in 30s")
+
+
+@register_handler("pull_db")
+def run_pull_db(params: dict) -> dict:
+    source_env_id = params.get("source_env_id")
+    if not source_env_id:
+        raise ValueError("source_env_id required in params")
+
+    source_env = Environment.objects.get(pk=source_env_id)
+    log = [f"Источник: {source_env.name} ({source_env.base_url})"]
+
+    # 1. Просим source_env сделать backup
+    client = AgentClient(source_env)
+    log.append("Запрос backup на источнике...")
+    remote_job = client.create_job("backup")
+    remote_job_id = remote_job["id"]
+    log.append(f"  remote job: {remote_job_id}")
+
+    # 2. Ждём завершения
+    log.append("Ожидание завершения backup...")
+    finished_job = _wait_for_remote_job(client, remote_job_id, log)
+    res = finished_job.get("result") or {}
+    s3_bucket = res.get("s3_bucket")
+    s3_key = res.get("s3_key")
+    if not (s3_bucket and s3_key):
+        raise RuntimeError(f"Backup did not return s3_bucket/s3_key: {res}")
+    log.append(f"  Backup готов: s3://{s3_bucket}/{s3_key} ({res.get('size_mb')} MB)")
+
+    # 3. Скачиваем дамп с S3
+    log.append("Скачивание дампа из S3...")
+    gz_bytes = _download_from_s3(s3_bucket, s3_key)
+    log.append(f"  Скачано {len(gz_bytes):,} байт (gzip)")
+
+    # 4. Распаковываем
+    sql_bytes = gzip.decompress(gz_bytes)
+    log.append(f"  Распаковано в {len(sql_bytes):,} байт SQL")
+
+    # 5. Сохраняем локально для истории
+    BACKUP_DIR.mkdir(exist_ok=True)
+    local_path = BACKUP_DIR / Path(s3_key).name
+    local_path.write_bytes(gz_bytes)
+    log.append(f"  Сохранено локально: {local_path}")
+
+    # 6. Restore на текущей БД
+    log.append("ВНИМАНИЕ: дроп схемы public и restore...")
+    _restore_dump(sql_bytes, log)
+    log.append("  Restore выполнен")
+
+    return {
+        "output": "\n".join(log),
+        "result": {
+            "source_env": source_env.name,
+            "s3_key": s3_key,
+            "size_mb": res.get("size_mb"),
+            "local_path": str(local_path),
+            "finished_at": timezone.now().isoformat(),
+        },
+    }

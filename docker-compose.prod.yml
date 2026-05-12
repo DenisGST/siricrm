@@ -1,0 +1,222 @@
+# =============================================================================
+# Production stack для SiriCRM (тот же стек на prod и dev — отличаются только .env)
+#
+# Запуск:
+#   ENV_FILE=.env.prod docker compose -f docker-compose.prod.yml --env-file .env.prod up -d
+#   ENV_FILE=.env.dev  docker compose -f docker-compose.prod.yml --env-file .env.dev  up -d
+#
+# Перед первым запуском:
+#   1. Заполнить .env.{prod|dev} (скопировать из соответствующего .example)
+#   2. Получить SSL: ENV_FILE=.env.{prod|dev} ./scripts/init-letsencrypt.sh
+#   3. Миграции применяются автоматически при старте web-контейнера
+# =============================================================================
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    expose:
+      - "5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: always
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  redis:
+    image: redis:7-alpine
+    expose:
+      - "6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: always
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  web:
+    build: .
+    command: >
+      bash -c "
+        python manage.py collectstatic --noinput &&
+        python manage.py migrate --noinput &&
+        daphne -b 0.0.0.0 -p 8000 --proxy-headers config.asgi:application
+      "
+    volumes:
+      - .:/app
+      - static_files:/app/staticfiles
+    expose:
+      - "8000"
+    env_file:
+      - ${ENV_FILE:-.env.prod}
+    environment:
+      DJANGO_ENV: prod
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: always
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "5"
+
+  celery:
+    build: .
+    command: celery -A config worker -l info --max-tasks-per-child=100 --time-limit=300 -E
+    volumes:
+      - .:/app
+    env_file:
+      - ${ENV_FILE:-.env.prod}
+    environment:
+      DJANGO_ENV: prod
+    depends_on:
+      - db
+      - redis
+      - web
+    restart: always
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  celery-beat:
+    build: .
+    command: celery -A config beat -l info --scheduler django_celery_beat.schedulers:DatabaseScheduler
+    volumes:
+      - .:/app
+    env_file:
+      - ${ENV_FILE:-.env.prod}
+    environment:
+      DJANGO_ENV: prod
+    depends_on:
+      - db
+      - redis
+      - web
+    restart: always
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  userbot:
+    build: .
+    command: python manage.py run_userbot
+    volumes:
+      - .:/app
+    env_file:
+      - ${ENV_FILE:-.env.prod}
+    environment:
+      DJANGO_ENV: prod
+    depends_on:
+      - db
+      - redis
+    restart: always
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  nginx:
+    image: nginx:1.27-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/proxy_params.conf:/etc/nginx/proxy_params.conf:ro
+      - ./nginx/templates:/etc/nginx/templates:ro
+      - static_files:/app/staticfiles:ro
+      - certbot_www:/var/www/certbot:ro
+      - certbot_conf:/etc/letsencrypt:ro
+      - nginx_logs:/var/log/nginx
+    environment:
+      NGINX_HOST: ${NGINX_HOST}
+      NGINX_HOST_WWW: ${NGINX_HOST_WWW:-www.${NGINX_HOST}}
+    depends_on:
+      - web
+    restart: always
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "5"
+
+  certbot:
+    image: certbot/certbot:latest
+    volumes:
+      - certbot_www:/var/www/certbot
+      - certbot_conf:/etc/letsencrypt
+    entrypoint: >
+      sh -c "trap exit TERM; while :; do certbot renew --webroot -w /var/www/certbot --quiet; sleep 12h & wait $${!}; done"
+    restart: always
+
+  devops-runner:
+    build: .
+    command: celery -A config worker -Q devops -l info --concurrency=2
+    volumes:
+      - .:/app
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${HOST_REPO_DIR}:${HOST_REPO_DIR}
+    env_file:
+      - ${ENV_FILE:-.env.prod}
+    environment:
+      DJANGO_ENV: prod
+      HOST_REPO_DIR: ${HOST_REPO_DIR}
+      COMPOSE_FILE_NAME: ${COMPOSE_FILE_NAME:-docker-compose.prod.yml}
+      ENV_FILE: ${ENV_FILE:-.env.prod}
+    depends_on:
+      - db
+      - redis
+    restart: always
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  backup:
+    build: .
+    command: >
+      bash -c "while :; do
+        sleep 86400;
+        /app/scripts/backup_db.sh;
+      done"
+    volumes:
+      - .:/app
+      - ./backups:/app/backups
+    env_file:
+      - ${ENV_FILE:-.env.prod}
+    environment:
+      DJANGO_ENV: prod
+    depends_on:
+      - db
+    restart: always
+
+volumes:
+  postgres_data:
+  static_files:
+  certbot_www:
+  certbot_conf:
+  nginx_logs:
