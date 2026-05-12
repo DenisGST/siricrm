@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Bash(docker compose ps:*)",
+      "Bash(docker compose logs:*)",
+      "Bash(docker compose -f docker-compose.prod.yml --env-file .env.dev ps:*)",
+      "Bash(docker compose -f docker-compose.prod.yml --env-file .env.dev logs:*)",
+      "Bash(git status:*)",
+      "Bash(git log:*)",
+      "Bash(git diff:*)",
+      "Bash(python manage.py check:*)",
+      "Bash(python manage.py showmigrations:*)"
+    ]
+  }
+}

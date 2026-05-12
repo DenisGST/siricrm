@@ -66,5 +66,6 @@ tailwindcssuserbot_session.session
 tailwindcss
 logs/userbot.log
 
-# Claude Code
-.claude/
+# Claude Code — settings.json коммитим (общие для всех машин), остальное локальное
+.claude/*
+!.claude/settings.json
