@@ -39,6 +39,21 @@ server {
     add_header X-Content-Type-Options "nosniff" always;
     add_header Referrer-Policy "strict-origin-when-cross-origin" always;
 
+    # ── Блокировка сканеров уязвимостей (как на проде) ──────────────────
+    location ~* \.(php|env|bak|old|backup|rb|go|tfstate|gradle|key|pem|save)$ {
+        return 444;
+    }
+    location ~* ^/(\.git|\.travis|\.env|\.terraform|\.github|\.gitlab|\.circleci|\.sonar|\.aws) {
+        return 444;
+    }
+    location ~* ^/(wp-|phpmyadmin|adminer|xmlrpc\.php|server-status|setup\.php|info\.php|test\.php|build\.gradle) {
+        return 444;
+    }
+    location ~* (nodemailer|sonar|SonarQube|s3_config|chakaash|secrets/|storage/logs|storage/stripe|backup/stripe|configs/|instance/config|internal/stripe|config/stripe|config/payment|config/s3|settings/stripe|config/services|config/initializers) {
+        return 444;
+    }
+    # ────────────────────────────────────────────────────────────────────
+
     location /static/ {
         alias /app/staticfiles/;
         expires 30d;
