@@ -86,7 +86,7 @@ gunzip -c backups/db-XXXX.sql.gz | docker compose -f <compose> --env-file <env> 
 
 ## Подробные документы
 
-- `PRODUCTION.md` — развёртывание prod на 45.90.35.187
-- `DEV_MIGRATION.md` — перенос dev на новый сервер
-- `DEPLOYMENT.md`, `QUICKSTART.md` — общие заметки по запуску
-- `FILES_OVERVIEW.md` — про файловый менеджер
+- `docs/PRODUCTION.md` — развёртывание prod на 45.90.35.187
+- `docs/DEV_MIGRATION.md` — перенос dev на новый сервер
+- `docs/legacy-quickstart.md` — старый гайд по запуску (частично устарел)
+- `README.md` — общее описание проекта (для GitHub)
