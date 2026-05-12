@@ -46,6 +46,7 @@ class DevopsAction(models.Model):
         LIST_BACKUPS = "list_backups", "Список бэкапов"
         PULL_DB = "pull_db", "Pull prod → dev"
         DEPLOY = "deploy", "Деплой"
+        REBUILD = "rebuild", "Rebuild образов"
 
     class Status(models.TextChoices):
         QUEUED = "queued", "В очереди"

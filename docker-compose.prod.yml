@@ -178,10 +178,14 @@ services:
     volumes:
       - .:/app
       - /var/run/docker.sock:/var/run/docker.sock
+      - ${HOST_REPO_DIR}:${HOST_REPO_DIR}
     env_file:
       - ${ENV_FILE:-.env.prod}
     environment:
       DJANGO_ENV: prod
+      HOST_REPO_DIR: ${HOST_REPO_DIR}
+      COMPOSE_FILE_NAME: ${COMPOSE_FILE_NAME:-docker-compose.prod.yml}
+      ENV_FILE: ${ENV_FILE:-.env.prod}
     depends_on:
       - db
       - redis

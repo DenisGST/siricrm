@@ -17,6 +17,13 @@ function confirmDeploy(form) {
   );
   return ans === "DEPLOY";
 }
+function confirmRebuild(form) {
+  const ans = prompt(
+    "ВНИМАНИЕ: git pull + docker compose BUILD (пересборка образов) + recreate контейнеров.\n" +
+    "Дольше деплоя, даунтайм 2-5 мин. Чтобы подтвердить, наберите REBUILD"
+  );
+  return ans === "REBUILD";
+}
 </script>
 <div class="container mx-auto p-6 max-w-6xl">
   <h1 class="text-2xl font-bold mb-6">🛠 DevOps Panel</h1>
@@ -56,6 +63,11 @@ function confirmDeploy(form) {
                 onsubmit="return confirmDeploy(this);">
             {% csrf_token %}
             <button class="btn btn-sm btn-error gap-1">🚀 Deploy</button>
+          </form>
+          <form method="post" action="{% url 'devops:run_action' env.id 'rebuild' %}"
+                onsubmit="return confirmRebuild(this);">
+            {% csrf_token %}
+            <button class="btn btn-sm btn-error btn-outline gap-1">🔨 Rebuild</button>
           </form>
         </div>
       </div>

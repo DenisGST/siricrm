@@ -20,12 +20,25 @@ from apps.devops.tasks import register_handler
 REPO_DIR = "/app"
 
 
-def _run(cmd: list[str], cwd: str = REPO_DIR, timeout: int = 10) -> str:
-    """Выполнить команду и вернуть stdout (или короткое сообщение об ошибке)."""
+_GIT_ENV = {**os.environ, "GIT_CONFIG_COUNT": "1",
+            "GIT_CONFIG_KEY_0": "safe.directory", "GIT_CONFIG_VALUE_0": REPO_DIR}
+
+
+def _run(cmd: list[str], cwd: str = REPO_DIR, timeout: int = 10,
+         stdout_only: bool = False) -> str:
+    """Выполнить команду и вернуть вывод (или короткое сообщение об ошибке).
+
+    Для git-команд добавляем safe.directory, иначе в контейнере git ругается
+    "dubious ownership" и пишет это в stdout/stderr.
+    """
+    env = _GIT_ENV if cmd and cmd[0] == "git" else None
     try:
         out = subprocess.run(
-            cmd, cwd=cwd, capture_output=True, text=True, timeout=timeout, check=False
+            cmd, cwd=cwd, capture_output=True, text=True, timeout=timeout,
+            check=False, env=env,
         )
+        if stdout_only:
+            return (out.stdout or "").strip()
         return (out.stdout or out.stderr or "").strip()
     except FileNotFoundError:
         return f"<not installed: {cmd[0]}>"
@@ -41,7 +54,7 @@ def _git_info() -> dict:
         "commit": _run(["git", "rev-parse", "--short", "HEAD"]),
         "commit_message": _run(["git", "log", "-1", "--pretty=%s"]),
         "commit_date": _run(["git", "log", "-1", "--pretty=%ci"]),
-        "dirty": bool(_run(["git", "status", "--porcelain"])),
+        "dirty": bool(_run(["git", "status", "--porcelain"], stdout_only=True)),
     }
 
 
