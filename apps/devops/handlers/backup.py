@@ -49,11 +49,19 @@ def _exec_pg_dump() -> bytes:
 
 
 def _s3_client():
+    """S3-клиент для бакета бэкапов.
+
+    Если заданы AWS_BACKUP_* — использует их (отдельный бакет с отдельными ключами),
+    иначе fallback на основные AWS_* (бэкапы в media-бакет с префиксом db-backups/).
+    """
+    access = os.environ.get("AWS_BACKUP_ACCESS_KEY_ID") or os.environ["AWS_ACCESS_KEY_ID"]
+    secret = os.environ.get("AWS_BACKUP_SECRET_ACCESS_KEY") or os.environ["AWS_SECRET_ACCESS_KEY"]
+    endpoint = os.environ.get("AWS_BACKUP_S3_BASE_URL") or os.environ["AWS_S3_BASE_URL"]
     return boto3.client(
         "s3",
-        endpoint_url=os.environ["AWS_S3_BASE_URL"],
-        aws_access_key_id=os.environ["AWS_ACCESS_KEY_ID"],
-        aws_secret_access_key=os.environ["AWS_SECRET_ACCESS_KEY"],
+        endpoint_url=endpoint,
+        aws_access_key_id=access,
+        aws_secret_access_key=secret,
         region_name=os.environ.get("AWS_S3_REGION_NAME", "us-east-1"),
         config=Config(
             signature_version="s3v4",
@@ -101,6 +109,11 @@ def run_backup(params: dict) -> dict:
         raise RuntimeError(f"S3 PUT failed: HTTP {resp.status_code} — {resp.text[:300]}")
     output_lines.append(f"  S3 upload OK ({resp.status_code})")
 
+    # Pre-signed download URL — чтобы pull_db мог скачать без знания ключей backup-бакета
+    download_url = s3.generate_presigned_url(
+        "get_object", Params={"Bucket": bucket, "Key": s3_key}, ExpiresIn=3600
+    )
+
     return {
         "output": "\n".join(output_lines),
         "result": {
@@ -108,6 +121,7 @@ def run_backup(params: dict) -> dict:
             "local_path": str(local_path),
             "s3_bucket": bucket,
             "s3_key": s3_key,
+            "download_url": download_url,
             "size_bytes": size,
             "size_mb": round(size / 2**20, 2),
             "created_at": ts,

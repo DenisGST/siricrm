@@ -139,6 +139,10 @@ AWS_S3_BASE_URL = config("AWS_S3_BASE_URL")
 
 # Бакет для бэкапов (опционально, если не задан — используется AWS_STORAGE_BUCKET_NAME)
 AWS_BACKUP_BUCKET_NAME = config("AWS_BACKUP_BUCKET_NAME", default="")
+# Отдельные ключи для backup-бакета (опционально; fallback на AWS_* в коде handler-а)
+AWS_BACKUP_ACCESS_KEY_ID = config("AWS_BACKUP_ACCESS_KEY_ID", default="")
+AWS_BACKUP_SECRET_ACCESS_KEY = config("AWS_BACKUP_SECRET_ACCESS_KEY", default="")
+AWS_BACKUP_S3_BASE_URL = config("AWS_BACKUP_S3_BASE_URL", default="")
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
