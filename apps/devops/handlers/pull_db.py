@@ -159,13 +159,19 @@ def run_pull_db(params: dict) -> dict:
     res = finished_job.get("result") or {}
     s3_bucket = res.get("s3_bucket")
     s3_key = res.get("s3_key")
-    if not (s3_bucket and s3_key):
-        raise RuntimeError(f"Backup did not return s3_bucket/s3_key: {res}")
-    log.append(f"  Backup готов: s3://{s3_bucket}/{s3_key} ({res.get('size_mb')} MB)")
+    download_url = res.get("download_url")
+    if not s3_key:
+        raise RuntimeError(f"Backup did not return s3_key: {res}")
+    log.append(f"  Backup готов: {s3_key} ({res.get('size_mb')} MB)")
 
-    # 3. Скачиваем дамп с S3
-    log.append("Скачивание дампа из S3...")
-    gz_bytes = _download_from_s3(s3_bucket, s3_key)
+    # 3. Скачиваем дамп: предпочитаем pre-signed URL от источника (не нужны его ключи)
+    log.append("Скачивание дампа...")
+    if download_url:
+        resp = requests.get(download_url, timeout=300)
+        resp.raise_for_status()
+        gz_bytes = resp.content
+    else:
+        gz_bytes = _download_from_s3(s3_bucket, s3_key)
     log.append(f"  Скачано {len(gz_bytes):,} байт (gzip)")
 
     # 4. Распаковываем
