@@ -1,0 +1,224 @@
+# =============================================================================
+# PRODUCTION stack для сервера 45.90.35.187 (siricrm.ru)
+#
+# ОТЛИЧИЕ от docker-compose.prod.yml: НЕ включает nginx/certbot —
+# на этом сервере уже работает СИСТЕМНЫЙ nginx (SSL, антисканеры, поддомены
+# flower.siricrm.ru / redis.siricrm.ru), проксирующий на 127.0.0.1:8000/5555/8081.
+#
+# Запуск:
+#   ENV_FILE=.env.prod docker compose -f docker-compose.prod-host.yml --env-file .env.prod up -d
+#
+# Откат на dev-стек:
+#   docker compose -f docker-compose.prod-host.yml down
+#   docker compose up -d
+# =============================================================================
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    expose:
+      - "5432"
+    ports:
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    expose:
+      - "6379"
+    ports:
+      - "127.0.0.1:6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  web:
+    build: .
+    command: >
+      bash -c "
+        python manage.py collectstatic --noinput &&
+        python manage.py migrate --noinput &&
+        daphne -b 0.0.0.0 -p 8000 --proxy-headers config.asgi:application
+      "
+    volumes:
+      - .:/app
+    ports:
+      - "127.0.0.1:8000:8000"
+    env_file:
+      - ${ENV_FILE:-.env.prod}
+    environment:
+      DJANGO_ENV: prod
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "5"
+
+  celery:
+    build: .
+    command: celery -A config worker -l info --max-tasks-per-child=100 --time-limit=300 -E
+    volumes:
+      - .:/app
+    env_file:
+      - ${ENV_FILE:-.env.prod}
+    environment:
+      DJANGO_ENV: prod
+    depends_on:
+      - db
+      - redis
+      - web
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  celery-beat:
+    build: .
+    command: celery -A config beat -l info --scheduler django_celery_beat.schedulers:DatabaseScheduler
+    volumes:
+      - .:/app
+    env_file:
+      - ${ENV_FILE:-.env.prod}
+    environment:
+      DJANGO_ENV: prod
+    depends_on:
+      - db
+      - redis
+      - celery
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  flower:
+    build: .
+    command: celery -A config flower --port=5555 --persistent=True --db=/app/flower_data/flower.db
+    volumes:
+      - .:/app
+      - flower_data:/app/flower_data
+    ports:
+      - "127.0.0.1:5555:5555"
+    env_file:
+      - ${ENV_FILE:-.env.prod}
+    environment:
+      DJANGO_ENV: prod
+      CELERY_BROKER_URL: redis://redis:6379/0
+    depends_on:
+      - redis
+      - celery
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  redis-commander:
+    image: ghcr.io/joeferner/redis-commander:latest
+    container_name: siricrm_redis-commander
+    environment:
+      - REDIS_HOSTS=local:redis:6379
+    ports:
+      - "127.0.0.1:8081:8081"
+    depends_on:
+      - redis
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  userbot:
+    build: .
+    command: python manage.py run_userbot
+    volumes:
+      - .:/app
+    env_file:
+      - ${ENV_FILE:-.env.prod}
+    environment:
+      DJANGO_ENV: prod
+      TELEGRAM_PROXY_TYPE: ${TELEGRAM_PROXY_TYPE:-}
+      TELEGRAM_PROXY_HOST: ${TELEGRAM_PROXY_HOST:-}
+      TELEGRAM_PROXY_PORT: ${TELEGRAM_PROXY_PORT:-}
+      TELEGRAM_PROXY_SECRET: ${TELEGRAM_PROXY_SECRET:-}
+      TELEGRAM_PROXY_USER: ${TELEGRAM_PROXY_USER:-}
+      TELEGRAM_PROXY_PASS: ${TELEGRAM_PROXY_PASS:-}
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
+
+  devops-runner:
+    build: .
+    command: celery -A config worker -Q devops -l info --concurrency=2
+    volumes:
+      - .:/app
+      - /var/run/docker.sock:/var/run/docker.sock
+    env_file:
+      - ${ENV_FILE:-.env.prod}
+    environment:
+      DJANGO_ENV: prod
+    depends_on:
+      - db
+      - redis
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  backup:
+    build: .
+    command: >
+      bash -c "while :; do
+        sleep 86400;
+        /app/scripts/backup_db.sh || true;
+      done"
+    volumes:
+      - .:/app
+      - ./backups:/app/backups
+    env_file:
+      - ${ENV_FILE:-.env.prod}
+    environment:
+      DJANGO_ENV: prod
+      POSTGRES_HOST: db
+    depends_on:
+      - db
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  flower_data:
