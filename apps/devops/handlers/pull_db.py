@@ -73,6 +73,90 @@ def _download_from_s3(s3_bucket: str, s3_key: str) -> bytes:
     return resp.content
 
 
+def _snapshot_tracking(job_id: str | None) -> dict | None:
+    """Сохраняет текущие DevopsAgentJob + связанный DevopsAction перед drop schema.
+
+    Эти записи лежат в той же схеме public, которую мы сейчас дропнем, и иначе
+    пропадут — action в UI повиснет в running. Возвращаем dict-«снимок» для
+    последующего _restore_tracking. Если job_id неизвестен или что-то пошло
+    не так — возвращаем None (не падаем, это вспомогательная функциональность).
+    """
+    if not job_id:
+        return None
+    try:
+        from apps.devops.models import DevopsAction, DevopsAgentJob
+        snap: dict = {}
+        job = DevopsAgentJob.objects.filter(pk=job_id).first()
+        if job:
+            snap["job"] = {
+                "id": str(job.id),
+                "action_type": job.action_type,
+                "params": job.params or {},
+                "status": job.status,
+                "output": job.output or "",
+                "result": job.result or {},
+            }
+        action = DevopsAction.objects.filter(remote_job_id=job_id).first()
+        if action:
+            snap["action"] = {
+                "id": str(action.id),
+                "environment_id": action.environment_id,
+                "action_type": action.action_type,
+                "status": action.status,
+                "remote_job_id": action.remote_job_id or "",
+                "output": action.output or "",
+                "params": action.params or {},
+                "started_by_id": action.started_by_id,
+            }
+        return snap or None
+    except Exception:
+        return None
+
+
+def _restore_tracking(snap: dict | None, log: list[str]) -> None:
+    """Возвращает строки DevopsAgentJob + DevopsAction после restore.
+
+    Идемпотентно (update_or_create). Поля started_at/finished_at не трогаем —
+    auto_now_add для started_at сработает на новой записи, finished_at будет
+    проставлено финальным save'ом в run_agent_job уже после возврата handler'а.
+    """
+    if not snap:
+        return
+    try:
+        from django.db import connections
+        connections.close_all()
+        from apps.devops.models import DevopsAction, DevopsAgentJob
+        if snap.get("job"):
+            j = snap["job"]
+            DevopsAgentJob.objects.update_or_create(
+                id=j["id"],
+                defaults={
+                    "action_type": j["action_type"],
+                    "params": j["params"],
+                    "status": j["status"],
+                    "output": j["output"],
+                    "result": j["result"],
+                },
+            )
+        if snap.get("action"):
+            a = snap["action"]
+            DevopsAction.objects.update_or_create(
+                id=a["id"],
+                defaults={
+                    "environment_id": a["environment_id"],
+                    "action_type": a["action_type"],
+                    "status": a["status"],
+                    "remote_job_id": a["remote_job_id"],
+                    "output": a["output"],
+                    "params": a["params"],
+                    "started_by_id": a["started_by_id"],
+                },
+            )
+        log.append("  Tracking-записи action+job восстановлены после drop schema")
+    except Exception as e:
+        log.append(f"  ⚠ не удалось восстановить tracking: {e}")
+
+
 def _post_restore_ensure_envs(log: list[str]) -> None:
     """После drop schema + restore возвращаем Environment-записи DevOps-панели.
 
@@ -171,6 +255,11 @@ def run_pull_db(params: dict) -> dict:
     source_env = Environment.objects.get(pk=source_env_id)
     log = [f"Источник: {source_env.name} ({source_env.base_url})"]
 
+    # Снапшот tracking-записей (action+job) ДО любых разрушительных операций —
+    # потом, после restore, мы их вернём в новую (чужую) схему, чтобы action
+    # не повис в running на UI. См. _snapshot_tracking / _restore_tracking.
+    tracking_snap = _snapshot_tracking(params.get("__job_id__"))
+
     # 0. Защитный бэкап текущей (dev) БД — на случай если что-то пойдёт не так.
     log.append("=== Защитный бэкап текущей БД ===")
     try:
@@ -225,6 +314,9 @@ def run_pull_db(params: dict) -> dict:
 
     # 7. Возвращаем Environment-записи (могли уехать вместе с дампом).
     _post_restore_ensure_envs(log)
+
+    # 8. Возвращаем tracking-записи self-action'а (action+job), чтобы UI не висел.
+    _restore_tracking(tracking_snap, log)
 
     return {
         "output": "\n".join(log),
