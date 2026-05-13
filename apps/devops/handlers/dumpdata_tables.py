@@ -107,17 +107,24 @@ def run_dumpdata_tables(params: dict) -> dict:
     bucket = _backup_bucket()
     s3_key = f"tables-dumps/{filename}"
     s3 = _s3_backup_client()
-    # Загрузка через pre-signed PUT — обходит баг boto3+Beget на content-sha256
+    # Загрузка через pre-signed PUT — обходит баг boto3+Beget на content-sha256.
+    # ВАЖНО: ContentType должен быть и в presigned URL params, и в request header,
+    # иначе подпись не сойдётся → 403. Тот же паттерн что в handlers/backup.py.
     put_url = s3.generate_presigned_url(
         "put_object",
-        Params={"Bucket": bucket, "Key": s3_key},
+        Params={"Bucket": bucket, "Key": s3_key, "ContentType": "application/gzip"},
         ExpiresIn=600,
         HttpMethod="PUT",
     )
     import requests
-    resp = requests.put(put_url, data=gz_bytes, timeout=300)
-    resp.raise_for_status()
-    log.append(f"  S3 PUT: {bucket}/{s3_key}")
+    resp = requests.put(
+        put_url, data=gz_bytes,
+        headers={"Content-Type": "application/gzip"},
+        timeout=300,
+    )
+    if not resp.ok:
+        raise RuntimeError(f"S3 PUT failed: HTTP {resp.status_code} — {resp.text[:300]}")
+    log.append(f"  S3 PUT: {bucket}/{s3_key} ({resp.status_code})")
 
     # 4. Pre-signed download URL для последующего GET (10 минут — достаточно для пайплайна)
     download_url = s3.generate_presigned_url(
