@@ -201,6 +201,25 @@ def telegram_chat_for_client(request, client_id):
     )
 
 
+def _telegram_clients_base_qs(emp, scope):
+    """Базовый queryset клиентов для scope ('mine'/'dept'/'all'). Без search/sort/paginate.
+
+    Используется и для самого списка, и для подсчёта количества клиентов
+    в кнопках-фильтрах сверху панели.
+    """
+    qs = Client.objects.all()
+    if emp:
+        if scope == "mine":
+            qs = qs.filter(employees=emp).distinct()
+        elif scope == "dept" and emp.department_id:
+            qs = qs.filter(employees__department_id=emp.department_id).distinct()
+        # "all" → без фильтрации
+    elif scope != "all":
+        # Если не сотрудник и фильтр не "all" — пусто
+        qs = qs.none()
+    return qs
+
+
 @login_required
 def telegram_clients_list(request):
     page_number = request.GET.get("page") or 1
@@ -214,17 +233,7 @@ def telegram_clients_list(request):
     except Employee.DoesNotExist:
         emp = None
 
-    qs = Client.objects.all()
-
-    if emp:
-        if scope == "mine":
-            qs = qs.filter(employees=emp).distinct()
-        elif scope == "dept" and emp.department_id:
-            qs = qs.filter(employees__department_id=emp.department_id).distinct()
-        # "all" → без фильтрации
-    elif scope != "all":
-        # Если не сотрудник и фильтр не "all" — пусто
-        qs = qs.none()
+    qs = _telegram_clients_base_qs(emp, scope)
 
     ALLOWED_SORTS = {
         "-last_message_at", "last_message_at",
@@ -239,13 +248,15 @@ def telegram_clients_list(request):
     # не "прыгали" при пагинации
     qs = qs.order_by(sort, "id")
 
+    search_q = None
     if query:
-        qs = qs.filter(
+        search_q = (
             Q(first_name__icontains=query)
             | Q(last_name__icontains=query)
             | Q(username__icontains=query)
             | Q(phone__icontains=query)
         )
+        qs = qs.filter(search_q)
 
     paginator = Paginator(qs, CLIENTS_PER_PAGE)
     page_obj = paginator.get_page(page_number)
@@ -263,6 +274,19 @@ def telegram_clients_list(request):
         for c in page_obj.object_list:
             c.ms_status = ""
 
+    # Счётчики для кнопок-фильтров. Учитывают текущий search, чтобы цифры
+    # синхронно менялись при наборе в поиске. Считаются только для page=1 —
+    # на подгрузке следующих страниц цифры не меняются.
+    counts = None
+    if page_obj.number == 1:
+        def _count(s):
+            base = _telegram_clients_base_qs(emp, s)
+            if search_q is not None:
+                base = base.filter(search_q)
+            return base.count()
+
+        counts = {"mine": _count("mine"), "dept": _count("dept"), "all": _count("all")}
+
     context = {
         "page_obj": page_obj,
         "has_next": page_obj.has_next(),
@@ -270,6 +294,7 @@ def telegram_clients_list(request):
         "scope": scope,
         "query": query,
         "sort": sort,
+        "counts": counts,
     }
 
     return render(request, "crm/partials/telegram_clients_list.html", context)
