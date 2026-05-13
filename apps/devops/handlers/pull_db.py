@@ -73,6 +73,31 @@ def _download_from_s3(s3_bucket: str, s3_key: str) -> bytes:
     return resp.content
 
 
+def _post_restore_ensure_envs(log: list[str]) -> None:
+    """После drop schema + restore возвращаем Environment-записи DevOps-панели.
+
+    На источнике (откуда тянем дамп) этой таблицы может не быть вообще, или там
+    могут быть другие записи — поэтому после restore вызываем devops_setup,
+    который гарантирует наличие наших стандартных 'dev' и 'prod'.
+    Не фатально: если что-то пошло не так — логируем, ручной re-run возможен.
+    """
+    log.append("\n=== Восстановление Environment-записей панели ===")
+    try:
+        # Старая ORM-коннекция могла указывать на дропнутую схему — заставим Django
+        # переподключиться, иначе следующий запрос может упасть на «relation does not exist».
+        from django.db import connections
+        connections.close_all()
+
+        from io import StringIO
+        from django.core.management import call_command
+        buf = StringIO()
+        call_command("devops_setup", stdout=buf)
+        for line in buf.getvalue().splitlines():
+            log.append(f"  {line}")
+    except Exception as e:
+        log.append(f"  ⚠ devops_setup упал (не фатально, можно вручную): {e}")
+
+
 def _restore_dump(sql_bytes: bytes, log: list[str]) -> None:
     """psql -c 'DROP SCHEMA' + восстанавливаем дамп через docker exec."""
     db_user = os.environ["POSTGRES_USER"]
@@ -197,6 +222,9 @@ def run_pull_db(params: dict) -> dict:
     log.append("ВНИМАНИЕ: дроп схемы public и restore...")
     _restore_dump(sql_bytes, log)
     log.append("  Restore выполнен")
+
+    # 7. Возвращаем Environment-записи (могли уехать вместе с дампом).
+    _post_restore_ensure_envs(log)
 
     return {
         "output": "\n".join(log),
