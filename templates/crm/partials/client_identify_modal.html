@@ -52,14 +52,17 @@
         </div>
 
         {% if tg.ok %}
-          <dl class="text-sm space-y-1">
+          <div class="text-[10px] uppercase tracking-wide text-base-content/40 mb-1">
+            Как пришло из Telegram (raw)
+          </div>
+          <dl class="text-sm space-y-1 mb-3">
             <div class="flex gap-2">
-              <dt class="w-24 text-base-content/60">Фамилия:</dt>
-              <dd id="tg-last_name">{{ tg.last_name|default:"—" }}</dd>
+              <dt class="w-24 text-base-content/60">last_name:</dt>
+              <dd>{{ tg.last_name|default:"—" }}</dd>
             </div>
             <div class="flex gap-2">
-              <dt class="w-24 text-base-content/60">Имя:</dt>
-              <dd id="tg-first_name">{{ tg.first_name|default:"—" }}</dd>
+              <dt class="w-24 text-base-content/60">first_name:</dt>
+              <dd>{{ tg.first_name|default:"—" }}</dd>
             </div>
             <div class="flex gap-2">
               <dt class="w-24 text-base-content/60">Username:</dt>
@@ -77,6 +80,34 @@
               </dd>
             </div>
           </dl>
+
+          <div class="text-[10px] uppercase tracking-wide text-base-content/40 mb-1 flex items-center gap-2">
+            <span>Разобрано через DaData</span>
+            {% if tg.parsed_qc == 0 %}
+              <span class="badge badge-success badge-xs">qc=0 уверенно</span>
+            {% elif tg.parsed_qc == 1 %}
+              <span class="badge badge-warning badge-xs">qc=1 частично</span>
+            {% elif tg.parsed_qc == 2 %}
+              <span class="badge badge-error badge-xs">qc=2 не распознано</span>
+            {% elif tg.parsed_error %}
+              <span class="badge badge-error badge-xs" title="{{ tg.parsed_error }}">ошибка</span>
+            {% endif %}
+          </div>
+          <dl class="text-sm space-y-1">
+            <div class="flex gap-2">
+              <dt class="w-24 text-base-content/60">Фамилия:</dt>
+              <dd id="tg-last_name">{{ tg.parsed_surname|default:"—" }}</dd>
+            </div>
+            <div class="flex gap-2">
+              <dt class="w-24 text-base-content/60">Имя:</dt>
+              <dd id="tg-first_name">{{ tg.parsed_name|default:"—" }}</dd>
+            </div>
+            <div class="flex gap-2">
+              <dt class="w-24 text-base-content/60">Отчество:</dt>
+              <dd id="tg-patronymic">{{ tg.parsed_patronymic|default:"—" }}</dd>
+            </div>
+          </dl>
+
           <button type="button"
                   class="btn btn-xs btn-outline mt-3 w-full"
                   onclick="copyTelegramToForm()">
@@ -153,12 +184,17 @@
       const t = (el.textContent || '').trim();
       return t === '—' ? '' : t;
     };
-    const tgLast  = get('tg-last_name');
-    const tgFirst = get('tg-first_name');
-    const tgPhone = get('tg-phone').replace(/\s+через контакт.*$/, '').trim();
+    // Берём именно разобранные DaData значения (правый блок «Разобрано
+    // через DaData»), не raw из Telegram — в TG нет поля «отчество»,
+    // и сотрудники писали ФИ в last_name, отчество в first_name.
+    const tgLast       = get('tg-last_name');
+    const tgFirst      = get('tg-first_name');
+    const tgPatronymic = get('tg-patronymic');
+    const tgPhone      = get('tg-phone').replace(/\s+через контакт.*$/, '').trim();
 
-    if (tgLast)  document.getElementById('id-last_name').value  = tgLast;
-    if (tgFirst) document.getElementById('id-first_name').value = tgFirst;
-    if (tgPhone) document.getElementById('id-phone').value      = tgPhone;
+    if (tgLast)       document.getElementById('id-last_name').value  = tgLast;
+    if (tgFirst)      document.getElementById('id-first_name').value = tgFirst;
+    if (tgPatronymic) document.getElementById('id-patronymic').value = tgPatronymic;
+    if (tgPhone)      document.getElementById('id-phone').value      = tgPhone;
   }
 </script>
