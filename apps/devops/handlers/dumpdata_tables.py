@@ -13,36 +13,22 @@ import os
 import time
 from pathlib import Path
 
-import boto3
-from botocore.client import Config
 from django.apps import apps
 from django.core.management import call_command
 
+# Переиспользуем S3-клиент и бакет-резолвер из backup.py — единая логика выбора
+# ключей и endpoint'а для backup-бакета (исторически прод использует
+# AWS_BACKUP_BUCKET_NAME, а не AWS_BACKUP_BUCKET — поэтому дублировать опасно).
+from apps.devops.handlers.backup import _s3_client as _s3_backup_client
 from apps.devops.tasks import register_handler
 
 
 BACKUP_DIR = Path("/app/backups")
 
 
-def _s3_backup_client():
-    """S3-клиент для бакета бэкапов. Если AWS_BACKUP_* не заданы — основной AWS_*."""
-    return boto3.client(
-        "s3",
-        endpoint_url=os.environ["AWS_S3_BASE_URL"],
-        aws_access_key_id=os.environ.get("AWS_BACKUP_ACCESS_KEY_ID")
-            or os.environ["AWS_ACCESS_KEY_ID"],
-        aws_secret_access_key=os.environ.get("AWS_BACKUP_SECRET_ACCESS_KEY")
-            or os.environ["AWS_SECRET_ACCESS_KEY"],
-        region_name=os.environ.get("AWS_S3_REGION_NAME", "us-east-1"),
-        config=Config(
-            signature_version="s3v4",
-            s3={"payload_signing_enabled": False, "addressing_style": "path"},
-        ),
-    )
-
-
 def _backup_bucket() -> str:
-    return os.environ.get("AWS_BACKUP_BUCKET") or os.environ["AWS_STORAGE_BUCKET_NAME"]
+    """Тот же путь резолвинга что в backup.py."""
+    return os.environ.get("AWS_BACKUP_BUCKET_NAME") or os.environ["AWS_STORAGE_BUCKET_NAME"]
 
 
 def _validate_models(model_labels: list[str]) -> list[str]:
