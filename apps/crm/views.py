@@ -1658,9 +1658,14 @@ def client_identify_modal(request, client_id):
                 employee=actor,
             )
 
-        # Перезагружаем страницу, чтобы канбан перерисовал карточку
-        # (цвет ФИО + исчезновение кнопки «i»).
-        return HttpResponse('<script>window.location.reload();</script>')
+        # Канбан должен перерисовать карточку (цвет ФИО + исчезновение
+        # кнопки «i») и модалка — закрыться. С hx-swap="none" сам ответ
+        # HTMX в DOM не вставляет, поэтому используем заголовок
+        # HX-Refresh: true — он триггерит full-page reload и убирает
+        # модалку вместе со страницей.
+        resp = HttpResponse(status=204)
+        resp["HX-Refresh"] = "true"
+        return resp
 
     # GET — тянем данные из Telegram
     tg_info = identify_get_telegram_info(client.telegram_id) if client.telegram_id else {
