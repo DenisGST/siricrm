@@ -331,11 +331,11 @@
           <!-- Фильтр-переключатель клиентов -->
           <div id="client-scope-filter" class="join w-full mb-2">
             <button type="button" class="join-item btn btn-xs flex-1 btn-primary" data-scope="mine"
-                    onclick="setClientScope('mine')">Мои</button>
+                    onclick="setClientScope('mine')">Мои <span id="scope-count-mine" class="ml-1 opacity-70"></span></button>
             <button type="button" class="join-item btn btn-xs flex-1" data-scope="dept"
-                    onclick="setClientScope('dept')">Отдел</button>
+                    onclick="setClientScope('dept')">Отдел <span id="scope-count-dept" class="ml-1 opacity-70"></span></button>
             <button type="button" class="join-item btn btn-xs flex-1" data-scope="all"
-                    onclick="setClientScope('all')">Все</button>
+                    onclick="setClientScope('all')">Все <span id="scope-count-all" class="ml-1 opacity-70"></span></button>
           </div>
           <input type="hidden" id="telegram-scope" name="scope" value="mine">
           <input type="hidden" id="telegram-sort" name="sort" value="-last_message_at">
