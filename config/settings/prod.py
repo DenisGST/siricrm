@@ -14,6 +14,9 @@ if not SECRET_KEY:
     raise RuntimeError("SECRET_KEY must be set in production")
 
 ALLOWED_HOSTS = config("ALLOWED_HOSTS").split(",")
+# Прод-сервер дёргает сам себя по IP (внутренние healthcheck'и, monitoring, cron) —
+# пускаем, иначе на каждый такой запрос Django валит DisallowedHost-стектрейс.
+ALLOWED_HOSTS.append("45.90.35.187")
 CSRF_TRUSTED_ORIGINS = config("CSRF_TRUSTED_ORIGINS").split(",")
 
 # --- HTTPS / Cookies ---
@@ -29,6 +32,18 @@ X_FRAME_OPTIONS = "DENY"
 
 # --- Sentry ---
 SENTRY_DSN = config("SENTRY_DSN", default="")
+
+
+def _sentry_drop_noise(event, hint):
+    """Не слать в Sentry мусор от сканеров — DisallowedHost от IP-обращений."""
+    exc_info = hint.get("exc_info") if hint else None
+    if exc_info:
+        exc_type = exc_info[0]
+        if exc_type is not None and exc_type.__name__ == "DisallowedHost":
+            return None
+    return event
+
+
 if SENTRY_DSN:
     sentry_sdk.init(
         dsn=SENTRY_DSN,
@@ -36,6 +51,7 @@ if SENTRY_DSN:
         traces_sample_rate=0.1,
         send_default_pii=False,
         environment=config("SENTRY_ENVIRONMENT", default="production"),
+        before_send=_sentry_drop_noise,
     )
 
 # --- CORS: в проде только явно разрешённые ---
