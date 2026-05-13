@@ -10,18 +10,9 @@ from django.views.decorators.http import require_POST
 
 from .agent_client import AgentClient, AgentError
 from .models import DevopsAction, DevopsAgentJob, Environment
-from .tasks import run_agent_job
+from .tasks import LOCAL_ACTIONS, run_agent_job, sync_action, sync_action_once
 
 logger = logging.getLogger(__name__)
-
-# Action types, выполняемые ЛОКАЛЬНО на dev-сервере (в devops-runner этого сервера),
-# а не через агента целевого окружения. Значение — функция env → стартовые params.
-LOCAL_ACTIONS = {
-    # затянуть БД источника СЮДА (на dev): источник = окружение, на котором нажали
-    "pull_db": lambda env: {"source_env_id": env.id},
-    # залить ЭТУ БД (dev) в целевое окружение: цель = окружение, на котором нажали
-    "push_db": lambda env: {"target_env_id": env.id},
-}
 
 # Действия, которые меняют состояние и требуют подтверждения в UI.
 DANGEROUS_ACTIONS = {"pull_db", "push_db", "deploy", "rebuild", "rollback"}
@@ -121,6 +112,13 @@ def run_action(request, env_id: int, action_type: str):
             action.params = form_params
         action.status = DevopsAction.Status.RUNNING
         action.save(update_fields=["remote_job_id", "params", "status"])
+        # Фоновый дожим статуса — чтобы action закрылся даже если пользователь закрыл вкладку.
+        # Не критично: если broker недоступен, HTMX-поллинг всё равно подтянет статус,
+        # а action уже в RUNNING с валидным remote_job_id.
+        try:
+            sync_action.delay(str(action.pk))
+        except Exception:
+            logger.warning("sync_action enqueue failed for %s — fallback to HTMX poll", action.pk, exc_info=True)
     except (AgentError, RuntimeError, ValueError) as e:
         # Ожидаемые ошибки (агент недоступен/устарел, нет токена и т.п.) — показываем коротко.
         action.status = DevopsAction.Status.FAILED
@@ -151,50 +149,15 @@ def action_detail(request, action_id):
 
 @user_passes_test(_is_superuser)
 def action_poll(request, action_id):
-    """HTMX polling: опрашивает локальный DevopsAgentJob либо агента целевого окружения."""
+    """HTMX polling: подтягивает свежий статус через общий sync-helper.
+
+    Фоновый Celery sync_action делает то же самое и без UI — здесь идентичный код
+    нужен для мгновенного апдейта при открытой вкладке (живой лог раз в 2с).
+    """
     action = get_object_or_404(
         DevopsAction.objects.select_related("environment"),
         pk=action_id,
     )
-
-    if action.status in (DevopsAction.Status.DONE, DevopsAction.Status.FAILED):
-        return render(request, "devops/partials/action_card.html",
-                      {"action": action, "readonly_render_types": RICH_READONLY})
-
-    if not action.remote_job_id:
-        action.status = DevopsAction.Status.FAILED
-        action.output = "remote_job_id не установлен"
-        action.finished_at = timezone.now()
-        action.save(update_fields=["status", "output", "finished_at"])
-        return render(request, "devops/partials/action_card.html",
-                      {"action": action, "readonly_render_types": RICH_READONLY})
-
-    try:
-        if action.action_type in LOCAL_ACTIONS:
-            job_obj = DevopsAgentJob.objects.get(pk=action.remote_job_id)
-            job = {"status": job_obj.status, "output": job_obj.output, "result": job_obj.result}
-        else:
-            client = AgentClient(action.environment)
-            job = client.get_job(action.remote_job_id)
-    except Exception:
-        logger.warning("poll error for action %s", action.pk, exc_info=True)
-        return render(request, "devops/partials/action_card.html",
-                      {"action": action, "readonly_render_types": RICH_READONLY})
-
-    remote_status = job.get("status")
-    action.output = job.get("output") or ""
-    if job.get("result"):
-        action.params = {**(action.params or {}), "result": job["result"]}
-    if remote_status == "done":
-        action.status = DevopsAction.Status.DONE
-        action.finished_at = timezone.now()
-        action.save(update_fields=["output", "params", "status", "finished_at"])
-    elif remote_status == "failed":
-        action.status = DevopsAction.Status.FAILED
-        action.finished_at = timezone.now()
-        action.save(update_fields=["output", "params", "status", "finished_at"])
-    else:
-        action.status = DevopsAction.Status.RUNNING
-        action.save(update_fields=["output", "params", "status"])
-
-    return render(request, "devops/partials/action_card.html", {"action": action})
+    sync_action_once(action)
+    return render(request, "devops/partials/action_card.html",
+                  {"action": action, "readonly_render_types": RICH_READONLY})
