@@ -45,6 +45,7 @@ class DevopsAction(models.Model):
         BACKUP = "backup", "Бэкап БД"
         LIST_BACKUPS = "list_backups", "Список бэкапов"
         S3_STATS = "s3_stats", "S3: статистика"
+        DISK_USAGE = "disk_usage", "Диск: разбивка использования"
         PULL_DB = "pull_db", "Скопировать БД сюда (prod → dev)"
         PUSH_DB = "push_db", "Залить эту БД в цель (dev → prod)"
         DEPLOY = "deploy", "Деплой"

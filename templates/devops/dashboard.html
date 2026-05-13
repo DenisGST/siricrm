@@ -115,6 +115,23 @@
     </div>
   </section>
 
+  {# ═══════════════ ДИСК ═══════════════ #}
+  <section class="card bg-base-100 shadow-sm">
+    <div class="card-body gap-4">
+      <h2 class="card-title text-lg">💾 Диск</h2>
+      <div>
+        <div class="text-sm font-medium opacity-70 mb-1">Разбивка использования (docker images/volumes/cache + директории репо)</div>
+        <div class="flex flex-wrap gap-2 items-center">
+          {% for env in envs %}
+          <form method="post" action="{% url 'devops:run_action' env.id 'disk_usage' %}">{% csrf_token %}
+            <button class="btn btn-sm btn-ghost gap-1">💾 Диск {{ env.label }}</button></form>
+          {% endfor %}
+          <span class="text-xs opacity-50">→ покажет что съедает место</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
   {# ═══════════════ ИСТОРИЯ ═══════════════ #}
   <section class="card bg-base-100 shadow-sm">
     <div class="card-body">
