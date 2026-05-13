@@ -132,6 +132,72 @@
     </div>
   </section>
 
+  {# ═══════════════ ВЫБОРОЧНЫЙ SYNC ТАБЛИЦ ═══════════════ #}
+  {% if prod_env and models_by_app %}
+  <section class="card bg-base-100 shadow-sm">
+    <div class="card-body gap-4">
+      <h2 class="card-title text-lg">📋 Селективный sync таблиц</h2>
+      <div>
+        <div class="text-sm font-medium opacity-70 mb-1">Перенос выбранных таблиц между dev и prod (UPSERT по pk)</div>
+        <div class="flex flex-wrap gap-2 items-center">
+          <button type="button" class="btn btn-sm btn-outline btn-warning gap-1"
+                  onclick="dgConfirmTables('dlg-table-sync')">📋 Перенос таблиц...</button>
+          <span class="text-xs opacity-50">→ отметить модели, выбрать направление, ввести SYNC-TABLES</span>
+        </div>
+        <p class="text-xs opacity-50 mt-1">UPSERT по primary key: совпадающие pk обновляются, новые вставляются, лишние не удаляются. Полный pg_dump-бэкап цели делается всегда.</p>
+      </div>
+    </div>
+  </section>
+
+  <dialog id="dlg-table-sync" class="modal">
+    <div class="modal-box max-w-3xl">
+      <h3 class="font-bold text-lg">📋 Селективный перенос таблиц</h3>
+      <p class="text-xs opacity-60 mt-1">UPSERT по primary key. Перед заливкой делается полный бэкап БД цели. Сессии в Redis — пользователя из системы не выкинет.</p>
+
+      <form id="form-table-sync" method="post" class="mt-3">
+        {% csrf_token %}
+
+        <div class="text-sm font-medium mb-1 flex items-center gap-2">
+          <span>Модели:</span>
+          <span class="text-xs opacity-50">выбрано: <span data-checked-count>0</span></span>
+        </div>
+        <div class="max-h-80 overflow-y-auto border border-base-300 rounded p-3 mb-3 space-y-2 text-xs">
+          {% for app_label, models in models_by_app.items %}
+          <details>
+            <summary class="cursor-pointer font-semibold py-1">{{ app_label }} <span class="opacity-50 font-normal">({{ models|length }})</span></summary>
+            <div class="ml-4 mt-1 space-y-1">
+              {% for m in models %}
+              <label class="flex gap-2 items-center hover:bg-base-200 px-1 py-0.5 rounded cursor-pointer">
+                <input type="checkbox" name="models" value="{{ m.label }}" class="checkbox checkbox-xs">
+                <span class="font-mono">{{ m.label }}</span>
+                <span class="opacity-50 truncate">{{ m.verbose_name }}</span>
+                <span class="opacity-40 ml-auto whitespace-nowrap">{{ m.count }} строк</span>
+              </label>
+              {% endfor %}
+            </div>
+          </details>
+          {% endfor %}
+        </div>
+
+        <p class="text-sm">Введите <code class="font-mono bg-base-200 px-1 rounded">SYNC-TABLES</code> для подтверждения:</p>
+        <input name="confirm" data-word="SYNC-TABLES" autocomplete="off" spellcheck="false"
+               class="input input-bordered input-sm w-full font-mono mt-1">
+
+        <div class="modal-action mt-4 gap-2">
+          <button type="button" class="btn btn-sm btn-ghost" onclick="this.closest('dialog').close()">Отмена</button>
+          <button type="submit" disabled
+                  formaction="{% url 'devops:run_action' prod_env.id 'pull_tables' %}"
+                  class="btn btn-sm btn-warning gap-1">⬇ prod → dev</button>
+          <button type="submit" disabled
+                  formaction="{% url 'devops:run_action' prod_env.id 'push_tables' %}"
+                  class="btn btn-sm btn-error gap-1">⬆ dev → prod</button>
+        </div>
+      </form>
+    </div>
+    <form method="dialog" class="modal-backdrop"><button>закрыть</button></form>
+  </dialog>
+  {% endif %}
+
   {# ═══════════════ ИСТОРИЯ ═══════════════ #}
   <section class="card bg-base-100 shadow-sm">
     <div class="card-body">

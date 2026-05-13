@@ -32,6 +32,27 @@
       m.showModal();
       setTimeout(function(){ inp.focus(); }, 60);
     }
+    // Вариант для модалки выборочного sync таблиц: на каждом submit-кнопке свой
+    // formaction (pull/push), нужно ещё проверять что отмечена хоть одна модель.
+    function dgConfirmTables(id){
+      const m = document.getElementById(id);
+      if(!m) return;
+      const inp = m.querySelector('input[name=confirm]');
+      const submits = m.querySelectorAll('button[type=submit][formaction]');
+      const checkboxes = m.querySelectorAll('input[name=models]');
+      const counter = m.querySelector('[data-checked-count]');
+      function check(){
+        const wordOk = inp.value.trim() === inp.dataset.word;
+        const checked = Array.from(checkboxes).filter(c=>c.checked).length;
+        if(counter) counter.textContent = checked;
+        submits.forEach(function(b){ b.disabled = !(wordOk && checked > 0); });
+      }
+      inp.value=''; checkboxes.forEach(function(c){ c.checked=false; }); check();
+      inp.oninput = check;
+      checkboxes.forEach(function(c){ c.onchange = check; });
+      m.showModal();
+      setTimeout(function(){ inp.focus(); }, 60);
+    }
   </script>
 </head>
 <body class="min-h-screen bg-base-200">

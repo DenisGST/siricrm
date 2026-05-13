@@ -23,6 +23,10 @@ LOCAL_ACTIONS: dict[str, callable] = {
     "pull_db": lambda env: {"source_env_id": env.id},
     # залить ЭТУ БД (dev) в целевое окружение: цель = окружение, на котором нажали
     "push_db": lambda env: {"target_env_id": env.id},
+    # выборочный sync таблиц — оркестраторы крутятся на dev,
+    # сами вызывают dumpdata/loaddata локально + через агента
+    "pull_tables": lambda env: {"source_env_id": env.id},
+    "push_tables": lambda env: {"target_env_id": env.id},
 }
 
 
