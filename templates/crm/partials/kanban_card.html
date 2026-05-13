@@ -11,8 +11,19 @@
 
     <!-- ФИО + ответственный -->
     <div class="flex justify-between items-start mb-1">
-      <h3 class="card-title text-sm leading-tight">
-        {{ client.last_name }} {{ client.first_name }}{% if client.patronymic %}<br>{{ client.patronymic }}{% endif %}
+      <h3 class="card-title text-sm leading-tight {% if not client.is_identified %}text-red-900{% endif %}">
+        {% if not client.is_identified %}
+          <button type="button"
+                  class="kanban-identify-btn align-middle inline-flex items-center justify-center mr-1"
+                  title="Идентифицировать клиента"
+                  hx-get="{% url 'client_identify_modal' client.id %}"
+                  hx-target="body"
+                  hx-swap="beforeend"
+                  onclick="event.stopPropagation()"
+                  hx-on:click="event.stopPropagation()">
+            {% icon "info" size=16 %}
+          </button>
+        {% endif %}{{ client.last_name }} {{ client.first_name }}{% if client.patronymic %}<br>{{ client.patronymic }}{% endif %}
       </h3>
       {% with emp=client.employees.all.0 %}
         {% if emp %}

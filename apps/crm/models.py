@@ -111,8 +111,12 @@ class Client(TimeStampedModel):
         default='lead',
         verbose_name='Статус'
     )
-    
-    
+    is_identified = models.BooleanField(
+        default=False,
+        verbose_name='Идентифицирован',
+        help_text='ФИО клиента подтверждено сотрудником через модалку «Идентификация»',
+    )
+
 
     def __str__(self):
         return f"{self.first_name} {self.last_name} (@{self.username})"
@@ -357,6 +361,7 @@ class ClientEvent(models.Model):
         # --- Общие ---
         ("first_contact",    "Первое обращение"),
         ("status_change",    "Смена статуса"),
+        ("client_identified","Клиент идентифицирован"),
         ("note",             "Заметка"),
         # --- Договор ---
         ("contract_created", "Заключение договора"),

@@ -1603,6 +1603,77 @@ def client_events_modal(request, client_id):
 
 
 @login_required
+def client_identify_modal(request, client_id):
+    """
+    HTMX: модалка «Идентификация».
+    GET  — открывает модалку: слева текущие ФИО/телефон из БД, справа —
+           данные из Telegram (через userbot).
+    POST — сохраняет правки, ставит is_identified=True и пишет
+           ClientEvent('client_identified').
+    """
+    from apps.telegram.identify_helper import identify_get_telegram_info
+
+    client = get_object_or_404(Client, pk=client_id)
+
+    if request.method == "POST":
+        last_name  = (request.POST.get("last_name")  or "").strip()
+        first_name = (request.POST.get("first_name") or "").strip()
+        patronymic = (request.POST.get("patronymic") or "").strip()
+        phone      = (request.POST.get("phone")      or "").strip()
+
+        if not first_name:
+            return HttpResponseBadRequest("Имя обязательно")
+
+        old_repr = (
+            f"{client.last_name} {client.first_name} {client.patronymic}".strip()
+            + (f", тел. {client.phone}" if client.phone else "")
+        )
+
+        with transaction.atomic():
+            client.last_name = last_name
+            client.first_name = first_name
+            client.patronymic = patronymic
+            client.phone = phone or None
+            client.is_identified = True
+            client.save(update_fields=[
+                "last_name", "first_name", "patronymic", "phone",
+                "is_identified", "updated_at",
+            ])
+
+            try:
+                actor = Employee.objects.get(user=request.user)
+            except Employee.DoesNotExist:
+                actor = None
+
+            new_repr = (
+                f"{last_name} {first_name} {patronymic}".strip()
+                + (f", тел. {phone}" if phone else "")
+            )
+            ClientEvent.objects.create(
+                client=client,
+                event_type="client_identified",
+                description=f"Идентифицирован. Было: «{old_repr}» → стало: «{new_repr}».",
+                old_value=old_repr[:255],
+                new_value=new_repr[:255],
+                employee=actor,
+            )
+
+        # Перезагружаем страницу, чтобы канбан перерисовал карточку
+        # (цвет ФИО + исчезновение кнопки «i»).
+        return HttpResponse('<script>window.location.reload();</script>')
+
+    # GET — тянем данные из Telegram
+    tg_info = identify_get_telegram_info(client.telegram_id) if client.telegram_id else {
+        "ok": False,
+        "error": "У клиента не задан telegram_id.",
+    }
+    return render(request, "crm/partials/client_identify_modal.html", {
+        "client": client,
+        "tg": tg_info,
+    })
+
+
+@login_required
 def client_assign_employee_picker(request, client_id):
     """HTMX: возвращает попап с выбором ответственного сотрудника."""
     client = get_object_or_404(Client, pk=client_id)
