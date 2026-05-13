@@ -94,6 +94,11 @@ CACHES = {
     }
 }
 
+# Сессии — в Redis, а не в БД. Это нужно потому что DevOps-команды pull_db/restore_db
+# дропают схему public, в которой жил бы django_session — пользователя выкидывало на
+# логин в середине операции. Redis при этом не пересоздаётся.
+SESSION_ENGINE = "django.contrib.sessions.backends.cache"
+
 CHANNEL_LAYERS = {
     "default": {
         "BACKEND": "channels_redis.core.RedisChannelLayer",

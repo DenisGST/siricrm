@@ -14,7 +14,13 @@ import requests
 from django.utils import timezone
 
 from apps.devops.handlers.backup import run_backup
-from apps.devops.handlers.pull_db import _download_from_s3, _post_restore_ensure_envs, _restore_dump
+from apps.devops.handlers.pull_db import (
+    _download_from_s3,
+    _post_restore_ensure_envs,
+    _restore_dump,
+    _restore_tracking,
+    _snapshot_tracking,
+)
 from apps.devops.tasks import register_handler
 
 BACKUP_DIR = Path("/app/backups")
@@ -33,6 +39,9 @@ def run_restore_db(params: dict) -> dict:
 
     log: list[str] = []
     result: dict = {"source": source_label}
+
+    # Снапшот tracking-записей до drop schema (см. pull_db._snapshot_tracking).
+    tracking_snap = _snapshot_tracking(params.get("__job_id__"))
 
     # 1. Защитный бэкап текущей БД
     if safety_backup:
@@ -75,6 +84,9 @@ def run_restore_db(params: dict) -> dict:
 
     # 4. Возвращаем Environment-записи (могли уехать вместе с дампом источника).
     _post_restore_ensure_envs(log)
+
+    # 5. Возвращаем tracking-записи self-action'а.
+    _restore_tracking(tracking_snap, log)
 
     result.update({
         "s3_key": s3_key,

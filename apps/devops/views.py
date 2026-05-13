@@ -153,7 +153,13 @@ def action_poll(request, action_id):
 
     Фоновый Celery sync_action делает то же самое и без UI — здесь идентичный код
     нужен для мгновенного апдейта при открытой вкладке (живой лог раз в 2с).
+
+    Если пришли сюда напрямую (не HTMX) — редиректим на action_detail. Иначе
+    пользователь увидит «голый» HTML-фрагмент (так бывает, например, когда
+    сессия слетела во время pull_db и в next= остался URL поллинга).
     """
+    if "HX-Request" not in request.headers:
+        return redirect("devops:action_detail", action_id=action_id)
     action = get_object_or_404(
         DevopsAction.objects.select_related("environment"),
         pk=action_id,

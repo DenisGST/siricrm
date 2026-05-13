@@ -67,8 +67,13 @@ def run_agent_job(job_id: str) -> dict:
         job.save(update_fields=["status", "output", "finished_at"])
         return {"error": "unknown_action"}
 
+    # Пробрасываем job_id в params, чтобы handler мог self-aware (нужно для
+    # pull_db/restore_db — они затирают свою же tracking-запись, и им нужно её
+    # снапшотнуть до restore'а и восстановить после).
+    handler_params = {**(job.params or {}), "__job_id__": str(job.pk)}
+
     try:
-        result = handler(job.params or {}) or {}
+        result = handler(handler_params) or {}
         job.output = (result.get("output") or "")[:200_000]
         job.result = result.get("result") or {}
         job.status = DevopsAgentJob.Status.DONE
@@ -77,7 +82,20 @@ def run_agent_job(job_id: str) -> dict:
         job.output = (job.output or "") + "\n" + traceback.format_exc()
     finally:
         job.finished_at = djtz.now()
-        job.save(update_fields=["status", "output", "result", "finished_at"])
+        # update_or_create вместо save() — устойчиво к случаю, когда строка
+        # была дропнута самим handler'ом (pull_db/restore_db) и не восстановлена
+        # его snapshot'ом по какой-то причине.
+        DevopsAgentJob.objects.update_or_create(
+            id=job.pk,
+            defaults={
+                "action_type": job.action_type,
+                "params": job.params or {},
+                "status": job.status,
+                "output": job.output or "",
+                "result": job.result or {},
+                "finished_at": job.finished_at,
+            },
+        )
 
     return {"status": job.status, "job_id": str(job.pk)}
 
@@ -156,6 +174,13 @@ def sync_action(self, action_id: str, attempts: int = 0) -> None:
     try:
         action = DevopsAction.objects.select_related("environment").get(pk=action_id)
     except DevopsAction.DoesNotExist:
+        return
+    except Exception:
+        # Транзитивные ошибки БД (например, во время pull_db public schema на
+        # секунды пропадает) — не считаем фатальными, просто переносим на тик дальше.
+        logger.warning("sync_action transient DB error for %s — retry", action_id, exc_info=True)
+        if attempts < SYNC_MAX_ATTEMPTS:
+            sync_action.apply_async(args=[action_id, attempts + 1], countdown=SYNC_TICK_SECONDS)
         return
 
     try:
