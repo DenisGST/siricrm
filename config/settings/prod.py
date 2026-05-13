@@ -14,9 +14,11 @@ if not SECRET_KEY:
     raise RuntimeError("SECRET_KEY must be set in production")
 
 ALLOWED_HOSTS = config("ALLOWED_HOSTS").split(",")
-# Прод-сервер дёргает сам себя по IP (внутренние healthcheck'и, monitoring, cron) —
+# Серверы дёргают сами себя по IP (внутренние healthcheck'и, monitoring, cron) —
 # пускаем, иначе на каждый такой запрос Django валит DisallowedHost-стектрейс.
-ALLOWED_HOSTS.append("45.90.35.187")
+# Оба IP хардкодим — dev и prod используют общий prod.py (DJANGO_ENV=prod), лишний
+# IP в whitelist на другом сервере безвреден (он туда никогда не придёт).
+ALLOWED_HOSTS += ["45.90.35.187", "5.35.94.218"]
 CSRF_TRUSTED_ORIGINS = config("CSRF_TRUSTED_ORIGINS").split(",")
 
 # --- HTTPS / Cookies ---
