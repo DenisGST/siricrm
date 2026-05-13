@@ -14,7 +14,7 @@ import requests
 from django.utils import timezone
 
 from apps.devops.handlers.backup import run_backup
-from apps.devops.handlers.pull_db import _download_from_s3, _restore_dump
+from apps.devops.handlers.pull_db import _download_from_s3, _post_restore_ensure_envs, _restore_dump
 from apps.devops.tasks import register_handler
 
 BACKUP_DIR = Path("/app/backups")
@@ -72,6 +72,9 @@ def run_restore_db(params: dict) -> dict:
     log.append("\n=== ВНИМАНИЕ: drop schema public + restore ===")
     _restore_dump(sql_bytes, log)
     log.append("  Restore выполнен")
+
+    # 4. Возвращаем Environment-записи (могли уехать вместе с дампом источника).
+    _post_restore_ensure_envs(log)
 
     result.update({
         "s3_key": s3_key,
