@@ -2,6 +2,7 @@
 import logging
 import traceback
 
+from django.apps import apps
 from django.contrib.auth.decorators import user_passes_test
 from django.http import HttpResponseBadRequest
 from django.shortcuts import get_object_or_404, redirect, render
@@ -15,7 +16,17 @@ from .tasks import LOCAL_ACTIONS, run_agent_job, sync_action, sync_action_once
 logger = logging.getLogger(__name__)
 
 # Действия, которые меняют состояние и требуют подтверждения в UI.
-DANGEROUS_ACTIONS = {"pull_db", "push_db", "deploy", "rebuild", "rollback"}
+DANGEROUS_ACTIONS = {"pull_db", "push_db", "deploy", "rebuild", "rollback",
+                     "pull_tables", "push_tables"}
+
+# Какие POST-параметры могут приходить списком (multi-select). Остальные — скалярные.
+MULTI_VALUE_PARAMS = {"models"}
+
+# Apps которые в UI скрываем из выбора (служебные Django/3rd-party).
+_HIDDEN_APPS = {
+    "admin", "auth", "contenttypes", "sessions", "sites",
+    "django_celery_beat", "django_celery_results",
+}
 
 # Действия только-для-чтения — не считаем их «важными» в истории по умолчанию.
 READONLY_ACTIONS = {"status", "list_backups", "s3_stats", "git_log"}
@@ -37,6 +48,36 @@ def _latest_action(env, action_type):
     )
 
 
+def _list_user_models() -> list[dict]:
+    """Все «пользовательские» модели для UI выборочного sync таблиц.
+
+    Возвращает плоский список dicts: {app_label, model_name, label, verbose_name, count}.
+    Сгруппировать по app_label шаблон уже сам.
+    Прокси и абстрактные пропускаем (loaddata не умеет).
+    """
+    result: list[dict] = []
+    for model in apps.get_models():
+        if model._meta.abstract or model._meta.proxy:
+            continue
+        app_label = model._meta.app_label
+        if app_label in _HIDDEN_APPS:
+            continue
+        full = f"{app_label}.{model._meta.model_name}"
+        try:
+            count = model.objects.count()
+        except Exception:
+            count = None
+        result.append({
+            "app_label": app_label,
+            "model_name": model._meta.model_name,
+            "label": full,
+            "verbose_name": str(model._meta.verbose_name_plural or model._meta.verbose_name or model.__name__),
+            "count": count,
+        })
+    result.sort(key=lambda m: (m["app_label"], m["model_name"]))
+    return result
+
+
 @user_passes_test(_is_superuser)
 def dashboard(request):
     envs = list(Environment.objects.filter(is_active=True))
@@ -52,12 +93,18 @@ def dashboard(request):
     actions = list(
         DevopsAction.objects.select_related("environment", "started_by")[:25]
     )
+    user_models = _list_user_models()
+    # Группировка по app_label для шаблона.
+    models_by_app: dict[str, list[dict]] = {}
+    for m in user_models:
+        models_by_app.setdefault(m["app_label"], []).append(m)
     return render(request, "devops/dashboard.html", {
         "envs": envs,
         "dev_env": dev_env,
         "prod_env": prod_env,
         "actions": actions,
         "readonly_actions": READONLY_ACTIONS,
+        "models_by_app": models_by_app,
     })
 
 
@@ -80,11 +127,20 @@ def run_action(request, env_id: int, action_type: str):
     if action_type not in valid:
         return HttpResponseBadRequest("Unknown action type")
 
-    # Доп. параметры из формы (например target_commit для rollback, branch для deploy).
-    form_params = {
-        k: v for k, v in request.POST.items()
-        if k not in ("csrfmiddlewaretoken", "confirm") and v not in ("", None)
-    }
+    # Доп. параметры из формы (например target_commit для rollback, branch для deploy,
+    # список моделей для pull_tables/push_tables).
+    form_params: dict = {}
+    for k in request.POST.keys():
+        if k in ("csrfmiddlewaretoken", "confirm"):
+            continue
+        if k in MULTI_VALUE_PARAMS:
+            vals = [v for v in request.POST.getlist(k) if v]
+            if vals:
+                form_params[k] = vals
+        else:
+            v = request.POST.get(k)
+            if v not in ("", None):
+                form_params[k] = v
 
     action = DevopsAction.objects.create(
         environment=env,
