@@ -367,16 +367,16 @@ SCHEDULE_FIELDS = (
     "legal_services_amount", "installment_months",
     "doc_collection", "postal_costs", "state_duty",
     "fu_fee", "procedure_costs", "additional_costs",
+    "schedule_legal_offset", "schedule_fu_offset", "schedule_procedure_offset",
 )
 
 
-def _first_installment_date(date_start):
-    """10-е число месяца, который наступает после date_start + 2 месяца.
+def _first_installment_date(date_start, offset_months):
+    """10-е число месяца, который наступает после date_start + N месяцев.
 
-    Правило (по ТЗ): берём date_start + 2 месяца. Если день > 10 — берём
-    10-е следующего месяца. Иначе — 10-е этого месяца.
+    Если день получившейся даты > 10 — переносим на 10-е следующего месяца.
     """
-    base = date_start + relativedelta(months=2)
+    base = date_start + relativedelta(months=offset_months)
     if base.day > 10:
         base = base + relativedelta(months=1)
     return base.replace(day=10)
@@ -385,8 +385,12 @@ def _first_installment_date(date_start):
 def _generate_charges(service):
     """Создаёт Charge-записи по параметрам, сохранённым в service.
 
-    Все даты отсчитываются от service.date_start (дата начала оказания
-    услуг). Возвращает количество созданных строк.
+    Юруслуги: первая дата = date_start + schedule_legal_offset мес, 10-е
+    число (с переносом если день > 10), далее +1 месяц.
+    ФУ: date_start + schedule_fu_offset мес.
+    Расходы на процедуру: date_start + schedule_procedure_offset мес.
+    Сбор док/Почтовые/Госпошлина: date_start + 7 дней.
+    Доп. расходы: date_start + 60 дней.
     """
     new_charges = []
     date_d = service.date_start
@@ -396,7 +400,7 @@ def _generate_charges(service):
         monthly = (service.legal_services_amount / service.installment_months).quantize(
             Decimal("0.01"), rounding=ROUND_HALF_UP,
         )
-        first = _first_installment_date(date_d)
+        first = _first_installment_date(date_d, service.schedule_legal_offset)
         for i in range(service.installment_months):
             due_date = first + relativedelta(months=i)
             new_charges.append(models.Charge(
@@ -407,23 +411,32 @@ def _generate_charges(service):
                 status="scheduled",
             ))
 
-    # Прочие — каждый отдельной строкой, если сумма > 0
-    extras = [
+    # Платежи со смещением в днях (фиксированные).
+    days_extras = [
         (service.doc_collection,    7,  "Сбор документов"),
         (service.postal_costs,      7,  "Почтовые расходы"),
         (service.state_duty,        7,  "Гос. пошлина"),
-        (service.fu_fee,            45, "Вознаграждение ФУ"),
-        (service.procedure_costs,   60, "Расходы на процедуру"),
-        (service.additional_costs,  60, "Доп. расходы"),
+        (service.additional_costs, 60,  "Доп. расходы"),
     ]
-    for amount, days_offset, title in extras:
+    for amount, days_offset, title in days_extras:
         if amount and amount > 0:
             new_charges.append(models.Charge(
                 client=service.client, service=service,
                 due_date=date_d + timedelta(days=days_offset),
-                title=title,
-                amount=amount,
-                status="scheduled",
+                title=title, amount=amount, status="scheduled",
+            ))
+
+    # Платежи со смещением в месяцах (настраиваемые).
+    months_extras = [
+        (service.fu_fee,          service.schedule_fu_offset,        "Вознаграждение ФУ"),
+        (service.procedure_costs, service.schedule_procedure_offset, "Расходы на процедуру"),
+    ]
+    for amount, months_offset, title in months_extras:
+        if amount and amount > 0:
+            new_charges.append(models.Charge(
+                client=service.client, service=service,
+                due_date=date_d + relativedelta(months=months_offset),
+                title=title, amount=amount, status="scheduled",
             ))
 
     models.Charge.objects.bulk_create(new_charges)
@@ -439,6 +452,7 @@ def _schedule_modal_ctx(service, *, error=None, success=None):
         "charges": charges,
         "charges_total": f"{total:,.2f}".replace(",", " "),
         "months_range": range(1, 25),
+        "offset_range": range(0, 7),
         "date_start_value": service.date_start or timezone.localdate(),
         "error": error,
         "success": success,
@@ -462,6 +476,8 @@ def payment_schedule_modal(request, service_id):
                 raw = request.POST.get(field, "").strip().replace(",", ".")
                 if field == "installment_months":
                     setattr(service, field, max(1, min(24, int(raw or 1))))
+                elif field in {"schedule_legal_offset", "schedule_fu_offset", "schedule_procedure_offset"}:
+                    setattr(service, field, max(0, min(6, int(raw or 0))))
                 else:
                     setattr(service, field, Decimal(raw or "0"))
             raw_date = request.POST.get("date_start", "").strip()
@@ -485,11 +501,24 @@ def payment_schedule_modal(request, service_id):
         if strategy in ("replace", "append"):
             with transaction.atomic():
                 created = _generate_charges(service)
-            success = f"Создано {created} начислени{'е' if created == 1 else ('я' if 1 < created < 5 else 'й')}."
+                # Пишем метаданные графика и contract_price = итого.
+                emp = getattr(request.user, "employee", None)
+                today = timezone.localdate()
+                was_empty = service.schedule_date is None
+                service.schedule_date = today
+                if was_empty:
+                    service.schedule_created_by = emp
+                service.schedule_updated_by = emp
+                total = service.charges.aggregate(s=Sum("amount"))["s"] or Decimal("0")
+                service.contract_price = total
+                service.save(update_fields=[
+                    "schedule_date", "schedule_created_by", "schedule_updated_by",
+                    "contract_price",
+                ])
+            success = f"Создано {created} начислени{'е' if created == 1 else ('я' if 1 < created < 5 else 'й')}. Цена договора: {total} руб."
 
         ctx = _schedule_modal_ctx(service, success=success)
         resp = render(request, "finance/partials/payment_schedule_modal.html", ctx)
-        # Сигнал модалке «Финансы», если она открыта где-то ещё.
         resp["HX-Trigger"] = "reloadFinance"
         return resp
 

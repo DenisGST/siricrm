@@ -884,6 +884,36 @@ class Service(TimeStampedModel):
         "Доп. расходы, ₽", max_digits=14, decimal_places=2, default=0,
     )
 
+    # Смещения дат (в месяцах, 0–6) — настраиваются в модалке графика.
+    schedule_legal_offset = models.PositiveSmallIntegerField(
+        "Первый платёж за юруслуги через, мес", default=2,
+    )
+    schedule_fu_offset = models.PositiveSmallIntegerField(
+        "Вознаграждение ФУ через, мес", default=1,
+    )
+    schedule_procedure_offset = models.PositiveSmallIntegerField(
+        "Расходы на процедуру через, мес", default=2,
+    )
+
+    # Метаданные графика: дата составления / последнего изменения + автор.
+    schedule_date = models.DateField(
+        "Дата составления графика платежей", null=True, blank=True,
+    )
+    schedule_created_by = models.ForeignKey(
+        "core.Employee",
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name="schedules_created",
+        verbose_name="Кто составил график",
+    )
+    schedule_updated_by = models.ForeignKey(
+        "core.Employee",
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name="schedules_updated",
+        verbose_name="Кто изменил график",
+    )
+
     payment_procedure = models.ForeignKey(
         PaymentProcedure,
         on_delete=models.SET_NULL,
