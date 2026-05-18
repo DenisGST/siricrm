@@ -5,12 +5,7 @@
         hx-target="#payment-schedule-modal"
         hx-swap="outerHTML">
   <div class="modal-box w-full" style="max-width:48rem;">
-    <h3 class="font-bold text-lg mb-1">График платежей</h3>
-    <p class="text-xs text-base-content/60 mb-3">
-      Параметры сохраняются на услуге. Кнопка «Заполнить график» создаёт
-      строки Начислений по правилам ТЗ. Все даты считаются от даты начала
-      оказания услуг.
-    </p>
+    <h3 class="font-bold text-lg mb-3">График платежей</h3>
 
     {% if error %}
       <div class="alert alert-error text-sm mb-3">{{ error }}</div>
