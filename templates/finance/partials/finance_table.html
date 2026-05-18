@@ -110,7 +110,11 @@
     </thead>
     <tbody>
       {% for row in rows %}
-      <tr{% if row.kind == 'in' %} style="background:#ecfdf5;"{% elif row.kind == 'out' %} style="background:#fff1f2;"{% endif %}>
+      <tr{% if row.kind == 'in' %} style="background:#ecfdf5;"{% elif row.kind == 'out' %} style="background:#fff1f2;"{% endif %}
+         {% if can_edit and row.kind != 'charge' %}class="cursor-pointer finance-row-clickable"
+         hx-get="{% url 'finance:payment_edit' client.id row.obj.id %}"
+         hx-target="body" hx-swap="beforeend"
+         title="Редактировать платёж"{% endif %}>
         <td class="whitespace-nowrap">{{ row.date|date:"d.m.Y" }}</td>
         <td>
           {% if row.kind == 'in' %}
@@ -139,17 +143,12 @@
         </td>
         {% if can_edit %}
         <td class="text-right whitespace-nowrap">
-          {% if row.kind != 'charge' %}
-            <button class="btn btn-xs btn-outline"
-                    hx-get="{% url 'finance:payment_edit' client.id row.obj.id %}"
-                    hx-target="body" hx-swap="beforeend"
-                    title="Редактировать">{% icon "pencil" size=14 %}</button>
-            {% if can_delete %}
+          {% if row.kind != 'charge' and can_delete %}
             <button class="btn btn-xs btn-error btn-outline"
                     hx-post="{% url 'finance:payment_delete' client.id row.obj.id %}"
                     hx-confirm="Удалить платёж?"
+                    onclick="event.stopPropagation()"
                     title="Удалить">{% icon "trash" size=14 %}</button>
-            {% endif %}
           {% endif %}
         </td>
         {% endif %}
@@ -180,5 +179,8 @@
   }
   .finance-table .sort-th:hover {
     background-color: hsl(var(--bc) / 0.05);
+  }
+  .finance-table tr.finance-row-clickable:hover {
+    filter: brightness(0.96);
   }
 </style>
