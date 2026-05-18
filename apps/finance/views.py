@@ -189,6 +189,26 @@ def _finance_context(client, *, kinds=ALL_KINDS, sort="date", direction="desc"):
         .select_related("service__name")
     )
 
+    def _short_form(p):
+        return {"cash": "нал.", "cashless": "б/нал."}.get(p.payment_form, p.payment_form or "")
+
+    def _short_charge_status(c):
+        return "опл." if c.status == "paid" else "не опл."
+
+    def _emp_name(emp):
+        if not emp:
+            return ""
+        full = emp.user.get_full_name() if emp.user_id else ""
+        return full or (emp.user.username if emp.user_id else "")
+
+    def _meta(obj):
+        return {
+            "created_by": _emp_name(getattr(obj, "created_by", None)),
+            "created_at": obj.created_at,
+            "updated_by": _emp_name(getattr(obj, "updated_by", None)),
+            "updated_at": obj.updated_at,
+        }
+
     rows = []
     if "in" in kinds:
         for p in payments_qs.filter(direction="in"):
@@ -196,10 +216,11 @@ def _finance_context(client, *, kinds=ALL_KINDS, sort="date", direction="desc"):
                 "kind": "in", "obj": p,
                 "date": p.payment_date, "title": (p.income_type.name if p.income_type else "—"),
                 "amount": p.amount_in or Decimal("0"),
-                "status": p.get_payment_form_display(),
+                "status": _short_form(p),
                 "account": str(p.incoming_account) if p.incoming_account else "",
                 "comments": p.comments,
                 "service": p.service,
+                "meta": _meta(p),
             })
     if "out" in kinds:
         for p in payments_qs.filter(direction="out"):
@@ -207,10 +228,11 @@ def _finance_context(client, *, kinds=ALL_KINDS, sort="date", direction="desc"):
                 "kind": "out", "obj": p,
                 "date": p.payment_date, "title": (p.expense_type.name if p.expense_type else "—"),
                 "amount": p.amount_out or Decimal("0"),
-                "status": p.get_payment_form_display(),
+                "status": _short_form(p),
                 "account": str(p.outgoing_account) if p.outgoing_account else "",
                 "comments": p.comments,
                 "service": p.service,
+                "meta": _meta(p),
             })
     if "charge" in kinds:
         for c in charges_qs:
@@ -218,10 +240,11 @@ def _finance_context(client, *, kinds=ALL_KINDS, sort="date", direction="desc"):
                 "kind": "charge", "obj": c,
                 "date": c.due_date, "title": c.title,
                 "amount": c.amount,
-                "status": c.get_status_display(),
+                "status": _short_charge_status(c),
                 "account": "",
                 "comments": c.comments,
                 "service": c.service,
+                "meta": _meta(c),
             })
 
     if sort not in SORT_KEYS:

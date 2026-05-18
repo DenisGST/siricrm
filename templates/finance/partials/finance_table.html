@@ -102,14 +102,15 @@
         {% include "finance/partials/_finance_th.html" with key="service" label="Услуга" align="" %}
         {% include "finance/partials/_finance_th.html" with key="amount"  label="Сумма, ₽" align="text-right" %}
         {% include "finance/partials/_finance_th.html" with key="account" label="Касса/банк" align="" %}
-        {% include "finance/partials/_finance_th.html" with key="status"  label="Форма / статус" align="" %}
+        {% include "finance/partials/_finance_th.html" with key="status"  label="Форма" align="" %}
         <th class="font-semibold text-base-content/80">Комментарии</th>
+        <th class="w-6"></th>
         {% if can_edit %}<th></th>{% endif %}
       </tr>
     </thead>
     <tbody>
       {% for row in rows %}
-      <tr>
+      <tr{% if row.kind == 'in' %} style="background:#ecfdf5;"{% elif row.kind == 'out' %} style="background:#fff1f2;"{% endif %}>
         <td class="whitespace-nowrap">{{ row.date|date:"d.m.Y" }}</td>
         <td>
           {% if row.kind == 'in' %}
@@ -126,8 +127,16 @@
           {{ row.amount|floatformat:2 }}
         </td>
         <td>{{ row.account|default:"—" }}</td>
-        <td>{{ row.status }}</td>
-        <td class="text-xs text-base-content/70 max-w-xs truncate" title="{{ row.comments }}">{{ row.comments|default:"" }}</td>
+        <td class="whitespace-nowrap">{{ row.status }}</td>
+        <td class="text-xs text-base-content/70 truncate" title="{{ row.comments }}">{{ row.comments|default:"" }}</td>
+        <td class="text-center">
+          {% if row.meta.created_by or row.meta.updated_by %}
+            <span class="inline-flex text-base-content/40 cursor-help"
+                  title="Создал: {{ row.meta.created_by|default:'—' }}, {{ row.meta.created_at|date:'d.m.Y H:i' }}{% if row.meta.updated_by and row.meta.updated_at != row.meta.created_at %}&#10;Редактировал: {{ row.meta.updated_by }}, {{ row.meta.updated_at|date:'d.m.Y H:i' }}{% endif %}">
+              {% icon "info" size=14 %}
+            </span>
+          {% endif %}
+        </td>
         {% if can_edit %}
         <td class="text-right whitespace-nowrap">
           {% if row.kind != 'charge' %}
@@ -146,7 +155,7 @@
         {% endif %}
       </tr>
       {% empty %}
-      <tr><td colspan="{% if can_edit %}9{% else %}8{% endif %}" class="text-center text-base-content/60 py-4">Записей нет</td></tr>
+      <tr><td colspan="{% if can_edit %}10{% else %}9{% endif %}" class="text-center text-base-content/60 py-4">Записей нет</td></tr>
       {% endfor %}
     </tbody>
   </table>

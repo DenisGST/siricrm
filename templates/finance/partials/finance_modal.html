@@ -1,14 +1,14 @@
 {% load icons %}
 <dialog id="finance-modal" class="modal modal-middle" open>
-  <div class="modal-box w-full max-w-6xl">
-    <div class="flex justify-between items-start mb-3">
-      <div>
-        <h3 class="font-bold text-lg">Финансы и расчёты</h3>
-        <p class="text-sm text-base-content/60">
-          {{ client.last_name }} {{ client.first_name }}{% if client.patronymic %} {{ client.patronymic }}{% endif %}
-        </p>
-      </div>
-      <button type="button" class="btn btn-ghost btn-sm btn-circle"
+  <div class="modal-box w-full" style="max-width:82.8rem;">
+    <div class="flex justify-between items-center mb-3 gap-3">
+      <h3 class="font-bold text-lg whitespace-nowrap">
+        Финансы и расчёты
+        <span class="text-sm text-base-content/60 font-normal ml-2">
+          — {{ client.last_name }} {{ client.first_name }}{% if client.patronymic %} {{ client.patronymic }}{% endif %}
+        </span>
+      </h3>
+      <button type="button" class="btn btn-ghost btn-sm btn-circle shrink-0"
               onclick="document.getElementById('finance-modal').remove()">
         {% icon "x" size=18 %}
       </button>
