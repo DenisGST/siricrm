@@ -1,45 +1,61 @@
 {% load icons %}
 
-<!-- Сводные цифры — одна строка -->
-<div class="flex flex-wrap items-baseline gap-x-4 gap-y-1 text-xs border-b border-base-300 pb-2 mb-2">
-  <span><span class="text-base-content/60">Начислено:</span>
-    <b class="font-mono">{{ totals.charged|floatformat:2 }} ₽</b></span>
-  <span><span class="text-base-content/60">Оплачено:</span>
-    <b class="font-mono text-success">{{ totals.paid_in|floatformat:2 }} ₽</b></span>
-  <span><span class="text-base-content/60">Расходы:</span>
-    <b class="font-mono text-error">{{ totals.paid_out|floatformat:2 }} ₽</b></span>
-  <span><span class="text-base-content/60">Сальдо факт:</span>
-    <b class="font-mono {% if totals.saldo_fact < 0 %}text-error{% else %}text-success{% endif %}">{{ totals.saldo_fact|floatformat:2 }} ₽</b></span>
-  <span><span class="text-base-content/60">Сальдо план:</span>
-    <b class="font-mono {% if totals.saldo_plan > 0 %}text-warning{% else %}text-success{% endif %}">{{ totals.saldo_plan|floatformat:2 }} ₽</b></span>
+<!-- Блок ИТОГО — на подложках, отделён от фильтра -->
+<div class="grid grid-cols-2 md:grid-cols-5 gap-2 mb-3">
+  <div class="rounded-md border border-base-300 bg-base-200/60 px-3 py-2">
+    <div class="text-[11px] uppercase tracking-wide text-base-content/60 leading-tight">Начислено</div>
+    <div class="text-base font-semibold font-mono leading-tight">{{ totals.charged|floatformat:2 }} ₽</div>
+  </div>
+  <div class="rounded-md border border-success/30 bg-success/10 px-3 py-2">
+    <div class="text-[11px] uppercase tracking-wide text-base-content/60 leading-tight">Оплачено</div>
+    <div class="text-base font-semibold font-mono leading-tight text-success">{{ totals.paid_in|floatformat:2 }} ₽</div>
+  </div>
+  <div class="rounded-md border border-error/30 bg-error/10 px-3 py-2">
+    <div class="text-[11px] uppercase tracking-wide text-base-content/60 leading-tight">Расходы</div>
+    <div class="text-base font-semibold font-mono leading-tight text-error">{{ totals.paid_out|floatformat:2 }} ₽</div>
+  </div>
+  <div class="rounded-md border border-base-300 bg-base-200/60 px-3 py-2">
+    <div class="text-[11px] uppercase tracking-wide text-base-content/60 leading-tight">Сальдо факт</div>
+    <div class="text-base font-semibold font-mono leading-tight {% if totals.saldo_fact < 0 %}text-error{% else %}text-success{% endif %}">{{ totals.saldo_fact|floatformat:2 }} ₽</div>
+  </div>
+  <div class="rounded-md border border-base-300 bg-base-200/60 px-3 py-2">
+    <div class="text-[11px] uppercase tracking-wide text-base-content/60 leading-tight">Сальдо план</div>
+    <div class="text-base font-semibold font-mono leading-tight {% if totals.saldo_plan > 0 %}text-warning{% else %}text-success{% endif %}">{{ totals.saldo_plan|floatformat:2 }} ₽</div>
+  </div>
 </div>
 
-<!-- Фильтр-чекбоксы + кнопки добавления -->
+<!-- Фильтр (сегментные кнопки) + кнопки добавления -->
 <div class="flex justify-between items-center mb-2 flex-wrap gap-2">
   <form id="finance-filter-form"
         hx-get="{% url 'finance:finance_modal' client.id %}?partial=1"
         hx-target="#finance-content"
         hx-swap="innerHTML"
         hx-trigger="change"
-        class="flex items-center gap-3 text-xs">
+        class="flex items-center gap-2 text-xs">
     <input type="hidden" name="partial" value="1">
     <input type="hidden" name="filter_applied" value="1">
-    <span class="text-base-content/60">Показать:</span>
-    <label class="cursor-pointer flex items-center gap-1">
-      <input type="checkbox" name="kinds" value="charge" class="checkbox checkbox-xs"
-             {% if show_charge %}checked{% endif %}>
-      <span>Начисления</span>
-    </label>
-    <label class="cursor-pointer flex items-center gap-1">
-      <input type="checkbox" name="kinds" value="in" class="checkbox checkbox-xs"
-             {% if show_in %}checked{% endif %}>
-      <span class="text-success">Входящие</span>
-    </label>
-    <label class="cursor-pointer flex items-center gap-1">
-      <input type="checkbox" name="kinds" value="out" class="checkbox checkbox-xs"
-             {% if show_out %}checked{% endif %}>
-      <span class="text-error">Исходящие</span>
-    </label>
+    <input type="hidden" name="sort" value="{{ sort }}">
+    <input type="hidden" name="dir" value="{{ dir }}">
+
+    <span class="text-base-content/60 mr-1">Показать:</span>
+
+    <div class="join shadow-sm">
+      <label class="join-item btn btn-sm normal-case {% if show_charge %}btn-neutral{% else %}btn-outline btn-neutral{% endif %}">
+        <input type="checkbox" name="kinds" value="charge" class="hidden"
+               {% if show_charge %}checked{% endif %}>
+        Начисления
+      </label>
+      <label class="join-item btn btn-sm normal-case {% if show_in %}btn-neutral{% else %}btn-outline btn-neutral{% endif %}">
+        <input type="checkbox" name="kinds" value="in" class="hidden"
+               {% if show_in %}checked{% endif %}>
+        Входящие
+      </label>
+      <label class="join-item btn btn-sm normal-case {% if show_out %}btn-neutral{% else %}btn-outline btn-neutral{% endif %}">
+        <input type="checkbox" name="kinds" value="out" class="hidden"
+               {% if show_out %}checked{% endif %}>
+        Исходящие
+      </label>
+    </div>
   </form>
 
   {% if can_edit %}
@@ -59,18 +75,18 @@
 </div>
 
 <!-- Таблица -->
-<div class="overflow-x-auto">
-  <table class="table table-sm table-zebra">
-    <thead>
+<div class="overflow-x-auto border border-base-300 rounded-md">
+  <table class="table table-sm w-full finance-table">
+    <thead class="bg-base-200">
       <tr>
-        <th>Дата</th>
-        <th>Тип</th>
-        <th>Наименование</th>
-        <th>Услуга</th>
-        <th class="text-right">Сумма, ₽</th>
-        <th>Касса/банк</th>
-        <th>Форма / статус</th>
-        <th>Комментарии</th>
+        {% include "finance/partials/_finance_th.html" with key="date"    label="Дата" align="" %}
+        {% include "finance/partials/_finance_th.html" with key="kind"    label="Тип"  align="" %}
+        {% include "finance/partials/_finance_th.html" with key="title"   label="Наименование" align="" %}
+        {% include "finance/partials/_finance_th.html" with key="service" label="Услуга" align="" %}
+        {% include "finance/partials/_finance_th.html" with key="amount"  label="Сумма, ₽" align="text-right" %}
+        {% include "finance/partials/_finance_th.html" with key="account" label="Касса/банк" align="" %}
+        {% include "finance/partials/_finance_th.html" with key="status"  label="Форма / статус" align="" %}
+        <th class="font-semibold text-base-content/80">Комментарии</th>
         {% if can_edit %}<th></th>{% endif %}
       </tr>
     </thead>
@@ -89,7 +105,7 @@
         </td>
         <td>{{ row.title }}</td>
         <td>{% if row.service %}<span class="badge badge-ghost badge-xs">{{ row.service.name.short_name }}</span>{% else %}—{% endif %}</td>
-        <td class="text-right font-mono {% if row.kind == 'out' %}text-error{% elif row.kind == 'in' %}text-success{% endif %}">
+        <td class="text-right font-mono whitespace-nowrap {% if row.kind == 'out' %}text-error{% elif row.kind == 'in' %}text-success{% endif %}">
           {{ row.amount|floatformat:2 }}
         </td>
         <td>{{ row.account|default:"—" }}</td>
@@ -118,3 +134,25 @@
     </tbody>
   </table>
 </div>
+
+<style>
+  /* Разделители колонок для таблицы финансов */
+  .finance-table th,
+  .finance-table td {
+    border-right: 1px solid hsl(var(--bc) / 0.1);
+  }
+  .finance-table th:last-child,
+  .finance-table td:last-child {
+    border-right: none;
+  }
+  .finance-table thead th {
+    border-bottom: 1px solid hsl(var(--bc) / 0.2);
+  }
+  .finance-table .sort-th {
+    cursor: pointer;
+    user-select: none;
+  }
+  .finance-table .sort-th:hover {
+    background-color: hsl(var(--bc) / 0.05);
+  }
+</style>

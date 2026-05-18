@@ -1,0 +1,22 @@
+{% load icons %}
+{% comment %}Заголовок столбца с сортировкой.
+Параметры: key, label, align (опционально, например text-right).
+Клик обновляет hidden sort/dir в фильтр-форме и триггерит её submit —
+так HTMX отправит запрос с актуальными kinds + новой сортировкой.{% endcomment %}
+<th class="sort-th font-semibold text-base-content/80 {{ align }}"
+    onclick="(function(){
+      var f=document.getElementById('finance-filter-form');
+      f.querySelector('input[name=sort]').value='{{ key }}';
+      f.querySelector('input[name=dir]').value='{% if sort == key and dir == 'desc' %}asc{% else %}desc{% endif %}';
+      htmx.trigger(f,'change');
+    })()"
+    title="Сортировать">
+  <span class="inline-flex items-center gap-1">
+    {{ label }}
+    {% if sort == key %}
+      {% if dir == 'desc' %}{% icon "chevron-down" size=12 %}{% else %}{% icon "chevron-up" size=12 %}{% endif %}
+    {% else %}
+      <span class="opacity-30">{% icon "chevron-down" size=12 %}</span>
+    {% endif %}
+  </span>
+</th>

@@ -160,8 +160,18 @@ def reference_outgoing_account_delete(request, pk):
 
 ALL_KINDS = ("charge", "in", "out")
 
+SORT_KEYS = {
+    "date":    lambda r: r["date"],
+    "kind":    lambda r: r["kind"],
+    "title":   lambda r: (r["title"] or "").lower(),
+    "service": lambda r: (r["service"].name.short_name if r["service"] else ""),
+    "amount":  lambda r: r["amount"],
+    "account": lambda r: r["account"] or "",
+    "status":  lambda r: r["status"] or "",
+}
 
-def _finance_context(client, *, kinds=ALL_KINDS):
+
+def _finance_context(client, *, kinds=ALL_KINDS, sort="date", direction="desc"):
     """Собираем строки таблицы (платежи + начисления) и сводные цифры.
 
     `kinds` — какие группы строк показывать в таблице. На сводные цифры
@@ -214,7 +224,12 @@ def _finance_context(client, *, kinds=ALL_KINDS):
                 "service": c.service,
             })
 
-    rows.sort(key=lambda r: (r["date"], r["kind"]), reverse=True)
+    if sort not in SORT_KEYS:
+        sort = "date"
+    direction = "asc" if direction == "asc" else "desc"
+    # Стабильная сортировка: внутри одинакового ключа — по дате desc.
+    rows.sort(key=lambda r: r["date"], reverse=True)
+    rows.sort(key=SORT_KEYS[sort], reverse=(direction == "desc"))
 
     total_charges = charges_qs.aggregate(s=Sum("amount"))["s"] or Decimal("0")
     total_in = payments_qs.filter(direction="in").aggregate(s=Sum("amount_in"))["s"] or Decimal("0")
@@ -227,6 +242,8 @@ def _finance_context(client, *, kinds=ALL_KINDS):
         "show_charge": "charge" in kinds,
         "show_in": "in" in kinds,
         "show_out": "out" in kinds,
+        "sort": sort,
+        "dir": direction,
         "totals": {
             "charged": total_charges,
             "paid_in": total_in,
@@ -254,7 +271,10 @@ def finance_modal(request, client_id):
     else:
         kinds = tuple(k for k in raw if k in valid) or ALL_KINDS
 
-    ctx = _finance_context(client, kinds=kinds)
+    sort = request.GET.get("sort", "date")
+    direction = request.GET.get("dir", "desc")
+
+    ctx = _finance_context(client, kinds=kinds, sort=sort, direction=direction)
     template = "finance/partials/finance_table.html" if request.GET.get("partial") \
         else "finance/partials/finance_modal.html"
     return render(request, template, ctx)
