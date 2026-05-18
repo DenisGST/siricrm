@@ -342,23 +342,6 @@ def payment_form_view(request, client_id, direction=None, payment_id=None):
         last_svc = client.services.order_by("-created_at").first()
         if last_svc:
             initial["service"] = last_svc.id
-        # Предзаполнение из «Оплатить» строки начисления: ?charge=<id>
-        charge_id = request.GET.get("charge")
-        if charge_id and direction == "in":
-            try:
-                ch = models.Charge.objects.get(pk=charge_id, client=client)
-                initial["charge"] = ch.id
-                initial["service"] = ch.service_id or initial.get("service")
-                initial["amount_in"] = ch.remaining or ch.amount
-                # Первый активный IncomeType — лучше всего совпадающий по услуге.
-                if ch.service_id:
-                    it = models.IncomeType.objects.filter(
-                        is_active=True, service_name=ch.service.name,
-                    ).first()
-                    if it:
-                        initial["income_type"] = it.id
-            except models.Charge.DoesNotExist:
-                pass
 
     if request.method == "POST":
         form = forms.PaymentForm(request.POST, instance=payment, client=client)

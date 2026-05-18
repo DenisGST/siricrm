@@ -155,7 +155,6 @@
                   <th class="text-right" style="border-bottom:1px solid #94a3b8;">Сумма, ₽</th>
                   <th class="text-right" style="border-bottom:1px solid #94a3b8;">Остаток, ₽</th>
                   <th style="border-bottom:1px solid #94a3b8;">Статус</th>
-                  <th style="border-bottom:1px solid #94a3b8;width:1%;"></th>
                 </tr>
               </thead>
               <tbody>
@@ -177,19 +176,6 @@
                       <span class="badge badge-error badge-xs">проср.</span>
                     {% else %}
                       <span class="badge badge-ghost badge-xs">в графике</span>
-                    {% endif %}
-                  </td>
-                  <td class="text-right whitespace-nowrap">
-                    {% if ch.display_status != 'paid' %}
-                      <button type="button" class="btn btn-success btn-xs"
-                              hx-get="{% url 'finance:payment_add' service.client.id 'in' %}?charge={{ ch.id }}"
-                              hx-target="body" hx-swap="beforeend"
-                              onclick="event.stopPropagation()"
-                              title="Внести оплату">
-                        Оплатить
-                      </button>
-                    {% else %}
-                      <span class="text-base-content/30">{% icon "check" size=12 %}</span>
                     {% endif %}
                   </td>
                 </tr>
