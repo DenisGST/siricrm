@@ -213,8 +213,19 @@
                 {% if service and service.contract_file %}
                   <div class="text-xs text-base-content/60 mb-1 font-mono truncate">{{ service.contract_file.filename }}</div>
                 {% endif %}
-                <input type="file" name="contract_file_upload"
-                       class="file-input file-input-bordered file-input-sm w-full">
+                <div class="flex gap-2">
+                  <input type="file" name="contract_file_upload"
+                         class="file-input file-input-bordered file-input-sm w-full">
+                  {% if service %}
+                    <button type="button"
+                            class="btn btn-outline btn-sm shrink-0"
+                            hx-get="{% url 'finance:payment_schedule_modal' service.id %}"
+                            hx-target="body" hx-swap="beforeend"
+                            title="График платежей">
+                      График
+                    </button>
+                  {% endif %}
+                </div>
               </div>
             </div>
 

@@ -854,6 +854,36 @@ class Service(TimeStampedModel):
         max_digits=14, decimal_places=2,
         null=True, blank=True,
     )
+
+    # Параметры генератора графика платежей (модалка «График платежей»).
+    legal_services_amount = models.DecimalField(
+        "Юруслуги по договору, ₽",
+        max_digits=14, decimal_places=2,
+        default=72000,
+    )
+    installment_months = models.PositiveSmallIntegerField(
+        "Рассрочка, мес",
+        default=6,
+    )
+    doc_collection = models.DecimalField(
+        "Сбор документов, ₽", max_digits=14, decimal_places=2, default=7500,
+    )
+    postal_costs = models.DecimalField(
+        "Почтовые расходы, ₽", max_digits=14, decimal_places=2, default=0,
+    )
+    state_duty = models.DecimalField(
+        "Гос. пошлина, ₽", max_digits=14, decimal_places=2, default=0,
+    )
+    fu_fee = models.DecimalField(
+        "Вознаграждение ФУ, ₽", max_digits=14, decimal_places=2, default=25000,
+    )
+    procedure_costs = models.DecimalField(
+        "Расходы на процедуру, ₽", max_digits=14, decimal_places=2, default=20000,
+    )
+    additional_costs = models.DecimalField(
+        "Доп. расходы, ₽", max_digits=14, decimal_places=2, default=0,
+    )
+
     payment_procedure = models.ForeignKey(
         PaymentProcedure,
         on_delete=models.SET_NULL,

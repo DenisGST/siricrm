@@ -6,9 +6,12 @@ Views финансового учёта:
 * Модалка «Финансы и расчёты» — открыта всем, кто видит карточку клиента.
 * Создание/редактирование/удаление платежей — отдельные права из permissions.py.
 """
-from decimal import Decimal
+from datetime import timedelta
+from decimal import Decimal, ROUND_HALF_UP
 
+from dateutil.relativedelta import relativedelta
 from django.contrib.auth.decorators import login_required, user_passes_test
+from django.db import transaction
 from django.db.models import Sum
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, render
@@ -16,7 +19,7 @@ from django.utils import timezone
 from django.views.decorators.http import require_POST
 
 from apps.core.views import is_references_access
-from apps.crm.models import Client
+from apps.crm.models import Client, Service
 
 from . import forms, models
 from .permissions import can_delete_finance, can_edit_finance, require_delete, require_edit
@@ -349,6 +352,132 @@ def payment_form_view(request, client_id, direction=None, payment_id=None):
         "form": form, "client": client, "payment": payment,
         "form_direction": (payment.direction if payment else (direction or "in")),
         "can_delete": can_delete_finance(request.user),
+    })
+
+
+# ────────────────────────────────────────────────────────────
+# График платежей по услуге (генератор Charge-записей)
+# ────────────────────────────────────────────────────────────
+
+# Поля Service, которые редактируем через модалку графика.
+SCHEDULE_FIELDS = (
+    "legal_services_amount", "installment_months",
+    "doc_collection", "postal_costs", "state_duty",
+    "fu_fee", "procedure_costs", "additional_costs",
+)
+
+
+def _first_installment_date(date_dogovor):
+    """10-е число месяца, который наступает после date_dogovor + 2 месяца.
+
+    Правило (по ТЗ): берём date_dogovor + 2 месяца. Если день > 10 — берём
+    10-е следующего месяца. Иначе — 10-е этого месяца.
+    """
+    base = date_dogovor + relativedelta(months=2)
+    if base.day > 10:
+        base = base + relativedelta(months=1)
+    return base.replace(day=10)
+
+
+def _generate_charges(service):
+    """Создаёт Charge-записи по параметрам, сохранённым в service.
+
+    Возвращает количество созданных строк. НЕ удаляет существующие —
+    стратегия (replace/append) выбирается на уровне вызывающего кода.
+    """
+    new_charges = []
+    date_d = service.date_dogovor
+
+    # Юруслуги — рассрочка
+    if service.legal_services_amount and service.installment_months:
+        monthly = (service.legal_services_amount / service.installment_months).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP,
+        )
+        first = _first_installment_date(date_d)
+        for i in range(service.installment_months):
+            due_date = first + relativedelta(months=i)
+            new_charges.append(models.Charge(
+                client=service.client, service=service,
+                due_date=due_date,
+                title=f"Юруслуги, платёж {i + 1}/{service.installment_months}",
+                amount=monthly,
+                status="scheduled",
+            ))
+
+    # Прочие — каждый отдельной строкой, если сумма > 0
+    extras = [
+        (service.doc_collection,    7,  "Сбор документов"),
+        (service.postal_costs,      7,  "Почтовые расходы"),
+        (service.state_duty,        7,  "Гос. пошлина"),
+        (service.fu_fee,            45, "Вознаграждение ФУ"),
+        (service.procedure_costs,   60, "Расходы на процедуру"),
+        (service.additional_costs,  60, "Доп. расходы"),
+    ]
+    for amount, days_offset, title in extras:
+        if amount and amount > 0:
+            new_charges.append(models.Charge(
+                client=service.client, service=service,
+                due_date=date_d + timedelta(days=days_offset),
+                title=title,
+                amount=amount,
+                status="scheduled",
+            ))
+
+    models.Charge.objects.bulk_create(new_charges)
+    return len(new_charges)
+
+
+@login_required
+@require_edit
+def payment_schedule_modal(request, service_id):
+    """Модалка «График платежей» в форме услуги.
+
+    GET — рендерит форму с текущими параметрами Service.
+    POST — сохраняет параметры + (опционально) пересоздаёт начисления.
+    """
+    service = get_object_or_404(Service, pk=service_id)
+    existing_count = service.charges.count()
+
+    if request.method == "POST":
+        # Сохраняем все 8 параметров на услуге.
+        try:
+            for field in SCHEDULE_FIELDS:
+                raw = request.POST.get(field, "").strip().replace(",", ".")
+                if field == "installment_months":
+                    setattr(service, field, max(1, min(24, int(raw or 1))))
+                else:
+                    setattr(service, field, Decimal(raw or "0"))
+            service.save(update_fields=SCHEDULE_FIELDS)
+        except (ValueError, TypeError):
+            return HttpResponse("Некорректные числовые значения", status=400)
+
+        if not service.date_dogovor:
+            return render(request, "finance/partials/payment_schedule_modal.html", {
+                "service": service, "existing_count": existing_count,
+                "months_range": range(1, 25),
+                "error": "У услуги не задана дата договора — без неё нельзя построить график.",
+            })
+
+        strategy = request.POST.get("strategy", "save_only")
+        if strategy == "replace":
+            service.charges.all().delete()
+        if strategy in ("replace", "append"):
+            with transaction.atomic():
+                created = _generate_charges(service)
+            # Закрываем модалку (outerHTML на пустой ответ).
+            resp = HttpResponse("")
+            resp["HX-Trigger"] = "reloadFinance"
+            return resp
+
+        # save_only — параметры сохранены, ничего не генерируем.
+        resp = HttpResponse("")
+        resp["HX-Trigger"] = "reloadFinance"
+        return resp
+
+    return render(request, "finance/partials/payment_schedule_modal.html", {
+        "service": service,
+        "existing_count": existing_count,
+        "months_range": range(1, 25),
     })
 
 

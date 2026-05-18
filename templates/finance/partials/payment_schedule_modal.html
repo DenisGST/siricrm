@@ -1,0 +1,151 @@
+{% load icons l10n %}
+<dialog id="payment-schedule-modal" class="modal modal-middle modal-open">
+  <div class="modal-box w-full" style="max-width:48rem;">
+    <h3 class="font-bold text-lg mb-1">График платежей</h3>
+    <p class="text-xs text-base-content/60 mb-3">
+      Параметры сохраняются на услуге. Кнопка «Заполнить график» создаёт
+      строки Начислений по правилам ТЗ.
+      {% if service.date_dogovor %}
+        Дата договора: <b>{{ service.date_dogovor|date:"d.m.Y" }}</b>.
+      {% else %}
+        <span class="text-warning">Дата договора не задана — генерация недоступна.</span>
+      {% endif %}
+    </p>
+
+    {% if error %}
+      <div class="alert alert-error text-sm mb-3">{{ error }}</div>
+    {% endif %}
+
+    <form id="schedule-form"
+          hx-post="{% url 'finance:payment_schedule_modal' service.id %}"
+          hx-target="#payment-schedule-modal"
+          hx-swap="outerHTML"
+          class="space-y-3">
+      {% csrf_token %}
+      <input type="hidden" name="strategy" id="schedule-strategy" value="save_only">
+
+      <!-- Юруслуги + рассрочка -->
+      <div class="grid grid-cols-3 gap-3 items-end">
+        <div>
+          <label class="label py-1"><span class="label-text">Юруслуги по договору, ₽</span></label>
+          <input type="number" step="0.01" name="legal_services_amount" id="js-legal"
+                 value="{{ service.legal_services_amount|unlocalize }}"
+                 class="input input-bordered input-sm w-full" required>
+        </div>
+        <div>
+          <label class="label py-1"><span class="label-text">Рассрочка, мес</span></label>
+          <select name="installment_months" id="js-months" class="select select-bordered select-sm w-full">
+            {% for m in months_range %}
+              <option value="{{ m }}" {% if service.installment_months == m %}selected{% endif %}>{{ m }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <label class="label py-1"><span class="label-text">Ежемесячный платёж, ₽</span></label>
+          <input type="text" id="js-monthly" readonly
+                 class="input input-bordered input-sm w-full bg-base-200 font-mono">
+        </div>
+      </div>
+
+      <div class="border-t border-base-300 my-2"></div>
+
+      <!-- Прочие платежи -->
+      <div class="grid grid-cols-3 gap-3">
+        <div>
+          <label class="label py-1"><span class="label-text">Сбор документов, ₽</span></label>
+          <input type="number" step="0.01" name="doc_collection"
+                 value="{{ service.doc_collection|unlocalize }}"
+                 class="input input-bordered input-sm w-full">
+        </div>
+        <div>
+          <label class="label py-1"><span class="label-text">Почтовые расходы, ₽</span></label>
+          <input type="number" step="0.01" name="postal_costs"
+                 value="{{ service.postal_costs|unlocalize }}"
+                 class="input input-bordered input-sm w-full">
+        </div>
+        <div>
+          <label class="label py-1"><span class="label-text">Гос. пошлина, ₽</span></label>
+          <input type="number" step="0.01" name="state_duty"
+                 value="{{ service.state_duty|unlocalize }}"
+                 class="input input-bordered input-sm w-full">
+        </div>
+        <div>
+          <label class="label py-1"><span class="label-text">Вознаграждение ФУ, ₽</span></label>
+          <input type="number" step="0.01" name="fu_fee"
+                 value="{{ service.fu_fee|unlocalize }}"
+                 class="input input-bordered input-sm w-full">
+        </div>
+        <div>
+          <label class="label py-1"><span class="label-text">Расходы на процедуру, ₽</span></label>
+          <input type="number" step="0.01" name="procedure_costs"
+                 value="{{ service.procedure_costs|unlocalize }}"
+                 class="input input-bordered input-sm w-full">
+        </div>
+        <div>
+          <label class="label py-1"><span class="label-text">Доп. расходы, ₽</span></label>
+          <input type="number" step="0.01" name="additional_costs"
+                 value="{{ service.additional_costs|unlocalize }}"
+                 class="input input-bordered input-sm w-full">
+        </div>
+      </div>
+
+      {% if existing_count > 0 %}
+        <div class="alert alert-warning text-sm py-2">
+          У этой услуги уже есть <b>{{ existing_count }}</b> начислени{{ existing_count|pluralize:"е,я,й" }}.
+          При нажатии «Заполнить график» выберите стратегию:
+        </div>
+      {% endif %}
+
+      <div class="modal-action items-center flex-wrap gap-2">
+        <button type="button" class="btn btn-ghost btn-sm"
+                onclick="document.getElementById('payment-schedule-modal').remove()">
+          Отмена
+        </button>
+
+        {% if service.date_dogovor %}
+          {% if existing_count > 0 %}
+            <button type="submit" class="btn btn-warning btn-sm"
+                    onclick="document.getElementById('schedule-strategy').value='append'">
+              Добавить поверх существующих
+            </button>
+            <button type="submit" class="btn btn-error btn-sm"
+                    onclick="document.getElementById('schedule-strategy').value='replace'"
+                    hx-confirm="Удалить {{ existing_count }} существующих начислени{{ existing_count|pluralize:"е,я,й" }} и создать новые?">
+              Удалить и заполнить заново
+            </button>
+          {% else %}
+            <button type="submit" class="btn btn-primary btn-sm"
+                    onclick="document.getElementById('schedule-strategy').value='replace'">
+              {% icon "check" size=16 %} Заполнить график
+            </button>
+          {% endif %}
+        {% else %}
+          <button type="submit" class="btn btn-primary btn-sm"
+                  onclick="document.getElementById('schedule-strategy').value='save_only'">
+            Сохранить параметры
+          </button>
+        {% endif %}
+      </div>
+    </form>
+  </div>
+  <form method="dialog" class="modal-backdrop">
+    <button onclick="document.getElementById('payment-schedule-modal').remove()">close</button>
+  </form>
+
+  <script>
+    (function () {
+      const legal = document.getElementById('js-legal');
+      const months = document.getElementById('js-months');
+      const monthly = document.getElementById('js-monthly');
+      function recalc() {
+        const a = parseFloat((legal.value || '0').replace(',', '.'));
+        const m = parseInt(months.value || '1', 10);
+        if (!isFinite(a) || !m) { monthly.value = ''; return; }
+        monthly.value = (a / m).toFixed(2);
+      }
+      legal.addEventListener('input', recalc);
+      months.addEventListener('change', recalc);
+      recalc();
+    })();
+  </script>
+</dialog>

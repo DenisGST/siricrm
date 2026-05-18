@@ -26,6 +26,9 @@ urlpatterns = [
     path("references/outgoing-account/<uuid:pk>/", views.reference_outgoing_account_edit, name="reference_outgoing_account_edit"),
     path("references/outgoing-account/<uuid:pk>/delete/", views.reference_outgoing_account_delete, name="reference_outgoing_account_delete"),
 
+    # График платежей по услуге
+    path("service/<uuid:service_id>/schedule/", views.payment_schedule_modal, name="payment_schedule_modal"),
+
     # Финансы по клиенту
     path("client/<uuid:client_id>/finance/", views.finance_modal, name="finance_modal"),
     path("client/<uuid:client_id>/payment/<str:direction>/add/", views.payment_form_view, name="payment_add"),
