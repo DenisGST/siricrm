@@ -439,6 +439,7 @@ def _schedule_modal_ctx(service, *, error=None, success=None):
         "charges": charges,
         "charges_total": f"{total:,.2f}".replace(",", " "),
         "months_range": range(1, 25),
+        "date_start_value": service.date_start or timezone.localdate(),
         "error": error,
         "success": success,
     }
