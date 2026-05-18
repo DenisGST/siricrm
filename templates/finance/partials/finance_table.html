@@ -1,49 +1,46 @@
 {% load icons %}
 
-<!-- Сводные цифры -->
-<div class="grid grid-cols-2 md:grid-cols-5 gap-2 mb-3">
-  <div class="stat bg-base-200 rounded p-2">
-    <div class="text-xs text-base-content/60">Итого начислено</div>
-    <div class="text-base font-semibold">{{ totals.charged|floatformat:2 }} ₽</div>
-  </div>
-  <div class="stat bg-base-200 rounded p-2">
-    <div class="text-xs text-base-content/60">Итого оплачено</div>
-    <div class="text-base font-semibold text-success">{{ totals.paid_in|floatformat:2 }} ₽</div>
-  </div>
-  <div class="stat bg-base-200 rounded p-2">
-    <div class="text-xs text-base-content/60">Итого расходы</div>
-    <div class="text-base font-semibold text-error">{{ totals.paid_out|floatformat:2 }} ₽</div>
-  </div>
-  <div class="stat bg-base-200 rounded p-2">
-    <div class="text-xs text-base-content/60">Сальдо факт</div>
-    <div class="text-base font-semibold {% if totals.saldo_fact < 0 %}text-error{% else %}text-success{% endif %}">
-      {{ totals.saldo_fact|floatformat:2 }} ₽
-    </div>
-  </div>
-  <div class="stat bg-base-200 rounded p-2">
-    <div class="text-xs text-base-content/60">Сальдо план</div>
-    <div class="text-base font-semibold {% if totals.saldo_plan > 0 %}text-warning{% else %}text-success{% endif %}">
-      {{ totals.saldo_plan|floatformat:2 }} ₽
-    </div>
-  </div>
+<!-- Сводные цифры — одна строка -->
+<div class="flex flex-wrap items-baseline gap-x-4 gap-y-1 text-xs border-b border-base-300 pb-2 mb-2">
+  <span><span class="text-base-content/60">Начислено:</span>
+    <b class="font-mono">{{ totals.charged|floatformat:2 }} ₽</b></span>
+  <span><span class="text-base-content/60">Оплачено:</span>
+    <b class="font-mono text-success">{{ totals.paid_in|floatformat:2 }} ₽</b></span>
+  <span><span class="text-base-content/60">Расходы:</span>
+    <b class="font-mono text-error">{{ totals.paid_out|floatformat:2 }} ₽</b></span>
+  <span><span class="text-base-content/60">Сальдо факт:</span>
+    <b class="font-mono {% if totals.saldo_fact < 0 %}text-error{% else %}text-success{% endif %}">{{ totals.saldo_fact|floatformat:2 }} ₽</b></span>
+  <span><span class="text-base-content/60">Сальдо план:</span>
+    <b class="font-mono {% if totals.saldo_plan > 0 %}text-warning{% else %}text-success{% endif %}">{{ totals.saldo_plan|floatformat:2 }} ₽</b></span>
 </div>
 
-<!-- Кнопки добавления + фильтр -->
-<div class="flex justify-between items-center mb-3 flex-wrap gap-2">
-  <div class="tabs tabs-boxed">
-    <a class="tab tab-sm {% if filter_kind == 'all' %}tab-active{% endif %}"
-       hx-get="{% url 'finance:finance_modal' client.id %}?partial=1&kind=all"
-       hx-target="#finance-content" hx-swap="innerHTML">Все</a>
-    <a class="tab tab-sm {% if filter_kind == 'charge' %}tab-active{% endif %}"
-       hx-get="{% url 'finance:finance_modal' client.id %}?partial=1&kind=charge"
-       hx-target="#finance-content" hx-swap="innerHTML">Начисления</a>
-    <a class="tab tab-sm {% if filter_kind == 'in' %}tab-active{% endif %}"
-       hx-get="{% url 'finance:finance_modal' client.id %}?partial=1&kind=in"
-       hx-target="#finance-content" hx-swap="innerHTML">Входящие</a>
-    <a class="tab tab-sm {% if filter_kind == 'out' %}tab-active{% endif %}"
-       hx-get="{% url 'finance:finance_modal' client.id %}?partial=1&kind=out"
-       hx-target="#finance-content" hx-swap="innerHTML">Исходящие</a>
-  </div>
+<!-- Фильтр-чекбоксы + кнопки добавления -->
+<div class="flex justify-between items-center mb-2 flex-wrap gap-2">
+  <form id="finance-filter-form"
+        hx-get="{% url 'finance:finance_modal' client.id %}?partial=1"
+        hx-target="#finance-content"
+        hx-swap="innerHTML"
+        hx-trigger="change"
+        class="flex items-center gap-3 text-xs">
+    <input type="hidden" name="partial" value="1">
+    <input type="hidden" name="filter_applied" value="1">
+    <span class="text-base-content/60">Показать:</span>
+    <label class="cursor-pointer flex items-center gap-1">
+      <input type="checkbox" name="kinds" value="charge" class="checkbox checkbox-xs"
+             {% if show_charge %}checked{% endif %}>
+      <span>Начисления</span>
+    </label>
+    <label class="cursor-pointer flex items-center gap-1">
+      <input type="checkbox" name="kinds" value="in" class="checkbox checkbox-xs"
+             {% if show_in %}checked{% endif %}>
+      <span class="text-success">Входящие</span>
+    </label>
+    <label class="cursor-pointer flex items-center gap-1">
+      <input type="checkbox" name="kinds" value="out" class="checkbox checkbox-xs"
+             {% if show_out %}checked{% endif %}>
+      <span class="text-error">Исходящие</span>
+    </label>
+  </form>
 
   {% if can_edit %}
   <div class="flex gap-2">
@@ -116,7 +113,7 @@
         {% endif %}
       </tr>
       {% empty %}
-      <tr><td colspan="{% if can_edit %}9{% else %}8{% endif %}" class="text-center text-base-content/60">Записей нет</td></tr>
+      <tr><td colspan="{% if can_edit %}9{% else %}8{% endif %}" class="text-center text-base-content/60 py-4">Записей нет</td></tr>
       {% endfor %}
     </tbody>
   </table>

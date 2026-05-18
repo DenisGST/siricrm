@@ -16,7 +16,8 @@
 
     <div id="finance-content"
          hx-trigger="reloadFinance from:body"
-         hx-get="{% url 'finance:finance_modal' client.id %}?partial=1&kind={{ filter_kind }}"
+         hx-get="{% url 'finance:finance_modal' client.id %}?partial=1"
+         hx-include="#finance-filter-form"
          hx-swap="innerHTML">
       {% include "finance/partials/finance_table.html" %}
     </div>

@@ -12,6 +12,7 @@ from django.contrib.auth.decorators import login_required, user_passes_test
 from django.db.models import Sum
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, render
+from django.utils import timezone
 from django.views.decorators.http import require_POST
 
 from apps.core.views import is_references_access
@@ -157,8 +158,15 @@ def reference_outgoing_account_delete(request, pk):
 # Модалка «Финансы и расчёты» (на карточке клиента)
 # ────────────────────────────────────────────────────────────
 
-def _finance_context(client, *, filter_kind="all"):
-    """Собираем строки таблицы (платежи + начисления) и сводные цифры."""
+ALL_KINDS = ("charge", "in", "out")
+
+
+def _finance_context(client, *, kinds=ALL_KINDS):
+    """Собираем строки таблицы (платежи + начисления) и сводные цифры.
+
+    `kinds` — какие группы строк показывать в таблице. На сводные цифры
+    фильтр не влияет: пользователь должен видеть полную картину.
+    """
     payments_qs = (
         models.Payment.objects
         .filter(client=client)
@@ -172,7 +180,7 @@ def _finance_context(client, *, filter_kind="all"):
     )
 
     rows = []
-    if filter_kind in ("all", "in"):
+    if "in" in kinds:
         for p in payments_qs.filter(direction="in"):
             rows.append({
                 "kind": "in", "obj": p,
@@ -183,7 +191,7 @@ def _finance_context(client, *, filter_kind="all"):
                 "comments": p.comments,
                 "service": p.service,
             })
-    if filter_kind in ("all", "out"):
+    if "out" in kinds:
         for p in payments_qs.filter(direction="out"):
             rows.append({
                 "kind": "out", "obj": p,
@@ -194,7 +202,7 @@ def _finance_context(client, *, filter_kind="all"):
                 "comments": p.comments,
                 "service": p.service,
             })
-    if filter_kind in ("all", "charge"):
+    if "charge" in kinds:
         for c in charges_qs:
             rows.append({
                 "kind": "charge", "obj": c,
@@ -208,7 +216,6 @@ def _finance_context(client, *, filter_kind="all"):
 
     rows.sort(key=lambda r: (r["date"], r["kind"]), reverse=True)
 
-    # Сводные цифры считаем независимо от фильтра — пользователь должен видеть полную картину.
     total_charges = charges_qs.aggregate(s=Sum("amount"))["s"] or Decimal("0")
     total_in = payments_qs.filter(direction="in").aggregate(s=Sum("amount_in"))["s"] or Decimal("0")
     total_out = payments_qs.filter(direction="out").aggregate(s=Sum("amount_out"))["s"] or Decimal("0")
@@ -216,12 +223,15 @@ def _finance_context(client, *, filter_kind="all"):
     return {
         "client": client,
         "rows": rows,
-        "filter_kind": filter_kind,
+        "filter_kinds": list(kinds),
+        "show_charge": "charge" in kinds,
+        "show_in": "in" in kinds,
+        "show_out": "out" in kinds,
         "totals": {
             "charged": total_charges,
             "paid_in": total_in,
             "paid_out": total_out,
-            "saldo_fact": total_in - total_out,   # доходы минус расходы
+            "saldo_fact": total_in - total_out,
             "saldo_plan": total_charges - total_in,
         },
         "can_edit": can_edit_finance(client._user) if hasattr(client, "_user") else False,
@@ -233,10 +243,18 @@ def _finance_context(client, *, filter_kind="all"):
 def finance_modal(request, client_id):
     client = get_object_or_404(Client, pk=client_id)
     client._user = request.user
-    kind = request.GET.get("kind", "all")
-    if kind not in ("all", "in", "out", "charge"):
-        kind = "all"
-    ctx = _finance_context(client, filter_kind=kind)
+
+    # Логика фильтра: hidden filter_applied=1 говорит, что запрос пришёл
+    # из формы фильтра — тогда отсутствие kinds значит «всё снято». Без
+    # маркера (первая загрузка модалки / reloadFinance) — показываем всё.
+    raw = request.GET.getlist("kinds")
+    valid = set(ALL_KINDS)
+    if request.GET.get("filter_applied"):
+        kinds = tuple(k for k in raw if k in valid)
+    else:
+        kinds = tuple(k for k in raw if k in valid) or ALL_KINDS
+
+    ctx = _finance_context(client, kinds=kinds)
     template = "finance/partials/finance_table.html" if request.GET.get("partial") \
         else "finance/partials/finance_modal.html"
     return render(request, template, ctx)
@@ -252,8 +270,14 @@ def payment_form_view(request, client_id, direction=None, payment_id=None):
     client = get_object_or_404(Client, pk=client_id)
     payment = get_object_or_404(models.Payment, pk=payment_id, client=client) if payment_id else None
     initial = {}
-    if direction in ("in", "out") and payment is None:
-        initial["direction"] = direction
+    if payment is None:
+        initial["payment_date"] = timezone.localdate()
+        initial["payment_form"] = "cashless"
+        if direction in ("in", "out"):
+            initial["direction"] = direction
+        last_svc = client.services.order_by("-created_at").first()
+        if last_svc:
+            initial["service"] = last_svc.id
 
     if request.method == "POST":
         form = forms.PaymentForm(request.POST, instance=payment, client=client)
