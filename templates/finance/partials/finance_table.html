@@ -1,26 +1,26 @@
 {% load icons %}
 
-<!-- Блок ИТОГО — на подложках, отделён от фильтра -->
-<div class="grid grid-cols-2 md:grid-cols-5 gap-2 mb-3">
-  <div class="rounded-md border border-base-300 bg-base-200/60 px-3 py-2">
-    <div class="text-[11px] uppercase tracking-wide text-base-content/60 leading-tight">Начислено</div>
-    <div class="text-base font-semibold font-mono leading-tight">{{ totals.charged|floatformat:2 }} ₽</div>
+<!-- Блок ИТОГО: 3 колонки × 2 ряда, «Начислено» занимает всю высоту слева -->
+<div class="grid grid-cols-1 md:grid-cols-3 gap-2 mb-3">
+  <div class="md:row-span-2 rounded-md border border-base-300 bg-base-200/60 px-3 py-2 flex items-center">
+    <span class="text-base-content/60 mr-2">Начислено:</span>
+    <span class="font-mono font-semibold">{{ totals.charged|floatformat:2 }} руб.</span>
   </div>
-  <div class="rounded-md border border-success/30 bg-success/10 px-3 py-2">
-    <div class="text-[11px] uppercase tracking-wide text-base-content/60 leading-tight">Оплачено</div>
-    <div class="text-base font-semibold font-mono leading-tight text-success">{{ totals.paid_in|floatformat:2 }} ₽</div>
+  <div class="rounded-md border border-success/30 bg-success/10 px-3 py-2 flex items-center">
+    <span class="text-base-content/60 mr-2">Оплачено:</span>
+    <span class="font-mono font-semibold text-success">{{ totals.paid_in|floatformat:2 }} руб.</span>
   </div>
-  <div class="rounded-md border border-error/30 bg-error/10 px-3 py-2">
-    <div class="text-[11px] uppercase tracking-wide text-base-content/60 leading-tight">Расходы</div>
-    <div class="text-base font-semibold font-mono leading-tight text-error">{{ totals.paid_out|floatformat:2 }} ₽</div>
+  <div class="rounded-md border border-base-300 bg-base-200/60 px-3 py-2 flex items-center">
+    <span class="text-base-content/60 mr-2">Сальдо план:</span>
+    <span class="font-mono font-semibold {% if totals.saldo_plan > 0 %}text-warning{% else %}text-success{% endif %}">{{ totals.saldo_plan|floatformat:2 }} руб.</span>
   </div>
-  <div class="rounded-md border border-base-300 bg-base-200/60 px-3 py-2">
-    <div class="text-[11px] uppercase tracking-wide text-base-content/60 leading-tight">Сальдо факт</div>
-    <div class="text-base font-semibold font-mono leading-tight {% if totals.saldo_fact < 0 %}text-error{% else %}text-success{% endif %}">{{ totals.saldo_fact|floatformat:2 }} ₽</div>
+  <div class="rounded-md border border-error/30 bg-error/10 px-3 py-2 flex items-center">
+    <span class="text-base-content/60 mr-2">Расходы:</span>
+    <span class="font-mono font-semibold text-error">{{ totals.paid_out|floatformat:2 }} руб.</span>
   </div>
-  <div class="rounded-md border border-base-300 bg-base-200/60 px-3 py-2">
-    <div class="text-[11px] uppercase tracking-wide text-base-content/60 leading-tight">Сальдо план</div>
-    <div class="text-base font-semibold font-mono leading-tight {% if totals.saldo_plan > 0 %}text-warning{% else %}text-success{% endif %}">{{ totals.saldo_plan|floatformat:2 }} ₽</div>
+  <div class="rounded-md border border-base-300 bg-base-200/60 px-3 py-2 flex items-center">
+    <span class="text-base-content/60 mr-2">Сальдо факт:</span>
+    <span class="font-mono font-semibold {% if totals.saldo_fact < 0 %}text-error{% else %}text-success{% endif %}">{{ totals.saldo_fact|floatformat:2 }} руб.</span>
   </div>
 </div>
 
