@@ -155,21 +155,12 @@
   /* Полная решётка для таблицы финансов */
   .finance-table th,
   .finance-table td {
-    border-right: 1px solid hsl(var(--bc) / 0.18);
-    border-bottom: 1px solid hsl(var(--bc) / 0.18);
+    border-right: 1px solid hsl(var(--bc) / 0.35);
+    border-bottom: 1px solid hsl(var(--bc) / 0.35);
   }
   .finance-table th:last-child,
   .finance-table td:last-child {
     border-right: none;
-  }
-  .finance-table tbody tr:last-child td {
-    border-bottom: none;
-  }
-  .finance-table thead th {
-    border-bottom: 1px solid hsl(var(--bc) / 0.25);
-  }
-  .finance-table tbody td {
-    border-bottom: 1px solid hsl(var(--bc) / 0.1);
   }
   .finance-table tbody tr:last-child td {
     border-bottom: none;
@@ -179,15 +170,19 @@
     user-select: none;
   }
   .finance-table .sort-th:hover {
-    background-color: hsl(var(--bc) / 0.05);
+    background-color: hsl(var(--bc) / 0.08);
   }
   .finance-table tr.finance-row-clickable:hover {
     filter: brightness(0.96);
   }
+  /* Sticky-шапка поверх строк при скролле.
+     z-index:10 — перекрыть строки с inline background.
+     box-shadow:inset — border у sticky-элементов «не прилипает». */
   .finance-table .finance-thead-sticky th {
     position: sticky;
     top: 0;
-    z-index: 1;
-    background: hsl(var(--b2));
+    z-index: 10;
+    background-color: hsl(var(--b2));
+    box-shadow: inset 0 -1px 0 hsl(var(--bc) / 0.45);
   }
 </style>
