@@ -370,13 +370,13 @@ SCHEDULE_FIELDS = (
 )
 
 
-def _first_installment_date(date_dogovor):
-    """10-е число месяца, который наступает после date_dogovor + 2 месяца.
+def _first_installment_date(date_start):
+    """10-е число месяца, который наступает после date_start + 2 месяца.
 
-    Правило (по ТЗ): берём date_dogovor + 2 месяца. Если день > 10 — берём
+    Правило (по ТЗ): берём date_start + 2 месяца. Если день > 10 — берём
     10-е следующего месяца. Иначе — 10-е этого месяца.
     """
-    base = date_dogovor + relativedelta(months=2)
+    base = date_start + relativedelta(months=2)
     if base.day > 10:
         base = base + relativedelta(months=1)
     return base.replace(day=10)
@@ -385,11 +385,11 @@ def _first_installment_date(date_dogovor):
 def _generate_charges(service):
     """Создаёт Charge-записи по параметрам, сохранённым в service.
 
-    Возвращает количество созданных строк. НЕ удаляет существующие —
-    стратегия (replace/append) выбирается на уровне вызывающего кода.
+    Все даты отсчитываются от service.date_start (дата начала оказания
+    услуг). Возвращает количество созданных строк.
     """
     new_charges = []
-    date_d = service.date_dogovor
+    date_d = service.date_start
 
     # Юруслуги — рассрочка
     if service.legal_services_amount and service.installment_months:
@@ -463,18 +463,18 @@ def payment_schedule_modal(request, service_id):
                     setattr(service, field, max(1, min(24, int(raw or 1))))
                 else:
                     setattr(service, field, Decimal(raw or "0"))
-            raw_date = request.POST.get("date_dogovor", "").strip()
+            raw_date = request.POST.get("date_start", "").strip()
             if raw_date:
                 from datetime import date
-                service.date_dogovor = date.fromisoformat(raw_date)
-            service.save(update_fields=SCHEDULE_FIELDS + ("date_dogovor",))
+                service.date_start = date.fromisoformat(raw_date)
+            service.save(update_fields=SCHEDULE_FIELDS + ("date_start",))
         except (ValueError, TypeError):
             return HttpResponse("Некорректные числовые значения или дата", status=400)
 
-        if not service.date_dogovor:
+        if not service.date_start:
             return render(
                 request, "finance/partials/payment_schedule_modal.html",
-                _schedule_modal_ctx(service, error="Не указана дата договора — без неё нельзя построить график."),
+                _schedule_modal_ctx(service, error="Не указана дата начала оказания услуг — без неё нельзя построить график."),
             )
 
         strategy = request.POST.get("strategy", "save_only")

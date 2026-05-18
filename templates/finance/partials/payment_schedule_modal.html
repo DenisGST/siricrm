@@ -8,7 +8,8 @@
     <h3 class="font-bold text-lg mb-1">График платежей</h3>
     <p class="text-xs text-base-content/60 mb-3">
       Параметры сохраняются на услуге. Кнопка «Заполнить график» создаёт
-      строки Начислений по правилам ТЗ. Все даты считаются от даты договора.
+      строки Начислений по правилам ТЗ. Все даты считаются от даты начала
+      оказания услуг.
     </p>
 
     {% if error %}
@@ -26,12 +27,12 @@
       {% csrf_token %}
       <input type="hidden" name="strategy" id="schedule-strategy" value="save_only">
 
-      <!-- Дата договора -->
+      <!-- Дата начала оказания услуг -->
       <div class="grid grid-cols-3 gap-3 items-end">
         <div>
-          <label class="label py-1"><span class="label-text">Дата договора <span class="text-error">*</span></span></label>
-          <input type="date" name="date_dogovor"
-                 value="{{ service.date_dogovor|date:'Y-m-d' }}"
+          <label class="label py-1"><span class="label-text">Дата начала оказания услуг <span class="text-error">*</span></span></label>
+          <input type="date" name="date_start"
+                 value="{{ service.date_start|date:'Y-m-d' }}"
                  class="input input-bordered input-sm w-full" required>
         </div>
       </div>
