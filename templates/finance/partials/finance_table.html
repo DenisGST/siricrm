@@ -152,37 +152,43 @@
 </div>
 
 <style>
-  /* Полная решётка для таблицы финансов */
+  /* Полная решётка для таблицы финансов.
+     !important — потому что daisyUI .table даёт border-spacing:0 и
+     собственные бордеры с псевдо-классами высокой специфичности. */
+  .finance-table {
+    border-collapse: separate !important;
+    border-spacing: 0 !important;
+  }
   .finance-table th,
   .finance-table td {
-    border-right: 1px solid hsl(var(--bc) / 0.35);
-    border-bottom: 1px solid hsl(var(--bc) / 0.35);
+    border-right: 1px solid #cbd5e1 !important;  /* slate-300 */
+    border-bottom: 1px solid #cbd5e1 !important;
   }
   .finance-table th:last-child,
   .finance-table td:last-child {
-    border-right: none;
+    border-right: none !important;
   }
   .finance-table tbody tr:last-child td {
-    border-bottom: none;
+    border-bottom: none !important;
   }
   .finance-table .sort-th {
     cursor: pointer;
     user-select: none;
   }
   .finance-table .sort-th:hover {
-    background-color: hsl(var(--bc) / 0.08);
+    background-color: rgba(0,0,0,0.05);
   }
   .finance-table tr.finance-row-clickable:hover {
     filter: brightness(0.96);
   }
   /* Sticky-шапка поверх строк при скролле.
-     z-index:10 — перекрыть строки с inline background.
-     box-shadow:inset — border у sticky-элементов «не прилипает». */
+     z-index:30 — daisyUI таблицы и модалки используют z 10–20.
+     Border у sticky-элементов «не прилипает» — заменён на box-shadow. */
   .finance-table .finance-thead-sticky th {
-    position: sticky;
-    top: 0;
-    z-index: 10;
-    background-color: hsl(var(--b2));
-    box-shadow: inset 0 -1px 0 hsl(var(--bc) / 0.45);
+    position: sticky !important;
+    top: 0 !important;
+    z-index: 30 !important;
+    background-color: #e5e7eb !important;  /* gray-200 — непрозрачный */
+    box-shadow: inset 0 -2px 0 #94a3b8 !important;  /* slate-400 */
   }
 </style>
