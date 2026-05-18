@@ -348,6 +348,7 @@ def payment_form_view(request, client_id, direction=None, payment_id=None):
     return render(request, "finance/partials/payment_form_modal.html", {
         "form": form, "client": client, "payment": payment,
         "form_direction": (payment.direction if payment else (direction or "in")),
+        "can_delete": can_delete_finance(request.user),
     })
 
 
@@ -358,6 +359,8 @@ def payment_delete(request, client_id, payment_id):
     client = get_object_or_404(Client, pk=client_id)
     payment = get_object_or_404(models.Payment, pk=payment_id, client=client)
     payment.delete()
-    resp = HttpResponse(status=204)
+    # Пустая строка с 200 — модалка формы с hx-swap=outerHTML исчезнет,
+    # а HX-Trigger перерисует таблицу финансов.
+    resp = HttpResponse("")
     resp["HX-Trigger"] = "reloadFinance"
     return resp

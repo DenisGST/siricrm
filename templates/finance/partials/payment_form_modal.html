@@ -148,7 +148,16 @@
         <div class="alert alert-error text-sm">{{ form.non_field_errors }}</div>
       {% endif %}
 
-      <div class="modal-action">
+      <div class="modal-action items-center">
+        {% if payment and can_delete %}
+          <button type="button" class="btn btn-error btn-sm mr-auto"
+                  hx-post="{% url 'finance:payment_delete' client.id payment.id %}"
+                  hx-target="#payment-form-modal"
+                  hx-swap="outerHTML"
+                  hx-confirm="Удалить платёж? Действие необратимо.">
+            {% icon "trash" size=16 %} Удалить
+          </button>
+        {% endif %}
         <button type="button" class="btn btn-ghost btn-sm"
                 onclick="document.getElementById('payment-form-modal').remove()">Отмена</button>
         <button type="submit" class="btn btn-primary btn-sm">
