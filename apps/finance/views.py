@@ -439,7 +439,7 @@ def payment_schedule_modal(request, service_id):
     existing_count = service.charges.count()
 
     if request.method == "POST":
-        # Сохраняем все 8 параметров на услуге.
+        # Сохраняем 8 параметров + дату договора на услуге.
         try:
             for field in SCHEDULE_FIELDS:
                 raw = request.POST.get(field, "").strip().replace(",", ".")
@@ -447,9 +447,13 @@ def payment_schedule_modal(request, service_id):
                     setattr(service, field, max(1, min(24, int(raw or 1))))
                 else:
                     setattr(service, field, Decimal(raw or "0"))
-            service.save(update_fields=SCHEDULE_FIELDS)
+            raw_date = request.POST.get("date_dogovor", "").strip()
+            if raw_date:
+                from datetime import date
+                service.date_dogovor = date.fromisoformat(raw_date)
+            service.save(update_fields=SCHEDULE_FIELDS + ("date_dogovor",))
         except (ValueError, TypeError):
-            return HttpResponse("Некорректные числовые значения", status=400)
+            return HttpResponse("Некорректные числовые значения или дата", status=400)
 
         if not service.date_dogovor:
             return render(request, "finance/partials/payment_schedule_modal.html", {

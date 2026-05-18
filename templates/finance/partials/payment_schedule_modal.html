@@ -4,12 +4,7 @@
     <h3 class="font-bold text-lg mb-1">График платежей</h3>
     <p class="text-xs text-base-content/60 mb-3">
       Параметры сохраняются на услуге. Кнопка «Заполнить график» создаёт
-      строки Начислений по правилам ТЗ.
-      {% if service.date_dogovor %}
-        Дата договора: <b>{{ service.date_dogovor|date:"d.m.Y" }}</b>.
-      {% else %}
-        <span class="text-warning">Дата договора не задана — генерация недоступна.</span>
-      {% endif %}
+      строки Начислений по правилам ТЗ. Все даты считаются от даты договора.
     </p>
 
     {% if error %}
@@ -23,6 +18,16 @@
           class="space-y-3">
       {% csrf_token %}
       <input type="hidden" name="strategy" id="schedule-strategy" value="save_only">
+
+      <!-- Дата договора -->
+      <div class="grid grid-cols-3 gap-3 items-end">
+        <div>
+          <label class="label py-1"><span class="label-text">Дата договора <span class="text-error">*</span></span></label>
+          <input type="date" name="date_dogovor"
+                 value="{{ service.date_dogovor|date:'Y-m-d' }}"
+                 class="input input-bordered input-sm w-full" required>
+        </div>
+      </div>
 
       <!-- Юруслуги + рассрочка -->
       <div class="grid grid-cols-3 gap-3 items-end">
@@ -102,27 +107,20 @@
           Отмена
         </button>
 
-        {% if service.date_dogovor %}
-          {% if existing_count > 0 %}
-            <button type="submit" class="btn btn-warning btn-sm"
-                    onclick="document.getElementById('schedule-strategy').value='append'">
-              Добавить поверх существующих
-            </button>
-            <button type="submit" class="btn btn-error btn-sm"
-                    onclick="document.getElementById('schedule-strategy').value='replace'"
-                    hx-confirm="Удалить {{ existing_count }} существующих начислени{{ existing_count|pluralize:"е,я,й" }} и создать новые?">
-              Удалить и заполнить заново
-            </button>
-          {% else %}
-            <button type="submit" class="btn btn-primary btn-sm"
-                    onclick="document.getElementById('schedule-strategy').value='replace'">
-              {% icon "check" size=16 %} Заполнить график
-            </button>
-          {% endif %}
+        {% if existing_count > 0 %}
+          <button type="submit" class="btn btn-warning btn-sm"
+                  onclick="document.getElementById('schedule-strategy').value='append'">
+            Добавить поверх существующих
+          </button>
+          <button type="submit" class="btn btn-error btn-sm"
+                  onclick="document.getElementById('schedule-strategy').value='replace'"
+                  hx-confirm="Удалить {{ existing_count }} существующих начислени{{ existing_count|pluralize:"е,я,й" }} и создать новые?">
+            Удалить и заполнить заново
+          </button>
         {% else %}
           <button type="submit" class="btn btn-primary btn-sm"
-                  onclick="document.getElementById('schedule-strategy').value='save_only'">
-            Сохранить параметры
+                  onclick="document.getElementById('schedule-strategy').value='replace'">
+            {% icon "check" size=16 %} Заполнить график
           </button>
         {% endif %}
       </div>
