@@ -5,10 +5,23 @@
      !important — перестраховка против возможных глобальных стилей модалки. -->
 <div class="finance-totals gap-2 mb-3"
      style="display:grid !important;grid-template-columns:repeat(3,minmax(0,1fr)) !important;width:100%;">
-  <div class="rounded-md border border-base-300 bg-base-200/60 px-3 py-2 flex items-center"
+  <div class="rounded-md border border-base-300 bg-base-200/60 px-3 py-2 flex flex-col gap-1"
        style="grid-row:1/span 2 !important;">
-    <span class="text-base-content/60 mr-2">Начислено:</span>
-    <span class="font-mono font-semibold">{{ totals.charged|floatformat:2 }} руб.</span>
+    <div>
+      <span class="text-base-content/60 mr-2">Начислено:</span>
+      <span class="font-mono font-semibold">{{ totals.charged|floatformat:2 }} руб.</span>
+    </div>
+    {% if client_services %}
+      <div class="text-xs text-base-content/60 mt-1">по договору:</div>
+      <div class="text-xs space-y-1">
+        {% for s in client_services %}
+          <div class="flex justify-between gap-2">
+            <span class="text-base-content/70">№{{ s.numb_dogovor|default:"—" }}</span>
+            <span class="font-mono">{% if s.contract_price %}{{ s.contract_price|floatformat:2 }} руб.{% else %}—{% endif %}</span>
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
   </div>
   <div class="rounded-md border border-success/30 bg-success/10 px-3 py-2 flex items-center">
     <span class="text-base-content/60 mr-2">Оплачено:</span>

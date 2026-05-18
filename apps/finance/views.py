@@ -235,8 +235,13 @@ def _finance_context(client, *, kinds=ALL_KINDS, sort="date", direction="desc"):
     total_in = payments_qs.filter(direction="in").aggregate(s=Sum("amount_in"))["s"] or Decimal("0")
     total_out = payments_qs.filter(direction="out").aggregate(s=Sum("amount_out"))["s"] or Decimal("0")
 
+    client_services = list(
+        client.services.select_related("name").order_by("date_dogovor", "contract_seq")
+    )
+
     return {
         "client": client,
+        "client_services": client_services,
         "rows": rows,
         "filter_kinds": list(kinds),
         "show_charge": "charge" in kinds,
