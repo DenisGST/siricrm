@@ -152,17 +152,27 @@
 </div>
 
 <style>
-  /* Разделители колонок для таблицы финансов */
+  /* Полная решётка для таблицы финансов */
   .finance-table th,
   .finance-table td {
-    border-right: 1px solid hsl(var(--bc) / 0.1);
+    border-right: 1px solid hsl(var(--bc) / 0.18);
+    border-bottom: 1px solid hsl(var(--bc) / 0.18);
   }
   .finance-table th:last-child,
   .finance-table td:last-child {
     border-right: none;
   }
+  .finance-table tbody tr:last-child td {
+    border-bottom: none;
+  }
   .finance-table thead th {
-    border-bottom: 1px solid hsl(var(--bc) / 0.2);
+    border-bottom: 1px solid hsl(var(--bc) / 0.25);
+  }
+  .finance-table tbody td {
+    border-bottom: 1px solid hsl(var(--bc) / 0.1);
+  }
+  .finance-table tbody tr:last-child td {
+    border-bottom: none;
   }
   .finance-table .sort-th {
     cursor: pointer;
