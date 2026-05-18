@@ -25,6 +25,10 @@ app.conf.beat_schedule = {
         'task': 'apps.crm.tasks.sync_employee_status',
         'schedule': 60,
     },
+    'mark-overdue-charges-daily': {
+        'task': 'apps.finance.tasks.mark_overdue_charges',
+        'schedule': crontab(hour=3, minute=0),
+    },
 }
 
 @setup_logging.connect
