@@ -1,5 +1,5 @@
 {% load icons l10n %}
-<dialog id="payment-schedule-modal" class="modal modal-middle modal-open">
+<dialog id="payment-schedule-modal" class="modal modal-middle">
   <div class="modal-box w-full" style="max-width:48rem;">
     <h3 class="font-bold text-lg mb-1">График платежей</h3>
     <p class="text-xs text-base-content/60 mb-3">
@@ -134,6 +134,13 @@
 
   <script>
     (function () {
+      // Открываем как top-layer modal — иначе родительский <dialog
+      // service-modal перекрывает нашу модалку.
+      const dlg = document.getElementById('payment-schedule-modal');
+      if (dlg && !dlg.open) {
+        try { dlg.showModal(); } catch (e) { dlg.setAttribute('open', ''); }
+      }
+
       const legal = document.getElementById('js-legal');
       const months = document.getElementById('js-months');
       const monthly = document.getElementById('js-monthly');
