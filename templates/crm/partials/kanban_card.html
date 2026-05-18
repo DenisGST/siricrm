@@ -75,7 +75,19 @@
     {% endif %}
 
     <!-- Кнопки -->
-    <div class="flex justify-end gap-1 mt-2">
+    <div class="flex gap-1 mt-2 items-center">
+      <button
+        type="button"
+        class="kanban-action-btn text-base-content/50 mr-auto"
+        hx-get="{% url 'finance:finance_modal' client.id %}"
+        hx-target="body"
+        hx-swap="beforeend"
+        title="Финансы и расчёты"
+        onclick="event.stopPropagation()"
+        hx-on:click="event.stopPropagation()"
+      >
+        {% icon "wallet" size=18 %}
+      </button>
       {% if client.telegram_id %}
       <button
         type="button"

@@ -44,6 +44,7 @@ INSTALLED_APPS = [
     "apps.consultations",
     "apps.questionnaire",
     "apps.devops",
+    "apps.finance",
 ]
 
 # --- DevOps panel ---

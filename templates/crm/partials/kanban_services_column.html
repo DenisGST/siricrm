@@ -80,7 +80,17 @@
     </div>
     {% endif %}
 
-    <div class="flex gap-1 mt-1">
+    <div class="flex gap-1 mt-1 items-center">
+      <button type="button"
+              class="kanban-action-btn text-base-content/50 mr-auto"
+              hx-get="{% url 'finance:finance_modal' s.client.id %}"
+              hx-target="body"
+              hx-swap="beforeend"
+              title="Финансы и расчёты"
+              onclick="event.stopPropagation()"
+              hx-on:click="event.stopPropagation()">
+        {% icon "wallet" size=15 %}
+      </button>
       {% if s.client.phone %}
       <a href="tel:{{ s.client.phone }}"
          class="kanban-action-btn text-base-content/50"

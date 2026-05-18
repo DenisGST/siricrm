@@ -1,0 +1,123 @@
+{% load icons %}
+
+<!-- Сводные цифры -->
+<div class="grid grid-cols-2 md:grid-cols-5 gap-2 mb-3">
+  <div class="stat bg-base-200 rounded p-2">
+    <div class="text-xs text-base-content/60">Итого начислено</div>
+    <div class="text-base font-semibold">{{ totals.charged|floatformat:2 }} ₽</div>
+  </div>
+  <div class="stat bg-base-200 rounded p-2">
+    <div class="text-xs text-base-content/60">Итого оплачено</div>
+    <div class="text-base font-semibold text-success">{{ totals.paid_in|floatformat:2 }} ₽</div>
+  </div>
+  <div class="stat bg-base-200 rounded p-2">
+    <div class="text-xs text-base-content/60">Итого расходы</div>
+    <div class="text-base font-semibold text-error">{{ totals.paid_out|floatformat:2 }} ₽</div>
+  </div>
+  <div class="stat bg-base-200 rounded p-2">
+    <div class="text-xs text-base-content/60">Сальдо факт</div>
+    <div class="text-base font-semibold {% if totals.saldo_fact < 0 %}text-error{% else %}text-success{% endif %}">
+      {{ totals.saldo_fact|floatformat:2 }} ₽
+    </div>
+  </div>
+  <div class="stat bg-base-200 rounded p-2">
+    <div class="text-xs text-base-content/60">Сальдо план</div>
+    <div class="text-base font-semibold {% if totals.saldo_plan > 0 %}text-warning{% else %}text-success{% endif %}">
+      {{ totals.saldo_plan|floatformat:2 }} ₽
+    </div>
+  </div>
+</div>
+
+<!-- Кнопки добавления + фильтр -->
+<div class="flex justify-between items-center mb-3 flex-wrap gap-2">
+  <div class="tabs tabs-boxed">
+    <a class="tab tab-sm {% if filter_kind == 'all' %}tab-active{% endif %}"
+       hx-get="{% url 'finance:finance_modal' client.id %}?partial=1&kind=all"
+       hx-target="#finance-content" hx-swap="innerHTML">Все</a>
+    <a class="tab tab-sm {% if filter_kind == 'charge' %}tab-active{% endif %}"
+       hx-get="{% url 'finance:finance_modal' client.id %}?partial=1&kind=charge"
+       hx-target="#finance-content" hx-swap="innerHTML">Начисления</a>
+    <a class="tab tab-sm {% if filter_kind == 'in' %}tab-active{% endif %}"
+       hx-get="{% url 'finance:finance_modal' client.id %}?partial=1&kind=in"
+       hx-target="#finance-content" hx-swap="innerHTML">Входящие</a>
+    <a class="tab tab-sm {% if filter_kind == 'out' %}tab-active{% endif %}"
+       hx-get="{% url 'finance:finance_modal' client.id %}?partial=1&kind=out"
+       hx-target="#finance-content" hx-swap="innerHTML">Исходящие</a>
+  </div>
+
+  {% if can_edit %}
+  <div class="flex gap-2">
+    <button class="btn btn-success btn-sm"
+            hx-get="{% url 'finance:payment_add' client.id 'in' %}"
+            hx-target="body" hx-swap="beforeend">
+      + Входящий
+    </button>
+    <button class="btn btn-error btn-sm"
+            hx-get="{% url 'finance:payment_add' client.id 'out' %}"
+            hx-target="body" hx-swap="beforeend">
+      + Исходящий
+    </button>
+  </div>
+  {% endif %}
+</div>
+
+<!-- Таблица -->
+<div class="overflow-x-auto">
+  <table class="table table-sm table-zebra">
+    <thead>
+      <tr>
+        <th>Дата</th>
+        <th>Тип</th>
+        <th>Наименование</th>
+        <th>Услуга</th>
+        <th class="text-right">Сумма, ₽</th>
+        <th>Касса/банк</th>
+        <th>Форма / статус</th>
+        <th>Комментарии</th>
+        {% if can_edit %}<th></th>{% endif %}
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in rows %}
+      <tr>
+        <td class="whitespace-nowrap">{{ row.date|date:"d.m.Y" }}</td>
+        <td>
+          {% if row.kind == 'in' %}
+            <span class="badge badge-success badge-xs">Доход</span>
+          {% elif row.kind == 'out' %}
+            <span class="badge badge-error badge-xs">Расход</span>
+          {% else %}
+            <span class="badge badge-warning badge-xs">Начисление</span>
+          {% endif %}
+        </td>
+        <td>{{ row.title }}</td>
+        <td>{% if row.service %}<span class="badge badge-ghost badge-xs">{{ row.service.name.short_name }}</span>{% else %}—{% endif %}</td>
+        <td class="text-right font-mono {% if row.kind == 'out' %}text-error{% elif row.kind == 'in' %}text-success{% endif %}">
+          {{ row.amount|floatformat:2 }}
+        </td>
+        <td>{{ row.account|default:"—" }}</td>
+        <td>{{ row.status }}</td>
+        <td class="text-xs text-base-content/70 max-w-xs truncate" title="{{ row.comments }}">{{ row.comments|default:"" }}</td>
+        {% if can_edit %}
+        <td class="text-right whitespace-nowrap">
+          {% if row.kind != 'charge' %}
+            <button class="btn btn-xs btn-outline"
+                    hx-get="{% url 'finance:payment_edit' client.id row.obj.id %}"
+                    hx-target="body" hx-swap="beforeend"
+                    title="Редактировать">{% icon "pencil" size=14 %}</button>
+            {% if can_delete %}
+            <button class="btn btn-xs btn-error btn-outline"
+                    hx-post="{% url 'finance:payment_delete' client.id row.obj.id %}"
+                    hx-confirm="Удалить платёж?"
+                    title="Удалить">{% icon "trash" size=14 %}</button>
+            {% endif %}
+          {% endif %}
+        </td>
+        {% endif %}
+      </tr>
+      {% empty %}
+      <tr><td colspan="{% if can_edit %}9{% else %}8{% endif %}" class="text-center text-base-content/60">Записей нет</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>

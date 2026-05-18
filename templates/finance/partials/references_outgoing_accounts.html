@@ -1,0 +1,52 @@
+<div id="outgoing-accounts-list"
+     hx-trigger="reloadOutgoingAccounts from:body"
+     hx-get="{% url 'finance:references_outgoing_accounts' %}"
+     hx-swap="outerHTML">
+
+  <div class="flex justify-between items-center mb-3">
+    <h3 class="font-semibold">Кассы / банки (расход) ({{ items|length }})</h3>
+    <button class="btn btn-primary btn-sm"
+            hx-get="{% url 'finance:reference_outgoing_account_add' %}"
+            hx-target="body" hx-swap="beforeend">
+      + Добавить
+    </button>
+  </div>
+
+  <div class="overflow-x-auto">
+    <table class="table table-sm table-zebra">
+      <thead>
+        <tr>
+          <th>Тип</th>
+          <th>Наименование</th>
+          <th>Статус</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for it in items %}
+        <tr>
+          <td><span class="badge badge-outline">{{ it.get_account_type_display }}</span></td>
+          <td>{{ it.name }}</td>
+          <td>
+            {% if it.is_active %}
+              <span class="badge badge-success badge-xs">активен</span>
+            {% else %}
+              <span class="badge badge-ghost badge-xs">неактивен</span>
+            {% endif %}
+          </td>
+          <td class="text-right">
+            <button class="btn btn-xs btn-outline"
+                    hx-get="{% url 'finance:reference_outgoing_account_edit' it.pk %}"
+                    hx-target="body" hx-swap="beforeend">Изменить</button>
+            <button class="btn btn-xs btn-error btn-outline"
+                    hx-post="{% url 'finance:reference_outgoing_account_delete' it.pk %}"
+                    hx-confirm="Удалить «{{ it.name }}»?">Удалить</button>
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="4" class="text-center text-base-content/60">Касс/банков нет</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>

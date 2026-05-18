@@ -56,5 +56,6 @@ urlpatterns = [
     path("consultations/", include("apps.consultations.urls", namespace="consultations")),
     path("questionnaire/", include("apps.questionnaire.urls", namespace="questionnaire")),
     path("devops/", include("apps.devops.urls", namespace="devops")),
+    path("finance/", include("apps.finance.urls", namespace="finance")),
     path("robots.txt", serve, {"document_root": settings.STATIC_ROOT, "path": "robots.txt"}),
 ]

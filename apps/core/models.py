@@ -123,6 +123,7 @@ class Employee(models.Model):
         ("arbitration", "Арбитражный управляющий"),
         ("agent", "Агент"),
         ("managing_partner", "Управляющий партнер"),
+        ("accountant", "Бухгалтер"),
         ("admin", "Администратор"),
     ]
 

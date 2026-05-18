@@ -29,6 +29,18 @@
     <a class="tab {% if active_tab == 'questionnaires' %}tab-active{% endif %}"
        hx-get="{% url 'questionnaire:template_list' %}" hx-target="#ref-content" hx-swap="innerHTML"
        onclick="setRefTab(this)">Анкеты</a>
+    <a class="tab {% if active_tab == 'expense_types' %}tab-active{% endif %}"
+       hx-get="{% url 'finance:references_expense_types' %}" hx-target="#ref-content" hx-swap="innerHTML"
+       onclick="setRefTab(this)">Типы расходов</a>
+    <a class="tab {% if active_tab == 'income_types' %}tab-active{% endif %}"
+       hx-get="{% url 'finance:references_income_types' %}" hx-target="#ref-content" hx-swap="innerHTML"
+       onclick="setRefTab(this)">Типы доходов</a>
+    <a class="tab {% if active_tab == 'incoming_accounts' %}tab-active{% endif %}"
+       hx-get="{% url 'finance:references_incoming_accounts' %}" hx-target="#ref-content" hx-swap="innerHTML"
+       onclick="setRefTab(this)">Кассы (приход)</a>
+    <a class="tab {% if active_tab == 'outgoing_accounts' %}tab-active{% endif %}"
+       hx-get="{% url 'finance:references_outgoing_accounts' %}" hx-target="#ref-content" hx-swap="innerHTML"
+       onclick="setRefTab(this)">Кассы (расход)</a>
   </div>
 
   <div id="ref-content"
