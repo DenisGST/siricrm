@@ -10,6 +10,9 @@
     {% if error %}
       <div class="alert alert-error text-sm mb-3">{{ error }}</div>
     {% endif %}
+    {% if success %}
+      <div class="alert alert-success text-sm mb-3">{{ success }}</div>
+    {% endif %}
 
     <form id="schedule-form"
           hx-post="{% url 'finance:payment_schedule_modal' service.id %}"
@@ -94,10 +97,50 @@
         </div>
       </div>
 
+      {% if charges %}
+        <div class="border-t border-base-300 pt-3">
+          <div class="flex justify-between items-baseline mb-2">
+            <h4 class="text-sm font-semibold">Текущий график ({{ charges|length }})</h4>
+            <div class="text-xs text-base-content/60">
+              Итого: <b class="font-mono">{{ charges_total|default:"" }}</b>
+            </div>
+          </div>
+          <div class="overflow-y-auto border border-base-300 rounded-md" style="max-height:18rem;">
+            <table class="table table-xs w-full" style="border-collapse:separate;border-spacing:0;">
+              <thead style="position:sticky;top:0;z-index:1;background:#e5e7eb;">
+                <tr>
+                  <th style="border-bottom:1px solid #94a3b8;">Дата</th>
+                  <th style="border-bottom:1px solid #94a3b8;">Наименование</th>
+                  <th class="text-right" style="border-bottom:1px solid #94a3b8;">Сумма, ₽</th>
+                  <th style="border-bottom:1px solid #94a3b8;">Статус</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for ch in charges %}
+                <tr>
+                  <td class="whitespace-nowrap">{{ ch.due_date|date:"d.m.Y" }}</td>
+                  <td>{{ ch.title }}</td>
+                  <td class="text-right font-mono">{{ ch.amount|floatformat:2 }}</td>
+                  <td>
+                    {% if ch.status == 'paid' %}
+                      <span class="badge badge-success badge-xs">опл.</span>
+                    {% elif ch.status == 'overdue' %}
+                      <span class="badge badge-error badge-xs">проср.</span>
+                    {% else %}
+                      <span class="badge badge-ghost badge-xs">в графике</span>
+                    {% endif %}
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      {% endif %}
+
       {% if existing_count > 0 %}
         <div class="alert alert-warning text-sm py-2">
-          У этой услуги уже есть <b>{{ existing_count }}</b> начислени{{ existing_count|pluralize:"е,я,й" }}.
-          При нажатии «Заполнить график» выберите стратегию:
+          При нажатии «Заполнить график» выберите стратегию: добавить поверх или удалить старые.
         </div>
       {% endif %}
 

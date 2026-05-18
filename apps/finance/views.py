@@ -427,19 +427,32 @@ def _generate_charges(service):
     return len(new_charges)
 
 
+def _schedule_modal_ctx(service, *, error=None, success=None):
+    charges = list(service.charges.order_by("due_date"))
+    total = sum((c.amount for c in charges), Decimal("0"))
+    return {
+        "service": service,
+        "existing_count": len(charges),
+        "charges": charges,
+        "charges_total": f"{total:,.2f}".replace(",", " "),
+        "months_range": range(1, 25),
+        "error": error,
+        "success": success,
+    }
+
+
 @login_required
 @require_edit
 def payment_schedule_modal(request, service_id):
     """Модалка «График платежей» в форме услуги.
 
-    GET — рендерит форму с текущими параметрами Service.
-    POST — сохраняет параметры + (опционально) пересоздаёт начисления.
+    GET — рендерит форму + таблицу существующих Charge.
+    POST — сохраняет параметры, при replace/append перегенерирует и
+    возвращает ту же модалку с обновлённой таблицей (не закрывает её).
     """
     service = get_object_or_404(Service, pk=service_id)
-    existing_count = service.charges.count()
 
     if request.method == "POST":
-        # Сохраняем 8 параметров + дату договора на услуге.
         try:
             for field in SCHEDULE_FIELDS:
                 raw = request.POST.get(field, "").strip().replace(",", ".")
@@ -456,33 +469,30 @@ def payment_schedule_modal(request, service_id):
             return HttpResponse("Некорректные числовые значения или дата", status=400)
 
         if not service.date_dogovor:
-            return render(request, "finance/partials/payment_schedule_modal.html", {
-                "service": service, "existing_count": existing_count,
-                "months_range": range(1, 25),
-                "error": "У услуги не задана дата договора — без неё нельзя построить график.",
-            })
+            return render(
+                request, "finance/partials/payment_schedule_modal.html",
+                _schedule_modal_ctx(service, error="Не указана дата договора — без неё нельзя построить график."),
+            )
 
         strategy = request.POST.get("strategy", "save_only")
+        success = None
         if strategy == "replace":
             service.charges.all().delete()
         if strategy in ("replace", "append"):
             with transaction.atomic():
                 created = _generate_charges(service)
-            # Закрываем модалку (outerHTML на пустой ответ).
-            resp = HttpResponse("")
-            resp["HX-Trigger"] = "reloadFinance"
-            return resp
+            success = f"Создано {created} начислени{'е' if created == 1 else ('я' if 1 < created < 5 else 'й')}."
 
-        # save_only — параметры сохранены, ничего не генерируем.
-        resp = HttpResponse("")
+        ctx = _schedule_modal_ctx(service, success=success)
+        resp = render(request, "finance/partials/payment_schedule_modal.html", ctx)
+        # Сигнал модалке «Финансы», если она открыта где-то ещё.
         resp["HX-Trigger"] = "reloadFinance"
         return resp
 
-    return render(request, "finance/partials/payment_schedule_modal.html", {
-        "service": service,
-        "existing_count": existing_count,
-        "months_range": range(1, 25),
-    })
+    return render(
+        request, "finance/partials/payment_schedule_modal.html",
+        _schedule_modal_ctx(service),
+    )
 
 
 @login_required
