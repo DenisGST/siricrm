@@ -91,10 +91,11 @@
   {% endif %}
 </div>
 
-<!-- Таблица -->
-<div class="overflow-x-auto border border-base-300 rounded-md">
+<!-- Таблица. max-height ≈ 10 строк + sticky thead -->
+<div class="overflow-x-auto overflow-y-auto border border-base-300 rounded-md"
+     style="max-height:28rem;">
   <table class="table table-sm w-full finance-table">
-    <thead class="bg-base-200">
+    <thead class="bg-base-200 finance-thead-sticky">
       <tr>
         {% include "finance/partials/_finance_th.html" with key="date"    label="Дата" align="" %}
         {% include "finance/partials/_finance_th.html" with key="kind"    label="Тип"  align="" %}
@@ -170,5 +171,11 @@
   }
   .finance-table tr.finance-row-clickable:hover {
     filter: brightness(0.96);
+  }
+  .finance-table .finance-thead-sticky th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: hsl(var(--b2));
   }
 </style>
