@@ -1,8 +1,10 @@
 {% load icons %}
 
-<!-- Блок ИТОГО: 3 колонки × 2 ряда, «Начислено» занимает всю высоту слева -->
-<div class="grid grid-cols-1 md:grid-cols-3 gap-2 mb-3">
-  <div class="md:row-span-2 rounded-md border border-base-300 bg-base-200/60 px-3 py-2 flex items-center">
+<!-- Блок ИТОГО: 3 колонки × 2 ряда, «Начислено» растянуто на 2 ряда.
+     Inline grid-template/row-span — потому что в pre-compiled tailwind нет md:grid-cols-3 / row-span-2. -->
+<div class="gap-2 mb-3" style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));">
+  <div class="rounded-md border border-base-300 bg-base-200/60 px-3 py-2 flex items-center"
+       style="grid-row:span 2/span 2;">
     <span class="text-base-content/60 mr-2">Начислено:</span>
     <span class="font-mono font-semibold">{{ totals.charged|floatformat:2 }} руб.</span>
   </div>
