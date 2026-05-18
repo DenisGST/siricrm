@@ -24,7 +24,7 @@
 
       <!-- Дата начала оказания услуг + предупреждение в общей рамке -->
       <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));
-                  gap:0.75rem;align-items:end;
+                  gap:0.75rem;align-items:center;
                   border:1px solid #7f1d1d;border-radius:8px;
                   background:#fef2f2;padding:0.5rem 0.75rem;">
         <div>
@@ -33,10 +33,9 @@
                  value="{{ date_start_value|date:'Y-m-d' }}"
                  class="input input-bordered input-sm w-full" required>
         </div>
-        <div class="text-xs leading-snug flex items-center gap-2"
+        <div class="text-sm font-semibold leading-snug"
              style="grid-column:span 2 / span 2;color:#7f1d1d;">
-          <span class="font-bold tracking-wide">ВНИМАНИЕ&nbsp;!!!</span>
-          <span>От этой даты считается график внесения платежей.</span>
+          От этой даты считается график внесения платежей.
         </div>
       </div>
 
