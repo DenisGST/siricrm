@@ -22,16 +22,19 @@
       {% csrf_token %}
       <input type="hidden" name="strategy" id="schedule-strategy" value="save_only">
 
-      <!-- Дата начала оказания услуг + предупреждение -->
-      <div class="grid grid-cols-3 gap-3 items-end">
+      <!-- Дата начала оказания услуг + предупреждение в общей рамке -->
+      <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));
+                  gap:0.75rem;align-items:end;
+                  border:1px solid #7f1d1d;border-radius:8px;
+                  background:#fef2f2;padding:0.5rem 0.75rem;">
         <div>
-          <label class="label py-1"><span class="label-text">Дата начала оказания услуг <span class="text-error">*</span></span></label>
+          <label class="label py-1"><span class="label-text" style="color:#7f1d1d;">Дата начала оказания услуг <span class="text-error">*</span></span></label>
           <input type="date" name="date_start"
                  value="{{ date_start_value|date:'Y-m-d' }}"
                  class="input input-bordered input-sm w-full" required>
         </div>
-        <div class="rounded-md px-3 py-2 text-xs leading-snug flex items-center gap-2"
-             style="grid-column:span 2 / span 2;color:#7f1d1d;border:1px solid #7f1d1d;background:#fef2f2;">
+        <div class="text-xs leading-snug flex items-center gap-2"
+             style="grid-column:span 2 / span 2;color:#7f1d1d;">
           <span class="font-bold tracking-wide">ВНИМАНИЕ&nbsp;!!!</span>
           <span>От этой даты считается график внесения платежей.</span>
         </div>
