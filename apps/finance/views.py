@@ -22,7 +22,10 @@ from apps.core.views import is_references_access
 from apps.crm.models import Client, Service
 
 from . import forms, models
-from .permissions import can_delete_finance, can_edit_finance, require_delete, require_edit
+from .permissions import (
+    can_delete_charge, can_delete_finance, can_edit_finance,
+    require_delete, require_edit,
+)
 
 
 # ────────────────────────────────────────────────────────────
@@ -517,15 +520,16 @@ def charge_edit(request, service_id, charge_id):
 
     return render(request, "finance/partials/charge_form_modal.html", {
         "form": form, "charge": charge, "service": service,
-        "can_delete": can_delete_finance(request.user),
+        "can_delete": can_delete_charge(request.user, service),
     })
 
 
 @login_required
-@require_delete
 @require_POST
 def charge_delete(request, service_id, charge_id):
     service = get_object_or_404(Service, pk=service_id)
+    if not can_delete_charge(request.user, service):
+        return HttpResponse("Нет прав на удаление начисления", status=403)
     charge = get_object_or_404(models.Charge, pk=charge_id, service=service)
     charge.delete()
     resp = HttpResponse("")
