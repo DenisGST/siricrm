@@ -371,6 +371,12 @@ SCHEDULE_FIELDS = (
 )
 
 
+RU_MONTHS = {
+    1: "январь", 2: "февраль", 3: "март", 4: "апрель", 5: "май", 6: "июнь",
+    7: "июль", 8: "август", 9: "сентябрь", 10: "октябрь", 11: "ноябрь", 12: "декабрь",
+}
+
+
 def _first_installment_date(date_start, offset_months):
     """10-е число месяца, который наступает после date_start + N месяцев.
 
@@ -403,10 +409,11 @@ def _generate_charges(service):
         first = _first_installment_date(date_d, service.schedule_legal_offset)
         for i in range(service.installment_months):
             due_date = first + relativedelta(months=i)
+            month_year = f"{RU_MONTHS[due_date.month]} {due_date.year}"
             new_charges.append(models.Charge(
                 client=service.client, service=service,
                 due_date=due_date,
-                title=f"Юруслуги, платёж {i + 1}/{service.installment_months}",
+                title=f"Юруслуги, платёж {i + 1}/{service.installment_months} за {month_year}",
                 amount=monthly,
                 status="scheduled",
             ))
