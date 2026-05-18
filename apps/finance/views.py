@@ -19,7 +19,7 @@ from django.utils import timezone
 from django.views.decorators.http import require_POST
 
 from apps.core.views import is_references_access
-from apps.crm.models import Client, Service
+from apps.crm.models import Client, ClientEvent, Service
 
 from . import forms, models
 from .permissions import (
@@ -339,12 +339,22 @@ def payment_form_view(request, client_id, direction=None, payment_id=None):
             obj = form.save(commit=False)
             obj.client = client
             emp = getattr(request.user, "employee", None)
-            if payment is None:
+            is_new = payment is None
+            if is_new:
                 obj.created_by = emp
             obj.updated_by = emp
             obj.save()
-            # Возвращаем пустую строку — модалка с outerHTML-swap'ом исчезнет,
-            # а событие reloadFinance перерисует таблицу в основной модалке.
+            amount = obj.amount_in if obj.direction == "in" else obj.amount_out
+            direction_label = "входящий" if obj.direction == "in" else "исходящий"
+            _log_event(
+                client,
+                "payment_created" if is_new else "payment_edited",
+                emp,
+                description=(
+                    f"{'Внесён' if is_new else 'Отредактирован'} {direction_label} платёж "
+                    f"на {_fmt_money(amount)} от {obj.payment_date.strftime('%d.%m.%Y')}."
+                ),
+            )
             resp = HttpResponse("")
             resp["HX-Trigger"] = "reloadFinance"
             return resp
@@ -363,6 +373,24 @@ def payment_form_view(request, client_id, direction=None, payment_id=None):
 # ────────────────────────────────────────────────────────────
 
 # Поля Service, которые редактируем через модалку графика.
+def _log_event(client, event_type, employee, description="", old_value="", new_value=""):
+    """Создаёт запись в логе ClientEvent. Тихо игнорирует если клиента нет."""
+    if not client:
+        return
+    ClientEvent.objects.create(
+        client=client,
+        event_type=event_type,
+        employee=employee,
+        description=description,
+        old_value=str(old_value)[:255],
+        new_value=str(new_value)[:255],
+    )
+
+
+def _fmt_money(value):
+    return f"{value:.2f} руб." if value is not None else "—"
+
+
 SCHEDULE_FIELDS = (
     "legal_services_amount", "installment_months",
     "doc_collection", "postal_costs", "state_duty",
@@ -508,7 +536,6 @@ def payment_schedule_modal(request, service_id):
         if strategy in ("replace", "append"):
             with transaction.atomic():
                 created = _generate_charges(service)
-                # Пишем метаданные графика и contract_price = итого.
                 emp = getattr(request.user, "employee", None)
                 today = timezone.localdate()
                 was_empty = service.schedule_date is None
@@ -522,6 +549,17 @@ def payment_schedule_modal(request, service_id):
                     "schedule_date", "schedule_created_by", "schedule_updated_by",
                     "contract_price",
                 ])
+                _log_event(
+                    service.client,
+                    "schedule_created" if was_empty else "schedule_updated",
+                    emp,
+                    description=(
+                        f"{'Составлен' if was_empty else 'Изменён'} график платежей по услуге "
+                        f"«{service.name.short_name}» ({service.numb_dogovor or '—'}): "
+                        f"{created} начислени{'е' if created == 1 else ('я' if 1 < created < 5 else 'й')}, "
+                        f"итого {total} руб., стратегия — {strategy}."
+                    ),
+                )
             success = f"Создано {created} начислени{'е' if created == 1 else ('я' if 1 < created < 5 else 'й')}. Цена договора: {total} руб."
 
         ctx = _schedule_modal_ctx(service, success=success)
@@ -580,9 +618,18 @@ def charge_delete(request, service_id, charge_id):
 def payment_delete(request, client_id, payment_id):
     client = get_object_or_404(Client, pk=client_id)
     payment = get_object_or_404(models.Payment, pk=payment_id, client=client)
+    amount = payment.amount_in if payment.direction == "in" else payment.amount_out
+    direction_label = "входящий" if payment.direction == "in" else "исходящий"
+    payment_date = payment.payment_date
     payment.delete()
-    # Пустая строка с 200 — модалка формы с hx-swap=outerHTML исчезнет,
-    # а HX-Trigger перерисует таблицу финансов.
+    _log_event(
+        client, "payment_deleted",
+        getattr(request.user, "employee", None),
+        description=(
+            f"Удалён {direction_label} платёж на {_fmt_money(amount)} "
+            f"от {payment_date.strftime('%d.%m.%Y')}."
+        ),
+    )
     resp = HttpResponse("")
     resp["HX-Trigger"] = "reloadFinance"
     return resp

@@ -395,6 +395,12 @@ class ClientEvent(models.Model):
         ("questionnaire_created", "Анкета создана"),
         ("questionnaire_edited",  "Анкета отредактирована"),
         ("questionnaire_deleted", "Анкета удалена"),
+        # --- Финансы ---
+        ("schedule_created", "Составлен график платежей"),
+        ("schedule_updated", "Изменён график платежей"),
+        ("payment_created",  "Внесён платёж"),
+        ("payment_edited",   "Платёж отредактирован"),
+        ("payment_deleted",  "Платёж удалён"),
         # --- Система ---
         ("system",           "Системное событие"),
     ]
