@@ -185,6 +185,38 @@ class Charge(TimeStampedModel):
     def __str__(self):
         return f"{self.title} {self.amount} ₽ ({self.due_date})"
 
+    @property
+    def paid_amount(self):
+        """Сумма всех привязанных к этому начислению входящих платежей."""
+        from django.db.models import Sum
+        agg = self.payments.filter(direction="in").aggregate(s=Sum("amount_in"))
+        return agg["s"] or 0
+
+    @property
+    def remaining(self):
+        return max(self.amount - self.paid_amount, 0)
+
+    @property
+    def display_status(self):
+        """Видимый статус: paid если погашено, overdue если просрочка, иначе status поля."""
+        import datetime
+        if self.paid_amount >= self.amount:
+            return "paid"
+        if self.due_date and self.due_date < datetime.date.today():
+            return "overdue"
+        return self.status if self.status != "overdue" else "scheduled"
+
+    def recalc_status(self, save=True):
+        """Пересчитать поле status исходя из платежей. overdue не выставляем
+        здесь — это делает management-команда / display_status. Возвращает
+        новое значение."""
+        new = "paid" if self.paid_amount >= self.amount else "scheduled"
+        if new != self.status:
+            self.status = new
+            if save:
+                self.save(update_fields=["status"])
+        return new
+
 
 DIRECTION_CHOICES = [
     ("in", "Входящий"),

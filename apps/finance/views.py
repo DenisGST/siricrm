@@ -267,6 +267,16 @@ def _finance_context(client, *, kinds=ALL_KINDS, sort="date", direction="desc"):
     client_services = list(
         client.services.select_related("name").order_by("date_dogovor", "contract_seq")
     )
+    # На каждой услуге — оплачено/остаток по charges.
+    for s in client_services:
+        s_charged = sum((c.amount for c in s.charges.all()), Decimal("0"))
+        s_paid = sum(
+            (c.paid_amount for c in s.charges.all()),
+            Decimal("0"),
+        )
+        s.charges_total = s_charged
+        s.charges_paid = s_paid
+        s.charges_remaining = max(s_charged - s_paid, Decimal("0"))
 
     return {
         "client": client,
@@ -332,6 +342,23 @@ def payment_form_view(request, client_id, direction=None, payment_id=None):
         last_svc = client.services.order_by("-created_at").first()
         if last_svc:
             initial["service"] = last_svc.id
+        # Предзаполнение из «Оплатить» строки начисления: ?charge=<id>
+        charge_id = request.GET.get("charge")
+        if charge_id and direction == "in":
+            try:
+                ch = models.Charge.objects.get(pk=charge_id, client=client)
+                initial["charge"] = ch.id
+                initial["service"] = ch.service_id or initial.get("service")
+                initial["amount_in"] = ch.remaining or ch.amount
+                # Первый активный IncomeType — лучше всего совпадающий по услуге.
+                if ch.service_id:
+                    it = models.IncomeType.objects.filter(
+                        is_active=True, service_name=ch.service.name,
+                    ).first()
+                    if it:
+                        initial["income_type"] = it.id
+            except models.Charge.DoesNotExist:
+                pass
 
     if request.method == "POST":
         form = forms.PaymentForm(request.POST, instance=payment, client=client)
@@ -576,15 +603,23 @@ def payment_schedule_modal(request, service_id):
 
 @login_required
 @require_edit
-def charge_edit(request, service_id, charge_id):
-    """Редактирование одного начисления из модалки графика."""
+def charge_edit(request, service_id, charge_id=None):
+    """Создание / редактирование одного начисления.
+
+    GET без charge_id — пустая форма (создание).
+    GET с charge_id — форма с данными (редактирование).
+    POST — сохраняет, триггерит reloadSchedule + reloadFinance.
+    """
     service = get_object_or_404(Service, pk=service_id)
-    charge = get_object_or_404(models.Charge, pk=charge_id, service=service)
+    charge = get_object_or_404(models.Charge, pk=charge_id, service=service) if charge_id else None
+    is_new = charge is None
 
     if request.method == "POST":
         form = forms.ChargeForm(request.POST, instance=charge)
         if form.is_valid():
             obj = form.save(commit=False)
+            obj.client = service.client
+            obj.service = service
             emp = getattr(request.user, "employee", None)
             obj.updated_by = emp
             obj.save()
@@ -596,7 +631,8 @@ def charge_edit(request, service_id, charge_id):
 
     return render(request, "finance/partials/charge_form_modal.html", {
         "form": form, "charge": charge, "service": service,
-        "can_delete": can_delete_charge(request.user, service),
+        "is_new": is_new,
+        "can_delete": can_delete_charge(request.user, service) if charge else False,
     })
 
 

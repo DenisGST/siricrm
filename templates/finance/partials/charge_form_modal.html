@@ -1,9 +1,14 @@
 {% load icons l10n %}
 <dialog id="charge-form-modal" class="modal modal-middle">
   <div class="modal-box w-full max-w-lg">
-    <h3 class="font-bold text-lg mb-3">Редактирование начисления</h3>
+    <h3 class="font-bold text-lg mb-3">
+      {% if is_new %}Новое начисление{% else %}Редактирование начисления{% endif %}
+      <span class="text-sm text-base-content/60 font-normal ml-2">
+        {{ service.name.short_name }} · {{ service.numb_dogovor|default:"—" }}
+      </span>
+    </h3>
 
-    <form hx-post="{% url 'finance:charge_edit' service.id charge.id %}"
+    <form hx-post="{% if is_new %}{% url 'finance:charge_add' service.id %}{% else %}{% url 'finance:charge_edit' service.id charge.id %}{% endif %}"
           hx-target="#charge-form-modal"
           hx-swap="outerHTML"
           class="space-y-3">
@@ -53,7 +58,7 @@
       {% endif %}
 
       <div class="modal-action items-center">
-        {% if can_delete %}
+        {% if charge and can_delete %}
           <button type="button" class="btn btn-error btn-sm mr-auto"
                   hx-post="{% url 'finance:charge_delete' service.id charge.id %}"
                   hx-target="#charge-form-modal"

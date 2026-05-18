@@ -13,11 +13,23 @@
     </div>
     {% if client_services %}
       <div class="text-xs text-base-content/60 mt-1">по договору:</div>
-      <div class="text-xs space-y-1">
+      <div class="text-xs space-y-2">
         {% for s in client_services %}
-          <div class="flex justify-between gap-2">
-            <span class="text-base-content/70">№{{ s.numb_dogovor|default:"—" }}</span>
-            <span class="font-mono">{% if s.contract_price %}{{ s.contract_price|floatformat:2 }} руб.{% else %}—{% endif %}</span>
+          <div>
+            <div class="flex justify-between gap-2">
+              <span class="text-base-content/70">№{{ s.numb_dogovor|default:"—" }}</span>
+              <span class="font-mono">{% if s.contract_price %}{{ s.contract_price|floatformat:2 }} руб.{% else %}—{% endif %}</span>
+            </div>
+            {% if s.charges_total > 0 %}
+              <div class="flex justify-between gap-2 text-[10px] text-base-content/60 pl-2">
+                <span>оплачено</span>
+                <span class="font-mono text-success">{{ s.charges_paid|floatformat:2 }}</span>
+              </div>
+              <div class="flex justify-between gap-2 text-[10px] text-base-content/60 pl-2">
+                <span>остаток</span>
+                <span class="font-mono {% if s.charges_remaining > 0 %}text-error{% else %}text-success{% endif %}">{{ s.charges_remaining|floatformat:2 }}</span>
+              </div>
+            {% endif %}
           </div>
         {% endfor %}
       </div>
@@ -76,7 +88,23 @@
   </form>
 
   {% if can_edit %}
-  <div class="flex gap-2">
+  <div class="flex gap-2 items-center">
+    {% if client_services %}
+      <div class="dropdown dropdown-end">
+        <label tabindex="0" class="btn btn-warning btn-sm">+ Начисление</label>
+        <ul tabindex="0" class="dropdown-content menu bg-base-100 rounded-md shadow z-50 w-64 p-1 border border-base-300">
+          {% for s in client_services %}
+          <li>
+            <a hx-get="{% url 'finance:charge_add' s.id %}"
+               hx-target="body" hx-swap="beforeend"
+               class="text-xs">
+              {{ s.numb_dogovor|default:s.name.short_name }} — {{ s.name.short_name }}
+            </a>
+          </li>
+          {% endfor %}
+        </ul>
+      </div>
+    {% endif %}
     <button class="btn btn-success btn-sm"
             hx-get="{% url 'finance:payment_add' client.id 'in' %}"
             hx-target="body" hx-swap="beforeend">

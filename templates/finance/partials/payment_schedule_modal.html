@@ -126,14 +126,26 @@
         </div>
       </div>
 
-      {% if charges %}
+      {% if charges or service.date_start %}
         <div class="border-t border-base-300 pt-3">
           <div class="flex justify-between items-baseline mb-2">
-            <h4 class="text-sm font-semibold">Текущий график ({{ charges|length }})</h4>
-            <div class="text-xs text-base-content/60">
-              Итого: <b class="font-mono">{{ charges_total|default:"" }}</b>
+            <h4 class="text-sm font-semibold">
+              Текущий график{% if charges %} ({{ charges|length }}){% endif %}
+            </h4>
+            <div class="flex items-center gap-3">
+              {% if charges %}
+                <div class="text-xs text-base-content/60">
+                  Итого: <b class="font-mono">{{ charges_total|default:"" }}</b>
+                </div>
+              {% endif %}
+              <button type="button" class="btn btn-primary btn-xs"
+                      hx-get="{% url 'finance:charge_add' service.id %}"
+                      hx-target="body" hx-swap="beforeend">
+                + Начисление
+              </button>
             </div>
           </div>
+          {% if charges %}
           <div class="overflow-y-auto border border-base-300 rounded-md" style="max-height:18rem;">
             <table class="table table-xs w-full" style="border-collapse:separate;border-spacing:0;">
               <thead style="position:sticky;top:0;z-index:1;background:#e5e7eb;">
@@ -141,6 +153,7 @@
                   <th style="border-bottom:1px solid #94a3b8;">Дата</th>
                   <th style="border-bottom:1px solid #94a3b8;">Наименование</th>
                   <th class="text-right" style="border-bottom:1px solid #94a3b8;">Сумма, ₽</th>
+                  <th class="text-right" style="border-bottom:1px solid #94a3b8;">Остаток, ₽</th>
                   <th style="border-bottom:1px solid #94a3b8;">Статус</th>
                   <th style="border-bottom:1px solid #94a3b8;width:1%;"></th>
                 </tr>
@@ -154,23 +167,37 @@
                   <td class="whitespace-nowrap">{{ ch.due_date|date:"d.m.Y" }}</td>
                   <td>{{ ch.title }}</td>
                   <td class="text-right font-mono">{{ ch.amount|floatformat:2 }}</td>
+                  <td class="text-right font-mono {% if ch.remaining > 0 %}text-error{% else %}text-success{% endif %}">
+                    {{ ch.remaining|floatformat:2 }}
+                  </td>
                   <td>
-                    {% if ch.status == 'paid' %}
+                    {% if ch.display_status == 'paid' %}
                       <span class="badge badge-success badge-xs">опл.</span>
-                    {% elif ch.status == 'overdue' %}
+                    {% elif ch.display_status == 'overdue' %}
                       <span class="badge badge-error badge-xs">проср.</span>
                     {% else %}
                       <span class="badge badge-ghost badge-xs">в графике</span>
                     {% endif %}
                   </td>
                   <td class="text-right whitespace-nowrap">
-                    <span class="text-base-content/30">{% icon "pencil" size=12 %}</span>
+                    {% if ch.display_status != 'paid' %}
+                      <button type="button" class="btn btn-success btn-xs"
+                              hx-get="{% url 'finance:payment_add' service.client.id 'in' %}?charge={{ ch.id }}"
+                              hx-target="body" hx-swap="beforeend"
+                              onclick="event.stopPropagation()"
+                              title="Внести оплату">
+                        Оплатить
+                      </button>
+                    {% else %}
+                      <span class="text-base-content/30">{% icon "check" size=12 %}</span>
+                    {% endif %}
                   </td>
                 </tr>
                 {% endfor %}
               </tbody>
             </table>
           </div>
+          {% endif %}
         </div>
       {% endif %}
 
