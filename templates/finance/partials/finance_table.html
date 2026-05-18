@@ -132,7 +132,9 @@
         </td>
         <td>{{ row.account|default:"—" }}</td>
         <td class="whitespace-nowrap">{{ row.status }}</td>
-        <td class="text-xs text-base-content/70 truncate" title="{{ row.comments }}">{{ row.comments|default:"" }}</td>
+        <td class="text-xs text-base-content/70" title="{{ row.comments }}">
+          <div class="line-clamp-2 whitespace-pre-line">{{ row.comments|default:"" }}</div>
+        </td>
         <td class="text-center">
           {% if row.meta.created_by or row.meta.updated_by %}
             <span class="inline-flex text-base-content/40 cursor-help"
