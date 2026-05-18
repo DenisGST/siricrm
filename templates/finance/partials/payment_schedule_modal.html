@@ -1,5 +1,9 @@
 {% load icons l10n %}
-<dialog id="payment-schedule-modal" class="modal modal-middle">
+<dialog id="payment-schedule-modal" class="modal modal-middle"
+        hx-trigger="reloadSchedule from:body"
+        hx-get="{% url 'finance:payment_schedule_modal' service.id %}"
+        hx-target="#payment-schedule-modal"
+        hx-swap="outerHTML">
   <div class="modal-box w-full" style="max-width:48rem;">
     <h3 class="font-bold text-lg mb-1">График платежей</h3>
     <p class="text-xs text-base-content/60 mb-3">
@@ -113,11 +117,15 @@
                   <th style="border-bottom:1px solid #94a3b8;">Наименование</th>
                   <th class="text-right" style="border-bottom:1px solid #94a3b8;">Сумма, ₽</th>
                   <th style="border-bottom:1px solid #94a3b8;">Статус</th>
+                  <th style="border-bottom:1px solid #94a3b8;width:1%;"></th>
                 </tr>
               </thead>
               <tbody>
                 {% for ch in charges %}
-                <tr>
+                <tr class="cursor-pointer hover:bg-base-200"
+                    hx-get="{% url 'finance:charge_edit' service.id ch.id %}"
+                    hx-target="body" hx-swap="beforeend"
+                    title="Редактировать">
                   <td class="whitespace-nowrap">{{ ch.due_date|date:"d.m.Y" }}</td>
                   <td>{{ ch.title }}</td>
                   <td class="text-right font-mono">{{ ch.amount|floatformat:2 }}</td>
@@ -129,6 +137,9 @@
                     {% else %}
                       <span class="badge badge-ghost badge-xs">в графике</span>
                     {% endif %}
+                  </td>
+                  <td class="text-right whitespace-nowrap">
+                    <span class="text-base-content/30">{% icon "pencil" size=12 %}</span>
                   </td>
                 </tr>
                 {% endfor %}

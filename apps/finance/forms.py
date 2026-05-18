@@ -27,6 +27,16 @@ class OutgoingAccountForm(forms.ModelForm):
         fields = ["account_type", "name", "is_active"]
 
 
+class ChargeForm(forms.ModelForm):
+    class Meta:
+        model = models.Charge
+        fields = ["due_date", "title", "amount", "status", "comments"]
+        widgets = {
+            "due_date": forms.DateInput(attrs={"type": "date"}),
+            "comments": forms.Textarea(attrs={"rows": 2}),
+        }
+
+
 class PaymentForm(forms.ModelForm):
     """Форма платежа.
 

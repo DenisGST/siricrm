@@ -496,6 +496,44 @@ def payment_schedule_modal(request, service_id):
 
 
 @login_required
+@require_edit
+def charge_edit(request, service_id, charge_id):
+    """Редактирование одного начисления из модалки графика."""
+    service = get_object_or_404(Service, pk=service_id)
+    charge = get_object_or_404(models.Charge, pk=charge_id, service=service)
+
+    if request.method == "POST":
+        form = forms.ChargeForm(request.POST, instance=charge)
+        if form.is_valid():
+            obj = form.save(commit=False)
+            emp = getattr(request.user, "employee", None)
+            obj.updated_by = emp
+            obj.save()
+            resp = HttpResponse("")
+            resp["HX-Trigger"] = "reloadSchedule, reloadFinance"
+            return resp
+    else:
+        form = forms.ChargeForm(instance=charge)
+
+    return render(request, "finance/partials/charge_form_modal.html", {
+        "form": form, "charge": charge, "service": service,
+        "can_delete": can_delete_finance(request.user),
+    })
+
+
+@login_required
+@require_delete
+@require_POST
+def charge_delete(request, service_id, charge_id):
+    service = get_object_or_404(Service, pk=service_id)
+    charge = get_object_or_404(models.Charge, pk=charge_id, service=service)
+    charge.delete()
+    resp = HttpResponse("")
+    resp["HX-Trigger"] = "reloadSchedule, reloadFinance"
+    return resp
+
+
+@login_required
 @require_delete
 @require_POST
 def payment_delete(request, client_id, payment_id):

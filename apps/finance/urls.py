@@ -28,6 +28,8 @@ urlpatterns = [
 
     # График платежей по услуге
     path("service/<uuid:service_id>/schedule/", views.payment_schedule_modal, name="payment_schedule_modal"),
+    path("service/<uuid:service_id>/charge/<uuid:charge_id>/edit/", views.charge_edit, name="charge_edit"),
+    path("service/<uuid:service_id>/charge/<uuid:charge_id>/delete/", views.charge_delete, name="charge_delete"),
 
     # Финансы по клиенту
     path("client/<uuid:client_id>/finance/", views.finance_modal, name="finance_modal"),
