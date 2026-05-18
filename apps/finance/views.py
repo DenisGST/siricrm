@@ -346,10 +346,11 @@ def payment_form_view(request, client_id, direction=None, payment_id=None):
             obj.save()
             amount = obj.amount_in if obj.direction == "in" else obj.amount_out
             direction_label = "входящий" if obj.direction == "in" else "исходящий"
+            event_type = (
+                f"payment_{obj.direction}_{'created' if is_new else 'edited'}"
+            )
             _log_event(
-                client,
-                "payment_created" if is_new else "payment_edited",
-                emp,
+                client, event_type, emp,
                 description=(
                     f"{'Внесён' if is_new else 'Отредактирован'} {direction_label} платёж "
                     f"на {_fmt_money(amount)} от {obj.payment_date.strftime('%d.%m.%Y')}."
@@ -621,9 +622,10 @@ def payment_delete(request, client_id, payment_id):
     amount = payment.amount_in if payment.direction == "in" else payment.amount_out
     direction_label = "входящий" if payment.direction == "in" else "исходящий"
     payment_date = payment.payment_date
+    direction_code = payment.direction
     payment.delete()
     _log_event(
-        client, "payment_deleted",
+        client, f"payment_{direction_code}_deleted",
         getattr(request.user, "employee", None),
         description=(
             f"Удалён {direction_label} платёж на {_fmt_money(amount)} "
