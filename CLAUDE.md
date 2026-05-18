@@ -51,6 +51,7 @@ apps/maxchat        — интеграция MaxChat
 apps/consultations  — график консультаций
 apps/questionnaire  — анкеты БФЛ (типизированные вопросы), PDF через ReportLab, S3
 apps/devops         — DevOps-панель (см. ниже)
+apps/finance        — финансовый учёт: Payment, Charge, справочники, генератор графика платежей
 config/             — settings/, urls, asgi (ASGI: HTTP+WS через daphne), celery
 templates/          — Django-шаблоны (проект НЕ использует base.html — dashboard.html самодостаточен)
 docs/               — технические доки (deployment, migration, legacy quickstart)
@@ -106,6 +107,8 @@ gunzip -c backups/db-XXXX.sql.gz | docker compose -f <compose> --env-file <env> 
 
 Пользовательские инструкции (`guides/`):
 - `guides/devops-panel.md` — как пользоваться DevOps-панелью (для суперюзера)
+- `guides/admin-overview.md` — приложения, модели, права, сигналы, Celery beat — для понимания общей структуры
+- `guides/finance-module.md` — финансовый учёт: модели, генератор графика, статусы, права, события
 
 Прочее:
 - `README.md` — общее описание проекта (для GitHub)
