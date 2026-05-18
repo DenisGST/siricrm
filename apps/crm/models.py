@@ -404,6 +404,7 @@ class ClientEvent(models.Model):
         ("payment_out_created","Внесён исходящий платёж"),
         ("payment_out_edited", "Исходящий платёж отредактирован"),
         ("payment_out_deleted","Исходящий платёж удалён"),
+        ("charge_overdue",     "Начисление просрочено"),
         # --- Система ---
         ("system",           "Системное событие"),
     ]
