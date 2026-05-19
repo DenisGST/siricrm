@@ -19,6 +19,7 @@ from .models import (
 )
 from .forms import ClientForm, LegalEntityForm, ServiceForm
 from apps.core.models import Employee, EmployeeLog, Department
+from apps.core.permissions import is_management, is_references_access
 from apps.telegram.telegram_sender import create_message_and_store_file
 from .tasks import send_telegram_message_task
 from apps.maxchat.tasks import send_max_message_task
@@ -1150,14 +1151,11 @@ def _visible_services_qs(user):
         "employee_states__employee__user", "employee_states__status",
         "tag_assignments__tag", "tag_assignments__employee",
     )
-    if user.is_superuser:
+    if is_references_access(user):
         return qs
     emp = _current_employee_from_user(user)
     if not emp:
         return qs.none()
-    # admin/head_dep видят всё из своих отделов / всех; обычные — только где есть доступ к этой услуге
-    if emp.role in ("admin", "head_dep"):
-        return qs
     allowed_ids = list(emp.services_allowed.values_list("id", flat=True))
     return qs.filter(name_id__in=allowed_ids)
 
@@ -1181,7 +1179,7 @@ def service_edit(request, pk=None):
     svc = get_object_or_404(Service, pk=pk) if pk else None
 
     # Контроль доступа: нельзя редактировать услугу, к которой нет доступа.
-    if svc and emp and not request.user.is_superuser and emp.role not in ("admin", "head_dep"):
+    if svc and emp and not is_references_access(request.user):
         if not emp.services_allowed.filter(pk=svc.name_id).exists():
             return HttpResponse("Нет доступа к услуге", status=403)
 
@@ -1294,7 +1292,7 @@ def service_edit(request, pk=None):
 def service_delete(request, pk):
     emp = _current_employee_from_user(request.user)
     svc = get_object_or_404(Service, pk=pk)
-    if not request.user.is_superuser and (not emp or emp.role not in ("admin", "head_dep")):
+    if not is_references_access(request.user):
         return HttpResponse("Нет доступа", status=403)
     client_id  = svc.client_id
     svc_label  = svc.numb_dogovor or svc.name.short_name
@@ -1437,10 +1435,7 @@ def my_kanban(request):
         return HttpResponse("Нужен профиль сотрудника", status=403)
 
     # Права на просмотр чужих канбанов
-    CAN_VIEW_OTHERS = (
-        request.user.is_superuser or
-        current_emp.role in ("head_dep", "managing_partner", "admin")
-    )
+    CAN_VIEW_OTHERS = is_management(request.user)
 
     service_name_id  = request.GET.get("service_name") or ""
     common_status_id = request.GET.get("common_status") or ""
@@ -1511,10 +1506,7 @@ def my_kanban_column(request, status_id):
         return HttpResponse("", status=403)
 
     viewed_emp_id = request.GET.get("viewed_employee") or ""
-    CAN_VIEW_OTHERS = (
-        request.user.is_superuser or
-        current_emp.role in ("head_dep", "managing_partner", "admin")
-    )
+    CAN_VIEW_OTHERS = is_management(request.user)
     if CAN_VIEW_OTHERS and viewed_emp_id:
         emp = get_object_or_404(Employee, pk=viewed_emp_id, is_active=True)
     else:

@@ -12,6 +12,7 @@ from apps.crm.models import (
 from apps.core.models import (
     Employee, EmployeeLog, Department
 )
+from apps.core.permissions import ReadOnlyOrIsAdmin
 from apps.core.serializers import (
     EmployeeSerializer,
     EmployeeLogSerializer,
@@ -38,7 +39,7 @@ class ClientViewSet(viewsets.ModelViewSet):
     """
     queryset = Client.objects.prefetch_related('employees')
     serializer_class = ClientSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [ReadOnlyOrIsAdmin]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     filterset_fields = ['status']
     search_fields = ['first_name', 'last_name', 'username', 'phone', 'email']
@@ -88,10 +89,10 @@ class ClientViewSet(viewsets.ModelViewSet):
         if new_status in dict(Client.STATUS_CHOICES):
             client.status = new_status
             client.save(update_fields=['status'])
-            
-            # Log action
+
+            from apps.core.permissions import get_employee
             EmployeeLog.objects.create(
-                employee=request.user.employee,
+                employee=get_employee(request.user),
                 action='client_status_changed',
                 description=f"Client status changed to {new_status}",
                 client=client,
@@ -121,18 +122,19 @@ class MessageViewSet(viewsets.ModelViewSet):
     """
     queryset = Message.objects.select_related('employee', 'client')
     serializer_class = MessageSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [ReadOnlyOrIsAdmin]
     filter_backends = [DjangoFilterBackend, OrderingFilter]
     filterset_fields = ['client', 'employee', 'direction', 'message_type']
     ordering_fields = ['created_at']
-    
+
     def perform_create(self, serializer):
         """Save message and log action"""
-        message = serializer.save(employee=self.request.user.employee)
-        
-        # Log action
+        from apps.core.permissions import get_employee
+        emp = get_employee(self.request.user)
+        message = serializer.save(employee=emp)
+
         EmployeeLog.objects.create(
-            employee=self.request.user.employee,
+            employee=emp,
             action='message_sent',
             description=f"Message sent to {message.client}",
             client=message.client,

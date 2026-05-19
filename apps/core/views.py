@@ -16,6 +16,12 @@ import psutil
 import os
 import re
 
+# Реэкспорт предикатов прав, чтобы существующие @user_passes_test(is_admin)
+# и импорты из apps.core.views продолжали работать.
+from apps.core.permissions import (  # noqa: F401
+    is_superuser, is_admin, is_references_access,
+)
+
 
 LOG_FILES = {
     'django':   '/app/logs/crm.log',
@@ -23,10 +29,6 @@ LOG_FILES = {
     'celery':   '/app/logs/celery.log',
     'maxbot':   '/app/logs/maxbot.log',
 }
-
-
-def is_superuser(user):
-    return user.is_superuser
 
 
 @user_passes_test(is_superuser)
@@ -209,13 +211,6 @@ def parse_last_errors(log_file, limit=30, cleared_at=None):
 # ─────────────────────────────────────────────
 # Панель управления (admin panel)
 # ─────────────────────────────────────────────
-
-def is_admin(user):
-    if not user.is_authenticated:
-        return False
-    if user.is_superuser:
-        return True
-    return hasattr(user, "employee") and user.employee.role == "admin"
 
 
 @user_passes_test(is_admin)
@@ -429,16 +424,6 @@ def admin_widget_delete(request, pk):
 # ─────────────────────────────────────────────
 # Справочники (references): доступ руководителям и администраторам
 # ─────────────────────────────────────────────
-
-def is_references_access(user):
-    """Доступ к справочникам: суперпользователь, администратор, руководитель отдела."""
-    if not user.is_authenticated:
-        return False
-    if user.is_superuser:
-        return True
-    if not hasattr(user, "employee"):
-        return False
-    return user.employee.role in ("admin", "head_dep")
 
 
 @user_passes_test(is_references_access)

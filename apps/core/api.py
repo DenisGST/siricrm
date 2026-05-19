@@ -9,6 +9,7 @@ from django.db.models import Count
 from apps.core.models import (
     Employee, EmployeeLog, Department
 )
+from apps.core.permissions import ReadOnlyOrIsAdmin
 from apps.core.serializers import (
     EmployeeSerializer,
     EmployeeLogSerializer,
@@ -31,7 +32,7 @@ class DepartmentViewSet(viewsets.ModelViewSet):
     """
     queryset = Department.objects.prefetch_related('employees', 'manager')
     serializer_class = DepartmentSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [ReadOnlyOrIsAdmin]
     filter_backends = [SearchFilter, OrderingFilter]
     search_fields = ['name', 'description']
     ordering_fields = ['name', 'created_at']
@@ -81,7 +82,7 @@ class EmployeeViewSet(viewsets.ModelViewSet):
     """
     queryset = Employee.objects.select_related('user', 'department')
     serializer_class = EmployeeSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [ReadOnlyOrIsAdmin]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     filterset_fields = ['department', 'is_active', 'is_online']
     search_fields = ['user__first_name', 'user__last_name']
