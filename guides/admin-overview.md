@@ -41,18 +41,58 @@ Employee ─┬─ role: operator|manager|consultant|assitent_legal|lawyer|head_
 
 ## Права и helpers
 
-Единого permissions-фреймворка в проекте нет — используются простые функции:
+Двухуровневая система: глобальные role-based проверки + object-level через django-rules.
 
-- `apps.core.views.is_superuser(user)` — true для `is_superuser`.
-- `apps.core.views.is_admin(user)` — superuser или `Employee.role == 'admin'`.
-- `apps.core.views.is_references_access(user)` — superuser, `admin` или `head_dep`. Используется для всех справочников (`/references/...`).
-- `apps.finance.permissions`:
-  - `can_edit_finance(user)` — `admin`, `accountant`, superuser. Создание/редактирование платежей и графика.
-  - `can_delete_finance(user)` — `admin`, superuser. Удаление платежей.
-  - `can_delete_charge(user, service)` — `admin`/`head_dep`/`consultant`/superuser + `agent` если он есть в `service.employees`.
-  - Декораторы `@require_edit`, `@require_delete` — для view-функций.
+### 1. Role-based — `apps.core.permissions`
 
-При написании новых view придерживайтесь этого подхода: маленькая функция-предикат + `user_passes_test` или явная проверка. Не плодите Django Groups/Permissions без необходимости.
+Централизованный модуль с константами групп ролей, функциями-предикатами и декораторами. Все новые проверки идут через него, а не inline.
+
+- **Группы ролей** (меняй здесь, не в десятках view):
+  - `ELEVATED_ROLES = {admin, head_dep}` — справочники, расширенное меню.
+  - `MANAGEMENT_ROLES = {admin, head_dep, managing_partner}` — просмотр чужих канбанов.
+- **Предикаты** (все безопасны для суперюзера без `Employee`):
+  - `is_superuser(user)`, `is_admin(user)` — superuser или `role=admin`.
+  - `is_references_access(user)` — `ELEVATED_ROLES` + superuser. Справочники `/references/`.
+  - `is_management(user)` — `MANAGEMENT_ROLES` + superuser.
+  - `has_role(user, *roles)` — произвольная проверка.
+  - `get_employee(user)` — `user.employee` или `None` без падения.
+- **Декораторы view-функций**: `@require_superuser`, `@require_admin`, `@require_references_access`, `@require_management`.
+- **DRF permission-классы**: `IsAdmin`, `IsReferencesAccess`, `IsManagement`, `ReadOnlyOrIsAdmin`, `ReadOnlyOrIsManagement`. Все DRF-`ViewSet`'ы CRM/Core используют их.
+- Старые имена (`is_superuser/is_admin/is_references_access`) реэкспортируются из `apps.core.views` — поэтому существующие `@user_passes_test(...)` декораторы работают без правок.
+
+Доменные ограничения держим отдельно: `apps.finance.permissions`:
+- `can_edit_finance(user)` — `admin`, `accountant`, superuser. Создание/редактирование платежей и начислений.
+- `can_delete_finance(user)` — `admin`, superuser. Удаление платежей.
+- `can_delete_charge(user, service)` — `admin`/`head_dep`/`consultant`/superuser + `agent` если он есть в `service.employees`.
+- Декораторы `@require_edit`, `@require_delete`.
+
+### 2. Object-level — `django-rules` (`apps.crm.rules`)
+
+Для проверок «может ли *этот* пользователь действовать над *этим* объектом» используется [django-rules](https://github.com/dfunckt/django-rules). Установлен пакет `rules`, в `INSTALLED_APPS` — `rules.apps.AutodiscoverRulesConfig` (он сам подхватывает `apps/<app>/rules.py` при старте), в `AUTHENTICATION_BACKENDS` — `rules.permissions.ObjectPermissionBackend` (он включает `user.has_perm('crm.edit_client', client)` и `{% has_perm %}`).
+
+Зарегистрированы пермишены:
+- `crm.view_client` / `crm.edit_client` — admin/superuser видит/правит всех; `head_dep` — клиентов своего отдела (предикат `is_in_client_department`); остальные — где они в `Client.employees`.
+- `crm.delete_client` — только admin/superuser.
+- `crm.view_service` / `crm.edit_service` — admin/head_dep/superuser — все; остальные — если они в `Service.employees` либо тип услуги в `Employee.services_allowed`.
+- `crm.delete_service` — admin/head_dep/superuser.
+
+**Важно:** django-rules не фильтрует QuerySet. Для списков (canban, `clients_list`, DRF `list`-action) используем менеджеры из `apps/crm/managers.py`:
+- `Client.objects.visible_to(user)` — фильтр клиентов.
+- `Service.objects.visible_to(user)` — фильтр услуг.
+
+Логика visible_to **должна совпадать** с предикатами в `apps/crm/rules.py`. Если меняешь бизнес-правило — правь оба места.
+
+### Что использовать в новом коде
+
+| Проверка | Используй |
+| -------- | --------- |
+| Только роль («админ ли он?») | `is_admin(user)`, `has_role(user, ...)` или `@require_admin` |
+| DRF API (read-all / write-admin) | `permission_classes = [ReadOnlyOrIsAdmin]` |
+| «Может ли user работать с этим клиентом/услугой?» | `user.has_perm('crm.edit_client', client)` или `@rules_permission_required('crm.edit_service', fn=...)` |
+| Фильтрация списка | `Model.objects.visible_to(user)` |
+| Кнопка в шаблоне | `{% load rules %}` → `{% has_perm 'crm.edit_client' user client as can_edit %}` |
+
+Не плодите Django Groups/Permissions через БД — текущая система явная, тестируемая и работает без миграций.
 
 ## Сигналы и автоматика
 
@@ -60,6 +100,7 @@ Employee ─┬─ role: operator|manager|consultant|assitent_legal|lawyer|head_
 | --- | ---------- |
 | `apps.finance.signals` | После `Payment.save` / `Payment.delete` вызывает `Charge.recalc_status()` для связанной charge — выставляет `paid` / `scheduled`. Подключение через `apps.finance.apps.FinanceConfig.ready()` |
 | `apps.devops.apps.DevopsConfig.ready()` | Импорт `handlers/` для регистрации хендлеров `@register_handler` |
+| `rules.apps.AutodiscoverRulesConfig` | На старте Django ищет `apps/<app>/rules.py` и выполняет `add_perm(...)` — так регистрируются `crm.view_client/edit_client/...` (см. `apps/crm/rules.py`). |
 | `apps.crm` (post_save Client / Service) | Часть лога событий, пишется явно из view-функций, а не сигналами — чтобы получить актора (employee) из request |
 
 В целом лог `ClientEvent` создаётся **из view-функций** (а не из сигналов модели) — потому что сигнал не знает, кто инициировал действие. См. `apps/crm/views.py` и `apps/finance/views.py` (helper `_log_event`).
