@@ -71,6 +71,11 @@ class Client(TimeStampedModel):
         verbose_name="Telegram ID",
     )
     max_chat_id = models.CharField(max_length=64, blank=True, null=True)
+    whatsapp_phone = models.CharField(
+        max_length=20, blank=True, null=True, unique=True,
+        verbose_name="WhatsApp phone (E.164 без +)",
+        help_text="Например, 79991234567",
+    )
     first_name = models.CharField(max_length=255, verbose_name='Имя')
     last_name = models.CharField(max_length=255, blank=True, verbose_name='Фамилия')
     patronymic = models.CharField(max_length=255, blank=True, verbose_name='Отчество')
@@ -485,15 +490,20 @@ class Message(TimeStampedModel):
     
     channel = models.CharField(
         max_length=16,
-        choices=[("telegram", "Telegram"), ("max", "MAX")],
+        choices=[("telegram", "Telegram"), ("max", "MAX"), ("whatsapp", "WhatsApp")],
         default="telegram",
     )
-    
+
     max_message_id = models.CharField(
         max_length=128,
         blank=True,
         null=True,
         help_text="ID сообщения в MAX",
+    )
+
+    whatsapp_message_id = models.CharField(
+        max_length=128, blank=True, null=True,
+        help_text="ID сообщения в WhatsApp (Meta wamid)",
     )
 
     raw_payload = models.JSONField(
