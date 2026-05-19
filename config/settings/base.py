@@ -45,7 +45,18 @@ INSTALLED_APPS = [
     "apps.questionnaire",
     "apps.devops",
     "apps.finance",
+
+    # django-rules: object-level permissions (apps/<app>/rules.py авто-импортируются)
+    "rules.apps.AutodiscoverRulesConfig",
 ]
+
+# Django по умолчанию использует только ModelBackend (он отвечает за логин).
+# Добавляем ObjectPermissionBackend из django-rules — он подключает
+# user.has_perm('crm.edit_client', client) и шаблонный тэг {% has_perm %}.
+AUTHENTICATION_BACKENDS = (
+    "django.contrib.auth.backends.ModelBackend",
+    "rules.permissions.ObjectPermissionBackend",
+)
 
 # --- DevOps panel ---
 DEVOPS_AGENT_TOKEN = config("DEVOPS_AGENT_TOKEN", default="")

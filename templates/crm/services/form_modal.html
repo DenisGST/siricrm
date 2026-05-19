@@ -1,3 +1,4 @@
+{% load rules %}
 <dialog id="service-modal" class="modal modal-middle modal-open">
 
   <!-- Результаты поиска — за пределами modal-box, внутри dialog (тот же top-layer) -->
@@ -286,7 +287,8 @@
           Анкеты
         </button>
         {% endif %}
-        {% if service and request.user.is_superuser %}
+        {% has_perm 'crm.delete_service' user service as can_delete_service %}
+        {% if service and can_delete_service %}
         <button type="button" class="btn btn-error btn-sm mr-auto"
                 hx-post="{% url 'service_delete' service.pk %}"
                 hx-confirm="Удалить услугу? Это действие необратимо."

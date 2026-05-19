@@ -21,6 +21,7 @@ from .forms import ClientForm, LegalEntityForm, ServiceForm
 from apps.core.models import Employee, EmployeeLog, Department
 from apps.core.permissions import is_management, is_references_access
 from apps.telegram.telegram_sender import create_message_and_store_file
+from rules.contrib.views import permission_required as rules_permission_required
 from .tasks import send_telegram_message_task
 from apps.maxchat.tasks import send_max_message_task
 
@@ -609,7 +610,7 @@ def logs_list(request):
 def clients_list(request):
     search = request.GET.get("search", "").strip()
 
-    qs = Client.objects.prefetch_related("employees")
+    qs = Client.objects.visible_to(request.user).prefetch_related("employees")
 
     if search:
         qs = qs.filter(
@@ -693,6 +694,11 @@ def task_status(request, task_id):
     )
 
 @login_required
+@rules_permission_required(
+    "crm.edit_client",
+    fn=lambda request, client_id: get_object_or_404(Client, pk=client_id),
+    raise_exception=True,
+)
 def client_edit(request, client_id):
     client = get_object_or_404(Client, pk=client_id)
     if request.method == "POST":
@@ -1144,20 +1150,13 @@ def _current_employee(request):
 
 
 def _visible_services_qs(user):
-    """Услуги, к которым у пользователя есть доступ по services_allowed."""
-    qs = Service.objects.select_related(
+    """Услуги, видимые пользователю. Логика — в ``Service.objects.visible_to``."""
+    return Service.objects.visible_to(user).select_related(
         "client", "agent", "name", "region", "common_status", "payment_procedure",
     ).prefetch_related(
         "employee_states__employee__user", "employee_states__status",
         "tag_assignments__tag", "tag_assignments__employee",
     )
-    if is_references_access(user):
-        return qs
-    emp = _current_employee_from_user(user)
-    if not emp:
-        return qs.none()
-    allowed_ids = list(emp.services_allowed.values_list("id", flat=True))
-    return qs.filter(name_id__in=allowed_ids)
 
 
 def _current_employee_from_user(user):
@@ -1178,10 +1177,10 @@ def service_edit(request, pk=None):
     emp = _current_employee_from_user(request.user)
     svc = get_object_or_404(Service, pk=pk) if pk else None
 
-    # Контроль доступа: нельзя редактировать услугу, к которой нет доступа.
-    if svc and emp and not is_references_access(request.user):
-        if not emp.services_allowed.filter(pk=svc.name_id).exists():
-            return HttpResponse("Нет доступа к услуге", status=403)
+    # Контроль доступа: нельзя редактировать чужую услугу. Для pk=None
+    # (создание новой) объектной проверки нет — see apps.crm.rules.
+    if svc and not request.user.has_perm("crm.edit_service", svc):
+        return HttpResponse("Нет доступа к услуге", status=403)
 
     preset_client_id = request.GET.get("client") or request.POST.get("_preset_client")
     preset_client = Client.objects.filter(pk=preset_client_id).first() if preset_client_id else None
@@ -1289,11 +1288,14 @@ def service_edit(request, pk=None):
 
 @login_required
 @require_POST
+@rules_permission_required(
+    "crm.delete_service",
+    fn=lambda request, pk: get_object_or_404(Service, pk=pk),
+    raise_exception=True,
+)
 def service_delete(request, pk):
     emp = _current_employee_from_user(request.user)
     svc = get_object_or_404(Service, pk=pk)
-    if not is_references_access(request.user):
-        return HttpResponse("Нет доступа", status=403)
     client_id  = svc.client_id
     svc_label  = svc.numb_dogovor or svc.name.short_name
     svc_name   = svc.name.short_name

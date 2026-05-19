@@ -37,13 +37,17 @@ class ClientViewSet(viewsets.ModelViewSet):
     - GET /api/clients/{id}/messages/ - Get client conversation
     - POST /api/clients/{id}/assign_employee/ - Assign employee
     """
-    queryset = Client.objects.prefetch_related('employees')
     serializer_class = ClientSerializer
     permission_classes = [ReadOnlyOrIsAdmin]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     filterset_fields = ['status']
     search_fields = ['first_name', 'last_name', 'username', 'phone', 'email']
     ordering_fields = ['last_message_at', 'created_at']
+
+    def get_queryset(self):
+        """Object-level фильтрация: сотрудник видит только своих клиентов
+        (и head_dep — клиентов своего отдела). См. apps.crm.managers."""
+        return Client.objects.visible_to(self.request.user).prefetch_related('employees')
     
     @action(detail=True, methods=['get'])
     def messages(self, request, pk=None):
@@ -120,12 +124,18 @@ class MessageViewSet(viewsets.ModelViewSet):
     - PUT /api/messages/{id}/ - Update message
     - DELETE /api/messages/{id}/ - Delete message
     """
-    queryset = Message.objects.select_related('employee', 'client')
     serializer_class = MessageSerializer
     permission_classes = [ReadOnlyOrIsAdmin]
     filter_backends = [DjangoFilterBackend, OrderingFilter]
     filterset_fields = ['client', 'employee', 'direction', 'message_type']
     ordering_fields = ['created_at']
+
+    def get_queryset(self):
+        """Сообщения видны только для клиентов, к которым у пользователя есть доступ."""
+        visible_clients = Client.objects.visible_to(self.request.user).values('pk')
+        return Message.objects.filter(client__in=visible_clients).select_related(
+            'employee', 'client',
+        )
 
     def perform_create(self, serializer):
         """Save message and log action"""

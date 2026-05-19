@@ -89,3 +89,5 @@ openpyxl==3.1.5
 reportlab==4.4.1
 sentry-sdk[django]==2.20.0
 docker==7.1.0
+rules==3.5
+

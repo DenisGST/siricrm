@@ -8,6 +8,8 @@ from apps.files.models import StoredFile
 from apps.core.models import Employee
 from django.contrib.postgres.fields import JSONField
 
+from apps.crm.managers import ClientQuerySet, ServiceQuerySet
+
 
 
 class Region(models.Model):
@@ -117,6 +119,7 @@ class Client(TimeStampedModel):
         help_text='ФИО клиента подтверждено сотрудником через модалку «Идентификация»',
     )
 
+    objects = ClientQuerySet.as_manager()
 
     def __str__(self):
         return f"{self.first_name} {self.last_name} (@{self.username})"
@@ -956,6 +959,8 @@ class Service(TimeStampedModel):
     )
 
     is_active = models.BooleanField("Активна", default=True)
+
+    objects = ServiceQuerySet.as_manager()
 
     def __str__(self):
         return f"{self.name.short_name} ({self.client})"
