@@ -716,3 +716,48 @@ def reference_tag_delete(request, pk):
     obj = get_object_or_404(ServiceTag, pk=pk)
     obj.delete()
     return HttpResponse(headers={"HX-Trigger": "reloadTags"})
+
+
+# ─── Справочник: Шаблоны сообщений (для мессенджеров) ───
+@user_passes_test(is_references_access)
+def references_message_templates(request):
+    from apps.crm.models import MessageTemplate
+    items = MessageTemplate.objects.all()
+    return render(request, "core/partials/references_message_templates.html", {"items": items})
+
+
+@user_passes_test(is_references_access)
+def reference_message_template_edit(request, pk=None):
+    from apps.crm.models import MessageTemplate
+    from apps.core.forms import MessageTemplateForm
+
+    obj = get_object_or_404(MessageTemplate, pk=pk) if pk else None
+    employee = getattr(request.user, "employee", None)
+
+    if request.method == "POST":
+        form = MessageTemplateForm(request.POST, instance=obj)
+        if form.is_valid():
+            instance = form.save(commit=False)
+            if not instance.pk:
+                instance.created_by = employee
+            instance.updated_by = employee
+            instance.save()
+            return HttpResponse(headers={"HX-Trigger": "reloadMessageTemplates"})
+    else:
+        initial = {}
+        if obj:
+            initial["channels"] = obj.channels or []
+        form = MessageTemplateForm(instance=obj, initial=initial)
+
+    return render(request, "core/partials/message_template_form_modal.html", {
+        "form": form, "obj": obj,
+    })
+
+
+@user_passes_test(is_references_access)
+@require_POST
+def reference_message_template_delete(request, pk):
+    from apps.crm.models import MessageTemplate
+    obj = get_object_or_404(MessageTemplate, pk=pk)
+    obj.delete()
+    return HttpResponse(headers={"HX-Trigger": "reloadMessageTemplates"})

@@ -67,4 +67,9 @@ urlpatterns = [
     path('references/tag/add/', views.reference_tag_edit, name='reference_tag_add'),
     path('references/tag/<uuid:pk>/', views.reference_tag_edit, name='reference_tag_edit'),
     path('references/tag/<uuid:pk>/delete/', views.reference_tag_delete, name='reference_tag_delete'),
+
+    path('references/message-templates/', views.references_message_templates, name='references_message_templates'),
+    path('references/message-template/add/', views.reference_message_template_edit, name='reference_message_template_add'),
+    path('references/message-template/<uuid:pk>/', views.reference_message_template_edit, name='reference_message_template_edit'),
+    path('references/message-template/<uuid:pk>/delete/', views.reference_message_template_delete, name='reference_message_template_delete'),
 ]

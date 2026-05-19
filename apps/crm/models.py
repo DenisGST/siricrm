@@ -1106,3 +1106,96 @@ class ServiceLog(models.Model):
     def __str__(self):
         return f"{self.service} — {self.get_action_display()} ({self.created_at:%d.%m %H:%M})"
 
+
+class MessageTemplate(models.Model):
+    """Шаблон сообщения для отправки клиенту через мессенджеры.
+
+    Используется для быстрых ответов (Telegram/MAX — свободный текст) и
+    Meta-approved-шаблонов WhatsApp Business (WABA).
+
+    WA-only поля заполняются если в ``channels`` есть ``'whatsapp'``.
+    Без модерации Meta WA-шаблон отправлять нельзя — статус контролируется
+    через ``whatsapp_meta_status`` (см. apps/whatsapp в дальнейшем).
+    """
+
+    CHANNEL_CHOICES = [
+        ('telegram', 'Telegram'),
+        ('max', 'MAX'),
+        ('whatsapp', 'WhatsApp'),
+    ]
+
+    WA_STATUS_CHOICES = [
+        ('draft', 'Черновик'),
+        ('pending', 'На модерации'),
+        ('approved', 'Одобрен'),
+        ('rejected', 'Отклонён'),
+    ]
+
+    WA_CATEGORY_CHOICES = [
+        ('UTILITY', 'Сервисный (UTILITY)'),
+        ('MARKETING', 'Маркетинговый (MARKETING)'),
+        ('AUTHENTICATION', 'Аутентификация (AUTHENTICATION)'),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField('Название', max_length=200, unique=True)
+    body = models.TextField(
+        'Текст шаблона',
+        help_text='Плейсхолдеры: {{ client.first_name }}, {{ client.last_name }}, '
+                  '{{ service.numb_dogovor }}, {{ employee.user.first_name }}. Для WA-шаблонов '
+                  'переменные обозначаются {{1}}, {{2}} согласно требованиям Meta.',
+    )
+    channels = models.JSONField(
+        'Каналы',
+        default=list,
+        help_text='Список из telegram / max / whatsapp.',
+    )
+    is_active = models.BooleanField('Активен', default=True)
+
+    # WhatsApp Business-specific
+    whatsapp_meta_id = models.CharField(
+        'Meta template ID', max_length=200, blank=True, default='',
+    )
+    whatsapp_meta_status = models.CharField(
+        'Статус модерации Meta', max_length=20,
+        choices=WA_STATUS_CHOICES, default='draft', blank=True,
+    )
+    whatsapp_meta_rejection = models.TextField(
+        'Причина отклонения Meta', blank=True, default='',
+    )
+    whatsapp_category = models.CharField(
+        'Категория WA', max_length=20, choices=WA_CATEGORY_CHOICES,
+        blank=True, default='',
+    )
+    whatsapp_language = models.CharField(
+        'Язык WA', max_length=10, default='ru', blank=True,
+    )
+    whatsapp_params_schema = models.JSONField(
+        'Описание параметров WA',
+        default=list, blank=True,
+        help_text='Список объектов вида {"placeholder": "{{1}}", "example": "Иван"}.',
+    )
+
+    created_by = models.ForeignKey(
+        Employee, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='message_templates_created',
+    )
+    updated_by = models.ForeignKey(
+        Employee, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='message_templates_updated',
+    )
+    created_at = models.DateTimeField('Создан', auto_now_add=True)
+    updated_at = models.DateTimeField('Обновлён', auto_now=True)
+
+    class Meta:
+        verbose_name = 'Шаблон сообщения'
+        verbose_name_plural = 'Шаблоны сообщений'
+        ordering = ['name']
+
+    def __str__(self):
+        return self.name
+
+    @property
+    def is_for_whatsapp(self) -> bool:
+        return 'whatsapp' in (self.channels or [])
+

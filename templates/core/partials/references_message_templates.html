@@ -1,0 +1,84 @@
+<div id="message-templates-list"
+     hx-trigger="reloadMessageTemplates from:body"
+     hx-get="{% url 'core:references_message_templates' %}"
+     hx-swap="outerHTML">
+
+  <div class="flex justify-between items-center mb-3">
+    <div>
+      <h3 class="font-semibold">Шаблоны сообщений ({{ items|length }})</h3>
+      <div class="text-xs text-base-content/60 mt-1">
+        Используются в чатах Telegram / MAX / WhatsApp.
+        Плейсхолдеры: <code>{% verbatim %}{{ client.first_name }}{% endverbatim %}</code>,
+        <code>{% verbatim %}{{ service.numb_dogovor }}{% endverbatim %}</code>.
+        Для WhatsApp-шаблонов — переменные Meta: <code>{% verbatim %}{{1}}{% endverbatim %}</code>,
+        <code>{% verbatim %}{{2}}{% endverbatim %}</code>.
+      </div>
+    </div>
+    <button class="btn btn-primary btn-sm"
+            hx-get="{% url 'core:reference_message_template_add' %}"
+            hx-target="body" hx-swap="beforeend">
+      + Добавить
+    </button>
+  </div>
+
+  <div class="overflow-x-auto">
+    <table class="table table-sm table-zebra">
+      <thead>
+        <tr>
+          <th>Название</th>
+          <th>Каналы</th>
+          <th>Текст (фрагмент)</th>
+          <th>WA-модерация</th>
+          <th>Статус</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for it in items %}
+        <tr>
+          <td class="font-medium">{{ it.name }}</td>
+          <td>
+            {% for ch in it.channels %}
+              {% if ch == 'telegram' %}<span class="badge badge-info badge-xs">TG</span>
+              {% elif ch == 'max' %}<span class="badge badge-warning badge-xs">MAX</span>
+              {% elif ch == 'whatsapp' %}<span class="badge badge-success badge-xs">WA</span>
+              {% endif %}
+            {% endfor %}
+          </td>
+          <td class="text-xs text-base-content/70 max-w-md truncate" title="{{ it.body }}">{{ it.body|truncatechars:80 }}</td>
+          <td>
+            {% if it.is_for_whatsapp %}
+              {% if it.whatsapp_meta_status == 'approved' %}
+                <span class="badge badge-success badge-xs">одобрен</span>
+              {% elif it.whatsapp_meta_status == 'pending' %}
+                <span class="badge badge-warning badge-xs">на модерации</span>
+              {% elif it.whatsapp_meta_status == 'rejected' %}
+                <span class="badge badge-error badge-xs" title="{{ it.whatsapp_meta_rejection }}">отклонён</span>
+              {% else %}
+                <span class="badge badge-ghost badge-xs">черновик</span>
+              {% endif %}
+            {% else %}—{% endif %}
+          </td>
+          <td>
+            {% if it.is_active %}
+              <span class="badge badge-success badge-xs">активен</span>
+            {% else %}
+              <span class="badge badge-ghost badge-xs">неактивен</span>
+            {% endif %}
+          </td>
+          <td class="text-right">
+            <button class="btn btn-xs btn-outline"
+                    hx-get="{% url 'core:reference_message_template_edit' it.pk %}"
+                    hx-target="body" hx-swap="beforeend">Изменить</button>
+            <button class="btn btn-xs btn-error btn-outline"
+                    hx-post="{% url 'core:reference_message_template_delete' it.pk %}"
+                    hx-confirm="Удалить шаблон «{{ it.name }}»?">Удалить</button>
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="6" class="text-center text-base-content/60">Шаблонов нет — добавьте первый.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>

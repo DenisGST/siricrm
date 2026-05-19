@@ -41,6 +41,9 @@
     <a class="tab {% if active_tab == 'outgoing_accounts' %}tab-active{% endif %}"
        hx-get="{% url 'finance:references_outgoing_accounts' %}" hx-target="#ref-content" hx-swap="innerHTML"
        onclick="setRefTab(this)">Кассы (расход)</a>
+    <a class="tab {% if active_tab == 'message_templates' %}tab-active{% endif %}"
+       hx-get="{% url 'core:references_message_templates' %}" hx-target="#ref-content" hx-swap="innerHTML"
+       onclick="setRefTab(this)">Шаблоны сообщений</a>
   </div>
 
   <div id="ref-content"

@@ -4,7 +4,7 @@ from .models import Department, Employee, MenuItem, Widget, DashboardConfig
 from apps.crm.models import (
     Region, LegalEntityKind,
     ServiceName, PaymentProcedure, ServiceCommonStatus,
-    ServiceEmployeeStatus, ServiceTag,
+    ServiceEmployeeStatus, ServiceTag, MessageTemplate,
 )
 
 
@@ -244,6 +244,43 @@ class ServiceTagForm(forms.ModelForm):
     class Meta:
         model = ServiceTag
         fields = ["employee", "name", "color", "is_active"]
+
+
+class MessageTemplateForm(forms.ModelForm):
+    """Шаблон сообщения. Каналы — через MultipleChoice, сохраняем как list в JSON.
+
+    WA-only поля видны/обязательны только если выбран канал 'whatsapp'.
+    """
+
+    channels = forms.MultipleChoiceField(
+        label="Каналы",
+        choices=MessageTemplate.CHANNEL_CHOICES,
+        widget=forms.CheckboxSelectMultiple,
+        help_text="Где можно использовать этот шаблон.",
+    )
+
+    class Meta:
+        model = MessageTemplate
+        fields = [
+            "name", "body", "channels", "is_active",
+            "whatsapp_category", "whatsapp_language",
+            "whatsapp_meta_id", "whatsapp_meta_status", "whatsapp_meta_rejection",
+        ]
+        widgets = {
+            "body": forms.Textarea(attrs={"rows": 6}),
+            "whatsapp_meta_rejection": forms.Textarea(attrs={"rows": 2}),
+        }
+
+    def clean(self):
+        cleaned = super().clean()
+        channels = cleaned.get("channels") or []
+        cleaned["channels"] = list(channels)
+        if "whatsapp" in channels:
+            if not cleaned.get("whatsapp_category"):
+                self.add_error("whatsapp_category", "Обязательно для WhatsApp-шаблона.")
+            if not cleaned.get("whatsapp_language"):
+                cleaned["whatsapp_language"] = "ru"
+        return cleaned
 
 
 class DashboardConfigForm(forms.ModelForm):

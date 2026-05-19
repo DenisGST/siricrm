@@ -1,0 +1,138 @@
+<dialog id="message-template-modal" class="modal modal-middle modal-open">
+  <div class="modal-box w-full max-w-2xl">
+    <h3 class="font-bold text-lg mb-4">
+      {% if obj %}Редактирование шаблона{% else %}Новый шаблон сообщения{% endif %}
+    </h3>
+
+    <form hx-post="{% if obj %}{% url 'core:reference_message_template_edit' obj.pk %}{% else %}{% url 'core:reference_message_template_add' %}{% endif %}"
+          hx-target="#message-template-modal" hx-swap="outerHTML"
+          class="space-y-3">
+      {% csrf_token %}
+
+      <div>
+        <label class="label py-1"><span class="label-text">Название шаблона</span></label>
+        <input type="text" name="name" value="{{ form.name.value|default:'' }}"
+               class="input input-bordered w-full input-sm" required>
+        {% if form.name.errors %}<span class="text-error text-xs">{{ form.name.errors.0 }}</span>{% endif %}
+      </div>
+
+      <div>
+        <label class="label py-1"><span class="label-text">Каналы, на которых применим</span></label>
+        <div class="flex gap-4 mt-1">
+          {% for value, label in form.fields.channels.choices %}
+            <label class="label cursor-pointer gap-2 py-0">
+              <input type="checkbox" name="channels" value="{{ value }}" class="checkbox checkbox-sm"
+                     data-channel="{{ value }}"
+                     {% if value in form.channels.value %}checked{% endif %}
+                     onchange="toggleWaBlock()">
+              <span class="label-text">{{ label }}</span>
+            </label>
+          {% endfor %}
+        </div>
+        {% if form.channels.errors %}<span class="text-error text-xs">{{ form.channels.errors.0 }}</span>{% endif %}
+      </div>
+
+      <div>
+        <label class="label py-1"><span class="label-text">Текст шаблона</span></label>
+        <textarea name="body" rows="6"
+                  class="textarea textarea-bordered w-full textarea-sm font-mono">{{ form.body.value|default:'' }}</textarea>
+        <div class="text-xs text-base-content/60 mt-1">
+          Свободный текст. Плейсхолдеры:
+          <code>{% verbatim %}{{ client.first_name }}{% endverbatim %}</code>,
+          <code>{% verbatim %}{{ client.last_name }}{% endverbatim %}</code>,
+          <code>{% verbatim %}{{ service.numb_dogovor }}{% endverbatim %}</code>,
+          <code>{% verbatim %}{{ employee.user.first_name }}{% endverbatim %}</code>.
+          Для WhatsApp-шаблонов используй <code>{% verbatim %}{{1}}{% endverbatim %}</code>, <code>{% verbatim %}{{2}}{% endverbatim %}</code> — переменные Meta.
+        </div>
+        {% if form.body.errors %}<span class="text-error text-xs">{{ form.body.errors.0 }}</span>{% endif %}
+      </div>
+
+      <div>
+        <label class="label cursor-pointer justify-start gap-2">
+          <input type="checkbox" name="is_active" class="checkbox checkbox-sm"
+                 {% if form.is_active.value or not obj %}checked{% endif %}>
+          <span class="label-text">Активен</span>
+        </label>
+      </div>
+
+      <!-- WhatsApp-only блок: виден только при выбранном канале WA -->
+      <div id="wa-block" class="border rounded-md p-3 bg-base-200/40" style="display:none;">
+        <div class="font-semibold text-sm mb-2">Параметры WhatsApp Business</div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="label py-1"><span class="label-text">Категория Meta</span></label>
+            <select name="whatsapp_category" class="select select-bordered select-sm w-full">
+              <option value="">—</option>
+              {% for value, label in form.fields.whatsapp_category.choices %}
+                {% if value %}
+                  <option value="{{ value }}" {% if form.whatsapp_category.value == value %}selected{% endif %}>{{ label }}</option>
+                {% endif %}
+              {% endfor %}
+            </select>
+            {% if form.whatsapp_category.errors %}<span class="text-error text-xs">{{ form.whatsapp_category.errors.0 }}</span>{% endif %}
+          </div>
+
+          <div>
+            <label class="label py-1"><span class="label-text">Язык</span></label>
+            <input type="text" name="whatsapp_language" value="{{ form.whatsapp_language.value|default:'ru' }}"
+                   class="input input-bordered input-sm w-full" placeholder="ru">
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3 mt-2">
+          <div>
+            <label class="label py-1"><span class="label-text">Meta template ID</span></label>
+            <input type="text" name="whatsapp_meta_id" value="{{ form.whatsapp_meta_id.value|default:'' }}"
+                   class="input input-bordered input-sm w-full"
+                   placeholder="заполнится после модерации">
+          </div>
+          <div>
+            <label class="label py-1"><span class="label-text">Статус модерации</span></label>
+            <select name="whatsapp_meta_status" class="select select-bordered select-sm w-full">
+              {% for value, label in form.fields.whatsapp_meta_status.choices %}
+                <option value="{{ value }}" {% if form.whatsapp_meta_status.value == value %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+
+        <div class="mt-2">
+          <label class="label py-1"><span class="label-text">Причина отклонения (если есть)</span></label>
+          <textarea name="whatsapp_meta_rejection" rows="2"
+                    class="textarea textarea-bordered w-full textarea-sm">{{ form.whatsapp_meta_rejection.value|default:'' }}</textarea>
+        </div>
+
+        <div class="text-xs text-base-content/60 mt-2">
+          Отправка на модерацию Meta появится после внедрения интеграции 1msg.io.
+          Сейчас поля можно заполнять вручную, если шаблон уже одобрен на стороне Meta.
+        </div>
+      </div>
+
+      {% if form.non_field_errors %}
+        <div class="alert alert-error text-sm">{{ form.non_field_errors }}</div>
+      {% endif %}
+
+      <div class="modal-action">
+        <button type="submit" class="btn btn-primary btn-sm">Сохранить</button>
+        <button type="button" class="btn btn-sm" onclick="this.closest('dialog').remove()">Отмена</button>
+      </div>
+    </form>
+  </div>
+  <form method="dialog" class="modal-backdrop">
+    <button onclick="this.closest('dialog').remove()">close</button>
+  </form>
+
+  <script>
+    function toggleWaBlock() {
+      const dlg = document.getElementById('message-template-modal');
+      if (!dlg) return;
+      const waCb = dlg.querySelector('input[data-channel="whatsapp"]');
+      const block = dlg.querySelector('#wa-block');
+      if (block) block.style.display = (waCb && waCb.checked) ? '' : 'none';
+    }
+    toggleWaBlock();
+    // <dialog> внутри другого <dialog>: показываем top-layer
+    document.getElementById('message-template-modal').showModal?.();
+  </script>
+</dialog>
