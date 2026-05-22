@@ -121,6 +121,7 @@ class Employee(models.Model):
         ("lawyer", "Юрист"),
         ("head_dep", "Руководитель отдела"),
         ("arbitration", "Арбитражный управляющий"),
+        ("arbitr_assistant", "Помощник АУ"),
         ("agent", "Агент"),
         ("managing_partner", "Управляющий партнер"),
         ("accountant", "Бухгалтер"),
@@ -167,6 +168,10 @@ class Employee(models.Model):
     phone_internal = models.CharField("Внутренний номер", max_length=10, blank=True)
     is_active = models.BooleanField("Активен", default=True)
     is_online = models.BooleanField(default=False, verbose_name='Онлайн')
+    bubble_id = models.CharField(
+        "Bubble ID", max_length=64, blank=True, null=True, unique=True,
+        help_text="ID записи User в исходной CRM на bubble.io",
+    )
     joined_at = models.DateTimeField(auto_now_add=True, verbose_name='Дата присоединения')
     dismiss_at = models.DateTimeField(auto_now_add=False,null=True, blank=True, verbose_name='Дата увольнения')
 

@@ -28,8 +28,9 @@ logger = logging.getLogger("bubble_import")
 PAGE_SIZE = 50
 
 # Активные вкладки. Порядок = рекомендуемый порядок Apply (зависимости).
-ACTIVE_ENTITIES = ["Man", "ProjectBFL", "Money", "MessageWSP", "Files"]
+ACTIVE_ENTITIES = ["User", "Man", "ProjectBFL", "Money", "MessageWSP", "Files"]
 ENTITY_LABELS = {
+    "User": "Сотрудники",
     "Man": "Клиенты",
     "ProjectBFL": "Услуги",
     "Money": "Платежи",

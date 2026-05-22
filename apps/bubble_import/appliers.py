@@ -20,6 +20,7 @@ from .extractors import (
     clean_str, first_nonempty, normalize_phone,
     gender_from_bubble, parse_bubble_date, parse_bubble_dt,
     parse_decimal, parse_int, money_kind, strip_bbcode,
+    parse_fio, map_bubble_role,
 )
 from .models import BubbleRecord
 from . import resolvers
@@ -613,6 +614,92 @@ def apply_files(rec: BubbleRecord) -> str:
     return rec.status
 
 
+# ─── User → Employee ───────────────────────────────────────
+
+def _find_employee_by_fio(last: str, first: str):
+    """Найти существующего Employee по фамилии (+ имени/инициалу)."""
+    from apps.core.models import Employee
+    if not last:
+        return None
+    cands = Employee.objects.filter(
+        user__last_name__iexact=last,
+    ).select_related("user")
+    for e in cands:
+        ef = (e.user.first_name or "").strip()
+        if not first or not ef:
+            return e
+        if ef.lower() == first.lower() or ef[0].lower() == first[0].lower():
+            return e
+    return None
+
+
+def apply_user(rec: BubbleRecord) -> str:
+    """Перенести Bubble User в Employee. Действующих сопоставляем с
+    существующими по ФИО, уволенных и новых — создаём."""
+    from django.contrib.auth.models import User
+    from apps.core.models import Employee
+
+    v = rec.value
+    bid = rec.bubble_id
+    role_text = clean_str(v("role"))
+
+    if role_text.lower() == "тестовый":
+        rec.status = "skipped"
+        rec.error = "Тестовый аккаунт — не импортируется"
+        rec.imported_at = None
+        rec.save(update_fields=["status", "error", "imported_at"])
+        return rec.status
+
+    fio = clean_str(v("FIOLong")) or clean_str(v("UserName"))
+    last, first, patr = parse_fio(fio)
+    if not last:
+        rec.status = "error"
+        rec.error = "Не удалось определить ФИО (пустые FIOLong и UserName)"
+        rec.imported_at = None
+        rec.save(update_fields=["status", "error", "imported_at"])
+        return rec.status
+
+    role = map_bubble_role(role_text)
+    uvolen = bool(v("uvolen"))
+
+    emp = Employee.objects.filter(bubble_id=bid).first()
+    if emp is not None:
+        note = f"Уже связан: {emp.user.get_full_name() or emp.user.username}"
+    else:
+        match = _find_employee_by_fio(last, first)
+        if match is not None:
+            emp = match
+            # bubble_id хранит первую связанную запись; не перезатираем,
+            # если у сотрудника несколько User-записей в Bubble.
+            if not emp.bubble_id:
+                emp.bubble_id = bid
+                emp.save(update_fields=["bubble_id"])
+            note = f"Сопоставлен с существующим: {emp.user.get_full_name()}"
+        else:
+            username = f"bubble_{bid}"
+            user, _ = User.objects.get_or_create(
+                username=username,
+                defaults={
+                    "first_name": first[:150],
+                    "last_name": last[:150],
+                    "is_active": not uvolen,
+                },
+            )
+            emp = Employee.objects.create(
+                user=user, role=role, patronymic=patr[:255],
+                is_active=not uvolen, bubble_id=bid,
+            )
+            note = f"Создан новый сотрудник (роль: {emp.get_role_display()})"
+
+    rec.status = "imported"
+    rec.target_type = "Employee"
+    rec.target_id = str(emp.id)
+    rec.error = note  # информативная пометка о результате сопоставления
+    rec.imported_at = timezone.now()
+    rec.save(update_fields=["status", "target_type", "target_id", "error", "imported_at"])
+    return rec.status
+
+
 # Реестр applier'ов по типу сущности.
 APPLIERS = {
     "Man": apply_man,
@@ -620,6 +707,7 @@ APPLIERS = {
     "Money": apply_money,
     "MessageWSP": apply_messagewsp,
     "Files": apply_files,
+    "User": apply_user,
 }
 
 

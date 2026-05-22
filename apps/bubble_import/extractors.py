@@ -106,6 +106,41 @@ def parse_int(v, default=0) -> int:
         return default
 
 
+def parse_fio(fio) -> tuple[str, str, str]:
+    """ФИО одной строкой → (фамилия, имя, отчество). Лишние слова отбрасываем."""
+    parts = clean_str(fio).split()
+    last = parts[0] if len(parts) > 0 else ""
+    first = parts[1] if len(parts) > 1 else ""
+    patr = parts[2] if len(parts) > 2 else ""
+    return last, first, patr
+
+
+# Карта ролей Bubble (нормализованные lower-ключи) → роли SiriCRM.
+_BUBBLE_ROLE_MAP = {
+    "admin": "admin",
+    "директор": "managing_partner",
+    "руководитель отдела": "head_dep",
+    "руководитель отдела продаж": "head_dep",
+    "роп": "head_dep",
+    "менеджер": "manager",
+    "юрист": "lawyer",
+    "помощник юриста": "assitent_legal",
+    "сбор документов": "assitent_legal",
+    "арбитражный управляющий": "arbitration",
+    "помощник ау": "arbitr_assistant",
+    "помощник арбитражного управляющего": "arbitr_assistant",
+    "помощник": "arbitr_assistant",
+    "агент": "agent",
+    "бухгалтер": "accountant",
+    "оператор колл-центра": "operator",
+}
+
+
+def map_bubble_role(role_text) -> str:
+    """Текстовая роль Bubble → код Employee.role. По умолчанию operator."""
+    return _BUBBLE_ROLE_MAP.get(clean_str(role_text).lower(), "operator")
+
+
 def gender_from_bubble(v) -> str:
     """Поле «Пол» Bubble → код Client.gender."""
     s = clean_str(v).lower()
@@ -231,6 +266,22 @@ def files_display(raw: dict) -> dict:
     }
 
 
+def user_display(raw: dict) -> dict:
+    """Из сырого User — поля для таблицы аудита сотрудников."""
+    fio = clean_str(raw.get("FIOLong")) or clean_str(raw.get("UserName")) or "(без имени)"
+    role = clean_str(raw.get("role"))
+    uvolen = bool(raw.get("uvolen"))
+    parts = []
+    if role:
+        parts.append(role)
+    parts.append("уволен" if uvolen else "действующий")
+    return {
+        "display_title": fio[:300],
+        "display_subtitle": " · ".join(parts)[:300],
+        "bubble_created": parse_bubble_dt(raw.get("Created Date")),
+    }
+
+
 # Реестр extractor'ов по типу сущности.
 DISPLAY_EXTRACTORS = {
     "Man": man_display,
@@ -238,6 +289,7 @@ DISPLAY_EXTRACTORS = {
     "Money": money_display,
     "MessageWSP": messagewsp_display,
     "Files": files_display,
+    "User": user_display,
 }
 
 

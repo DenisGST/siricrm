@@ -40,6 +40,7 @@
   <td class="min-w-[14rem]">
     {% if rec.status == 'imported' %}
       <span class="badge badge-success badge-xs">импортирован</span>
+      {% if rec.error %}<div class="text-base-content/60 text-xs mt-0.5 leading-snug">{{ rec.error }}</div>{% endif %}
     {% elif rec.status == 'error' %}
       <span class="badge badge-error badge-xs">ошибка</span>
       <div class="text-error text-xs mt-0.5 leading-snug">{{ rec.error }}</div>

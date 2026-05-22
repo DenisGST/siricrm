@@ -16,6 +16,7 @@ from django.db import models
 
 # Типы сущностей Bubble, которые импортируем в этой итерации.
 ENTITY_CHOICES = [
+    ("User", "Сотрудники (User)"),
     ("Man", "Клиенты (Man)"),
     ("ProjectBFL", "Услуги БФЛ (ProjectBFL)"),
     ("Money", "Платежи и начисления (Money)"),

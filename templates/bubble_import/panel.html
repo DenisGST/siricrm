@@ -23,7 +23,14 @@
   </div>
   {% endif %}
 
-  {% if entity == 'Money' %}
+  {% if entity == 'User' %}
+  <div class="alert alert-info mb-3 text-sm py-2">
+    Сотрудники из Bubble. Действующие сопоставляются с существующими в
+    SiriCRM по ФИО (результат — в столбце «Статус»), уволенные и новые —
+    создаются (логина нет). Импортируйте сотрудников до услуг — услуги
+    закрепляются за Manager / ROP / Jurist.
+  </div>
+  {% elif entity == 'Money' %}
   <div class="alert alert-info mb-3 text-sm py-2">
     Платежи импортируются после услуг: запись Money привязывается к услуге
     по полю Project. Сначала импортируйте Клиентов и Услуги.
