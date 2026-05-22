@@ -171,6 +171,19 @@ def _enrich_client(client: Client, fields: dict):
             setattr(client, key, value)
 
 
+def _assign_unknown_responsible(client: Client):
+    """Клиента в статусе «Неразобран» закрепить за ответственным (Власов Евгений)."""
+    if client.status != "unknown":
+        return
+    from apps.core.models import Employee
+    from apps.crm.models import ClientEmployee
+    emp = Employee.objects.filter(
+        user__last_name__iexact="Власов", user__first_name__iexact="Евгений",
+    ).first()
+    if emp:
+        ClientEmployee.objects.get_or_create(client=client, employee=emp)
+
+
 def _apply_name_history(client: Client, rec: BubbleRecord):
     """Прежние ФИО из fNameOld / lNameOld / mNameOld."""
     v = rec.value
@@ -263,6 +276,7 @@ def apply_man(rec: BubbleRecord) -> str:
     client.save()
 
     _apply_name_history(client, rec)
+    _assign_unknown_responsible(client)
 
     # Событие в лог клиента — только при первичном импорте/обогащении,
     # повторный apply той же записи событие не дублирует.
