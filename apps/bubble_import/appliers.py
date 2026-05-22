@@ -617,20 +617,31 @@ def apply_files(rec: BubbleRecord) -> str:
 # ─── User → Employee ───────────────────────────────────────
 
 def _find_employee_by_fio(last: str, first: str):
-    """Найти существующего Employee по фамилии (+ имени/инициалу)."""
+    """Найти существующего Employee по ФИО, устойчиво к опечаткам.
+
+    Фамилия сравнивается нечётко (SequenceMatcher ≥ 0.85) — чтобы
+    «Дмитриева» сматчилась с «Дмитириева». Имя, если известно у обоих,
+    должно совпадать хотя бы по первой букве (отсев однофамильцев).
+    """
     from apps.core.models import Employee
     if not last:
         return None
-    cands = Employee.objects.filter(
-        user__last_name__iexact=last,
-    ).select_related("user")
-    for e in cands:
-        ef = (e.user.first_name or "").strip()
-        if not first or not ef:
-            return e
-        if ef.lower() == first.lower() or ef[0].lower() == first[0].lower():
-            return e
-    return None
+    last_l = last.lower().strip()
+    first_l = (first or "").lower().strip()
+    best, best_ratio = None, 0.0
+    for e in Employee.objects.select_related("user"):
+        el = (e.user.last_name or "").lower().strip()
+        ef = (e.user.first_name or "").lower().strip()
+        if not el:
+            continue
+        ratio = SequenceMatcher(None, last_l, el).ratio()
+        if ratio < 0.85:
+            continue
+        if first_l and ef and first_l[0] != ef[0]:
+            continue  # имена начинаются по-разному — разные люди
+        if ratio > best_ratio:
+            best_ratio, best = ratio, e
+    return best
 
 
 def apply_user(rec: BubbleRecord) -> str:
