@@ -37,13 +37,15 @@
   {% endif %}
 
   <td class="text-xs whitespace-nowrap">{{ rec.bubble_created|date:"d.m.Y"|default:"—" }}</td>
-  <td>
+  <td class="min-w-[14rem]">
     {% if rec.status == 'imported' %}
       <span class="badge badge-success badge-xs">импортирован</span>
     {% elif rec.status == 'error' %}
-      <span class="badge badge-error badge-xs" title="{{ rec.error }}">ошибка</span>
+      <span class="badge badge-error badge-xs">ошибка</span>
+      <div class="text-error text-xs mt-0.5 leading-snug">{{ rec.error }}</div>
     {% elif rec.status == 'skipped' %}
-      <span class="badge badge-ghost badge-xs" title="{{ rec.error }}">пропущен</span>
+      <span class="badge badge-ghost badge-xs">пропущен</span>
+      {% if rec.error %}<div class="text-base-content/60 text-xs mt-0.5 leading-snug">{{ rec.error }}</div>{% endif %}
     {% else %}
       <span class="badge badge-ghost badge-xs">ожидает</span>
     {% endif %}
