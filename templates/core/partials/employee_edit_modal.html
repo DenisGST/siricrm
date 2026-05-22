@@ -99,18 +99,19 @@
         </div>
       </div>
 
-      <div class="flex gap-6">
-        <label class="label cursor-pointer gap-2">
-          <span class="label-text text-xs">Доступ к мессенджеру</span>
-          <input type="checkbox" name="has_messenger_access"
+      <div class="divider text-xs">Статус</div>
+      <div class="flex gap-8">
+        <label for="emp-messenger-access" class="cursor-pointer flex items-center gap-2">
+          <input type="checkbox" id="emp-messenger-access" name="has_messenger_access"
                  {% if form.has_messenger_access.value %}checked{% endif %}
                  class="toggle toggle-primary toggle-sm">
+          <span class="label-text text-xs">Доступ к мессенджеру</span>
         </label>
-        <label class="label cursor-pointer gap-2">
-          <span class="label-text text-xs">Активен</span>
-          <input type="checkbox" name="is_active"
-                 {% if form.is_active.value %}checked{% endif %}
-                 class="toggle toggle-primary toggle-sm">
+        <label for="emp-dismissed" class="cursor-pointer flex items-center gap-2">
+          <input type="checkbox" id="emp-dismissed" name="is_dismissed"
+                 {% if form.is_dismissed.value %}checked{% endif %}
+                 class="toggle toggle-error toggle-sm">
+          <span class="label-text text-xs">Уволен</span>
         </label>
       </div>
 

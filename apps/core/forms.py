@@ -1,5 +1,6 @@
 from django import forms
 from django.contrib.auth.models import User
+from django.utils import timezone
 from .models import Department, Employee, MenuItem, Widget, DashboardConfig
 from apps.crm.models import (
     Region, LegalEntityKind,
@@ -61,6 +62,9 @@ class EmployeeFullEditForm(forms.ModelForm):
     last_name = forms.CharField(max_length=150, label="Фамилия")
     first_name = forms.CharField(max_length=150, label="Имя")
     email = forms.EmailField(required=False, label="Email")
+    # Статус сотрудника. «Уволен» — инверсия Employee.is_active; отдельным
+    # модельным полем не делаем, храним через is_active + dismiss_at.
+    is_dismissed = forms.BooleanField(required=False, label="Уволен")
     services_allowed = forms.ModelMultipleChoiceField(
         queryset=ServiceName.objects.filter(is_active=True).order_by("short_name"),
         widget=forms.CheckboxSelectMultiple,
@@ -74,7 +78,7 @@ class EmployeeFullEditForm(forms.ModelForm):
             "department", "role", "dashboard_config",
             "has_messenger_access", "patronymic",
             "phone_mobile", "phone_internal",
-            "services_allowed", "is_active",
+            "services_allowed",
         ]
 
     def __init__(self, *args, **kwargs):
@@ -83,6 +87,7 @@ class EmployeeFullEditForm(forms.ModelForm):
             self.fields["last_name"].initial = self.instance.user.last_name
             self.fields["first_name"].initial = self.instance.user.first_name
             self.fields["email"].initial = self.instance.user.email
+            self.fields["is_dismissed"].initial = not self.instance.is_active
 
     def save(self, commit=True):
         emp = super().save(commit=False)
@@ -90,6 +95,18 @@ class EmployeeFullEditForm(forms.ModelForm):
         emp.user.first_name = self.cleaned_data["first_name"]
         emp.user.email = self.cleaned_data.get("email", "")
         emp.user.save(update_fields=["last_name", "first_name", "email"])
+
+        dismissed = self.cleaned_data.get("is_dismissed", False)
+        emp.is_active = not dismissed
+        if dismissed and emp.dismiss_at is None:
+            emp.dismiss_at = timezone.now()
+        elif not dismissed:
+            emp.dismiss_at = None
+        # Учётка django — уволенный не должен входить в систему.
+        if emp.user.is_active != (not dismissed):
+            emp.user.is_active = not dismissed
+            emp.user.save(update_fields=["is_active"])
+
         if commit:
             emp.save()
             self.save_m2m()

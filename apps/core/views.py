@@ -260,14 +260,15 @@ def admin_employees(request):
         "role": "role",
         "dashboard": "dashboard_config__name",
         "messenger": "has_messenger_access",
+        "status": "is_active",
     }
     order_field = allowed_sorts.get(sort, "user__last_name")
     if direction == "desc":
         order_field = f"-{order_field}"
+    # Показываем всех — и работающих, и уволенных (статус виден в таблице).
     employees = (
         Employee.objects
         .select_related("user", "department", "dashboard_config")
-        .filter(is_active=True)
         .order_by(order_field)
     )
     return render(request, "core/partials/admin_employees.html", {
