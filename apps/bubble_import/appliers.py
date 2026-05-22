@@ -616,11 +616,29 @@ def apply_messagewsp(rec: BubbleRecord) -> str:
 
 # ─── Files → StoredFile ────────────────────────────────────
 
+def _bubble_folder_path(client, directory: str):
+    """По пути Bubble («Процедура/Запросы») создать дерево папок в корне
+    клиента и вернуть листовую папку. Пустой путь → корневая папка клиента.
+    Существующие папки с тем же именем переиспользуются."""
+    from apps.files.models import ClientFolder
+    from apps.files.folder_utils import get_or_create_root
+
+    parent = get_or_create_root(client)
+    for part in (directory or "").split("/"):
+        part = part.strip()
+        if not part:
+            continue
+        parent, _ = ClientFolder.objects.get_or_create(
+            client=client, parent=parent, name=part[:200],
+            defaults={"order": 100},
+        )
+    return parent
+
+
 def apply_files(rec: BubbleRecord) -> str:
     """Скачать файл Bubble в наш S3. Привязать к клиенту услуги, если есть."""
     from apps.crm.models import Service
-    from apps.files.models import ClientFolder, ClientFile
-    from apps.files.folder_utils import get_or_create_root
+    from apps.files.models import ClientFile
 
     v = rec.value
     link = clean_str(v("linkGDrive"))
@@ -649,18 +667,12 @@ def apply_files(rec: BubbleRecord) -> str:
     if project_bid:
         service = Service.objects.filter(bubble_id=project_bid).first()
     if service is not None:
-        client = service.client
-        root = get_or_create_root(client)
-        folder, _ = ClientFolder.objects.get_or_create(
-            client=client, slug="bubble_import",
-            defaults={"parent": root, "name": "Импорт из Bubble", "order": 9},
-        )
-        directory = clean_str(v("directory"))
-        display_name = (f"{directory}/{filename}" if directory else filename)[:255]
+        # Раскладываем по дереву папок согласно полю directory Bubble.
+        folder = _bubble_folder_path(service.client, clean_str(v("directory")))
         ClientFile.objects.get_or_create(
             stored_file=stored, folder=folder,
             defaults={
-                "name": display_name,
+                "name": filename[:255],
                 "size": stored.size or 0,
                 "content_type": stored.content_type,
             },
