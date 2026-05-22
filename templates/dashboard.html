@@ -37,12 +37,58 @@
     .htmx-loading { opacity: 0.6; }
     .htmx-swapping { opacity: 0; transition: opacity 1s ease-out; }
     .htmx-settling { opacity: 1; transition: opacity 1s ease-in; }
+
+    /* Глобальный индикатор загрузки — полоса вверху страницы при HTMX-запросах */
+    #global-progress {
+      position: fixed; top: 0; left: 0; right: 0; height: 3px;
+      z-index: 99999; pointer-events: none;
+      opacity: 0; transition: opacity .25s ease;
+      overflow: hidden;
+    }
+    #global-progress.active { opacity: 1; }
+    #global-progress::before {
+      content: ""; display: block; height: 100%; width: 40%;
+      background: linear-gradient(90deg,
+        transparent, hsl(var(--p, 215 90% 52%)), transparent);
+      animation: global-progress-run 1s infinite linear;
+    }
+    @keyframes global-progress-run {
+      0%   { transform: translateX(-100%); }
+      100% { transform: translateX(350%); }
+    }
   </style>
 
 
 
 </head>
 <body data-theme="light">
+  <div id="global-progress" aria-hidden="true"></div>
+  <script>
+    // Глобальный индикатор загрузки. Показываем полосу, только если
+    // HTMX-запрос длится дольше 200 мс — иначе фоновые поллеры мигали бы.
+    (function () {
+      var active = 0, timer = null;
+      var bar = document.getElementById("global-progress");
+      document.body.addEventListener("htmx:beforeRequest", function () {
+        active++;
+        if (active === 1 && !timer) {
+          timer = setTimeout(function () {
+            timer = null;
+            if (active > 0) bar.classList.add("active");
+          }, 200);
+        }
+      });
+      function done() {
+        active = Math.max(0, active - 1);
+        if (active === 0) {
+          if (timer) { clearTimeout(timer); timer = null; }
+          bar.classList.remove("active");
+        }
+      }
+      ["htmx:afterRequest", "htmx:responseError", "htmx:sendError"]
+        .forEach(function (ev) { document.body.addEventListener(ev, done); });
+    })();
+  </script>
 
 <div class="app-layout">
   <!-- Узкий иконочный сайдбар -->
