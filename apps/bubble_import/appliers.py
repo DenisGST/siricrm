@@ -15,9 +15,11 @@ from apps.crm.models import Client, ClientNameHistory
 
 from .extractors import (
     clean_str, first_nonempty, normalize_phone,
-    gender_from_bubble, parse_bubble_date,
+    gender_from_bubble, parse_bubble_date, parse_bubble_dt,
+    parse_decimal, parse_int, money_kind,
 )
 from .models import BubbleRecord
+from . import resolvers
 
 logger = logging.getLogger("bubble_import")
 
@@ -140,9 +142,144 @@ def link_spouses() -> int:
     return linked
 
 
-# Реестр applier'ов по типу сущности (расширяется на B4+).
+# ─── ProjectBFL → Service ──────────────────────────────────
+
+def apply_projectbfl(rec: BubbleRecord) -> str:
+    """Перенести ProjectBFL в Service. Клиент (dolgnik) должен быть импортирован."""
+    from apps.crm.models import Service
+
+    v = rec.value
+    bid = rec.bubble_id
+
+    client = Client.objects.filter(bubble_id=v("dolgnik")).first()
+    if client is None:
+        rec.status = "error"
+        rec.error = (
+            "Клиент (dolgnik) не импортирован. Сначала импортируйте клиентов."
+        )
+        rec.imported_at = None
+        rec.save(update_fields=["status", "error", "imported_at"])
+        return rec.status
+
+    agent = Client.objects.filter(bubble_id=v("agent")).first() if v("agent") else None
+
+    fields = {
+        "client": client,
+        "agent": agent,
+        "name": resolvers.resolve_bfl_service_name(),
+        "region": resolvers.resolve_region(v("regionPrj")),
+        "date_dogovor": parse_bubble_date(v("DateDogovor")),
+        "date_end": parse_bubble_date(v("dateEndPrj")),
+        "numb_dogovor": clean_str(v("numbDogovor"))[:50],
+        "contract_price": parse_decimal(v("SummaDogovor")) or None,
+        "legal_services_amount": parse_decimal(v("SummaJuruslugiDogovor")),
+        "doc_collection": parse_decimal(v("SummaSborDocDogovor")),
+        "postal_costs": parse_decimal(v("SummaPostRashDogovor")),
+        "state_duty": parse_decimal(v("SummGosPoshDogovor")),
+        "fu_fee": parse_decimal(v("SummaVoznagragdenieDogovor")),
+        "procedure_costs": parse_decimal(v("SummPublicDogovor")),
+        "additional_costs": parse_decimal(v("summDopRashodDogovor")),
+        "installment_months": parse_int(v("RassrochkaDogovor"), default=6),
+    }
+
+    service = Service.objects.filter(bubble_id=bid).first()
+    if service is None:
+        service = Service(bubble_id=bid, **fields)
+    else:
+        for k, val in fields.items():
+            setattr(service, k, val)
+    service.save()
+
+    rec.status = "imported"
+    rec.target_type = "Service"
+    rec.target_id = str(service.id)
+    rec.error = ""
+    rec.imported_at = timezone.now()
+    rec.save(update_fields=["status", "target_type", "target_id", "error", "imported_at"])
+    return rec.status
+
+
+# ─── Money → Charge / Payment ──────────────────────────────
+
+def apply_money(rec: BubbleRecord) -> str:
+    """Перенести Money: accrual→Charge, debit→Payment(in), credit→Payment(out)."""
+    from apps.crm.models import Service
+    from apps.finance.models import Charge, Payment
+
+    v = rec.value
+    raw = rec.raw or {}
+    bid = rec.bubble_id
+
+    kind = money_kind(raw)
+    if kind == "empty":
+        rec.status = "skipped"
+        rec.error = "Пустая запись Money (нет accrual/debit/credit)"
+        rec.imported_at = None
+        rec.save(update_fields=["status", "error", "imported_at"])
+        return rec.status
+
+    project_bid = v("Project")
+    service = Service.objects.filter(bubble_id=project_bid).first() if project_bid else None
+    if service is None:
+        rec.status = "error"
+        rec.error = (
+            "Нет связанной услуги: Project пуст или ProjectBFL не импортирован."
+        )
+        rec.imported_at = None
+        rec.save(update_fields=["status", "error", "imported_at"])
+        return rec.status
+
+    client = service.client
+    date = parse_bubble_date(v("date"))
+    if date is None:
+        dt = parse_bubble_dt(raw.get("Created Date"))
+        date = dt.date() if dt else timezone.now().date()
+    amount = parse_decimal(v(kind))
+    name = clean_str(v("name"))[:255] or "Импорт из Bubble"
+    comments = clean_str(v("comments"))
+
+    if kind == "accrual":
+        paid = bool(v("Paid"))
+        defaults = {
+            "client": client, "service": service,
+            "due_date": date, "title": name, "amount": amount,
+            "status": "paid" if paid else "scheduled",
+            "comments": comments,
+        }
+        obj, _ = Charge.objects.update_or_create(bubble_id=bid, defaults=defaults)
+        target_type = "Charge"
+    else:
+        direction = "in" if kind == "debit" else "out"
+        defaults = {
+            "client": client, "service": service,
+            "payment_date": date, "direction": direction,
+            "payment_form": "cashless", "comments": comments,
+        }
+        if direction == "in":
+            defaults["amount_in"] = amount
+            defaults["income_type"] = resolvers.resolve_income_type(v("typeDebit"))
+            defaults["incoming_account"] = resolvers.resolve_incoming_account(v("MoneySource"))
+        else:
+            defaults["amount_out"] = amount
+            defaults["expense_type"] = resolvers.resolve_expense_type(v("typeCredit"))
+            defaults["outgoing_account"] = resolvers.resolve_outgoing_account(v("MoneySource"))
+        obj, _ = Payment.objects.update_or_create(bubble_id=bid, defaults=defaults)
+        target_type = "Payment"
+
+    rec.status = "imported"
+    rec.target_type = target_type
+    rec.target_id = str(obj.id)
+    rec.error = ""
+    rec.imported_at = timezone.now()
+    rec.save(update_fields=["status", "target_type", "target_id", "error", "imported_at"])
+    return rec.status
+
+
+# Реестр applier'ов по типу сущности.
 APPLIERS = {
     "Man": apply_man,
+    "ProjectBFL": apply_projectbfl,
+    "Money": apply_money,
 }
 
 

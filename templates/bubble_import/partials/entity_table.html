@@ -1,5 +1,5 @@
 {% load bubble_extras %}
-<div id="bubble-clients-inner">
+<div id="bubble-entity-inner">
 
   {% if apply_result %}
   <div class="alert alert-success text-sm mb-3">
@@ -42,45 +42,39 @@
   <!-- Панель действий -->
   <form id="bubble-bulk-form" class="flex flex-wrap items-center gap-2 mb-3">
     <button type="button" class="btn btn-sm btn-primary"
-            hx-post="{% url 'bubble_import:fetch' %}"
-            hx-target="#bubble-clients-inner" hx-swap="outerHTML"
+            hx-post="{% url 'bubble_import:fetch' entity %}"
+            hx-target="#bubble-entity-inner" hx-swap="outerHTML"
             hx-disabled-elt="this"
-            {% if not api_ok or stats.total_fetched >= stats.total_remote and stats.total_remote > 0 %}disabled{% endif %}>
+            {% if not api_ok %}disabled{% endif %}>
       ↧ Загрузить ещё {{ batch }} из Bubble
     </button>
 
     <div class="join">
       <button type="submit" class="btn btn-sm join-item"
-              hx-post="{% url 'bubble_import:bulk_approve' %}" name="action" value="approve"
-              hx-target="#bubble-clients-inner" hx-swap="outerHTML">
-        ☑ Страницу
-      </button>
+              hx-post="{% url 'bubble_import:bulk_approve' entity %}" name="action" value="approve"
+              hx-target="#bubble-entity-inner" hx-swap="outerHTML">☑ Страницу</button>
       <button type="submit" class="btn btn-sm join-item"
-              hx-post="{% url 'bubble_import:bulk_approve' %}" name="action" value="unapprove"
-              hx-target="#bubble-clients-inner" hx-swap="outerHTML">
-        ☐ Страницу
-      </button>
+              hx-post="{% url 'bubble_import:bulk_approve' entity %}" name="action" value="unapprove"
+              hx-target="#bubble-entity-inner" hx-swap="outerHTML">☐ Страницу</button>
     </div>
 
     <div class="join">
       <button type="button" class="btn btn-sm btn-info join-item"
-              hx-post="{% url 'bubble_import:select_all' %}"
+              hx-post="{% url 'bubble_import:select_all' entity %}"
               hx-vals='{"action":"approve","filter":"{{ filter }}","q":"{{ q }}"}'
-              hx-target="#bubble-clients-inner" hx-swap="outerHTML">
+              hx-target="#bubble-entity-inner" hx-swap="outerHTML">
         ☑ Одобрить ВСЕ ({{ stats.not_imported }})
       </button>
       <button type="button" class="btn btn-sm join-item"
-              hx-post="{% url 'bubble_import:select_all' %}"
+              hx-post="{% url 'bubble_import:select_all' entity %}"
               hx-vals='{"action":"unapprove","filter":"{{ filter }}","q":"{{ q }}"}'
-              hx-target="#bubble-clients-inner" hx-swap="outerHTML">
-        ☐ Снять ВСЕ
-      </button>
+              hx-target="#bubble-entity-inner" hx-swap="outerHTML">☐ Снять ВСЕ</button>
     </div>
 
     <button type="button" class="btn btn-sm btn-success ml-auto"
-            hx-post="{% url 'bubble_import:apply' %}"
-            hx-target="#bubble-clients-inner" hx-swap="outerHTML"
-            hx-confirm="Импортировать одобренные записи в клиентов SiriCRM?"
+            hx-post="{% url 'bubble_import:apply' entity %}"
+            hx-target="#bubble-entity-inner" hx-swap="outerHTML"
+            hx-confirm="Импортировать одобренные записи ({{ entity_label }}) в SiriCRM?"
             hx-disabled-elt="this"
             {% if not stats.approved %}disabled{% endif %}>
       ⇪ Импортировать одобренные ({{ stats.approved }})
@@ -92,26 +86,26 @@
     <div class="join">
       {% with cur=filter %}
       <a class="btn btn-xs join-item {% if cur == 'all' %}btn-active{% endif %}"
-         hx-get="{% url 'bubble_import:clients_table' %}?filter=all&q={{ q }}"
-         hx-target="#bubble-clients-inner" hx-swap="outerHTML">Все</a>
+         hx-get="{% url 'bubble_import:entity_table' entity %}?filter=all&q={{ q }}"
+         hx-target="#bubble-entity-inner" hx-swap="outerHTML">Все</a>
       <a class="btn btn-xs join-item {% if cur == 'pending' %}btn-active{% endif %}"
-         hx-get="{% url 'bubble_import:clients_table' %}?filter=pending&q={{ q }}"
-         hx-target="#bubble-clients-inner" hx-swap="outerHTML">Ожидают</a>
+         hx-get="{% url 'bubble_import:entity_table' entity %}?filter=pending&q={{ q }}"
+         hx-target="#bubble-entity-inner" hx-swap="outerHTML">Ожидают</a>
       <a class="btn btn-xs join-item {% if cur == 'approved' %}btn-active{% endif %}"
-         hx-get="{% url 'bubble_import:clients_table' %}?filter=approved&q={{ q }}"
-         hx-target="#bubble-clients-inner" hx-swap="outerHTML">Одобрены</a>
+         hx-get="{% url 'bubble_import:entity_table' entity %}?filter=approved&q={{ q }}"
+         hx-target="#bubble-entity-inner" hx-swap="outerHTML">Одобрены</a>
       <a class="btn btn-xs join-item {% if cur == 'imported' %}btn-active{% endif %}"
-         hx-get="{% url 'bubble_import:clients_table' %}?filter=imported&q={{ q }}"
-         hx-target="#bubble-clients-inner" hx-swap="outerHTML">Импортированы</a>
+         hx-get="{% url 'bubble_import:entity_table' entity %}?filter=imported&q={{ q }}"
+         hx-target="#bubble-entity-inner" hx-swap="outerHTML">Импортированы</a>
       <a class="btn btn-xs join-item {% if cur == 'error' %}btn-active{% endif %}"
-         hx-get="{% url 'bubble_import:clients_table' %}?filter=error&q={{ q }}"
-         hx-target="#bubble-clients-inner" hx-swap="outerHTML">Ошибки</a>
+         hx-get="{% url 'bubble_import:entity_table' entity %}?filter=error&q={{ q }}"
+         hx-target="#bubble-entity-inner" hx-swap="outerHTML">Ошибки</a>
       {% endwith %}
     </div>
-    <input type="search" name="q" value="{{ q }}" placeholder="Поиск по ФИО…"
+    <input type="search" name="q" value="{{ q }}" placeholder="Поиск…"
            class="input input-bordered input-xs w-48"
-           hx-get="{% url 'bubble_import:clients_table' %}?filter={{ filter }}"
-           hx-target="#bubble-clients-inner" hx-swap="outerHTML"
+           hx-get="{% url 'bubble_import:entity_table' entity %}?filter={{ filter }}"
+           hx-target="#bubble-entity-inner" hx-swap="outerHTML"
            hx-trigger="keyup changed delay:400ms">
   </div>
 
@@ -121,12 +115,11 @@
       <thead>
         <tr class="bg-base-200">
           <th class="w-8"></th>
-          <th>Фамилия</th>
-          <th>Имя</th>
-          <th>Отчество</th>
-          <th>Телефон</th>
-          <th>Email</th>
-          <th>Пол</th>
+          {% if editable %}
+          <th>Фамилия</th><th>Имя</th><th>Отчество</th><th>Телефон</th><th>Email</th><th>Пол</th>
+          {% else %}
+          <th>Наименование</th><th>Детали</th>
+          {% endif %}
           <th>Создан</th>
           <th>Статус</th>
         </tr>
@@ -148,8 +141,8 @@
   <div class="flex items-center justify-center gap-1 mt-3">
     {% if page_obj.has_previous %}
     <a class="btn btn-xs"
-       hx-get="{% url 'bubble_import:clients_table' %}?filter={{ filter }}&q={{ q }}&page={{ page_obj.previous_page_number }}"
-       hx-target="#bubble-clients-inner" hx-swap="outerHTML">←</a>
+       hx-get="{% url 'bubble_import:entity_table' entity %}?filter={{ filter }}&q={{ q }}&page={{ page_obj.previous_page_number }}"
+       hx-target="#bubble-entity-inner" hx-swap="outerHTML">←</a>
     {% endif %}
     <span class="text-xs px-2">
       стр. {{ page_obj.number }} из {{ page_obj.paginator.num_pages }}
@@ -157,8 +150,8 @@
     </span>
     {% if page_obj.has_next %}
     <a class="btn btn-xs"
-       hx-get="{% url 'bubble_import:clients_table' %}?filter={{ filter }}&q={{ q }}&page={{ page_obj.next_page_number }}"
-       hx-target="#bubble-clients-inner" hx-swap="outerHTML">→</a>
+       hx-get="{% url 'bubble_import:entity_table' entity %}?filter={{ filter }}&q={{ q }}&page={{ page_obj.next_page_number }}"
+       hx-target="#bubble-entity-inner" hx-swap="outerHTML">→</a>
     {% endif %}
   </div>
   {% endif %}

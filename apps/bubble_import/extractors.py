@@ -8,6 +8,7 @@
 """
 import datetime
 import re
+from decimal import Decimal, InvalidOperation
 
 from django.utils.dateparse import parse_datetime, parse_date
 
@@ -67,6 +68,27 @@ def normalize_phone(v) -> str:
     return ""                              # нестандартное — пусть оператор поправит
 
 
+def parse_decimal(v) -> Decimal:
+    """Число Bubble → Decimal. '' / мусор → Decimal('0')."""
+    s = clean_str(v).replace(",", ".").replace(" ", "")
+    if not s:
+        return Decimal("0")
+    try:
+        return Decimal(s)
+    except (InvalidOperation, ValueError):
+        return Decimal("0")
+
+
+def parse_int(v, default=0) -> int:
+    s = clean_str(v)
+    if not s:
+        return default
+    try:
+        return int(float(s))
+    except (ValueError, TypeError):
+        return default
+
+
 def gender_from_bubble(v) -> str:
     """Поле «Пол» Bubble → код Client.gender."""
     s = clean_str(v).lower()
@@ -104,9 +126,63 @@ def man_display(raw: dict) -> dict:
     }
 
 
-# Реестр extractor'ов по типу сущности (расширяется на этапах B4+).
+def projectbfl_display(raw: dict) -> dict:
+    """Из сырого ProjectBFL — поля для таблицы аудита услуг."""
+    fio = clean_str(raw.get("namePrj")) or "(услуга без ФИО)"
+    numb = clean_str(raw.get("numbDogovor"))
+    summa = clean_str(raw.get("SummaDogovor"))
+    date_dog = parse_bubble_date(raw.get("DateDogovor"))
+    parts = []
+    if numb:
+        parts.append(f"договор №{numb}")
+    if date_dog:
+        parts.append(date_dog.strftime("%d.%m.%Y"))
+    if summa:
+        parts.append(f"{summa} ₽")
+    return {
+        "display_title": fio[:300],
+        "display_subtitle": " · ".join(parts)[:300],
+        "bubble_created": parse_bubble_dt(raw.get("Created Date")),
+    }
+
+
+def money_kind(raw: dict) -> str:
+    """Тип записи Money: accrual / debit / credit / empty."""
+    if parse_decimal(raw.get("accrual")) > 0:
+        return "accrual"
+    if parse_decimal(raw.get("debit")) > 0:
+        return "debit"
+    if parse_decimal(raw.get("credit")) > 0:
+        return "credit"
+    return "empty"
+
+
+def money_display(raw: dict) -> dict:
+    """Из сырого Money — поля для таблицы аудита платежей."""
+    kind = money_kind(raw)
+    kind_ru = {
+        "accrual": "Начисление", "debit": "Входящий",
+        "credit": "Исходящий", "empty": "—",
+    }[kind]
+    amount = parse_decimal(raw.get(kind)) if kind != "empty" else 0
+    date = parse_bubble_date(raw.get("date"))
+    parts = [kind_ru]
+    if amount:
+        parts.append(f"{amount} ₽")
+    if date:
+        parts.append(date.strftime("%d.%m.%Y"))
+    return {
+        "display_title": (clean_str(raw.get("name")) or "(без названия)")[:300],
+        "display_subtitle": " · ".join(parts)[:300],
+        "bubble_created": parse_bubble_dt(raw.get("Created Date")),
+    }
+
+
+# Реестр extractor'ов по типу сущности.
 DISPLAY_EXTRACTORS = {
     "Man": man_display,
+    "ProjectBFL": projectbfl_display,
+    "Money": money_display,
 }
 
 

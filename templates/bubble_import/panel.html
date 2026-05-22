@@ -2,11 +2,15 @@
   <div class="flex items-center justify-between mb-4">
     <h2 class="text-xl font-bold">↧ Импорт из Bubble.io</h2>
     <div class="tabs tabs-boxed">
-      <a class="tab tab-active">Клиенты (Man)</a>
-      <span class="tab tab-disabled" title="Этап B4">Услуги</span>
-      <span class="tab tab-disabled" title="Этап B4">Платежи</span>
-      <span class="tab tab-disabled" title="Этап B4">WhatsApp</span>
-      <span class="tab tab-disabled" title="Этап B4">Файлы</span>
+      {% for ent in active_entities %}
+      <a class="tab {% if ent == entity %}tab-active{% endif %}"
+         hx-get="{% url 'bubble_import:panel_entity' ent %}"
+         hx-target="#content-area" hx-swap="innerHTML">
+        {% if ent == 'Man' %}Клиенты{% elif ent == 'ProjectBFL' %}Услуги{% elif ent == 'Money' %}Платежи{% endif %}
+      </a>
+      {% endfor %}
+      <span class="tab tab-disabled" title="Следующий этап">WhatsApp</span>
+      <span class="tab tab-disabled" title="Следующий этап">Файлы</span>
     </div>
   </div>
 
@@ -16,7 +20,18 @@
   </div>
   {% endif %}
 
-  <div id="bubble-clients">
-    {% include "bubble_import/partials/clients_table.html" %}
+  {% if entity == 'Money' %}
+  <div class="alert alert-info mb-3 text-sm py-2">
+    Платежи импортируются после услуг: запись Money привязывается к услуге
+    по полю Project. Сначала импортируйте Клиентов и Услуги.
+  </div>
+  {% elif entity == 'ProjectBFL' %}
+  <div class="alert alert-info mb-3 text-sm py-2">
+    Услуга привязывается к клиенту (dolgnik). Сначала импортируйте Клиентов.
+  </div>
+  {% endif %}
+
+  <div id="bubble-entity">
+    {% include "bubble_import/partials/entity_table.html" %}
   </div>
 </div>
