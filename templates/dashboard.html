@@ -2037,6 +2037,20 @@ function filesTreeToggle(item) {
   children.style.display = open ? '' : 'none';
 }
 
+function filesTreeExpandAll() {
+  document.querySelectorAll('#files-tree-panel .tree-item').forEach(function(item) {
+    var ch = item.querySelector('.tree-children');
+    if (ch) { item.classList.add('tree-item--open'); ch.style.display = ''; }
+  });
+}
+
+function filesTreeCollapseAll() {
+  document.querySelectorAll('#files-tree-panel .tree-item').forEach(function(item) {
+    var ch = item.querySelector('.tree-children');
+    if (ch) { item.classList.remove('tree-item--open'); ch.style.display = 'none'; }
+  });
+}
+
 function filesExpandToActive() {
   document.querySelectorAll('.tree-item--active').forEach(function(item) {
     var parent = item.parentElement.closest('.tree-item');
