@@ -116,6 +116,22 @@ def _man_fields(rec: BubbleRecord) -> dict:
 FIO_MATCH_THRESHOLD = 0.9
 
 
+def _is_dummy_phone(raw_tel) -> bool:
+    """True, если телефон — заглушка из нулей (7000000 / 0000000 и т.п.).
+
+    Клиенты с таким телефоном не импортируются. Пустой телефон
+    заглушкой НЕ считается — это просто клиент без номера.
+    """
+    digits = re.sub(r"\D", "", clean_str(raw_tel))
+    if not digits:
+        return False
+    if set(digits) == {"0"}:
+        return True
+    if normalize_phone(raw_tel) == "70000000000":
+        return True
+    return False
+
+
 def _ratio(a: str, b: str):
     """Схожесть двух строк 0..1; None если одна из строк пустая."""
     a, b = (a or "").lower().strip(), (b or "").lower().strip()
@@ -176,7 +192,17 @@ def apply_man(rec: BubbleRecord) -> str:
     """Перенести одну запись Man в Client. Возвращает итоговый статус."""
     bid = rec.bubble_id
     fields = _man_fields(rec)
-    phone = normalize_phone(rec.value("tel"))
+    raw_tel = rec.value("tel")
+
+    # Телефон-заглушка из нулей → клиента не импортируем.
+    if _is_dummy_phone(raw_tel):
+        rec.status = "skipped"
+        rec.error = "Телефон-заглушка (нули) — клиент не импортируется"
+        rec.imported_at = None
+        rec.save(update_fields=["status", "error", "imported_at"])
+        return rec.status
+
+    phone = normalize_phone(raw_tel)
 
     client = Client.objects.filter(bubble_id=bid).first()
     merged_existing = False
