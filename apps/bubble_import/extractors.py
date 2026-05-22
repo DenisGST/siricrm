@@ -31,6 +31,23 @@ def first_nonempty(*values) -> str:
     return ""
 
 
+# BBCode-теги rich-text редактора Bubble: [color=..], [size=3], [font=..],
+# [b], [/b], [url=..] и т.п. Начинаются с латинской буквы — русские
+# «[важно]» и подобное не затрагиваем.
+_BBCODE_RE = re.compile(r"\[/?[a-zA-Z][^\]]*\]")
+
+
+def strip_bbcode(text) -> str:
+    """Убрать BBCode-разметку Bubble, оставить чистый текст."""
+    s = clean_str(text)
+    if not s:
+        return ""
+    s = _BBCODE_RE.sub("", s)
+    s = re.sub(r"[ \t]+\n", "\n", s)      # пробелы перед переносом
+    s = re.sub(r"\n{3,}", "\n\n", s)      # схлопнуть лишние пустые строки
+    return s.strip()
+
+
 def parse_bubble_dt(v):
     """ISO-строка Bubble → aware datetime или None."""
     s = clean_str(v)

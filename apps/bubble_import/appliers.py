@@ -19,7 +19,7 @@ from apps.crm.models import Client, ClientNameHistory, ClientEvent
 from .extractors import (
     clean_str, first_nonempty, normalize_phone,
     gender_from_bubble, parse_bubble_date, parse_bubble_dt,
-    parse_decimal, parse_int, money_kind,
+    parse_decimal, parse_int, money_kind, strip_bbcode,
 )
 from .models import BubbleRecord
 from . import resolvers
@@ -105,10 +105,10 @@ def _man_fields(rec: BubbleRecord) -> dict:
         "inn": first_nonempty(v("inn"), v("INN"))[:12],
         "snils": clean_str(v("snils"))[:14],
         "email": clean_str(v("email"))[:254],
-        "notes": clean_str(v("notes")),
+        "notes": strip_bbcode(v("notes")),
         "gender": gender_from_bubble(v("Пол")),
         "is_married": bool(v("isMarried")),
-        "referral_source": clean_str(v("From"))[:255],
+        "referral_source": strip_bbcode(v("From"))[:255],
     }
 
 
@@ -412,7 +412,7 @@ def apply_money(rec: BubbleRecord) -> str:
         date = dt.date() if dt else timezone.now().date()
     amount = parse_decimal(v(kind))
     name = clean_str(v("name"))[:255] or "Импорт из Bubble"
-    comments = clean_str(v("comments"))
+    comments = strip_bbcode(v("comments"))
 
     if kind == "accrual":
         paid = bool(v("Paid"))
@@ -495,16 +495,16 @@ def apply_messagewsp(rec: BubbleRecord) -> str:
 
     stored = None
     if mtype == "chat":
-        content = body
+        content = strip_bbcode(body)
     else:
-        # медиа: body — прямая ссылка на файл (Wasabi S3)
-        content = caption
+        # медиа: body — прямая ссылка на файл (Wasabi S3), не чистим
+        content = strip_bbcode(caption)
         if body.startswith("http") or body.startswith("//"):
             stored = download_to_storedfile(
                 body, f"wa_{rec.bubble_id}", f"wamedia_{rec.bubble_id}"[:64],
             )
         elif not content:
-            content = body
+            content = strip_bbcode(body)
 
     reply_to = None
     qmid = clean_str(v("quotedMsgId"))
