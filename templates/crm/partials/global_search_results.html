@@ -6,8 +6,7 @@
   {% if clients %}
     <div class="global-search-group-title">Клиенты</div>
     {% for c in clients %}
-      <a href="#" class="global-search-item"
-         onclick="focusKanbanClient('{{ c.id }}'); return false;">
+      <div class="global-search-item">
         {% icon "user" size=14 %}
         <span class="gs-body">
           <span class="gs-main">{{ c.last_name }} {{ c.first_name }} {{ c.patronymic }}</span>
@@ -18,10 +17,36 @@
             {% endfor %}
           </span>
         </span>
-        <span class="gs-aux">
-          {% if c.username %}@{{ c.username }}{% elif c.phone %}{{ c.phone }}{% endif %}
+        <span class="gs-actions">
+          <button type="button" class="gs-act" title="Чат"
+                  onclick="openTelegramChatModalForClient('{{ c.id }}'); closeGlobalSearch();">
+            {% icon "message-square" size=15 %}
+          </button>
+          <button type="button" class="gs-act" title="Финансы и начисления"
+                  hx-get="{% url 'finance:finance_modal' c.id %}"
+                  hx-target="body" hx-swap="beforeend"
+                  onclick="closeGlobalSearch()">
+            {% icon "wallet" size=15 %}
+          </button>
+          <button type="button" class="gs-act" title="Файлы клиента"
+                  hx-get="{% url 'files:manager' c.id %}"
+                  hx-target="body" hx-swap="beforeend"
+                  onclick="closeGlobalSearch()">
+            {% icon "folder" size=15 %}
+          </button>
+          <button type="button" class="gs-act" title="Карточка и события"
+                  hx-get="{% url 'client_events_modal' c.id %}"
+                  hx-target="body" hx-swap="beforeend"
+                  onclick="closeGlobalSearch()">
+            {% icon "history" size=15 %}
+          </button>
+          {% if c.phone %}
+          <a class="gs-act" href="tel:{{ c.phone }}" title="Позвонить: {{ c.phone }}">
+            {% icon "phone" size=15 %}
+          </a>
+          {% endif %}
         </span>
-      </a>
+      </div>
     {% endfor %}
   {% endif %}
 

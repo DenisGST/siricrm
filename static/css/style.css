@@ -403,6 +403,27 @@ img.emoji {
   font-weight: 600;
   color: var(--ms-text-secondary);
 }
+.global-search-item .gs-actions {
+  display: flex;
+  gap: 2px;
+  flex-shrink: 0;
+}
+.global-search-item .gs-act {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: none;
+  background: transparent;
+  border-radius: 5px;
+  cursor: pointer;
+  color: var(--ms-text-tertiary);
+}
+.global-search-item .gs-act:hover {
+  background: var(--ms-bg, #eef1f4);
+  color: var(--ms-blue);
+}
 .global-search-empty {
   padding: 12px;
   font-size: 12px;
