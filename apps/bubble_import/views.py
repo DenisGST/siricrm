@@ -27,12 +27,14 @@ logger = logging.getLogger("bubble_import")
 
 PAGE_SIZE = 50
 
-# Активные вкладки этапа B4 (Услуги + Платежи). Порядок = порядок Apply.
-ACTIVE_ENTITIES = ["Man", "ProjectBFL", "Money"]
+# Активные вкладки. Порядок = рекомендуемый порядок Apply (зависимости).
+ACTIVE_ENTITIES = ["Man", "ProjectBFL", "Money", "MessageWSP", "Files"]
 ENTITY_LABELS = {
     "Man": "Клиенты",
     "ProjectBFL": "Услуги",
     "Money": "Платежи",
+    "MessageWSP": "WhatsApp",
+    "Files": "Файлы",
 }
 # Поля, доступные для inline-правки — только у клиентов.
 EDITABLE_FIELDS = {

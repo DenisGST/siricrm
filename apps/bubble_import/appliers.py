@@ -7,7 +7,9 @@
 если нашли чужого клиента, ставим запись в статус error (оператор решит).
 """
 import logging
+import re
 
+import requests
 from django.db.models import Q
 from django.utils import timezone
 
@@ -22,6 +24,68 @@ from .models import BubbleRecord
 from . import resolvers
 
 logger = logging.getLogger("bubble_import")
+
+
+# ─── Скачивание файлов в наш S3 ────────────────────────────
+
+def _gdrive_direct_url(url: str) -> str:
+    """Ссылку на просмотр Google Drive → прямую download-ссылку."""
+    m = re.search(r"/file/d/([^/]+)", url) or re.search(r"[?&]id=([^&]+)", url)
+    if m:
+        return f"https://drive.google.com/uc?export=download&id={m.group(1)}"
+    return url
+
+
+def _normalize_file_url(url: str) -> str:
+    """Привести ссылку Bubble к скачиваемому виду."""
+    url = (url or "").strip()
+    if not url:
+        return ""
+    if url.startswith("//"):
+        return "https:" + url
+    if "drive.google.com" in url:
+        return _gdrive_direct_url(url)
+    return url
+
+
+def download_to_storedfile(url: str, filename: str, bubble_id: str | None = None):
+    """Скачать файл по ссылке и положить в наш Beget S3 как StoredFile.
+
+    Идемпотентно по bubble_id: если StoredFile уже есть — вернуть его.
+    Бросает исключение при сетевой ошибке / недоступности (apply_record ловит).
+    """
+    from apps.files.models import StoredFile
+    from apps.files.s3_utils import upload_file_to_s3
+
+    if bubble_id:
+        existing = StoredFile.objects.filter(bubble_id=bubble_id).first()
+        if existing:
+            return existing
+
+    real_url = _normalize_file_url(url)
+    if not real_url:
+        raise ValueError("Пустая ссылка на файл")
+
+    resp = requests.get(real_url, timeout=60, allow_redirects=True)
+    resp.raise_for_status()
+    content_type = (resp.headers.get("Content-Type") or "").lower()
+    data = resp.content
+
+    # Google Drive на больших/непубличных файлах отдаёт HTML-страницу.
+    if "drive.google.com" in real_url and content_type.startswith("text/html"):
+        raise RuntimeError(
+            "Google Drive вернул HTML — файл недоступен по ссылке "
+            "или требует подтверждения. Проверьте доступ «всем по ссылке»."
+        )
+
+    bucket, key = upload_file_to_s3(
+        data, prefix="bubble/import", filename=filename or "file.bin",
+        content_type=content_type or None,
+    )
+    return StoredFile.objects.create(
+        bucket=bucket, key=key, filename=filename or key,
+        content_type=content_type, size=len(data), bubble_id=bubble_id,
+    )
 
 
 def _man_fields(rec: BubbleRecord) -> dict:
@@ -275,11 +339,152 @@ def apply_money(rec: BubbleRecord) -> str:
     return rec.status
 
 
+# ─── MessageWSP → Message ──────────────────────────────────
+
+_WA_TYPE_MAP = {
+    "chat": "text", "image": "image", "video": "video",
+    "audio": "audio", "ptt": "voice", "document": "document",
+    "sticker": "image",
+}
+
+
+def apply_messagewsp(rec: BubbleRecord) -> str:
+    """Перенести MessageWSP в Message. Клиент ищется по whatsapp_phone."""
+    from apps.crm.models import Message
+
+    v = rec.value
+    raw = rec.raw or {}
+
+    mtype = clean_str(v("type")).lower()
+    body = clean_str(v("body"))
+    caption = clean_str(v("caption"))
+    if not mtype or (not body and not caption):
+        rec.status = "skipped"
+        rec.error = "Пустое сообщение (нет type/body/caption)"
+        rec.imported_at = None
+        rec.save(update_fields=["status", "error", "imported_at"])
+        return rec.status
+
+    phone = normalize_phone(v("NumberTel"))
+    client = Client.objects.filter(whatsapp_phone=phone).first() if phone else None
+    if client is None:
+        rec.status = "error"
+        rec.error = (
+            f"Клиент с номером +{phone or '?'} не найден. "
+            f"Сначала импортируйте клиентов."
+        )
+        rec.imported_at = None
+        rec.save(update_fields=["status", "error", "imported_at"])
+        return rec.status
+
+    direction = "outgoing" if bool(v("fromMe")) else "incoming"
+    created = parse_bubble_dt(v("Created Date"))
+    message_type = _WA_TYPE_MAP.get(mtype, "text")
+
+    stored = None
+    if mtype == "chat":
+        content = body
+    else:
+        # медиа: body — прямая ссылка на файл (Wasabi S3)
+        content = caption
+        if body.startswith("http") or body.startswith("//"):
+            stored = download_to_storedfile(
+                body, f"wa_{rec.bubble_id}", f"wamedia_{rec.bubble_id}"[:64],
+            )
+        elif not content:
+            content = body
+
+    reply_to = None
+    qmid = clean_str(v("quotedMsgId"))
+    if qmid:
+        reply_to = Message.objects.filter(
+            whatsapp_message_id=qmid, channel="whatsapp",
+        ).first()
+
+    defaults = {
+        "client": client,
+        "content": content,
+        "direction": direction,
+        "message_type": message_type,
+        "channel": "whatsapp",
+        "whatsapp_message_id": clean_str(v("id"))[:128],
+        "reply_to": reply_to,
+        "telegram_date": created or timezone.now(),
+    }
+    if stored:
+        defaults["file"] = stored
+        defaults["file_name"] = stored.filename
+
+    msg, _ = Message.objects.update_or_create(bubble_id=rec.bubble_id, defaults=defaults)
+
+    rec.status = "imported"
+    rec.target_type = "Message"
+    rec.target_id = str(msg.id)
+    rec.error = ""
+    rec.imported_at = timezone.now()
+    rec.save(update_fields=["status", "target_type", "target_id", "error", "imported_at"])
+    return rec.status
+
+
+# ─── Files → StoredFile ────────────────────────────────────
+
+def apply_files(rec: BubbleRecord) -> str:
+    """Скачать файл Bubble в наш S3. Привязать к клиенту услуги, если есть."""
+    from apps.crm.models import Service
+    from apps.files.models import ClientFolder, ClientFile
+    from apps.files.folder_utils import get_or_create_root
+
+    v = rec.value
+    link = clean_str(v("linkGDrive"))
+    if not link:
+        rec.status = "skipped"
+        rec.error = "Пустая ссылка linkGDrive"
+        rec.imported_at = None
+        rec.save(update_fields=["status", "error", "imported_at"])
+        return rec.status
+
+    filename = clean_str(v("filename")) or f"file_{rec.bubble_id}"
+    stored = download_to_storedfile(link, filename, rec.bubble_id)
+
+    # Привязка к клиенту через услугу (projectBFL).
+    service = None
+    project_bid = v("projectBFL")
+    if project_bid:
+        service = Service.objects.filter(bubble_id=project_bid).first()
+    if service is not None:
+        client = service.client
+        root = get_or_create_root(client)
+        folder, _ = ClientFolder.objects.get_or_create(
+            client=client, slug="bubble_import",
+            defaults={"parent": root, "name": "Импорт из Bubble", "order": 9},
+        )
+        directory = clean_str(v("directory"))
+        display_name = (f"{directory}/{filename}" if directory else filename)[:255]
+        ClientFile.objects.get_or_create(
+            stored_file=stored, folder=folder,
+            defaults={
+                "name": display_name,
+                "size": stored.size or 0,
+                "content_type": stored.content_type,
+            },
+        )
+
+    rec.status = "imported"
+    rec.target_type = "StoredFile"
+    rec.target_id = str(stored.id)
+    rec.error = ""
+    rec.imported_at = timezone.now()
+    rec.save(update_fields=["status", "target_type", "target_id", "error", "imported_at"])
+    return rec.status
+
+
 # Реестр applier'ов по типу сущности.
 APPLIERS = {
     "Man": apply_man,
     "ProjectBFL": apply_projectbfl,
     "Money": apply_money,
+    "MessageWSP": apply_messagewsp,
+    "Files": apply_files,
 }
 
 

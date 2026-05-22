@@ -11,6 +11,7 @@
 * поле _id — уникальный идентификатор объекта;
 * response.remaining — сколько ещё осталось после текущей страницы.
 """
+import json
 import logging
 
 import requests
@@ -39,11 +40,19 @@ def _headers() -> dict:
     return {"Authorization": f"Bearer {API_TOKEN}"}
 
 
-def fetch_page(entity: str, cursor: int = 0, limit: int = PAGE_LIMIT) -> dict:
+def fetch_page(entity: str, cursor: int = 0, limit: int = PAGE_LIMIT,
+               constraints: list | None = None) -> dict:
     """Одна страница объектов. Возвращает dict с ключами:
-    results (list), remaining (int), cursor (int), count (int)."""
+    results (list), remaining (int), cursor (int), count (int).
+
+    constraints — список dict в формате Bubble Data API, напр.
+    [{"key": "Created Date", "constraint_type": "greater than",
+      "value": "2023-05-22T00:00:00Z"}].
+    """
     url = f"{API_BASE}/{entity}"
     params = {"cursor": cursor, "limit": limit}
+    if constraints:
+        params["constraints"] = json.dumps(constraints)
     try:
         resp = requests.get(url, headers=_headers(), params=params, timeout=60)
     except requests.RequestException as e:
@@ -73,11 +82,11 @@ def count_total(entity: str) -> int:
     return page["remaining"] + page["count"]
 
 
-def iter_all(entity: str, start_cursor: int = 0):
+def iter_all(entity: str, start_cursor: int = 0, constraints: list | None = None):
     """Генератор всех объектов типа — постранично. Для management-команд."""
     cursor = start_cursor
     while True:
-        page = fetch_page(entity, cursor=cursor)
+        page = fetch_page(entity, cursor=cursor, constraints=constraints)
         results = page["results"]
         if not results:
             break

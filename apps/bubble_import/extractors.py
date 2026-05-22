@@ -178,11 +178,49 @@ def money_display(raw: dict) -> dict:
     }
 
 
+def messagewsp_display(raw: dict) -> dict:
+    """Из сырого MessageWSP — поля для таблицы аудита сообщений."""
+    name = clean_str(raw.get("senderName")) or clean_str(raw.get("chatName"))
+    phone = normalize_phone(raw.get("NumberTel"))
+    title = name or ("+" + phone if phone else "(без имени)")
+    from_me = bool(raw.get("fromMe"))
+    mtype = clean_str(raw.get("type")) or "?"
+    body = clean_str(raw.get("body")) or clean_str(raw.get("caption"))
+    parts = ["исходящее" if from_me else "входящее", mtype]
+    if body:
+        parts.append(body[:60])
+    return {
+        "display_title": title[:300],
+        "display_subtitle": " · ".join(parts)[:300],
+        "bubble_created": parse_bubble_dt(raw.get("Created Date")),
+    }
+
+
+def files_display(raw: dict) -> dict:
+    """Из сырого Files — поля для таблицы аудита файлов."""
+    fname = clean_str(raw.get("filename")) or "(без имени)"
+    directory = clean_str(raw.get("directory"))
+    link = clean_str(raw.get("linkGDrive"))
+    storage = ""
+    if "google" in link:
+        storage = "Google Drive"
+    elif "amazonaws" in link or "appforest" in link:
+        storage = "Bubble S3"
+    parts = [p for p in (directory, storage) if p]
+    return {
+        "display_title": fname[:300],
+        "display_subtitle": " · ".join(parts)[:300],
+        "bubble_created": parse_bubble_dt(raw.get("Created Date")),
+    }
+
+
 # Реестр extractor'ов по типу сущности.
 DISPLAY_EXTRACTORS = {
     "Man": man_display,
     "ProjectBFL": projectbfl_display,
     "Money": money_display,
+    "MessageWSP": messagewsp_display,
+    "Files": files_display,
 }
 
 

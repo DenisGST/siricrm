@@ -1,4 +1,5 @@
 """FETCH-логика: постраничная выгрузка Bubble → staging-таблица BubbleRecord."""
+import datetime
 import logging
 
 from django.utils import timezone
@@ -11,6 +12,21 @@ logger = logging.getLogger("bubble_import")
 
 # Сколько записей тянуть за одно нажатие «Загрузить ещё».
 DEFAULT_BATCH = 50
+
+# WhatsApp-сообщения импортируем только за последние N лет.
+MESSAGEWSP_YEARS = 3
+
+
+def _entity_constraints(entity: str) -> list | None:
+    """Серверные фильтры Bubble для конкретной сущности."""
+    if entity == "MessageWSP":
+        cutoff = timezone.now() - datetime.timedelta(days=365 * MESSAGEWSP_YEARS)
+        return [{
+            "key": "Created Date",
+            "constraint_type": "greater than",
+            "value": cutoff.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        }]
+    return None
 
 
 def get_state(entity: str) -> BubbleFetchState:
@@ -28,10 +44,12 @@ def fetch_batch(entity: str, batch: int = DEFAULT_BATCH) -> dict:
     cursor = state.cursor
     fetched = created = updated = 0
     remaining = state.total_remote
+    constraints = _entity_constraints(entity)
 
     while fetched < batch:
         want = min(bubble_api.PAGE_LIMIT, batch - fetched)
-        page = bubble_api.fetch_page(entity, cursor=cursor, limit=want)
+        page = bubble_api.fetch_page(entity, cursor=cursor, limit=want,
+                                     constraints=constraints)
         results = page["results"]
         remaining = page["remaining"]
         if not results:
