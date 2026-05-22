@@ -40,21 +40,21 @@
 
     /* Глобальный индикатор загрузки — полоса вверху страницы при HTMX-запросах */
     #global-progress {
-      position: fixed; top: 0; left: 0; right: 0; height: 3px;
+      position: fixed; top: 0; left: 0; right: 0; height: 4px;
       z-index: 99999; pointer-events: none;
+      background: rgba(37, 99, 235, 0.15);
       opacity: 0; transition: opacity .25s ease;
       overflow: hidden;
     }
     #global-progress.active { opacity: 1; }
     #global-progress::before {
-      content: ""; display: block; height: 100%; width: 40%;
-      background: linear-gradient(90deg,
-        transparent, hsl(var(--p, 215 90% 52%)), transparent);
-      animation: global-progress-run 1s infinite linear;
+      content: ""; position: absolute; top: 0; bottom: 0; left: 0; width: 35%;
+      background: linear-gradient(90deg, transparent, #2563eb 45%, #60a5fa, transparent);
+      animation: global-progress-run 1.1s infinite ease-in-out;
     }
     @keyframes global-progress-run {
-      0%   { transform: translateX(-100%); }
-      100% { transform: translateX(350%); }
+      0%   { left: -35%; }
+      100% { left: 100%; }
     }
   </style>
 
@@ -69,7 +69,7 @@
     (function () {
       var active = 0, timer = null;
       var bar = document.getElementById("global-progress");
-      document.body.addEventListener("htmx:beforeRequest", function () {
+      document.addEventListener("htmx:beforeRequest", function () {
         active++;
         if (active === 1 && !timer) {
           timer = setTimeout(function () {
@@ -80,13 +80,14 @@
       });
       function done() {
         active = Math.max(0, active - 1);
-        if (active === 0) {
+        if (active <= 0) {
+          active = 0;
           if (timer) { clearTimeout(timer); timer = null; }
           bar.classList.remove("active");
         }
       }
       ["htmx:afterRequest", "htmx:responseError", "htmx:sendError"]
-        .forEach(function (ev) { document.body.addEventListener(ev, done); });
+        .forEach(function (ev) { document.addEventListener(ev, done); });
     })();
   </script>
 
