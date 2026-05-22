@@ -100,6 +100,27 @@ def resolve_client_status_by_man(man_bubble_id: str):
     return resolve_client_status(latest.get("statusPrj"))
 
 
+def resolve_employee_by_user(user_bubble_id: str):
+    """Bubble User._id → Employee. Через staging-запись импорта сотрудников.
+
+    Используем BubbleRecord (а не Employee.bubble_id) — у сотрудника может
+    быть несколько User-записей в Bubble, target_id есть у каждой.
+    """
+    if not user_bubble_id:
+        return None
+    from apps.bubble_import.models import BubbleRecord
+    from apps.core.models import Employee
+    rec = (
+        BubbleRecord.objects
+        .filter(entity="User", bubble_id=user_bubble_id, status="imported")
+        .exclude(target_id="")
+        .first()
+    )
+    if not rec:
+        return None
+    return Employee.objects.filter(pk=rec.target_id).first()
+
+
 def resolve_region(region_bubble_id: str):
     """Bubble Region._id → crm.Region (по numberRegion). None если нет."""
     num = lookup("Region", region_bubble_id, "numberRegion")

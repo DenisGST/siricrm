@@ -329,6 +329,32 @@ def link_spouses() -> int:
 
 # ─── ProjectBFL → Service ──────────────────────────────────
 
+def _assign_service_employees(service, rec: BubbleRecord):
+    """Закрепить за услугой сотрудников из полей Manager / ROP / Jurist /
+    Arbitragnik. Manager/ROP/Jurist — Bubble User; Arbitragnik — Bubble
+    Arbitrs (резолвится по ФИО). Возвращает число закреплённых."""
+    from apps.crm.models import ServiceEmployeeState
+
+    v = rec.value
+    emp_ids = set()
+
+    for field in ("Manager", "ROP", "Jurist"):
+        emp = resolvers.resolve_employee_by_user(v(field))
+        if emp:
+            emp_ids.add(emp.pk)
+
+    arb_fio = resolvers.lookup("Arbitrs", v("Arbitragnik"), "FIO")
+    if arb_fio:
+        al, af, _ = parse_fio(arb_fio)
+        arb = _find_employee_by_fio(al, af)
+        if arb:
+            emp_ids.add(arb.pk)
+
+    for eid in emp_ids:
+        ServiceEmployeeState.objects.get_or_create(service=service, employee_id=eid)
+    return len(emp_ids)
+
+
 def apply_projectbfl(rec: BubbleRecord) -> str:
     """Перенести ProjectBFL в Service. Клиент (dolgnik) должен быть импортирован."""
     from apps.crm.models import Service
@@ -380,6 +406,9 @@ def apply_projectbfl(rec: BubbleRecord) -> str:
     if new_status and client.status != new_status:
         client.status = new_status
         client.save(update_fields=["status"])
+
+    # Закрепить услугу за сотрудниками (Manager / ROP / Jurist / Arbitragnik).
+    _assign_service_employees(service, rec)
 
     rec.status = "imported"
     rec.target_type = "Service"
