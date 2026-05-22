@@ -39,6 +39,33 @@
     {% endwith %}
   </div>
 
+  <!-- Лог ошибок и пропусков -->
+  {% if error_summary %}
+  <details class="mb-3 border border-warning rounded bg-warning/5" open>
+    <summary class="cursor-pointer text-sm font-semibold px-3 py-2">
+      Лог ошибок и пропусков — {{ error_summary|length }} тип(ов)
+    </summary>
+    <div class="px-3 pb-3 space-y-1">
+      {% for e in error_summary %}
+      <div class="text-xs flex items-start gap-2">
+        <span class="badge badge-sm {% if e.has_error %}badge-error{% else %}badge-ghost{% endif %} shrink-0">
+          {{ e.count }}
+        </span>
+        <span>
+          {{ e.category }}
+          {% if e.sample %}
+          <span class="text-base-content/50" title="{{ e.sample }}">— пример при наведении</span>
+          {% endif %}
+        </span>
+      </div>
+      {% endfor %}
+      <div class="text-xs text-base-content/60 pt-1">
+        Подробности по каждой записи — в столбце «Статус». Фильтр «Ошибки» показывает только проблемные.
+      </div>
+    </div>
+  </details>
+  {% endif %}
+
   <!-- Панель действий -->
   <form id="bubble-bulk-form" class="flex flex-wrap items-center gap-2 mb-3">
     <button type="button" class="btn btn-sm btn-primary"

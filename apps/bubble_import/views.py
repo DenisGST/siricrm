@@ -83,6 +83,46 @@ def _filtered_records(request, entity: str):
     return qs, flt, search
 
 
+# Классификация текста ошибки/пропуска по ключевым словам.
+# Порядок важен — берётся первое совпадение.
+_ERROR_RULES = [
+    ("дубл", "Дубль по телефону — запись не импортирована, чтобы не плодить дубли"),
+    ("не найден", "Клиент по номеру не найден — сначала импортируйте клиентов"),
+    ("связанной услуги", "Нет связанной услуги (поле Project пустое или ProjectBFL не импортирован)"),
+    ("не импортирован", "Зависимость не импортирована (импортируйте сущность уровнем выше)"),
+    ("сначала импортируйте", "Зависимость не импортирована (импортируйте сущность уровнем выше)"),
+    ("appforest", "Старый файл Bubble S3 — недоступен (403), пропущен"),
+    ("google drive", "Файл Google Drive недоступен по ссылке"),
+    ("пуст", "Пустая запись — нечего импортировать"),
+]
+
+
+def _categorize_error(text: str) -> str:
+    low = (text or "").lower()
+    for kw, label in _ERROR_RULES:
+        if kw in low:
+            return label
+    return "Прочее"
+
+
+def _error_summary(entity: str) -> list:
+    """Сводка по проблемным записям сущности: категория → счётчик + пример."""
+    rows = BubbleRecord.objects.filter(
+        entity=entity, status__in=["error", "skipped"],
+    ).values_list("status", "error")
+    cats: dict = {}
+    for status, error in rows:
+        label = _categorize_error(error)
+        c = cats.setdefault(label, {"category": label, "count": 0, "sample": error or "",
+                                    "has_error": False})
+        c["count"] += 1
+        if status == "error":
+            c["has_error"] = True
+        if not c["sample"]:
+            c["sample"] = error or ""
+    return sorted(cats.values(), key=lambda x: -x["count"])
+
+
 def _tabs(current: str) -> list:
     """Вкладки со счётчиками выгружено/всего по каждой сущности."""
     states = {s.entity: s for s in BubbleFetchState.objects.all()}
@@ -112,6 +152,7 @@ def _entity_context(request, entity: str) -> dict:
         "active_entities": ACTIVE_ENTITIES,
         "entity_labels": ENTITY_LABELS,
         "tabs": _tabs(entity),
+        "error_summary": _error_summary(entity),
         "page_obj": page,
         "filter": flt,
         "q": search,
