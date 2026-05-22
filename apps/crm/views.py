@@ -465,20 +465,28 @@ def kanban_column(request, status):
             F("last_message_at").desc(nulls_last=True), "-created_at",
         )
     )
-    _annotate_ms_status(clients, request.user)
 
-    PAGE_SIZE = 25
-    total     = len(clients)
-    show_all  = request.GET.get("all") == "1"
-    shown     = clients if show_all else clients[:PAGE_SIZE]
-    has_more  = not show_all and total > PAGE_SIZE
+    # Постраничная подгрузка по 50 — иначе на больших колонках (после
+    # импорта из Bubble) рендер всех карточек разом вешает страницу.
+    PAGE_SIZE = 50
+    total = len(clients)
+    try:
+        offset = max(int(request.GET.get("offset") or 0), 0)
+    except (TypeError, ValueError):
+        offset = 0
+    shown = clients[offset:offset + PAGE_SIZE]
+    _annotate_ms_status(shown, request.user)
+    next_offset = offset + PAGE_SIZE
+    has_more = next_offset < total
 
     return render(request, "crm/partials/kanban_column.html", {
         "clients":   shown,
         "status":    status,
         "count":     total,
+        "offset":    offset,
         "has_more":  has_more,
-        "more_count": total - PAGE_SIZE if has_more else 0,
+        "next_offset": next_offset,
+        "remaining": max(total - next_offset, 0),
     })
 
 
