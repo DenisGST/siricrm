@@ -2,11 +2,16 @@
   <div class="flex items-center justify-between mb-4">
     <h2 class="text-xl font-bold">↧ Импорт из Bubble.io</h2>
     <div class="tabs tabs-boxed">
-      {% for ent in active_entities %}
-      <a class="tab {% if ent == entity %}tab-active{% endif %}"
-         hx-get="{% url 'bubble_import:panel_entity' ent %}"
+      {% for t in tabs %}
+      <a class="tab {% if t.active %}tab-active{% endif %}"
+         hx-get="{% url 'bubble_import:panel_entity' t.entity %}"
          hx-target="#content-area" hx-swap="innerHTML">
-        {% if ent == 'Man' %}Клиенты{% elif ent == 'ProjectBFL' %}Услуги{% elif ent == 'Money' %}Платежи{% elif ent == 'MessageWSP' %}WhatsApp{% elif ent == 'Files' %}Файлы{% endif %}
+        {{ t.label }}
+        {% if t.remote %}
+        <span class="badge badge-xs ml-1" title="импортировано {{ t.imported }}">{{ t.fetched }}/{{ t.remote }}</span>
+        {% elif t.fetched %}
+        <span class="badge badge-xs ml-1">{{ t.fetched }}</span>
+        {% endif %}
       </a>
       {% endfor %}
     </div>

@@ -443,6 +443,15 @@ def apply_files(rec: BubbleRecord) -> str:
         rec.save(update_fields=["status", "error", "imported_at"])
         return rec.status
 
+    # Старое хранилище Bubble S3 (appforest_uf, ~2020) отдаёт 403 —
+    # такие файлы пропускаем, не тратя сетевой запрос.
+    if "appforest" in link or "s3.amazonaws" in link:
+        rec.status = "skipped"
+        rec.error = "Старый файл Bubble S3 (appforest) — недоступен, пропущен"
+        rec.imported_at = None
+        rec.save(update_fields=["status", "error", "imported_at"])
+        return rec.status
+
     filename = clean_str(v("filename")) or f"file_{rec.bubble_id}"
     stored = download_to_storedfile(link, filename, rec.bubble_id)
 

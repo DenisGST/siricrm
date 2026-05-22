@@ -19,7 +19,7 @@ from apps.core.permissions import require_superuser
 
 from . import bubble_api
 from .extractors import extract_display
-from .models import BubbleRecord
+from .models import BubbleRecord, BubbleFetchState
 from .services import fetch_batch, DEFAULT_BATCH, get_state
 from .appliers import apply_approved
 
@@ -83,6 +83,24 @@ def _filtered_records(request, entity: str):
     return qs, flt, search
 
 
+def _tabs(current: str) -> list:
+    """Вкладки со счётчиками выгружено/всего по каждой сущности."""
+    states = {s.entity: s for s in BubbleFetchState.objects.all()}
+    tabs = []
+    for ent in ACTIVE_ENTITIES:
+        qs = BubbleRecord.objects.filter(entity=ent)
+        st = states.get(ent)
+        tabs.append({
+            "entity": ent,
+            "label": ENTITY_LABELS[ent],
+            "fetched": qs.count(),
+            "imported": qs.filter(status="imported").count(),
+            "remote": st.total_remote if st else 0,
+            "active": ent == current,
+        })
+    return tabs
+
+
 def _entity_context(request, entity: str) -> dict:
     qs, flt, search = _filtered_records(request, entity)
     qs = qs.order_by("bubble_created", "id")
@@ -93,6 +111,7 @@ def _entity_context(request, entity: str) -> dict:
         "entity_label": ENTITY_LABELS[entity],
         "active_entities": ACTIVE_ENTITIES,
         "entity_labels": ENTITY_LABELS,
+        "tabs": _tabs(entity),
         "page_obj": page,
         "filter": flt,
         "q": search,
@@ -156,14 +175,16 @@ def toggle_approve(request, entity, pk):
 @require_superuser
 @require_POST
 def bulk_approve(request, entity):
-    """Одобрить/снять все записи на текущей странице (id списком)."""
+    """Одобрить/снять все записи текущей страницы (по номеру страницы)."""
     _check_entity(entity)
-    ids = request.POST.getlist("ids")
     action = request.POST.get("action")
-    if ids:
-        BubbleRecord.objects.filter(pk__in=ids, entity=entity).update(
-            approved=(action == "approve"),
-        )
+    qs, _flt, _q = _filtered_records(request, entity)
+    qs = qs.order_by("bubble_created", "id")
+    page = Paginator(qs, PAGE_SIZE).get_page(request.POST.get("page") or 1)
+    page_ids = [r.pk for r in page.object_list]
+    BubbleRecord.objects.filter(pk__in=page_ids).exclude(status="imported").update(
+        approved=(action == "approve"),
+    )
     return render(request, "bubble_import/partials/entity_table.html",
                   _entity_context(request, entity))
 

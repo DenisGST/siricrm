@@ -50,12 +50,14 @@
     </button>
 
     <div class="join">
-      <button type="submit" class="btn btn-sm join-item"
-              hx-post="{% url 'bubble_import:bulk_approve' entity %}" name="action" value="approve"
-              hx-target="#bubble-entity-inner" hx-swap="outerHTML">☑ Страницу</button>
-      <button type="submit" class="btn btn-sm join-item"
-              hx-post="{% url 'bubble_import:bulk_approve' entity %}" name="action" value="unapprove"
-              hx-target="#bubble-entity-inner" hx-swap="outerHTML">☐ Страницу</button>
+      <button type="button" class="btn btn-sm join-item"
+              hx-post="{% url 'bubble_import:bulk_approve' entity %}"
+              hx-vals='{"action":"approve","filter":"{{ filter }}","q":"{{ q }}","page":"{{ page_obj.number }}"}'
+              hx-target="#bubble-entity-inner" hx-swap="outerHTML">☑ Одобрить страницу</button>
+      <button type="button" class="btn btn-sm join-item"
+              hx-post="{% url 'bubble_import:bulk_approve' entity %}"
+              hx-vals='{"action":"unapprove","filter":"{{ filter }}","q":"{{ q }}","page":"{{ page_obj.number }}"}'
+              hx-target="#bubble-entity-inner" hx-swap="outerHTML">☐ Снять страницу</button>
     </div>
 
     <div class="join">
