@@ -50,12 +50,14 @@ def create_bfl_folders(client):
 def build_tree(client):
     """Возвращает список корневых папок с вложенными _children (без N+1).
 
-    Каждой папке проставляется files_count — число файлов в ней самой.
+    Каждой папке проставляется files_count — число файлов во всём её
+    поддереве (включая вложенные папки), чтобы счётчик был виден и у
+    свёрнутых родительских папок.
     """
     from django.db.models import Count
     folders = list(
         ClientFolder.objects.filter(client=client)
-        .annotate(files_count=Count("files"))
+        .annotate(_own_files=Count("files"))
         .order_by("order", "name")
     )
     by_id = {f.pk: f for f in folders}
@@ -69,6 +71,17 @@ def build_tree(client):
                 p._children.append(f)
         else:
             roots.append(f)
+
+    # Рекурсивно суммируем файлы по поддереву.
+    def _count(folder):
+        total = folder._own_files
+        for child in folder._children:
+            total += _count(child)
+        folder.files_count = total
+        return total
+
+    for r in roots:
+        _count(r)
     return roots
 
 
