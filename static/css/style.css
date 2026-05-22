@@ -732,6 +732,8 @@ input:focus, textarea:focus, select:focus {
 .bubble-telegram-out { background-color: #2b88d8 !important; color: #fff !important; }
 .bubble-max-in       { background-color: #8764b8 !important; color: #fff !important; }
 .bubble-max-out      { background-color: #b4a0ff !important; color: #fff !important; }
+.bubble-whatsapp-in  { background-color: #1faa54 !important; color: #fff !important; }
+.bubble-whatsapp-out { background-color: #25d366 !important; color: #fff !important; }
 
 .btn-max-send:not(:disabled) {
   background-color: #8764b8 !important;
@@ -759,6 +761,7 @@ input:focus, textarea:focus, select:focus {
 }
 .message-badge-telegram-in { background-color: var(--ms-blue); color: #fff; }
 .message-badge-max-in { background-color: #8764b8; color: #fff; }
+.message-badge-whatsapp-in { background-color: #25d366; color: #fff; }
 
 /* Цитата */
 .reply-preview {
