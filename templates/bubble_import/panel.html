@@ -1,0 +1,22 @@
+<div class="p-4">
+  <div class="flex items-center justify-between mb-4">
+    <h2 class="text-xl font-bold">↧ Импорт из Bubble.io</h2>
+    <div class="tabs tabs-boxed">
+      <a class="tab tab-active">Клиенты (Man)</a>
+      <span class="tab tab-disabled" title="Этап B4">Услуги</span>
+      <span class="tab tab-disabled" title="Этап B4">Платежи</span>
+      <span class="tab tab-disabled" title="Этап B4">WhatsApp</span>
+      <span class="tab tab-disabled" title="Этап B4">Файлы</span>
+    </div>
+  </div>
+
+  {% if not api_ok %}
+  <div class="alert alert-warning mb-3 text-sm">
+    Не задан <code>BUBBLE_API_TOKEN</code> — выгрузка из Bubble недоступна.
+  </div>
+  {% endif %}
+
+  <div id="bubble-clients">
+    {% include "bubble_import/partials/clients_table.html" %}
+  </div>
+</div>
