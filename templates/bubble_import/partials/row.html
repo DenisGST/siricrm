@@ -36,6 +36,14 @@
   <td class="text-xs text-base-content/70">{{ rec.display_subtitle }}</td>
   {% endif %}
 
+  {% if entity == 'ProjectBFL' %}
+  <td class="text-xs">
+    {% if rec.display_status %}
+      <span class="badge badge-sm badge-outline">{{ rec.display_status }}</span>
+    {% else %}—{% endif %}
+  </td>
+  {% endif %}
+
   <td class="text-xs whitespace-nowrap">{{ rec.bubble_created|date:"d.m.Y"|default:"—" }}</td>
   <td class="min-w-[14rem]">
     {% if rec.status == 'imported' %}

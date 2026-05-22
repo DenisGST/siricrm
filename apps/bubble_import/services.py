@@ -60,6 +60,12 @@ def fetch_batch(entity: str, batch: int = DEFAULT_BATCH) -> dict:
             if not bid:
                 continue
             display = extract_display(entity, obj)
+            # Для услуг — резолвим название статуса (statusPrj) в отдельный столбец.
+            if entity == "ProjectBFL":
+                from . import resolvers
+                display["display_status"] = resolvers.lookup(
+                    "StatusPrj", obj.get("statusPrj"), "nameStatusPrj",
+                )
             rec, is_new = BubbleRecord.objects.update_or_create(
                 entity=entity, bubble_id=bid,
                 defaults={"raw": obj, **display},

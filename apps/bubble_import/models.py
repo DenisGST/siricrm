@@ -65,6 +65,10 @@ class BubbleRecord(models.Model):
     # Извлечённые поля для таблицы/фильтров UI (заполняются при fetch).
     display_title = models.CharField("Заголовок", max_length=300, blank=True, default="")
     display_subtitle = models.CharField("Подзаголовок", max_length=300, blank=True, default="")
+    display_status = models.CharField(
+        "Статус из Bubble", max_length=120, blank=True, default="",
+        help_text="Напр. статус услуги (statusPrj) — для отображения в аудите.",
+    )
     bubble_created = models.DateTimeField("Создан в Bubble", null=True, blank=True)
 
     # Управление импортом.
