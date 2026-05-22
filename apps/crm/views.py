@@ -1007,6 +1007,8 @@ def global_search(request):
         Q(first_name__icontains=q) | Q(last_name__icontains=q) |
         Q(patronymic__icontains=q) | Q(username__icontains=q) |
         Q(phone__icontains=q)
+    ).prefetch_related(
+        "services__name", "services__common_status",
     ).order_by("last_name", "first_name")[:12]
 
     legal_entities = LegalEntity.objects.filter(

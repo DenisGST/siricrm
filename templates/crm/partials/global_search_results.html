@@ -9,7 +9,15 @@
       <a href="#" class="global-search-item"
          onclick="focusKanbanClient('{{ c.id }}'); return false;">
         {% icon "user" size=14 %}
-        <span class="gs-main">{{ c.last_name }} {{ c.first_name }} {{ c.patronymic }}</span>
+        <span class="gs-body">
+          <span class="gs-main">{{ c.last_name }} {{ c.first_name }} {{ c.patronymic }}</span>
+          <span class="gs-meta">
+            <span class="gs-status">{{ c.get_status_display }}</span>
+            {% for s in c.services.all %}
+              · {{ s.name.short_name }}{% if s.common_status %} ({{ s.common_status.name }}){% endif %}
+            {% endfor %}
+          </span>
+        </span>
         <span class="gs-aux">
           {% if c.username %}@{{ c.username }}{% elif c.phone %}{{ c.phone }}{% endif %}
         </span>

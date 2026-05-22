@@ -382,6 +382,27 @@ img.emoji {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.global-search-item .gs-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.global-search-item .gs-body .gs-main {
+  flex: none;
+}
+.global-search-item .gs-meta {
+  font-size: 10px;
+  color: var(--ms-text-tertiary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.global-search-item .gs-meta .gs-status {
+  font-weight: 600;
+  color: var(--ms-text-secondary);
+}
 .global-search-empty {
   padding: 12px;
   font-size: 12px;
