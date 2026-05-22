@@ -573,6 +573,13 @@ def apply_messagewsp(rec: BubbleRecord) -> str:
 
     msg, _ = Message.objects.update_or_create(bubble_id=rec.bubble_id, defaults=defaults)
 
+    # Поднять клиента в списке чатов — иначе с импортированной перепиской
+    # он не всплывёт (список сортируется по last_message_at).
+    msg_dt = defaults["telegram_date"]
+    if client.last_message_at is None or msg_dt > client.last_message_at:
+        client.last_message_at = msg_dt
+        client.save(update_fields=["last_message_at"])
+
     rec.status = "imported"
     rec.target_type = "Message"
     rec.target_id = str(msg.id)
