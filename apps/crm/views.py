@@ -8,7 +8,7 @@ from django.template.loader import render_to_string
 
 from apps.crm.models import *
 from django.db import models, transaction
-from django.db.models import Q, Prefetch
+from django.db.models import Q, Prefetch, F
 from django.utils import timezone
 
 from .models import (
@@ -456,7 +456,15 @@ def kanban_column(request, status):
         except Employee.DoesNotExist:
             qs = qs.none()
 
-    clients = list(qs.prefetch_related("employees", "services__name").order_by("-last_message_at"))
+    # Сортировка: клиенты с перепиской — сверху по дате сообщения; без неё
+    # (импортированные, ещё без сообщений) — ниже, в стабильном порядке
+    # по дате создания. nulls_last обязателен — иначе пустые last_message_at
+    # уезжают в начало колонки.
+    clients = list(
+        qs.prefetch_related("employees", "services__name").order_by(
+            F("last_message_at").desc(nulls_last=True), "-created_at",
+        )
+    )
     _annotate_ms_status(clients, request.user)
 
     PAGE_SIZE = 25
