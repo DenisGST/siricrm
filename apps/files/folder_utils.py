@@ -48,8 +48,16 @@ def create_bfl_folders(client):
 
 
 def build_tree(client):
-    """Возвращает список корневых папок с вложенными _children (без N+1)."""
-    folders = list(ClientFolder.objects.filter(client=client).order_by("order", "name"))
+    """Возвращает список корневых папок с вложенными _children (без N+1).
+
+    Каждой папке проставляется files_count — число файлов в ней самой.
+    """
+    from django.db.models import Count
+    folders = list(
+        ClientFolder.objects.filter(client=client)
+        .annotate(files_count=Count("files"))
+        .order_by("order", "name")
+    )
     by_id = {f.pk: f for f in folders}
     for f in folders:
         f._children = []
