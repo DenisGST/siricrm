@@ -46,6 +46,7 @@ INSTALLED_APPS = [
     "apps.devops",
     "apps.finance",
     "apps.whatsapp",
+    "apps.bubble_import",
 
     # django-rules: object-level permissions (apps/<app>/rules.py авто-импортируются)
     "rules.apps.AutodiscoverRulesConfig",

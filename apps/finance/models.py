@@ -177,6 +177,11 @@ class Charge(TimeStampedModel):
         verbose_name="Кто отредактировал",
     )
 
+    bubble_id = models.CharField(
+        "Bubble ID", max_length=64, blank=True, null=True, unique=True,
+        help_text="ID записи Money (accrual) в исходной CRM на bubble.io",
+    )
+
     class Meta:
         verbose_name = "Начисление"
         verbose_name_plural = "Начисления"
@@ -303,6 +308,11 @@ class Payment(TimeStampedModel):
     )
 
     comments = models.TextField("Комментарии", blank=True)
+
+    bubble_id = models.CharField(
+        "Bubble ID", max_length=64, blank=True, null=True, unique=True,
+        help_text="ID записи Money (debit/credit) в исходной CRM на bubble.io",
+    )
 
     created_by = models.ForeignKey(
         "core.Employee",

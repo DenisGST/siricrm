@@ -10,6 +10,10 @@ class StoredFile(models.Model):
     created_at   = models.DateTimeField(auto_now_add=True)
     content_type = models.CharField(max_length=255, blank=True, default='')
     size         = models.BigIntegerField(null=True, blank=True)
+    bubble_id    = models.CharField(
+        max_length=64, blank=True, null=True, unique=True,
+        help_text="ID записи Files в исходной CRM на bubble.io",
+    )
 
     class Meta:
         verbose_name = "Файл"

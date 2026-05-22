@@ -124,7 +124,35 @@ class Client(TimeStampedModel):
         help_text='ФИО клиента подтверждено сотрудником через модалку «Идентификация»',
     )
 
+    # Доп. атрибуты (часть приходит из импорта Bubble.io)
+    GENDER_CHOICES = [
+        ('male', 'Мужчина'),
+        ('female', 'Женщина'),
+    ]
+    gender = models.CharField(
+        'Пол', max_length=10, choices=GENDER_CHOICES, blank=True, default='',
+    )
+    is_married = models.BooleanField('В браке', default=False)
+    spouse = models.ForeignKey(
+        'self', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='spouse_of', verbose_name='Супруг(а)',
+    )
+    referral_source = models.CharField(
+        'Источник привлечения', max_length=255, blank=True, default='',
+        help_text='Откуда клиент узнал о компании',
+    )
+
+    # Импорт из Bubble.io — bubble _id для дедупликации при повторном импорте.
+    bubble_id = models.CharField(
+        'Bubble ID', max_length=64, blank=True, null=True, unique=True,
+        help_text='Идентификатор записи в исходной CRM на bubble.io',
+    )
+
     objects = ClientQuerySet.as_manager()
+
+    @property
+    def is_from_bubble(self) -> bool:
+        return bool(self.bubble_id)
 
     def __str__(self):
         return f"{self.first_name} {self.last_name} (@{self.username})"
@@ -167,6 +195,31 @@ class ClientEmployee(models.Model):
 
     def __str__(self):
         return f"{self.client} — {self.employee} ({self.get_messenger_status_display()})"
+
+
+class ClientNameHistory(models.Model):
+    """Предыдущие ФИО клиента (смена фамилии/имени/отчества).
+
+    Заполняется при импорте из Bubble (поля fNameOld/lNameOld/mNameOld/lastFIO).
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    client = models.ForeignKey(
+        Client, on_delete=models.CASCADE, related_name="name_history",
+        verbose_name="Клиент",
+    )
+    last_name = models.CharField("Прежняя фамилия", max_length=255, blank=True, default="")
+    first_name = models.CharField("Прежнее имя", max_length=255, blank=True, default="")
+    patronymic = models.CharField("Прежнее отчество", max_length=255, blank=True, default="")
+    note = models.CharField("Комментарий", max_length=500, blank=True, default="")
+    created_at = models.DateTimeField("Добавлено", auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Прежнее ФИО клиента"
+        verbose_name_plural = "История ФИО клиентов"
+        ordering = ["client", "-created_at"]
+
+    def __str__(self):
+        return f"{self.client}: {self.last_name} {self.first_name} {self.patronymic}".strip()
 
 
 class Address(TimeStampedModel):
@@ -504,6 +557,11 @@ class Message(TimeStampedModel):
     whatsapp_message_id = models.CharField(
         max_length=128, blank=True, null=True,
         help_text="ID сообщения в WhatsApp (Meta wamid)",
+    )
+
+    bubble_id = models.CharField(
+        max_length=64, blank=True, null=True, unique=True,
+        help_text="ID записи MessageWSP в исходной CRM на bubble.io",
     )
 
     raw_payload = models.JSONField(
@@ -969,6 +1027,11 @@ class Service(TimeStampedModel):
     )
 
     is_active = models.BooleanField("Активна", default=True)
+
+    bubble_id = models.CharField(
+        'Bubble ID', max_length=64, blank=True, null=True, unique=True,
+        help_text='Идентификатор ProjectBFL в исходной CRM на bubble.io',
+    )
 
     objects = ServiceQuerySet.as_manager()
 
