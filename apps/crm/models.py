@@ -470,6 +470,9 @@ class ClientEvent(models.Model):
         ("payment_out_edited", "Исходящий платёж отредактирован"),
         ("payment_out_deleted","Исходящий платёж удалён"),
         ("charge_overdue",     "Начисление просрочено"),
+        # --- Импорт ---
+        ("bubble_imported",  "Импортирован из Bubble"),
+        ("bubble_enriched",  "Данные дополнены из Bubble"),
         # --- Система ---
         ("system",           "Системное событие"),
     ]

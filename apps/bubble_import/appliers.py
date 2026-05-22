@@ -14,7 +14,7 @@ import requests
 from django.db.models import Q
 from django.utils import timezone
 
-from apps.crm.models import Client, ClientNameHistory
+from apps.crm.models import Client, ClientNameHistory, ClientEvent
 
 from .extractors import (
     clean_str, first_nonempty, normalize_phone,
@@ -205,6 +205,7 @@ def apply_man(rec: BubbleRecord) -> str:
     phone = normalize_phone(raw_tel)
 
     client = Client.objects.filter(bubble_id=bid).first()
+    existed_by_bubble = client is not None  # повторный импорт этой же записи
     merged_existing = False
 
     # Новый клиент — проверка на дубль по телефону.
@@ -262,6 +263,20 @@ def apply_man(rec: BubbleRecord) -> str:
     client.save()
 
     _apply_name_history(client, rec)
+
+    # Событие в лог клиента — только при первичном импорте/обогащении,
+    # повторный apply той же записи событие не дублирует.
+    if not existed_by_bubble:
+        if merged_existing:
+            ClientEvent.objects.create(
+                client=client, event_type="bubble_enriched", employee=None,
+                description="Данные клиента дополнены при импорте из CRM на bubble.io",
+            )
+        else:
+            ClientEvent.objects.create(
+                client=client, event_type="bubble_imported", employee=None,
+                description="Клиент импортирован из CRM на bubble.io",
+            )
 
     rec.status = "imported"
     rec.target_type = "Client"
