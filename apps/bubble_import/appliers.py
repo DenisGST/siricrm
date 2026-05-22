@@ -497,6 +497,23 @@ def apply_money(rec: BubbleRecord) -> str:
 
 # ─── MessageWSP → Message ──────────────────────────────────
 
+def _wa_client_phone(raw: dict) -> str:
+    """Определить телефон клиента (собеседника) из записи MessageWSP.
+
+    Нельзя брать NumberTel напрямую: у исходящих сообщений там НАШ номер,
+    а не клиента. Телефон собеседника надёжнее всего в chatId / id —
+    формат «<phone>@c.us». NumberTel — запасной вариант и только для
+    входящих сообщений.
+    """
+    for key in ("chatId", "id"):
+        m = re.search(r"(\d{10,15})@c\.us", clean_str(raw.get(key)))
+        if m:
+            return normalize_phone(m.group(1))
+    if not bool(raw.get("fromMe")):
+        return normalize_phone(raw.get("NumberTel"))
+    return ""
+
+
 _WA_TYPE_MAP = {
     "chat": "text", "image": "image", "video": "video",
     "audio": "audio", "ptt": "voice", "document": "document",
@@ -521,7 +538,7 @@ def apply_messagewsp(rec: BubbleRecord) -> str:
         rec.save(update_fields=["status", "error", "imported_at"])
         return rec.status
 
-    phone = normalize_phone(v("NumberTel"))
+    phone = _wa_client_phone(raw)
     client = Client.objects.filter(whatsapp_phone=phone).first() if phone else None
     if client is None:
         rec.status = "error"
@@ -541,12 +558,20 @@ def apply_messagewsp(rec: BubbleRecord) -> str:
     if mtype == "chat":
         content = strip_bbcode(body)
     else:
-        # медиа: body — прямая ссылка на файл (Wasabi S3), не чистим
+        # медиа: body — прямая ссылка на файл (Wasabi S3 / bubble CDN)
         content = strip_bbcode(caption)
         if body.startswith("http") or body.startswith("//"):
-            stored = download_to_storedfile(
-                body, f"wa_{rec.bubble_id}", f"wamedia_{rec.bubble_id}"[:64],
-            )
+            try:
+                stored = download_to_storedfile(
+                    body, f"wa_{rec.bubble_id}", f"wamedia_{rec.bubble_id}"[:64],
+                )
+            except Exception as e:  # noqa: BLE001
+                # Недоступное медиа (403 bubble CDN и т.п.) не должно
+                # ронять импорт самого сообщения.
+                logger.warning("WA media %s недоступно: %s", rec.bubble_id, e)
+                stored = None
+                if not content:
+                    content = "(медиа недоступно)"
         elif not content:
             content = strip_bbcode(body)
 
