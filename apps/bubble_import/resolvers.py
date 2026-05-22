@@ -73,6 +73,33 @@ def resolve_client_status(status_prj_bubble_id: str):
     return _STATUS_PRJ_TO_CLIENT.get(name.strip().lower()) if name else None
 
 
+@functools.lru_cache(maxsize=None)
+def _projects_by_client() -> dict:
+    """Индекс ProjectBFL по клиенту: {dolgnik_id: [project, ...]}.
+
+    Выкачивает все услуги один раз (≈5400) — чтобы при импорте клиентов
+    определять их статус без отдельного запроса на каждого.
+    """
+    idx: dict = {}
+    for o in _load("ProjectBFL").values():
+        d = o.get("dolgnik")
+        if d:
+            idx.setdefault(d, []).append(o)
+    return idx
+
+
+def resolve_client_status_by_man(man_bubble_id: str):
+    """Статус клиента по его услуге(ам) ProjectBFL. None если услуг нет.
+
+    Если услуг несколько — берём по самой поздней (Created Date).
+    """
+    projects = _projects_by_client().get(man_bubble_id)
+    if not projects:
+        return None
+    latest = max(projects, key=lambda p: p.get("Created Date", ""))
+    return resolve_client_status(latest.get("statusPrj"))
+
+
 def resolve_region(region_bubble_id: str):
     """Bubble Region._id → crm.Region (по numberRegion). None если нет."""
     num = lookup("Region", region_bubble_id, "numberRegion")

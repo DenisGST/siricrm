@@ -242,6 +242,13 @@ def apply_man(rec: BubbleRecord) -> str:
         for k, val in fields.items():
             setattr(client, k, val)
 
+    # Статус клиента — по статусу его услуги в Bubble. Существующим
+    # (обогащаемым) клиентам статус не меняем — они живут своей жизнью.
+    if not merged_existing:
+        mapped_status = resolvers.resolve_client_status_by_man(bid)
+        if mapped_status:
+            client.status = mapped_status
+
     if phone:
         client.phone = "+" + phone
         # whatsapp_phone уникален — ставим только если номер свободен.
