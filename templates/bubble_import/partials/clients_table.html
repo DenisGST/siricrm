@@ -53,12 +53,27 @@
       <button type="submit" class="btn btn-sm join-item"
               hx-post="{% url 'bubble_import:bulk_approve' %}" name="action" value="approve"
               hx-target="#bubble-clients-inner" hx-swap="outerHTML">
-        ☑ Одобрить страницу
+        ☑ Страницу
       </button>
       <button type="submit" class="btn btn-sm join-item"
               hx-post="{% url 'bubble_import:bulk_approve' %}" name="action" value="unapprove"
               hx-target="#bubble-clients-inner" hx-swap="outerHTML">
-        ☐ Снять страницу
+        ☐ Страницу
+      </button>
+    </div>
+
+    <div class="join">
+      <button type="button" class="btn btn-sm btn-info join-item"
+              hx-post="{% url 'bubble_import:select_all' %}"
+              hx-vals='{"action":"approve","filter":"{{ filter }}","q":"{{ q }}"}'
+              hx-target="#bubble-clients-inner" hx-swap="outerHTML">
+        ☑ Одобрить ВСЕ ({{ stats.not_imported }})
+      </button>
+      <button type="button" class="btn btn-sm join-item"
+              hx-post="{% url 'bubble_import:select_all' %}"
+              hx-vals='{"action":"unapprove","filter":"{{ filter }}","q":"{{ q }}"}'
+              hx-target="#bubble-clients-inner" hx-swap="outerHTML">
+        ☐ Снять ВСЕ
       </button>
     </div>
 

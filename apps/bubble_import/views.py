@@ -32,20 +32,23 @@ EDITABLE_FIELDS = {"fName", "lName", "mName", "tel", "email"}
 def _stats(entity: str) -> dict:
     qs = BubbleRecord.objects.filter(entity=entity)
     state = get_state(entity)
+    total_fetched = qs.count()
+    imported = qs.filter(status="imported").count()
     return {
         "total_remote": state.total_remote,
-        "total_fetched": qs.count(),
+        "total_fetched": total_fetched,
         "approved": qs.filter(approved=True).count(),
-        "imported": qs.filter(status="imported").count(),
+        "imported": imported,
         "errors": qs.filter(status="error").count(),
         "pending": qs.filter(status="pending").count(),
+        "not_imported": total_fetched - imported,
         "last_fetch_at": state.last_fetch_at,
     }
 
 
-def _clients_context(request):
-    """Контекст таблицы клиентов: фильтр + пагинация."""
-    flt = request.GET.get("filter", "all")
+def _filtered_records(request):
+    """QuerySet записей Man с учётом активного фильтра и поиска."""
+    flt = request.GET.get("filter") or request.POST.get("filter") or "all"
     qs = BubbleRecord.objects.filter(entity=ENTITY)
     if flt == "pending":
         qs = qs.filter(status="pending")
@@ -56,10 +59,15 @@ def _clients_context(request):
     elif flt == "error":
         qs = qs.filter(status="error")
 
-    search = (request.GET.get("q") or "").strip()
+    search = (request.GET.get("q") or request.POST.get("q") or "").strip()
     if search:
         qs = qs.filter(display_title__icontains=search)
+    return qs, flt, search
 
+
+def _clients_context(request):
+    """Контекст таблицы клиентов: фильтр + пагинация."""
+    qs, flt, search = _filtered_records(request)
     qs = qs.order_by("bubble_created", "id")
     paginator = Paginator(qs, PAGE_SIZE)
     page = paginator.get_page(request.GET.get("page") or 1)
@@ -127,6 +135,20 @@ def bulk_approve(request):
         BubbleRecord.objects.filter(pk__in=ids, entity=ENTITY).update(
             approved=(action == "approve"),
         )
+    return render(request, "bubble_import/partials/clients_table.html", _clients_context(request))
+
+
+@login_required
+@require_superuser
+@require_POST
+def select_all(request):
+    """Одобрить/снять ВСЕ записи (по активному фильтру), не только страницу.
+
+    Уже импортированные не трогаем.
+    """
+    action = request.POST.get("action")  # approve | unapprove
+    qs, _flt, _q = _filtered_records(request)
+    qs.exclude(status="imported").update(approved=(action == "approve"))
     return render(request, "bubble_import/partials/clients_table.html", _clients_context(request))
 
 
