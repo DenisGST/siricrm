@@ -45,6 +45,34 @@ def lookup(entity: str, bubble_id: str, field: str) -> str:
 
 # ─── Доменные резолверы ────────────────────────────────────
 
+# Маппинг статуса услуги Bubble (StatusPrj) → статус клиента SiriCRM.
+# Ключи — нормализованные (lower) названия nameStatusPrj.
+_STATUS_PRJ_TO_CLIENT = {
+    "неразобран": "unknown",
+    "анкетирование": "lead",
+    "думают": "lead",
+    "согласование": "lead",
+    "заключение договора": "lead",
+    "сбор документов": "active",
+    "подготовка иска": "active",
+    "ввод": "active",
+    "реструктуризация": "active",
+    "реализация": "active",
+    "завершение": "active",
+    "приостановка договора": "active",
+    "завершен": "archive",
+    "отказ": "refused",
+    "договор расторгнут": "refused",
+    "на удаление": "to_delete",
+}
+
+
+def resolve_client_status(status_prj_bubble_id: str):
+    """Bubble StatusPrj._id → код статуса crm.Client. None если не сопоставлен."""
+    name = lookup("StatusPrj", status_prj_bubble_id, "nameStatusPrj")
+    return _STATUS_PRJ_TO_CLIENT.get(name.strip().lower()) if name else None
+
+
 def resolve_region(region_bubble_id: str):
     """Bubble Region._id → crm.Region (по numberRegion). None если нет."""
     num = lookup("Region", region_bubble_id, "numberRegion")

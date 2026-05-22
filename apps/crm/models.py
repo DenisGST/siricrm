@@ -111,7 +111,11 @@ class Client(TimeStampedModel):
         ('active', 'Активный'),
         ('closed', 'Закрыт'),
         ('archive', 'Архивный'),
+        ('refused', 'Отказники'),
+        ('to_delete', 'На удаление'),
     ]
+    # Статусы, не отображаемые в канбане по клиентам.
+    KANBAN_HIDDEN_STATUSES = ('refused', 'to_delete')
     status = models.CharField(
         max_length=20,
         choices=STATUS_CHOICES,

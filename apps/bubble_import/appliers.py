@@ -338,6 +338,12 @@ def apply_projectbfl(rec: BubbleRecord) -> str:
             setattr(service, k, val)
     service.save()
 
+    # Статус клиента определяется статусом услуги (statusPrj).
+    new_status = resolvers.resolve_client_status(v("statusPrj"))
+    if new_status and client.status != new_status:
+        client.status = new_status
+        client.save(update_fields=["status"])
+
     rec.status = "imported"
     rec.target_type = "Service"
     rec.target_id = str(service.id)
