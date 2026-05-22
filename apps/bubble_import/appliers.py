@@ -8,6 +8,7 @@
 """
 import logging
 import re
+from difflib import SequenceMatcher
 
 import requests
 from django.db.models import Q
@@ -111,6 +112,49 @@ def _man_fields(rec: BubbleRecord) -> dict:
     }
 
 
+# Порог схожести ФИО: дубль по телефону + ФИО ≥ этого → тот же человек.
+FIO_MATCH_THRESHOLD = 0.9
+
+
+def _ratio(a: str, b: str):
+    """Схожесть двух строк 0..1; None если одна из строк пустая."""
+    a, b = (a or "").lower().strip(), (b or "").lower().strip()
+    if not a or not b:
+        return None
+    return SequenceMatcher(None, a, b).ratio()
+
+
+def _fio_similarity(rec: BubbleRecord, client: Client) -> float:
+    """Схожесть ФИО записи Bubble и существующего клиента.
+
+    Сравниваем покомпонентно (фамилия / имя / отчество). Отчество, если
+    у одной из сторон пустое, в расчёт не берём — Telegram-клиенты часто
+    без отчества. Фамилия и имя обязаны присутствовать у обоих.
+    """
+    v = rec.value
+    last = _ratio(clean_str(v("lName")), client.last_name)
+    first = _ratio(clean_str(v("fName")), client.first_name)
+    patr = _ratio(clean_str(v("mName")), client.patronymic)
+    if last is None or first is None:
+        return 0.0
+    parts = [x for x in (last, first, patr) if x is not None]
+    return sum(parts) / len(parts)
+
+
+def _enrich_client(client: Client, fields: dict):
+    """Дописать данные Bubble в существующего клиента — только в пустые поля.
+
+    Уже заполненные значения не перезатираем (у клиента из Telegram/MAX
+    данные могли быть подтверждены сотрудником).
+    """
+    for key, value in fields.items():
+        if not value:
+            continue  # из Bubble пусто — дописывать нечего
+        current = getattr(client, key, None)
+        if current in (None, "", False):
+            setattr(client, key, value)
+
+
 def _apply_name_history(client: Client, rec: BubbleRecord):
     """Прежние ФИО из fNameOld / lNameOld / mNameOld."""
     v = rec.value
@@ -135,6 +179,7 @@ def apply_man(rec: BubbleRecord) -> str:
     phone = normalize_phone(rec.value("tel"))
 
     client = Client.objects.filter(bubble_id=bid).first()
+    merged_existing = False
 
     # Новый клиент — проверка на дубль по телефону.
     if client is None and phone:
@@ -142,19 +187,32 @@ def apply_man(rec: BubbleRecord) -> str:
             Q(whatsapp_phone=phone) | Q(phone="+" + phone)
         ).first()
         if dup:
-            rec.status = "error"
-            rec.error = (
-                f"Возможный дубль по телефону +{phone}: "
-                f"уже есть клиент «{dup}» ({dup.id}). "
-                f"Проверьте; при необходимости поправьте телефон и повторите."
-            )
-            rec.imported_at = None
-            rec.save(update_fields=["status", "error", "imported_at"])
-            return rec.status
+            sim = _fio_similarity(rec, dup)
+            if sim >= FIO_MATCH_THRESHOLD:
+                # Тот же человек — дописываем данные Bubble в существующего.
+                client = dup
+                merged_existing = True
+            else:
+                rec.status = "error"
+                rec.error = (
+                    f"Возможный дубль по телефону +{phone}: уже есть клиент "
+                    f"«{dup}» ({dup.id}), но ФИО непохожи (совпадение "
+                    f"{sim:.0%}). Возможно, разные люди с одним номером — "
+                    f"проверьте вручную."
+                )
+                rec.imported_at = None
+                rec.save(update_fields=["status", "error", "imported_at"])
+                return rec.status
 
     if client is None:
         client = Client(bubble_id=bid, **fields)
+    elif merged_existing:
+        # Обогащение существующего клиента: заполняем только пустые поля.
+        _enrich_client(client, fields)
+        if not client.bubble_id:
+            client.bubble_id = bid
     else:
+        # Повторный импорт записи (найден по bubble_id) — обновляем полностью.
         for k, val in fields.items():
             setattr(client, k, val)
 
