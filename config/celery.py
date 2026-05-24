@@ -29,6 +29,12 @@ app.conf.beat_schedule = {
         'task': 'apps.finance.tasks.mark_overdue_charges',
         'schedule': crontab(hour=3, minute=0),
     },
+    # Опрос Telegram'а вместо webhook (split-tunnel WireGuard не даёт
+    # Telegram'у дотянуться до наших серверов).
+    'poll-telegram-leads': {
+        'task': 'telegram.poll_telegram_leads',
+        'schedule': 10,
+    },
 }
 
 @setup_logging.connect
