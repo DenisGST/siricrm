@@ -29,6 +29,74 @@ def _entity_constraints(entity: str) -> list | None:
     return None
 
 
+def _window_constraints(entity: str, start: datetime.datetime,
+                        end: datetime.datetime) -> list:
+    """Constraints для конкретного временного окна [start, end). Используется
+    при оконном дофетчивании сущностей с большим объёмом — Bubble Data API
+    режет cursor-пагинацию на 50 000 записей, поэтому крупные выборки бьём
+    окнами по времени."""
+    return [
+        {"key": "Created Date", "constraint_type": "greater than or equal",
+         "value": start.strftime("%Y-%m-%dT%H:%M:%SZ")},
+        {"key": "Created Date", "constraint_type": "less than",
+         "value": end.strftime("%Y-%m-%dT%H:%M:%SZ")},
+    ]
+
+
+def fetch_window(entity: str, start: datetime.datetime,
+                 end: datetime.datetime) -> dict:
+    """Выгрузить ВСЕ записи entity за окно [start, end). Локальный cursor,
+    state.cursor не трогаем. update_or_create обеспечивает идемпотентность
+    при повторных запусках."""
+    constraints = _window_constraints(entity, start, end)
+    cursor = 0
+    created = updated = 0
+    fetched_total = 0
+    while True:
+        page = bubble_api.fetch_page(
+            entity, cursor=cursor, limit=bubble_api.PAGE_LIMIT,
+            constraints=constraints,
+        )
+        results = page["results"]
+        if not results:
+            break
+        for obj in results:
+            bid = obj.get("_id")
+            if not bid:
+                continue
+            display = extract_display(entity, obj)
+            if entity == "ProjectBFL":
+                from . import resolvers
+                display["display_status"] = resolvers.lookup(
+                    "StatusPrj", obj.get("statusPrj"), "nameStatusPrj",
+                )
+            _, is_new = BubbleRecord.objects.update_or_create(
+                entity=entity, bubble_id=bid,
+                defaults={"raw": obj, **display},
+            )
+            if is_new:
+                created += 1
+            else:
+                updated += 1
+        got = len(results)
+        cursor += got
+        fetched_total += got
+        if page.get("remaining", 0) <= 0:
+            break
+
+    # Актуализируем state, чтобы цифра в UI не отставала.
+    state = get_state(entity)
+    state.total_fetched = BubbleRecord.objects.filter(entity=entity).count()
+    state.last_fetch_at = timezone.now()
+    state.save(update_fields=["total_fetched", "last_fetch_at"])
+
+    logger.info(
+        "Bubble fetch_window %s [%s..%s]: +%d new, %d upd, total in window %d",
+        entity, start.date(), end.date(), created, updated, fetched_total,
+    )
+    return {"created": created, "updated": updated, "fetched": fetched_total}
+
+
 def get_state(entity: str) -> BubbleFetchState:
     state, _ = BubbleFetchState.objects.get_or_create(entity=entity)
     return state
