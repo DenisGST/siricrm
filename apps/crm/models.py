@@ -473,6 +473,7 @@ class ClientEvent(models.Model):
         # --- Импорт ---
         ("bubble_imported",  "Импортирован из Bubble"),
         ("bubble_enriched",  "Данные дополнены из Bubble"),
+        ("lead_received",    "Получен лид с лендинга"),
         # --- Система ---
         ("system",           "Системное событие"),
     ]

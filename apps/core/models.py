@@ -168,6 +168,11 @@ class Employee(models.Model):
     phone_internal = models.CharField("Внутренний номер", max_length=10, blank=True)
     is_active = models.BooleanField("Активен", default=True)
     is_online = models.BooleanField(default=False, verbose_name='Онлайн')
+    accept_telegram_leads = models.BooleanField(
+        "Принимать лиды из Telegram", default=False,
+        help_text="Заявки с лендингов через @Sirius_system_bot будут "
+                  "попадать в «Мой канбан» в колонку «Лиды из Telegram».",
+    )
     bubble_id = models.CharField(
         "Bubble ID", max_length=64, blank=True, null=True, unique=True,
         help_text="ID записи User в исходной CRM на bubble.io",

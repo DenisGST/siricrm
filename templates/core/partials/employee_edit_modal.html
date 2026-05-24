@@ -100,12 +100,18 @@
       </div>
 
       <div class="divider text-xs">Статус</div>
-      <div class="flex gap-8">
+      <div class="flex flex-wrap gap-x-8 gap-y-2">
         <label for="emp-messenger-access" class="cursor-pointer flex items-center gap-2">
           <input type="checkbox" id="emp-messenger-access" name="has_messenger_access"
                  {% if form.has_messenger_access.value %}checked{% endif %}
                  class="toggle toggle-primary toggle-sm">
           <span class="label-text text-xs">Доступ к мессенджеру</span>
+        </label>
+        <label for="emp-tg-leads" class="cursor-pointer flex items-center gap-2">
+          <input type="checkbox" id="emp-tg-leads" name="accept_telegram_leads"
+                 {% if form.accept_telegram_leads.value %}checked{% endif %}
+                 class="toggle toggle-info toggle-sm">
+          <span class="label-text text-xs">Принимать лиды из Telegram</span>
         </label>
         <label for="emp-dismissed" class="cursor-pointer flex items-center gap-2">
           <input type="checkbox" id="emp-dismissed" name="is_dismissed"

@@ -295,6 +295,23 @@ def admin_employee_edit(request, pk):
 
 
 @user_passes_test(is_admin)
+def admin_employee_toggle_tg_leads(request, pk):
+    """Быстрая галка из таблицы сотрудников: принимать лиды из Telegram.
+    При включении гарантирует у сотрудника личный статус «Лиды из Telegram»."""
+    emp = get_object_or_404(Employee, pk=pk)
+    new_val = not emp.accept_telegram_leads
+    emp.accept_telegram_leads = new_val
+    emp.save(update_fields=["accept_telegram_leads"])
+    if new_val:
+        try:
+            from apps.telegram.leads_bot import _ensure_leads_emp_status
+            _ensure_leads_emp_status(emp)
+        except Exception:  # noqa: BLE001
+            pass
+    return HttpResponse(status=204)
+
+
+@user_passes_test(is_admin)
 def admin_employee_settings(request, pk):
     """Узкая форма: только настройки (роль, дашборд, доступы)."""
     emp = get_object_or_404(Employee.objects.select_related("user"), pk=pk)

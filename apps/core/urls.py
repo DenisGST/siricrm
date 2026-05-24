@@ -19,6 +19,7 @@ urlpatterns = [
     path('admin-panel/employee/add/', views.admin_employee_create, name='admin_employee_create'),
     path('admin-panel/employee/<int:pk>/', views.admin_employee_edit, name='admin_employee_edit'),
     path('admin-panel/employee/<int:pk>/settings/', views.admin_employee_settings, name='admin_employee_settings'),
+    path('admin-panel/employee/<int:pk>/toggle-tg-leads/', views.admin_employee_toggle_tg_leads, name='admin_employee_toggle_tg_leads'),
     path('admin-panel/dashboards/', views.admin_dashboards, name='admin_dashboards'),
     path('admin-panel/dashboard/add/', views.admin_dashboard_edit, name='admin_dashboard_add'),
     path('admin-panel/dashboard/<uuid:pk>/', views.admin_dashboard_edit, name='admin_dashboard_edit'),

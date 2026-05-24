@@ -76,7 +76,8 @@ class EmployeeFullEditForm(forms.ModelForm):
         model = Employee
         fields = [
             "department", "role", "dashboard_config",
-            "has_messenger_access", "patronymic",
+            "has_messenger_access", "accept_telegram_leads",
+            "patronymic",
             "phone_mobile", "phone_internal",
             "services_allowed",
         ]
