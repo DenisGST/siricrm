@@ -269,7 +269,12 @@ def toggle_overwrite_dup(request, entity, pk):
     overrides = dict(rec.overrides or {})
     overrides["overwrite_dup"] = not bool(overrides.get("overwrite_dup"))
     rec.overrides = overrides
-    rec.save(update_fields=["overrides"])
+    fields_to_save = ["overrides"]
+    # Если включаем «перезаписать» — сразу одобряем запись (чтобы попала в apply).
+    if overrides["overwrite_dup"] and not rec.approved:
+        rec.approved = True
+        fields_to_save.append("approved")
+    rec.save(update_fields=fields_to_save)
     return render(request, "bubble_import/partials/row.html",
                   {"rec": rec, "entity": entity, "editable": entity in EDITABLE_FIELDS})
 
