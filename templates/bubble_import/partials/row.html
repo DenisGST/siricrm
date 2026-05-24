@@ -52,6 +52,15 @@
     {% elif rec.status == 'error' %}
       <span class="badge badge-error badge-xs">ошибка</span>
       <div class="text-error text-xs mt-0.5 leading-snug">{{ rec.error }}</div>
+      {% if entity == 'Man' %}
+      <label class="flex items-center gap-1 mt-1 text-xs cursor-pointer">
+        <input type="checkbox" class="checkbox checkbox-xs"
+               {% if rec|bv:'overwrite_dup' %}checked{% endif %}
+               hx-post="{% url 'bubble_import:toggle_overwrite_dup' entity rec.pk %}"
+               hx-target="#rec-{{ rec.pk }}" hx-swap="outerHTML">
+        <span>Перезаписать существующего</span>
+      </label>
+      {% endif %}
     {% elif rec.status == 'skipped' %}
       <span class="badge badge-ghost badge-xs">пропущен</span>
       {% if rec.error %}<div class="text-base-content/60 text-xs mt-0.5 leading-snug">{{ rec.error }}</div>{% endif %}

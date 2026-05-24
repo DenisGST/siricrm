@@ -14,6 +14,7 @@ urlpatterns = [
     path("imports/bubble/<str:entity>/select-all/", views.select_all, name="select_all"),
     path("imports/bubble/<str:entity>/<int:pk>/toggle/", views.toggle_approve, name="toggle_approve"),
     path("imports/bubble/<str:entity>/<int:pk>/edit/", views.edit_field, name="edit_field"),
+    path("imports/bubble/<str:entity>/<int:pk>/toggle-overwrite/", views.toggle_overwrite_dup, name="toggle_overwrite_dup"),
 
     # Фоновый «Импортировать ВСЁ» + поллинг статуса.
     path("imports/bubble/<str:entity>/full/", views.start_full_import, name="start_full"),

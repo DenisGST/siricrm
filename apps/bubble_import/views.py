@@ -254,6 +254,29 @@ def select_all(request, entity):
 @login_required
 @require_superuser
 @require_POST
+def toggle_overwrite_dup(request, entity, pk):
+    """Переключить флаг overrides['_overwrite_dup'] для записи Man.
+
+    При apply_man с дублем по телефону этот флаг означает «перезаписать
+    существующего клиента данными из Bubble» (вместо error).
+    """
+    _check_entity(entity)
+    if entity != "Man":
+        return HttpResponseBadRequest("Доступно только для клиентов")
+    rec = BubbleRecord.objects.filter(pk=pk, entity=entity).first()
+    if not rec:
+        return HttpResponse(status=404)
+    overrides = dict(rec.overrides or {})
+    overrides["overwrite_dup"] = not bool(overrides.get("overwrite_dup"))
+    rec.overrides = overrides
+    rec.save(update_fields=["overrides"])
+    return render(request, "bubble_import/partials/row.html",
+                  {"rec": rec, "entity": entity, "editable": entity in EDITABLE_FIELDS})
+
+
+@login_required
+@require_superuser
+@require_POST
 def edit_field(request, entity, pk):
     """Inline-правка одного поля — сохраняется в overrides записи."""
     _check_entity(entity)

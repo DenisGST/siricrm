@@ -221,6 +221,11 @@ def apply_man(rec: BubbleRecord) -> str:
     client = Client.objects.filter(bubble_id=bid).first()
     existed_by_bubble = client is not None  # повторный импорт этой же записи
     merged_existing = False
+    overwritten_dup = False
+    # Оператор может явно отметить запись для перезаписи существующего
+    # дубля по телефону (для случаев, когда в Bubble клиент задвоен и
+    # эта запись — правильная). Флаг ставится из UI в overrides.
+    force_overwrite = bool(rec.value("overwrite_dup"))
 
     # Новый клиент — проверка на дубль по телефону.
     if client is None and phone:
@@ -233,13 +238,18 @@ def apply_man(rec: BubbleRecord) -> str:
                 # Тот же человек — дописываем данные Bubble в существующего.
                 client = dup
                 merged_existing = True
+            elif force_overwrite:
+                # Оператор подтвердил, что это тот же клиент — перезаписываем.
+                client = dup
+                overwritten_dup = True
             else:
                 rec.status = "error"
                 rec.error = (
                     f"Возможный дубль по телефону +{phone}: уже есть клиент "
                     f"«{dup}» ({dup.id}), но ФИО непохожи (совпадение "
                     f"{sim:.0%}). Возможно, разные люди с одним номером — "
-                    f"проверьте вручную."
+                    f"проверьте вручную. Если это тот же человек — отметьте "
+                    f"чекбокс «Перезаписать существующего»."
                 )
                 rec.imported_at = None
                 rec.save(update_fields=["status", "error", "imported_at"])
@@ -252,6 +262,23 @@ def apply_man(rec: BubbleRecord) -> str:
         _enrich_client(client, fields)
         if not client.bubble_id:
             client.bubble_id = bid
+    elif overwritten_dup:
+        # Жёсткая перезапись существующего клиента данными из Bubble.
+        # Старое ФИО сохраняем в историю, чтобы поиск по нему ещё работал.
+        old_last = client.last_name or ""
+        old_first = client.first_name or ""
+        old_patr = client.patronymic or ""
+        if old_last or old_first or old_patr:
+            ClientNameHistory.objects.get_or_create(
+                client=client,
+                last_name=old_last[:255],
+                first_name=old_first[:255],
+                patronymic=old_patr[:255],
+                defaults={"note": "Перезапись при импорте дубля из Bubble"},
+            )
+        for k, val in fields.items():
+            setattr(client, k, val)
+        client.bubble_id = bid
     else:
         # Повторный импорт записи (найден по bubble_id) — обновляем полностью.
         for k, val in fields.items():
