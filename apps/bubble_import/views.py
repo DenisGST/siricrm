@@ -181,6 +181,16 @@ def panel(request, entity="Man"):
 
 @login_required
 @require_superuser
+def apply_button(request, entity):
+    """Только кнопка «Импортировать одобренные» — для обновления через
+    HX-Trigger='approvedChanged' после изменений approved в строках."""
+    _check_entity(entity)
+    ctx = _entity_context(request, entity)
+    return render(request, "bubble_import/partials/apply_approved_button.html", ctx)
+
+
+@login_required
+@require_superuser
 def entity_table(request, entity):
     """HTMX-партиал таблицы сущности."""
     _check_entity(entity)
@@ -216,8 +226,10 @@ def toggle_approve(request, entity, pk):
         return HttpResponse(status=404)
     rec.approved = not rec.approved
     rec.save(update_fields=["approved"])
-    return render(request, "bubble_import/partials/row.html",
+    resp = render(request, "bubble_import/partials/row.html",
                   {"rec": rec, "entity": entity, "editable": entity in EDITABLE_FIELDS})
+    resp["HX-Trigger"] = "approvedChanged"
+    return resp
 
 
 @login_required
@@ -275,12 +287,13 @@ def toggle_overwrite_dup(request, entity, pk):
         rec.approved = True
         fields_to_save.append("approved")
     rec.save(update_fields=fields_to_save)
-    # Возвращаем обновлённую строку + OOB-обновление кнопки «Импортировать
-    # одобренные» — иначе её счётчик не обновляется без F5.
-    ctx = _entity_context(request, entity)
-    ctx["rec"] = rec
-    ctx["editable"] = entity in EDITABLE_FIELDS
-    return render(request, "bubble_import/partials/row_with_apply_oob.html", ctx)
+    # Обновление кнопки «Импортировать одобренные» отдадим клиенту
+    # через HX-Trigger — JS обновит её отдельным запросом, без OOB.
+    resp = render(request, "bubble_import/partials/row.html",
+                  {"rec": rec, "entity": entity,
+                   "editable": entity in EDITABLE_FIELDS})
+    resp["HX-Trigger"] = "approvedChanged"
+    return resp
 
 
 @login_required

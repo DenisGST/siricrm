@@ -105,6 +105,11 @@
     </div>
 
     {% include "bubble_import/partials/apply_approved_button.html" %}
+    <span hx-get="{% url 'bubble_import:apply_button' entity %}"
+          hx-trigger="approvedChanged from:body"
+          hx-target="#apply-approved-btn"
+          hx-swap="outerHTML"
+          style="display:none;"></span>
 
     <button type="button" class="btn btn-sm btn-error"
             hx-post="{% url 'bubble_import:start_full' entity %}"

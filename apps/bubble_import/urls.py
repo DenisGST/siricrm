@@ -8,6 +8,7 @@ urlpatterns = [
     path("imports/bubble/", views.panel, name="panel"),
     path("imports/bubble/<str:entity>/", views.panel, name="panel_entity"),
     path("imports/bubble/<str:entity>/table/", views.entity_table, name="entity_table"),
+    path("imports/bubble/<str:entity>/apply-button/", views.apply_button, name="apply_button"),
     path("imports/bubble/<str:entity>/fetch/", views.fetch, name="fetch"),
     path("imports/bubble/<str:entity>/apply/", views.apply, name="apply"),
     path("imports/bubble/<str:entity>/bulk-approve/", views.bulk_approve, name="bulk_approve"),
