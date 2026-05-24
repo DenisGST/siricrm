@@ -275,8 +275,12 @@ def toggle_overwrite_dup(request, entity, pk):
         rec.approved = True
         fields_to_save.append("approved")
     rec.save(update_fields=fields_to_save)
-    return render(request, "bubble_import/partials/row.html",
-                  {"rec": rec, "entity": entity, "editable": entity in EDITABLE_FIELDS})
+    # Возвращаем обновлённую строку + OOB-обновление кнопки «Импортировать
+    # одобренные» — иначе её счётчик не обновляется без F5.
+    ctx = _entity_context(request, entity)
+    ctx["rec"] = rec
+    ctx["editable"] = entity in EDITABLE_FIELDS
+    return render(request, "bubble_import/partials/row_with_apply_oob.html", ctx)
 
 
 @login_required

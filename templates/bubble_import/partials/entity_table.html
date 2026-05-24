@@ -104,14 +104,7 @@
               hx-target="#bubble-entity-inner" hx-swap="outerHTML">☐ Снять ВСЕ</button>
     </div>
 
-    <button type="button" class="btn btn-sm btn-success ml-auto"
-            hx-post="{% url 'bubble_import:apply' entity %}"
-            hx-target="#bubble-entity-inner" hx-swap="outerHTML"
-            hx-confirm="Импортировать одобренные записи ({{ entity_label }}) в SiriCRM?"
-            hx-disabled-elt="this"
-            {% if not stats.approved or running_job %}disabled{% endif %}>
-      ⇪ Импортировать одобренные ({{ stats.approved }})
-    </button>
+    {% include "bubble_import/partials/apply_approved_button.html" %}
 
     <button type="button" class="btn btn-sm btn-error"
             hx-post="{% url 'bubble_import:start_full' entity %}"
