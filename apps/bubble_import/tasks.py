@@ -34,7 +34,16 @@ def _finish(job: BubbleImportJob, status: str):
     job.save(update_fields=["status", "current_action", "finished_at"])
 
 
-@shared_task(bind=True, name="bubble_import.full_import")
+@shared_task(
+    bind=True,
+    name="bubble_import.full_import",
+    # Bubble-импорт большой сущности (Files 546k, MessageWSP 258k со
+    # скачиванием медиа) может идти часами. Глобальный CELERY_TASK_TIME_LIMIT
+    # 30 мин (а на prod ещё короче, 5 мин) убивает task через SIGKILL —
+    # явно задаём 24-часовой лимит на эту задачу.
+    time_limit=24 * 60 * 60,
+    soft_time_limit=24 * 60 * 60 - 60,
+)
 def full_import_task(self, job_id: str):
     """Полный импорт одной сущности: fetch всех порций → одобрить новое →
     apply одобренного. Прогресс пишется в BubbleImportJob."""
