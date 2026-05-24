@@ -57,6 +57,35 @@ def _normalize_phone(raw: str) -> str:
     return digits if len(digits) == 11 and digits.startswith("7") else ""
 
 
+def _extract_answers(text: str) -> list[tuple[str, str]]:
+    """Из тела заявки вытащить пользовательские ответы по форме как
+    список (вопрос, ответ). Берём всё между «Данные формы:» и
+    «персональные данные:» (или концом текста), пропускаем уже
+    распарсенные «Имя:»/«Телефон:» и убираем HTML-теги из ответов."""
+    body = text
+    m = re.search(r"Данные формы:\s*\n", body)
+    if m:
+        body = body[m.end():]
+    cut = re.search(r"(?im)^\s*(персональные\s+данные|просмотр\s+заявки)\b", body)
+    if cut:
+        body = body[:cut.start()]
+
+    pairs: list[tuple[str, str]] = []
+    for line in body.splitlines():
+        line = line.strip()
+        if not line or ":" not in line:
+            continue
+        q, _, a = line.partition(":")
+        q = q.strip()
+        a = re.sub(r"<[^>]+>", "", a).strip()
+        if not q or not a:
+            continue
+        if q.lower() in {"имя", "телефон"}:
+            continue
+        pairs.append((q, a))
+    return pairs
+
+
 def _parse_lead(text: str) -> dict | None:
     """Превратить текст сообщения с лендинга в dict полей. None если формат
     не похож на заявку."""
@@ -76,6 +105,7 @@ def _parse_lead(text: str) -> dict | None:
         "name": name.group(1).strip() if name else "",
         "phone": phone,
         "link": link.group(1).strip() if link else "",
+        "answers": _extract_answers(text),
         "raw": text,
     }
 
@@ -139,17 +169,19 @@ def create_lead_from_parsed(data: dict) -> Client:
     link = data.get("link") or ""
     number = data.get("number") or ""
     form = data.get("form") or ""
+    answers = data.get("answers") or []
 
-    notes_block = []
-    if number:
-        notes_block.append(f"Заявка №{number}")
-    if form:
-        notes_block.append(f"Форма: {form}")
-    if link:
-        notes_block.append(f"FlexBe: {link}")
-    notes_block.append("")
-    notes_block.append(data.get("raw") or "")
-    notes_text = "\n".join(notes_block)
+    # Ответы из формы — пишутся в событие clientEvent (там их и смотрит юрист).
+    answers_text = "\n".join(f"• {q}: {a}" for q, a in answers)
+
+    notes_block = [
+        f"Заявка с лендинга №{number} · форма «{form}»",
+        f"Страница: {page}" if page else "",
+        f"FlexBe: {link}" if link else "",
+    ]
+    if answers_text:
+        notes_block += ["", "Ответы из формы:", answers_text]
+    notes_text = "\n".join(x for x in notes_block if x)
 
     # Дедуп по телефону: если клиент уже есть — только событие, не создаём.
     existing = None
@@ -158,9 +190,12 @@ def create_lead_from_parsed(data: dict) -> Client:
             Q(whatsapp_phone=phone) | Q(phone="+" + phone) | Q(phone=phone)
         ).first()
     if existing is not None:
+        desc = f"Повторный лид с лендинга (заявка №{number}, форма «{form}»)"
+        if answers_text:
+            desc += "\n\nОтветы из формы:\n" + answers_text
         ClientEvent.objects.create(
             client=existing, event_type="lead_received", employee=None,
-            description=f"Повторный лид с лендинга (заявка №{number}, форма «{form}»)",
+            description=desc,
         )
         logger.info("lead %s: дубль по телефону, клиент %s", number, existing.id)
         return existing
@@ -201,13 +236,16 @@ def create_lead_from_parsed(data: dict) -> Client:
                 defaults={"status": emp_status},
             )
 
+    desc = (
+        f"Новый лид с лендинга «{page}» (заявка №{number}, форма «{form}»). "
+        f"Распределён сотрудникам: "
+        + ", ".join(e.user.get_full_name() or e.user.username for e in recipients)
+    )
+    if answers_text:
+        desc += "\n\nОтветы из формы:\n" + answers_text
     ClientEvent.objects.create(
         client=client, event_type="lead_received", employee=None,
-        description=(
-            f"Новый лид с лендинга «{page}» (заявка №{number}, форма «{form}»). "
-            f"Распределён сотрудникам: "
-            + ", ".join(e.user.get_full_name() or e.user.username for e in recipients)
-        ),
+        description=desc,
     )
     return client
 
