@@ -67,14 +67,16 @@
   {% if job.log_text %}
   <details class="text-xs" {% if job.is_running or job.status == 'error' %}open{% endif %}>
     <summary class="cursor-pointer text-base-content/70">Лог</summary>
-    <pre class="bg-base-300 rounded p-2 mt-1 max-h-40 overflow-auto whitespace-pre-wrap font-mono text-[10px] leading-snug">{{ job.log_text }}</pre>
+    <pre style="max-height: 320px;"
+         class="bg-base-300 rounded p-2 mt-1 overflow-auto whitespace-pre-wrap break-all font-mono text-[10px] leading-snug">{{ job.log_text }}</pre>
   </details>
   {% endif %}
 
   {% if job.error_text %}
   <details class="text-xs mt-1" open>
     <summary class="cursor-pointer text-error">Traceback</summary>
-    <pre class="bg-error/10 text-error rounded p-2 mt-1 max-h-32 overflow-auto whitespace-pre-wrap font-mono text-[10px]">{{ job.error_text }}</pre>
+    <pre style="max-height: 240px;"
+         class="bg-error/10 text-error rounded p-2 mt-1 overflow-auto whitespace-pre-wrap break-all font-mono text-[10px]">{{ job.error_text }}</pre>
   </details>
   {% endif %}
 </div>
