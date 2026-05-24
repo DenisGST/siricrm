@@ -31,13 +31,15 @@ def _entity_constraints(entity: str) -> list | None:
 
 def _window_constraints(entity: str, start: datetime.datetime,
                         end: datetime.datetime) -> list:
-    """Constraints для конкретного временного окна [start, end). Используется
-    при оконном дофетчивании сущностей с большим объёмом — Bubble Data API
-    режет cursor-пагинацию на 50 000 записей, поэтому крупные выборки бьём
-    окнами по времени."""
+    """Constraints для конкретного временного окна. Bubble Data API
+    поддерживает только `greater than` / `less than` (без `or equal`),
+    поэтому нижнюю границу сдвигаем на секунду назад — даёт 1-секундный
+    overlap между соседними окнами, но fetch_window идемпотентен через
+    update_or_create, дубликаты безопасны."""
+    start_excl = start - datetime.timedelta(seconds=1)
     return [
-        {"key": "Created Date", "constraint_type": "greater than or equal",
-         "value": start.strftime("%Y-%m-%dT%H:%M:%SZ")},
+        {"key": "Created Date", "constraint_type": "greater than",
+         "value": start_excl.strftime("%Y-%m-%dT%H:%M:%SZ")},
         {"key": "Created Date", "constraint_type": "less than",
          "value": end.strftime("%Y-%m-%dT%H:%M:%SZ")},
     ]
