@@ -19,9 +19,10 @@ from apps.core.permissions import require_superuser
 
 from . import bubble_api
 from .extractors import extract_display
-from .models import BubbleRecord, BubbleFetchState
+from .models import BubbleRecord, BubbleFetchState, BubbleImportJob
 from .services import fetch_batch, DEFAULT_BATCH, get_state
 from .appliers import apply_approved
+from .tasks import full_import_task
 
 logger = logging.getLogger("bubble_import")
 
@@ -148,6 +149,9 @@ def _entity_context(request, entity: str) -> dict:
     qs = qs.order_by("bubble_created", "id")
     paginator = Paginator(qs, PAGE_SIZE)
     page = paginator.get_page(request.GET.get("page") or 1)
+    running_job = BubbleImportJob.objects.filter(
+        entity=entity, status__in=("pending", "running"),
+    ).first()
     return {
         "entity": entity,
         "entity_label": ENTITY_LABELS[entity],
@@ -155,6 +159,7 @@ def _entity_context(request, entity: str) -> dict:
         "entity_labels": ENTITY_LABELS,
         "tabs": _tabs(entity),
         "error_summary": _error_summary(entity),
+        "running_job": running_job,
         "page_obj": page,
         "filter": flt,
         "q": search,
@@ -273,6 +278,58 @@ def edit_field(request, entity, pk):
     rec.save(update_fields=["overrides", "display_title", "display_subtitle"])
     return render(request, "bubble_import/partials/row.html",
                   {"rec": rec, "entity": entity, "editable": True})
+
+
+# ─── Фоновая задача «Импортировать ВСЁ» ───────────────────────
+
+def _job_partial(request, job):
+    return render(request, "bubble_import/partials/import_job.html", {"job": job})
+
+
+@login_required
+@require_superuser
+@require_POST
+def start_full_import(request, entity):
+    """Запустить фоновую задачу полного импорта сущности."""
+    _check_entity(entity)
+    if not bubble_api.is_configured():
+        return HttpResponseBadRequest("Bubble API не настроен (BUBBLE_API_TOKEN)")
+    if BubbleImportJob.objects.filter(
+        entity=entity, status__in=("pending", "running"),
+    ).exists():
+        return HttpResponse("Уже идёт импорт по этой сущности", status=409)
+    from apps.core.permissions import get_employee
+    job = BubbleImportJob.objects.create(
+        entity=entity, status="pending", started_by=get_employee(request.user),
+    )
+    full_import_task.delay(str(job.id))
+    # Возвращаем обновлённую таблицу — running_job попадёт через контекст.
+    return render(request, "bubble_import/partials/entity_table.html",
+                  _entity_context(request, entity))
+
+
+@login_required
+@require_superuser
+def job_status(request, job_id):
+    """HTMX-партиал статуса задачи (polling каждые ~2 с)."""
+    job = BubbleImportJob.objects.filter(pk=job_id).first()
+    if not job:
+        return HttpResponse("")
+    return _job_partial(request, job)
+
+
+@login_required
+@require_superuser
+@require_POST
+def cancel_job(request, job_id):
+    job = BubbleImportJob.objects.filter(pk=job_id).first()
+    if not job:
+        return HttpResponse(status=404)
+    if job.is_running:
+        job.cancel_requested = True
+        job.save(update_fields=["cancel_requested"])
+        job.add_log("Запрос отмены")
+    return _job_partial(request, job)
 
 
 @login_required

@@ -9,6 +9,10 @@
   </div>
   {% endif %}
 
+  {% if running_job %}
+    {% include "bubble_import/partials/import_job.html" with job=running_job %}
+  {% endif %}
+
   <!-- Сводка -->
   <div class="grid grid-cols-2 md:grid-cols-6 gap-2 mb-3">
     {% with s=stats %}
@@ -105,8 +109,18 @@
             hx-target="#bubble-entity-inner" hx-swap="outerHTML"
             hx-confirm="Импортировать одобренные записи ({{ entity_label }}) в SiriCRM?"
             hx-disabled-elt="this"
-            {% if not stats.approved %}disabled{% endif %}>
+            {% if not stats.approved or running_job %}disabled{% endif %}>
       ⇪ Импортировать одобренные ({{ stats.approved }})
+    </button>
+
+    <button type="button" class="btn btn-sm btn-error"
+            hx-post="{% url 'bubble_import:start_full' entity %}"
+            hx-target="#bubble-entity-inner" hx-swap="outerHTML"
+            hx-confirm="Запустить фоновый импорт ВСЕЙ сущности «{{ entity_label }}» из Bubble? Действие необратимое."
+            hx-disabled-elt="this"
+            {% if not api_ok or running_job %}disabled{% endif %}
+            title="Полный импорт в фоне: fetch всего → одобрить → apply">
+      ⇪ Импортировать ВСЁ
     </button>
   </form>
 
