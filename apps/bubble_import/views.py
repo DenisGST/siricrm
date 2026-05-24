@@ -57,7 +57,8 @@ def _stats(entity: str) -> dict:
     return {
         "total_remote": state.total_remote,
         "total_fetched": total_fetched,
-        "approved": qs.filter(approved=True).count(),
+        # «Одобрено» в UI = кандидаты на повторный apply (не уже импортированные).
+        "approved": qs.filter(approved=True).exclude(status="imported").count(),
         "imported": imported,
         "errors": qs.filter(status="error").count(),
         "pending": qs.filter(status="pending").count(),
