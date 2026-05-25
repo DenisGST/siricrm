@@ -81,6 +81,13 @@
       {% endif %}
     {% endwith %}
 
+    {% if client.last_message_content %}
+      <p class="text-xs mt-1 truncate text-base-content/60 italic"
+         title="{{ client.last_message_content }}">
+        💬 {{ client.last_message_content }}
+      </p>
+    {% endif %}
+
     {% if client.notes %}
       <p class="text-xs mt-1 line-clamp-2 text-base-content/70">{{ client.notes }}</p>
     {% endif %}

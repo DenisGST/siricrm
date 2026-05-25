@@ -461,7 +461,13 @@ def kanban_column(request, status):
     # (импортированные, ещё без сообщений) — ниже, в стабильном порядке
     # по дате создания. nulls_last обязателен — иначе пустые last_message_at
     # уезжают в начало колонки.
-    qs = qs.prefetch_related("employees", "services__name").order_by(
+    # Последнее сообщение — через Subquery, чтобы не получить N+1 на колонке.
+    from django.db.models import OuterRef, Subquery
+    from apps.crm.models import Message
+    last_msg = Message.objects.filter(client=OuterRef("pk")).order_by("-created_at")
+    qs = qs.prefetch_related("employees", "services__name").annotate(
+        last_message_content=Subquery(last_msg.values("content")[:1]),
+    ).order_by(
         F("last_message_at").desc(nulls_last=True), "-created_at",
     )
 
