@@ -222,6 +222,14 @@
             <span id="kanban-filters-dot" class="hidden absolute top-0 right-0 w-2 h-2 rounded-full bg-error"></span>
           </button>
         </div>
+        <div id="kanban-filters-clear-wrap" class="tooltip tooltip-bottom hidden"
+             data-tip="Сбросить фильтры">
+          <button id="kanban-filters-clear-btn" type="button"
+                  class="btn btn-ghost btn-xs btn-square text-error font-bold"
+                  onclick="resetKanbanFilters()">
+            ✕
+          </button>
+        </div>
         <span class="navbar-divider"></span>
       </div>
 
@@ -571,6 +579,7 @@ document.addEventListener('htmx:afterRequest', (event) => {
     const form = document.getElementById('kanban-filter-form');
     const btn  = document.getElementById('kanban-filters-btn');
     const dot  = document.getElementById('kanban-filters-dot');
+    const clearWrap = document.getElementById('kanban-filters-clear-wrap');
     if (!form || !btn) return;
     let active = false;
     new FormData(form).forEach(function(v) {
@@ -578,6 +587,7 @@ document.addEventListener('htmx:afterRequest', (event) => {
     });
     btn.classList.toggle('has-active-filter', active);
     if (dot) dot.classList.toggle('hidden', !active);
+    if (clearWrap) clearWrap.classList.toggle('hidden', !active);
   }
   document.body.addEventListener('kanbanRefresh', updateKanbanFiltersIndicator);
   document.addEventListener('DOMContentLoaded', updateKanbanFiltersIndicator);
