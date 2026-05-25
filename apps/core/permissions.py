@@ -74,6 +74,22 @@ def is_management(user) -> bool:
     return has_role(user, *MANAGEMENT_ROLES)
 
 
+def can_view_all_clients(user) -> bool:
+    """Может видеть всех клиентов: superuser, admin, managing_partner,
+    head_dep, Employee.is_owner или сотрудник отдела с
+    Department.sees_all_clients=True (обычно «Отдел продаж»)."""
+    if is_management(user):
+        return True
+    emp = get_employee(user)
+    if not emp:
+        return False
+    if getattr(emp, "is_owner", False):
+        return True
+    if emp.department_id and getattr(emp.department, "sees_all_clients", False):
+        return True
+    return False
+
+
 # ─── Декораторы для Django view-функций ──────────────────────
 def _make_require(predicate, message):
     def decorator(view_func):

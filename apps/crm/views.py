@@ -235,6 +235,12 @@ def telegram_clients_list(request):
     except Employee.DoesNotExist:
         emp = None
 
+    # Backend-защита: scope='all' доступен только тем, кому видна вся компания
+    # (admin/head_dep/managing_partner/owner/Department.sees_all_clients).
+    from apps.core.permissions import can_view_all_clients
+    if scope == "all" and not can_view_all_clients(request.user):
+        scope = "mine"
+
     qs = _telegram_clients_base_qs(emp, scope)
 
     ALLOWED_SORTS = {
