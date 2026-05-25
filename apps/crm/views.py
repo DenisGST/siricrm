@@ -1162,6 +1162,19 @@ def global_search(request):
         "folder__client", "stored_file"
     ).order_by("-created_at")[:12]
 
+    # Доступ к клиентам (object-level visibility). Затем затеняем строки
+    # тех клиентов, которые есть в результатах поиска, но недоступны.
+    visible_ids = set(
+        Client.objects.visible_to(request.user)
+        .values_list("id", flat=True)
+    )
+    for c in clients:
+        c.no_access = c.id not in visible_ids
+    for m in messages:
+        m.no_access = m.client_id not in visible_ids
+    for f in files:
+        f.no_access = f.folder.client_id not in visible_ids
+
     empty = not (clients or legal_entities or messages or files)
     return render(request, "crm/partials/global_search_results.html", {
         "q": q, "clients": clients, "legal_entities": legal_entities,

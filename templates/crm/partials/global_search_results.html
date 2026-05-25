@@ -6,9 +6,14 @@
   {% if clients %}
     <div class="global-search-group-title">Клиенты</div>
     {% for c in clients %}
-      <div class="global-search-item cursor-pointer"
-           title="Кликни — закрепить ФИО в фильтре канбана"
-           onclick="pickClientForKanbanFilter('{{ c.last_name }} {{ c.first_name }}'); closeGlobalSearch();">
+      <div class="global-search-item {% if c.no_access %}gs-no-access{% else %}cursor-pointer{% endif %}"
+           {% if c.no_access %}
+             title="У вас нет доступа к информации"
+             onclick="globalSearchNoAccess()"
+           {% else %}
+             title="Кликни — закрепить ФИО в фильтре канбана"
+             onclick="pickClientForKanbanFilter('{{ c.last_name }} {{ c.first_name }}'); closeGlobalSearch();"
+           {% endif %}>
         {% icon "user" size=14 %}
         <span class="gs-body">
           <span class="gs-main">{{ c.last_name }} {{ c.first_name }} {{ c.patronymic }}</span>
@@ -19,6 +24,7 @@
             {% endfor %}
           </span>
         </span>
+        {% if not c.no_access %}
         <span class="gs-actions" onclick="event.stopPropagation()">
           <button type="button" class="gs-act" title="Чат"
                   onclick="openTelegramChatModalForClient('{{ c.id }}'); closeGlobalSearch();">
@@ -48,16 +54,23 @@
           </a>
           {% endif %}
         </span>
+        {% endif %}
       </div>
     {% endfor %}
   {% endif %}
 
   {% if clients %}
+    {% with chat_clients=clients|dictsort:"id" %}{% endwith %}
     <div class="global-search-group-title">Чат</div>
     {% for c in clients %}
       {% if c.telegram_id or c.max_chat_id %}
-      <a href="#" class="global-search-item"
-         onclick="openTelegramChatModalForClient('{{ c.id }}'); closeGlobalSearch(); return false;">
+      <a href="#" class="global-search-item {% if c.no_access %}gs-no-access{% endif %}"
+         {% if c.no_access %}
+           onclick="globalSearchNoAccess(); return false;"
+           title="У вас нет доступа к информации"
+         {% else %}
+           onclick="openTelegramChatModalForClient('{{ c.id }}'); closeGlobalSearch(); return false;"
+         {% endif %}>
         {% icon "message-square" size=14 %}
         <span class="gs-main">{{ c.last_name }} {{ c.first_name }} {{ c.patronymic }}</span>
         <span class="gs-aux">
@@ -86,10 +99,15 @@
   {% if files %}
     <div class="global-search-group-title">Файлы</div>
     {% for f in files %}
-      <a href="#" class="global-search-item"
-         hx-get="{% url 'files:manager' f.folder.client_id %}?file={{ f.id }}"
-         hx-target="body" hx-swap="beforeend"
-         onclick="closeGlobalSearch()">
+      <a href="#" class="global-search-item {% if f.no_access %}gs-no-access{% endif %}"
+         {% if f.no_access %}
+           onclick="globalSearchNoAccess(); return false;"
+           title="У вас нет доступа к информации"
+         {% else %}
+           hx-get="{% url 'files:manager' f.folder.client_id %}?file={{ f.id }}"
+           hx-target="body" hx-swap="beforeend"
+           onclick="closeGlobalSearch()"
+         {% endif %}>
         {% icon "file" size=14 %}
         <span class="gs-body">
           <span class="gs-main">{{ f.name }}</span>
@@ -105,8 +123,13 @@
   {% if messages %}
     <div class="global-search-group-title">Сообщения</div>
     {% for m in messages %}
-      <a href="#" class="global-search-item"
-         onclick="openTelegramChatModalForClient('{{ m.client_id }}'); closeGlobalSearch(); return false;">
+      <a href="#" class="global-search-item {% if m.no_access %}gs-no-access{% endif %}"
+         {% if m.no_access %}
+           onclick="globalSearchNoAccess(); return false;"
+           title="У вас нет доступа к информации"
+         {% else %}
+           onclick="openTelegramChatModalForClient('{{ m.client_id }}'); closeGlobalSearch(); return false;"
+         {% endif %}>
         {% icon "message-square" size=14 %}
         <span class="gs-main">{{ m.content|truncatechars:60 }}</span>
         <span class="gs-aux">{{ m.client.last_name }} {{ m.client.first_name }}</span>
@@ -115,3 +138,16 @@
   {% endif %}
 
 {% endif %}
+
+<style>
+  .gs-no-access {
+    opacity: 0.45;
+    cursor: not-allowed;
+    background: repeating-linear-gradient(
+      45deg,
+      transparent, transparent 6px,
+      rgba(220, 38, 38, 0.04) 6px, rgba(220, 38, 38, 0.04) 12px
+    );
+  }
+  .gs-no-access:hover { opacity: 0.6; }
+</style>

@@ -610,6 +610,10 @@ document.addEventListener('htmx:afterRequest', (event) => {
     }, 120);
   };
 
+  function globalSearchNoAccess() {
+    alert("У вас нет доступа к информации");
+  }
+
   function pickClientForKanbanFilter(fio) {
     const input = document.getElementById('flt-q');
     if (!input) return;
