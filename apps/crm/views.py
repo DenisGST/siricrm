@@ -439,13 +439,17 @@ def kanban_column(request, status):
 
     qs = Client.objects.filter(status=status)
     if q:
-        qs = qs.filter(
-            Q(first_name__icontains=q)
-            | Q(last_name__icontains=q)
-            | Q(patronymic__icontains=q)
-            | Q(phone__icontains=q)
-            | Q(phones__phone__icontains=q)
-        ).distinct()
+        # Разбиваем «Каныгин Денис» на слова — каждое слово должно
+        # совпасть с одним из полей (AND по словам, OR по полям).
+        for word in q.split():
+            qs = qs.filter(
+                Q(first_name__icontains=word)
+                | Q(last_name__icontains=word)
+                | Q(patronymic__icontains=word)
+                | Q(phone__icontains=word)
+                | Q(phones__phone__icontains=word)
+            )
+        qs = qs.distinct()
     if employee_id == "__none__":
         qs = qs.filter(employees__isnull=True)
     elif employee_id:
