@@ -25,6 +25,22 @@ FALLBACK_HEAD_LAST = "Власов"
 FALLBACK_HEAD_FIRST = "Евгений"
 
 
+def _system_bot_employee() -> Employee:
+    """Системный «Бот Сириус» — актёр автособытий (lead_received и т. п.).
+    Без него ClientEvent.employee=null и UI/JSON показывают пустоту."""
+    from django.contrib.auth.models import User
+    user, _ = User.objects.get_or_create(
+        username="sirius_bot",
+        defaults={
+            "first_name": "Бот",
+            "last_name": "Сириус",
+            "is_active": False,
+        },
+    )
+    emp, _ = Employee.objects.get_or_create(user=user)
+    return emp
+
+
 def lead_recipients() -> list[Employee]:
     """Активные сотрудники с галкой accept_telegram_leads. Fallback — Власов."""
     qs = Employee.objects.filter(
@@ -72,11 +88,12 @@ def route_new_lead(
     зафиксировать событие. source_label — короткое имя источника
     («Telegram-бот», «WhatsApp», «Лендинг сириус-бфл.рф/clip-3n/»).
     Возвращает список получателей."""
+    actor = _system_bot_employee()
     recipients = lead_recipients()
     if not recipients:
         logger.error("route_new_lead: нет получателей (ни галок, ни Власова)")
         ClientEvent.objects.create(
-            client=client, event_type="lead_received", employee=None,
+            client=client, event_type="lead_received", employee=actor,
             description=(event_description
                          or f"Новый лид ({source_label}). "
                          "Получателей не найдено — назначьте вручную."),
@@ -102,7 +119,7 @@ def route_new_lead(
     names = ", ".join(e.user.get_full_name() or e.user.username for e in recipients)
     desc = event_description or f"Новый лид ({source_label}). Распределён: {names}"
     ClientEvent.objects.create(
-        client=client, event_type="lead_received", employee=None,
+        client=client, event_type="lead_received", employee=actor,
         description=desc,
     )
     return recipients

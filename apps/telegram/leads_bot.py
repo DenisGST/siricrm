@@ -143,11 +143,13 @@ def create_lead_from_parsed(data: dict) -> Client:
     # Дедуп по телефону: если клиент уже есть — только событие.
     existing = find_client_by_phone(phone) if phone else None
     if existing is not None:
+        from apps.crm.lead_routing import _system_bot_employee
         desc = f"Повторный лид с лендинга (заявка №{number}, форма «{form}»)"
         if answers_text:
             desc += "\n\nОтветы из формы:\n" + answers_text
         ClientEvent.objects.create(
-            client=existing, event_type="lead_received", employee=None,
+            client=existing, event_type="lead_received",
+            employee=_system_bot_employee(),
             description=desc,
         )
         logger.info("lead %s: дубль по телефону, клиент %s", number, existing.id)
