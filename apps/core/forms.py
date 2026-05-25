@@ -35,7 +35,7 @@ class DepartmentForm(forms.ModelForm):
 
     class Meta:
         model = Department
-        fields = ["name", "description", "manager", "is_active"]
+        fields = ["name", "description", "manager", "is_active", "sees_all_clients"]
         widgets = {
             "description": forms.Textarea(attrs={"rows": 2}),
         }
@@ -76,7 +76,7 @@ class EmployeeFullEditForm(forms.ModelForm):
         model = Employee
         fields = [
             "department", "role", "dashboard_config",
-            "has_messenger_access", "accept_telegram_leads",
+            "has_messenger_access", "accept_telegram_leads", "is_owner",
             "patronymic",
             "phone_mobile", "phone_internal",
             "services_allowed",

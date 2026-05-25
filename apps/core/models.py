@@ -30,6 +30,13 @@ class Department(TimeStampedModel):
         verbose_name='Руководитель отдела'
     )
     is_active = models.BooleanField(default=True, verbose_name='Активен')
+    sees_all_clients = models.BooleanField(
+        "Видит всех клиентов",
+        default=False,
+        help_text="Сотрудники этого отдела видят всех клиентов компании "
+                  "(например, отдел продаж, который сопровождает клиента "
+                  "от первого обращения до архива).",
+    )
 
     def __str__(self):
         return self.name
@@ -168,6 +175,11 @@ class Employee(models.Model):
     phone_internal = models.CharField("Внутренний номер", max_length=10, blank=True)
     is_active = models.BooleanField("Активен", default=True)
     is_online = models.BooleanField(default=False, verbose_name='Онлайн')
+    is_owner = models.BooleanField(
+        "Owner (root)",
+        default=False,
+        help_text="Видит ВСЁ (включая Django-admin). Только для основателя/админа.",
+    )
     accept_telegram_leads = models.BooleanField(
         "Принимать лиды из Telegram", default=False,
         help_text="Заявки с лендингов через @Sirius_system_bot будут "

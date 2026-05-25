@@ -119,6 +119,15 @@
                  class="toggle toggle-error toggle-sm">
           <span class="label-text text-xs">Уволен</span>
         </label>
+        {% if user.is_superuser %}
+        <label for="emp-owner" class="cursor-pointer flex items-center gap-2"
+               title="Видит всё, включая Django-admin. Только для основателя.">
+          <input type="checkbox" id="emp-owner" name="is_owner"
+                 {% if form.is_owner.value %}checked{% endif %}
+                 class="toggle toggle-warning toggle-sm">
+          <span class="label-text text-xs">Owner (root)</span>
+        </label>
+        {% endif %}
       </div>
 
       {% if form.errors and not form.non_field_errors %}

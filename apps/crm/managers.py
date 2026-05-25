@@ -17,21 +17,37 @@ class ClientQuerySet(models.QuerySet):
     def visible_to(self, user) -> "ClientQuerySet":
         """Клиенты, доступные пользователю.
 
-        * admin / superuser — все клиенты;
-        * head_dep — клиенты, у которых хотя бы один сотрудник из его отдела;
-        * остальные — клиенты, где они в ``Client.employees``.
+        Видят всё:
+          * superuser / admin / managing_partner;
+          * Employee.is_owner (root);
+          * head_dep (любой руководитель отдела);
+          * сотрудник отдела с `Department.sees_all_clients=True`.
+
+        Остальные сотрудники видят клиента, если:
+          * они в `Client.employees` (закреплён), ИЛИ
+          * они в `Service.employees` (исполнитель услуги клиента), ИЛИ
+          * у клиента есть `Service.common_status.department == их отдел`
+            (на текущем этапе обслуживания отвечает их отдел; см.
+            `ServiceCommonStatus.department`).
         """
         if is_admin(user):
             return self
         emp = get_employee(user)
         if not emp:
             return self.none()
-        if emp.role == "head_dep" and emp.department_id:
-            return self.filter(
-                models.Q(employees=emp)
-                | models.Q(employees__department_id=emp.department_id)
-            ).distinct()
-        return self.filter(employees=emp).distinct()
+        if getattr(emp, "is_owner", False):
+            return self
+        if emp.role in ("head_dep", "managing_partner"):
+            return self
+        if emp.department_id and getattr(emp.department, "sees_all_clients", False):
+            return self
+        return self.filter(
+            models.Q(employees=emp)
+            | models.Q(services__employees=emp)
+            | models.Q(
+                services__common_status__department_id=emp.department_id
+            )
+        ).distinct()
 
 
 class ServiceQuerySet(models.QuerySet):

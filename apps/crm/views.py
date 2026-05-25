@@ -437,7 +437,7 @@ def kanban_column(request, status):
     created_to   = request.GET.get("created_to") or ""
     q            = (request.GET.get("q") or "").strip()
 
-    qs = Client.objects.filter(status=status)
+    qs = Client.objects.visible_to(request.user).filter(status=status)
     if q:
         # Разбиваем «Каныгин Денис» на слова — каждое слово должно
         # совпасть с одним из полей (AND по словам, OR по полям).
