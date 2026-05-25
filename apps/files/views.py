@@ -282,6 +282,7 @@ def folder_delete(request, folder_pk):
 _PREVIEWABLE = {
     "image":  {"jpg", "jpeg", "png", "gif", "webp", "svg", "bmp"},
     "pdf":    {"pdf"},
+    "office": {"doc", "docx", "xls", "xlsx", "ppt", "pptx"},
     "video":  {"mp4", "webm", "mov", "avi"},
     "audio":  {"mp3", "wav", "ogg", "m4a", "flac"},
     "text":   {"txt", "csv", "log", "json", "xml", "html", "md"},
