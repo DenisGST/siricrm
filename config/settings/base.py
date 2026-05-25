@@ -143,8 +143,19 @@ USE_TZ = True
 # --- Static / Media ---
 STATIC_URL = "/static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
-STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
 STATICFILES_DIRS = [BASE_DIR / "static"]
+# Django 5.x: settings.STATICFILES_STORAGE deprecated, нужен STORAGES dict.
+# Иначе fallback на простой StaticFilesStorage без manifest — без hash в имени
+# браузер кэширует CSS «навечно» (immutable от whitenoise), и обновления
+# стилей не подхватываются даже на Ctrl+Shift+R.
+STORAGES = {
+    "default": {
+        "BACKEND": "django.core.files.storage.FileSystemStorage",
+    },
+    "staticfiles": {
+        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+    },
+}
 
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
