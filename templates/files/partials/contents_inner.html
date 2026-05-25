@@ -99,24 +99,24 @@
       </thead>
       <tbody>
         {% for f in files %}
-        <tr class="files-row{% if highlight_id and highlight_id == f.pk|stringformat:'s' %} files-row--highlight{% endif %}" data-file-pk="{{ f.pk }}">
+        <tr class="files-row{% if highlight_id and highlight_id == f.pk|stringformat:'s' %} files-row--highlight{% endif %}"
+            data-file-pk="{{ f.pk }}"
+            title="Открыть предпросмотр"
+            style="cursor:pointer;"
+            hx-get="{% url 'files:file_preview' f.pk %}"
+            hx-target="#files-preview-body"
+            hx-swap="innerHTML"
+            hx-on:click="document.getElementById('files-preview-modal').showModal()">
           <td class="files-name">
             <span class="files-icon">{{ f.name|file_icon }}</span>
-            <a href="{% url 'files:file_download' f.pk %}" target="_blank" class="files-link">{{ f.name }}</a>
+            <span class="files-link">{{ f.name }}</span>
           </td>
           <td class="files-size">{{ f.size|filesizeformat }}</td>
           <td class="files-date">{{ f.created_at|date:"d.m.Y H:i" }}</td>
           <td class="files-who">
             {% if f.uploaded_by %}{{ f.uploaded_by.user.last_name }} {{ f.uploaded_by.user.first_name|slice:":1" }}.{% else %}—{% endif %}
           </td>
-          <td class="files-actions">
-            <button type="button" class="btn btn-ghost btn-xs" title="Предпросмотр"
-                    hx-get="{% url 'files:file_preview' f.pk %}"
-                    hx-target="#files-preview-body"
-                    hx-swap="innerHTML"
-                    onclick="event.stopPropagation(); document.getElementById('files-preview-modal').showModal()">
-              {% icon "eye" size=13 %}
-            </button>
+          <td class="files-actions" onclick="event.stopPropagation()">
             <a href="{% url 'files:file_download' f.pk %}" target="_blank"
                class="btn btn-ghost btn-xs" title="Скачать">
               {% icon "download" size=13 %}
