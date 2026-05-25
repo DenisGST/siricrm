@@ -38,6 +38,16 @@
     .htmx-swapping { opacity: 0; transition: opacity 1s ease-out; }
     .htmx-settling { opacity: 1; transition: opacity 1s ease-in; }
 
+    /* Индикатор загрузки кнопки «Показать ещё» в канбан-колонке */
+    .kanban-load-more .loading-state { display: none; }
+    .kanban-load-more.htmx-request .loading-state {
+      display: inline-flex; align-items: center; gap: 0.25rem;
+    }
+    .kanban-load-more.htmx-request .idle-state { display: none; }
+    .kanban-load-more.htmx-request {
+      background: rgba(37, 99, 235, 0.08);
+    }
+
     /* Глобальный индикатор загрузки — полоса вверху страницы при HTMX-запросах */
     #global-progress {
       position: fixed; top: 0; left: 0; right: 0; height: 4px;
