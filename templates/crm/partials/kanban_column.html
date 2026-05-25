@@ -7,9 +7,8 @@
 {% endfor %}
 
 {% if has_more %}
-{# intersect с root:closest .kanban-col-body — потому что колонка скроллится
-   внутри себя (overflow-y:auto, см. .kanban-col-body), и revealed от viewport
-   документа не срабатывает. Клик остаётся как fallback. #}
+{% comment %}intersect с root:closest .kanban-col-body — колонка скроллится внутри себя
+(overflow-y:auto), и revealed от viewport документа не срабатывает. Клик — fallback.{% endcomment %}
 <button type="button"
         class="kanban-load-more btn btn-xs btn-ghost w-full text-base-content/50 mt-2"
         hx-get="{% url 'kanban_column' status %}?offset={{ next_offset }}"
