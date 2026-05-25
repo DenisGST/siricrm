@@ -109,23 +109,27 @@ def download_file_from_s3(bucket: str, key: str) -> bytes:
         raise
 
 
-def get_presigned_url(bucket: str, key: str, expiration: int = 3600) -> str:
+def get_presigned_url(bucket: str, key: str, expiration: int = 3600,
+                       inline: bool = False, content_type: str = None,
+                       filename: str = None) -> str:
     """
     Генерирует подписанный URL для доступа к файлу в S3.
-    
-    Args:
-        bucket: Имя бакета S3
-        key: Ключ файла
-        expiration: Время действия URL в секундах (по умолчанию 1 час)
-    
-    Returns:
-        str: Подписанный URL
+
+    inline=True — добавляет ResponseContentDisposition=inline и
+    ResponseContentType=<content_type> к подписанным параметрам, чтобы
+    браузер не скачивал, а пытался отрисовать (важно для PDF-preview).
     """
     try:
+        params = {'Bucket': bucket, 'Key': key}
+        if inline:
+            disp = "inline"
+            if filename:
+                disp = f'inline; filename="{filename}"'
+            params['ResponseContentDisposition'] = disp
+            if content_type:
+                params['ResponseContentType'] = content_type
         url = s3_client.generate_presigned_url(
-            'get_object',
-            Params={'Bucket': bucket, 'Key': key},
-            ExpiresIn=expiration
+            'get_object', Params=params, ExpiresIn=expiration,
         )
         logger.info(f"✅ Generated presigned URL for {key} (expires in {expiration}s)")
         return url

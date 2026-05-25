@@ -308,8 +308,18 @@ def file_preview(request, file_pk):
     cf = get_object_or_404(ClientFile, pk=file_pk)
     if not cf.stored_file:
         return HttpResponse("Файл не найден в хранилище", status=404)
-    url  = get_presigned_url(cf.stored_file.bucket, cf.stored_file.key, expiration=1800)
     kind = _preview_type(cf.name, cf.content_type)
+    # Для предпросмотра в браузере (image/pdf/video/audio) просим S3 отдать
+    # файл с Content-Disposition: inline и правильным Content-Type — иначе
+    # Beget по умолчанию отдаёт application/octet-stream + attachment и
+    # браузер показывает диалог скачивания вместо отрисовки.
+    inline = kind in {"image", "pdf", "video", "audio"}
+    url = get_presigned_url(
+        cf.stored_file.bucket, cf.stored_file.key, expiration=1800,
+        inline=inline,
+        content_type=cf.content_type or None,
+        filename=cf.name if inline else None,
+    )
     text_content = None
     if kind == "text":
         try:
