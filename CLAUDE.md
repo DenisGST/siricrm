@@ -93,6 +93,33 @@ guides/             — пользовательские инструкции (d
 - **`Employee.accept_telegram_leads`** (BooleanField) — у кого галка, тому летят TG/WA-лиды. Toggle в `templates/core/partials/admin_employees.html` через `core:admin_employee_toggle_tg_leads`. При включении автосоздаётся `ServiceEmployeeStatus(name='Лиды из Telegram')`.
 - **WA-webhook автосоздаёт лида при незнакомом номере** (а не «unknown client» как раньше). Статус — `lead`, распределение через `route_new_lead`.
 
+## Права видимости клиентов (настраиваются в UI)
+
+Логика в `Client.objects.visible_to(user)` (`apps/crm/managers.py`). Видят ВСЕХ клиентов:
+- `is_admin` / `is_superuser` / `managing_partner` / `head_dep`;
+- `Employee.is_owner=True` (root-флаг для основателя — ставится только суперюзером в карточке сотрудника);
+- сотрудник отдела с `Department.sees_all_clients=True` (например, «Отдел продаж»).
+
+Остальные сотрудники видят клиента, если: они в `Client.employees` (ответственный), ИЛИ в `Service.employees` (исполнитель), ИЛИ у клиента есть `Service` с `common_status.department == их отдел` (этап обслуживания закреплён за их отделом через `ServiceCommonStatus.department`).
+
+Helper `apps.core.permissions.can_view_all_clients(user)` + шаблонный фильтр `{% load permissions_tags %}` `{{ user|can_view_all_clients }}` — единая точка проверки «может смотреть всю компанию». Использовано в чат-фильтре «Все» (видна только management + `sees_all_clients`) и в backend-защите `telegram_clients_list` (scope='all' для остальных принудительно режется до 'mine').
+
+Фильтры чат-панели «Мои» / «Отдел» учитывают и `Client.employees`, и `Service.employees` (через `Q(...)|Q(...).distinct()`).
+
+## UI/UX-конвенции (последний UI-проход)
+
+- **Канбан-колонка** (`apps/crm/views.py:kanban_column`): без `list(qs)` (тащило весь queryset в память) — `qs.count() + qs[offset:offset+N]`. Авто-подгрузка через `hx-trigger="intersect root:#kanban-<status> threshold:0.1, click"` (закрытый root — обязательно через `#id`, **не** `closest .selector` — HTMX 1.9.8 в `intersect root:` принимает только чистый CSS-селектор). Индикатор — `hx-indicator="#kanban-<status>"`, CSS `.kanban-col-body.htmx-request::before` (sticky-spinner по центру видимой области).
+- **Канбан-карточка**: primary-телефон с иконкой и `tel:`; последнее сообщение клиента — через `Subquery(Message.objects.filter(client=OuterRef('pk')).order_by('-created_at').values('content')[:1])`, чтобы избежать N+1.
+- **Файловый менеджер**:
+  - `contents.html` (HTMX-партиал для tree-кликов) и `contents_inner.html` разделены: oob-обёртка vs «начинка». При первичном `{% include %}` в `manager.html` использовать **только `contents_inner.html`** — HTMX при beforeend-вставке изымает любой `hx-swap-oob` элемент, что ломало первичный рендер.
+  - `?file=<uuid>` к `files:manager` — открывает менеджер сразу в папке файла + автораскрытие дерева до `.tree-item--active` (CSS `tree-children { display:none }` принудительно `display:block` для родителей) + подсветка строки (`.files-row--highlight`, pulse-анимация). Скрипт автораскрытия — `window.filesManagerOpenToActive` в `dashboard.html`, вызывается через `body.addEventListener('htmx:afterSettle', ...)` (HTMX **не** выполняет inline `<script>` в swap'нутом HTML, поэтому скрипт должен жить вне partial'а).
+  - **Office-предпросмотр**: `_PREVIEWABLE['office'] = {doc,docx,xls,xlsx,ppt,pptx}`. Шаблон рендерит iframe c `view.officeapps.live.com/op/embed.aspx?src=<urlencoded>`. Работает потому что Beget pre-signed URL публично доступен.
+  - **PDF-предпросмотр inline**: Beget по умолчанию отдаёт `Content-Disposition: attachment`. `get_presigned_url(..., inline=True, content_type=..., filename=...)` добавляет `ResponseContentDisposition='inline; filename=...'` и `ResponseContentType=<orig>` — браузер рендерит в iframe вместо скачивания. Применяется только для kind in {image,pdf,video,audio}.
+- **Глобальный поиск**: расширен на ClientFile.name (мультислово AND через .split() + цепочка .filter). Каждой записи в результатах view проставляет `c.no_access = c.id not in Client.objects.visible_to(user).values_list('id', flat=True)`. Шаблон затеняет такие строки (`.gs-no-access`) и заменяет onclick на `globalSearchNoAccess()` → `showToast(...)`.
+- **Toast-уведомления**: `window.showToast(msg, type)` в `dashboard.html` — slide-in карточка в правом нижнем углу, type ∈ `info|success|warning|error`. Использовать вместо `alert()`.
+- **Кэш статики**: `STORAGES` (Django 4.2+ формат) обязателен в `config/settings/base.py`, иначе `STATICFILES_STORAGE = 'whitenoise...CompressedManifestStaticFilesStorage'` тихо игнорируется в Django 5.x и hash-имена не генерируются — `immutable`-кэш браузера держит CSS «навечно», `Ctrl+Shift+R` не помогает.
+- **Шаблонные комментарии**: Django `{# ... #}` поддерживает только **одну** строку — multiline `{# ... \n ... #}` рендерится как текст. Использовать `{% comment %}...{% endcomment %}` для многострочных.
+
 ## Bubble-импорт (`apps/bubble_import/`)
 
 - **Лимит Bubble Data API на cursor-пагинацию — 50 000** записей. Сущности с большим объёмом (`MessageWSP`, `Files`) дофетчиваются **окнами по 30 дней** через `services.fetch_window()`. См. `tasks.WINDOWED_ENTITIES` + `WINDOW_YEARS_BY_ENTITY`. Идемпотентно через `update_or_create(entity, bubble_id)` — повторный fetch не дублирует.
