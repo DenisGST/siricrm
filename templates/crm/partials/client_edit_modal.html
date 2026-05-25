@@ -68,14 +68,6 @@
           {% if form.errors %}
             <div class="alert alert-error text-sm">{{ form.errors }}</div>
           {% endif %}
-
-          <div class="modal-action">
-            <button type="submit" class="btn btn-primary btn-sm">Сохранить</button>
-            <button type="button" class="btn btn-sm"
-              onclick="document.getElementById('client-edit-modal').remove()">
-              Отмена
-            </button>
-          </div>
         </form>
 
         <div class="divider text-xs">Контакты</div>
@@ -84,6 +76,14 @@
              hx-swap="innerHTML">
           <span class="loading loading-spinner loading-xs"></span>
           Загружаем телефоны…
+        </div>
+
+        <div class="modal-action mt-4">
+          <button type="submit" form="client-edit-form" class="btn btn-primary btn-sm">Сохранить</button>
+          <button type="button" class="btn btn-sm"
+            onclick="document.getElementById('client-edit-modal').remove()">
+            Отмена
+          </button>
         </div>
 
       </div>
