@@ -461,21 +461,21 @@ def kanban_column(request, status):
     # (импортированные, ещё без сообщений) — ниже, в стабильном порядке
     # по дате создания. nulls_last обязателен — иначе пустые last_message_at
     # уезжают в начало колонки.
-    clients = list(
-        qs.prefetch_related("employees", "services__name").order_by(
-            F("last_message_at").desc(nulls_last=True), "-created_at",
-        )
+    qs = qs.prefetch_related("employees", "services__name").order_by(
+        F("last_message_at").desc(nulls_last=True), "-created_at",
     )
 
-    # Постраничная подгрузка по 50 — иначе на больших колонках (после
-    # импорта из Bubble) рендер всех карточек разом вешает страницу.
-    PAGE_SIZE = 50
-    total = len(clients)
+    # Постраничная подгрузка — иначе на больших колонках (после импорта из
+    # Bubble) рендер всех карточек разом вешает страницу. ВАЖНО: total
+    # считаем через qs.count() и режем срезом, чтобы не тащить весь
+    # queryset в память (это и был причиной тормозов).
+    PAGE_SIZE = 20
+    total = qs.count()
     try:
         offset = max(int(request.GET.get("offset") or 0), 0)
     except (TypeError, ValueError):
         offset = 0
-    shown = clients[offset:offset + PAGE_SIZE]
+    shown = list(qs[offset:offset + PAGE_SIZE])
     _annotate_ms_status(shown, request.user)
     next_offset = offset + PAGE_SIZE
     has_more = next_offset < total
