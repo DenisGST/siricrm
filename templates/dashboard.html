@@ -576,6 +576,30 @@ document.addEventListener('htmx:afterRequest', (event) => {
     updateKanbanFiltersIndicator();
   }
 
+  // Раскрыть путь в дереве файлового менеджера до активной папки,
+  // подсветить целевой файл и проскроллить к нему.
+  // Вызывается из manager.html через hx-on::load.
+  window.filesManagerOpenToActive = function() {
+    setTimeout(function() {
+      const activeItem = document.querySelector('#files-tree-panel .tree-item--active');
+      if (activeItem) {
+        let parent = activeItem.parentElement;
+        while (parent) {
+          if (parent.classList && parent.classList.contains('tree-children')) {
+            parent.style.display = 'block';
+            const parentItem = parent.parentElement;
+            if (parentItem && parentItem.classList) parentItem.classList.add('tree-item--open');
+          }
+          parent = parent.parentElement;
+          if (parent && parent.id === 'files-tree-panel') break;
+        }
+        if (activeItem.scrollIntoView) activeItem.scrollIntoView({block:'center', behavior:'smooth'});
+      }
+      const row = document.querySelector('.files-row--highlight');
+      if (row && row.scrollIntoView) row.scrollIntoView({block:'center', behavior:'smooth'});
+    }, 120);
+  };
+
   function pickClientForKanbanFilter(fio) {
     const input = document.getElementById('flt-q');
     if (!input) return;
