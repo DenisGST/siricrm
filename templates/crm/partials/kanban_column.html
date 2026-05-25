@@ -14,9 +14,9 @@
         hx-get="{% url 'kanban_column' status %}?offset={{ next_offset }}"
         hx-target="this"
         hx-swap="outerHTML"
-        hx-trigger="intersect root:closest .kanban-col-body threshold:0.1, click"
+        hx-trigger="intersect root:#kanban-{{ status }} threshold:0.1, click"
         hx-disabled-elt="this"
-        hx-indicator="closest .kanban-col-body"
+        hx-indicator="#kanban-{{ status }}"
         hx-include="#kanban-filter-form">
   Показать ещё {{ page_size }} <span class="opacity-60">(осталось {{ remaining }})</span>
 </button>
