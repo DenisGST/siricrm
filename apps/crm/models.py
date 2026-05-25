@@ -171,6 +171,64 @@ class Client(TimeStampedModel):
         ]
 
 
+class ClientPhone(models.Model):
+    """Все телефоны клиента: основной, WhatsApp, Telegram, MAX, дополнительные.
+
+    Источник правды для поиска клиента по номеру (входящий WhatsApp, лид с
+    лендинга, дедуп при импорте). `Client.phone` и `Client.whatsapp_phone`
+    оставлены как кэш — пишутся синхронно при изменении этого справочника.
+
+    Номер хранится в E.164 без «+» (например, 79991234567). Шаблоны/UI при
+    показе добавляют «+» сами.
+    """
+    PURPOSE_CHOICES = [
+        ("primary", "Основной"),
+        ("whatsapp", "WhatsApp"),
+        ("telegram", "Telegram"),
+        ("max", "MAX"),
+        ("additional", "Дополнительный"),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    client = models.ForeignKey(
+        Client, on_delete=models.CASCADE, related_name="phones",
+        verbose_name="Клиент",
+    )
+    phone = models.CharField(
+        "Номер телефона", max_length=20,
+        help_text="E.164 без «+», например 79991234567",
+    )
+    purpose = models.CharField(
+        "Назначение", max_length=20,
+        choices=PURPOSE_CHOICES, default="additional",
+    )
+    is_active = models.BooleanField("Активен", default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Телефон клиента"
+        verbose_name_plural = "Телефоны клиента"
+        ordering = ["purpose", "phone"]
+        constraints = [
+            # Один номер может принадлежать только одному клиенту в рамках
+            # назначения (один WhatsApp-номер — у одного клиента и т. п.).
+            # У того же клиента тот же номер можно зафиксировать с разными
+            # назначениями (primary + whatsapp одновременно).
+            models.UniqueConstraint(
+                fields=["phone", "purpose"],
+                name="uniq_clientphone_phone_purpose",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["phone"]),
+            models.Index(fields=["client", "purpose"]),
+        ]
+
+    def __str__(self):
+        return f"+{self.phone} · {self.get_purpose_display()}"
+
+
 class ClientEmployee(models.Model):
     MESSENGER_STATUS_CHOICES = [
         ("open", "Диалог открыт"),

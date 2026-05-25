@@ -303,6 +303,12 @@ def apply_man(rec: BubbleRecord) -> str:
 
     client.save()
 
+    if phone:
+        # Записываем номер в ClientPhone как primary + whatsapp (idempotent).
+        from apps.crm.phone_utils import add_client_phone
+        add_client_phone(client, phone, purpose="primary")
+        add_client_phone(client, phone, purpose="whatsapp")
+
     _apply_name_history(client, rec)
     _assign_unknown_responsible(client)
 
@@ -437,6 +443,14 @@ def apply_projectbfl(rec: BubbleRecord) -> str:
     # Закрепить услугу за сотрудниками (Manager / ROP / Jurist / Arbitragnik).
     _assign_service_employees(service, rec)
 
+    # Перенести WhatsApp-номер услуги (telWSP) в ClientPhone-алиасы клиента,
+    # чтобы input WhatsApp-сообщений по нему находил клиента, даже если у
+    # Client.whatsapp_phone уже другой основной номер.
+    tel_wsp = normalize_phone(rec.raw.get("telWSP") if rec.raw else "")
+    if tel_wsp:
+        from apps.crm.phone_utils import add_client_phone
+        add_client_phone(client, tel_wsp, purpose="whatsapp")
+
     rec.status = "imported"
     rec.target_type = "Service"
     rec.target_id = str(service.id)
@@ -567,6 +581,10 @@ def apply_messagewsp(rec: BubbleRecord) -> str:
 
     phone = _wa_client_phone(raw)
     client = Client.objects.filter(whatsapp_phone=phone).first() if phone else None
+    if client is None and phone:
+        # Fallback: telWSP из ProjectBFL → ClientPhone-алиас.
+        from apps.crm.phone_utils import find_client_by_phone
+        client = find_client_by_phone(phone)
     if client is None:
         rec.status = "error"
         rec.error = (

@@ -545,8 +545,9 @@ def ref_search(request):
     if len(q) >= 2:
         if rtype == "client":
             items = Client.objects.filter(
-                Q(last_name__icontains=q) | Q(first_name__icontains=q) | Q(phone__icontains=q)
-            ).order_by("last_name", "first_name")[:15]
+                Q(last_name__icontains=q) | Q(first_name__icontains=q)
+                | Q(phone__icontains=q) | Q(phones__phone__icontains=q)
+            ).distinct().order_by("last_name", "first_name")[:15]
             results = [{"id": str(i.pk), "label": f"{i.last_name} {i.first_name}{' (' + i.phone + ')' if i.phone else ''}"} for i in items]
         elif rtype == "employee":
             items = Employee.objects.filter(

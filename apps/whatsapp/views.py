@@ -47,48 +47,51 @@ def _push(msg_obj):
 
 
 def _get_or_create_wa_client(phone: str, profile_name: str = "") -> tuple[Client, bool]:
-    """Найти/создать клиента по whatsapp_phone. Имя — из profile.name, если есть."""
+    """Найти/создать клиента по любому из его номеров (Client.whatsapp_phone
+    либо ClientPhone-алиас). Если незнакомый номер — создаём лид и
+    распределяем как при заявке через TG-бот."""
+    from apps.crm.phone_utils import add_client_phone, find_client_by_phone
+    from apps.crm.lead_routing import route_new_lead
+
+    client = find_client_by_phone(phone, purposes=["whatsapp", "primary"])
+    if client is not None:
+        client.last_message_at = timezone.now()
+        client.save(update_fields=["last_message_at"])
+        return client, False
+
     first, last = "", ""
     if profile_name:
         parts = profile_name.strip().split(maxsplit=1)
         first = parts[0]
         last = parts[1] if len(parts) > 1 else ""
 
-    client, created = Client.objects.get_or_create(
-        whatsapp_phone=phone,
-        defaults={
-            "first_name": first or "WhatsApp",
-            "last_name": last,
-            "username": "",
-            "phone": "+" + phone,
-            "status": "unknown",
-            "last_message_at": timezone.now(),
-        },
+    # whatsapp_phone в legacy-поле — unique=True, ставим только если свободен.
+    legacy_wa = phone if not Client.objects.filter(whatsapp_phone=phone).exists() else None
+    client = Client.objects.create(
+        first_name=first or "WhatsApp",
+        last_name=last,
+        username="",
+        phone="+" + phone,
+        whatsapp_phone=legacy_wa,
+        status="lead",
+        last_message_at=timezone.now(),
     )
-    if created:
-        logger.info("✨ WA: created client %s (phone=%s, name=%s)", client.id, phone, profile_name)
-        try:
-            from apps.crm.models import ClientEmployee, ClientEvent
-            from apps.core.models import Employee
-            from django.contrib.auth.models import User
-            bot_user, _ = User.objects.get_or_create(
-                username="sirius_bot",
-                defaults={"first_name": "Бот", "last_name": "Сириус", "is_active": False},
-            )
-            bot_emp, _ = Employee.objects.get_or_create(user=bot_user)
-            ClientEmployee.objects.get_or_create(client=client, employee=bot_emp)
-            ClientEvent.objects.create(
-                client=client,
-                event_type="first_contact",
-                description="Первое обращение через WhatsApp",
-                employee=bot_emp,
-            )
-        except Exception:
-            logger.exception("WA: failed to auto-assign Sirius Bot")
-    else:
-        client.last_message_at = timezone.now()
-        client.save(update_fields=["last_message_at"])
-    return client, created
+    add_client_phone(client, phone, "whatsapp")
+    add_client_phone(client, phone, "primary")
+    logger.info("✨ WA: автосоздан лид %s (phone=%s, name=%s)",
+                client.id, phone, profile_name)
+    try:
+        route_new_lead(
+            client,
+            source_label="WhatsApp",
+            event_description=(
+                f"Первое обращение через WhatsApp с номера +{phone}. "
+                f"Профиль: «{profile_name or '—'}»."
+            ),
+        )
+    except Exception:
+        logger.exception("WA: не удалось распределить лид")
+    return client, True
 
 
 def _extract_text(message: dict) -> str:

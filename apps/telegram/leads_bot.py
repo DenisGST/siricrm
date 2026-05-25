@@ -14,16 +14,13 @@ import re
 
 from decouple import config
 from django.db import transaction
-from django.db.models import Q
 from django.http import JsonResponse, HttpResponseForbidden
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 
-from apps.core.models import Employee
-from apps.crm.models import (
-    Client, ClientEmployee, ClientEvent, Service, ServiceName,
-    ServiceCommonStatus, ServiceEmployeeStatus, ServiceEmployeeState,
-)
+from apps.crm.lead_routing import route_new_lead
+from apps.crm.models import Client, ClientEvent
+from apps.crm.phone_utils import add_client_phone, find_client_by_phone
 
 logger = logging.getLogger("telegram_leads")
 
@@ -31,10 +28,6 @@ logger = logging.getLogger("telegram_leads")
 BOT_TOKEN = config("TELEGRAM_BOT_TOKEN", default="")
 LEADS_CHANNEL_ID = config("TELEGRAM_LEADS_CHANNEL_ID", default="", cast=str)
 WEBHOOK_SECRET = config("TELEGRAM_LEADS_WEBHOOK_SECRET", default="")
-
-LEADS_STATUS_NAME = "Лиды из Telegram"
-FALLBACK_HEAD_LAST = "Власов"
-FALLBACK_HEAD_FIRST = "Евгений"
 
 # Формат заявки с лендинга — основные поля.
 _PHONE_RE = re.compile(r"Телефон:\s*([+\d\s()\-]+)")
@@ -110,53 +103,17 @@ def _parse_lead(text: str) -> dict | None:
     }
 
 
-# ─── получатели лида ───────────────────────────────────────
-
-
-def _lead_recipients() -> list[Employee]:
-    """Активные сотрудники с галкой accept_telegram_leads.
-    Если таких нет — fallback на РОПа (Власов Евгений)."""
-    qs = Employee.objects.filter(
-        is_active=True, accept_telegram_leads=True,
-    ).select_related("user")
-    recipients = list(qs)
-    if recipients:
-        return recipients
-    fallback = Employee.objects.filter(
-        is_active=True,
-        user__last_name__iexact=FALLBACK_HEAD_LAST,
-        user__first_name__iexact=FALLBACK_HEAD_FIRST,
-    ).select_related("user").first()
-    return [fallback] if fallback else []
-
-
-def _bfl_service_name() -> ServiceName | None:
-    return ServiceName.objects.filter(short_name__iexact="БФЛ").first()
-
-
-def _ensure_leads_emp_status(employee: Employee) -> ServiceEmployeeStatus | None:
-    """Гарантировать у сотрудника личный статус «Лиды из Telegram»,
-    привязанный к общему статусу «Лид» БФЛ. Возвращает None, если в
-    системе нет ни БФЛ, ни общего статуса «Лид»."""
-    sn = _bfl_service_name()
-    if sn is None:
-        logger.warning("Нет ServiceName=БФЛ — лид не закрепится в «Мой канбан»")
-        return None
-    common = (
-        ServiceCommonStatus.objects.filter(service_name=sn)
-        .order_by("order", "name").first()
-    )
-    if common is None:
-        logger.warning("Нет общих статусов услуги для БФЛ")
-        return None
-    obj, _ = ServiceEmployeeStatus.objects.get_or_create(
-        employee=employee, name=LEADS_STATUS_NAME,
-        defaults={"common_status": common, "is_active": True, "order": 0},
-    )
-    return obj
+# «Лиды из Telegram», fallback на Власова — теперь в apps.crm.lead_routing.
 
 
 # ─── создание лида ─────────────────────────────────────────
+
+
+def _ensure_leads_emp_status(employee):
+    # Тонкая обёртка для совместимости (используется в core/views.py быстрым
+    # toggle'ом галки «Лиды TG»). Логика — в lead_routing.
+    from apps.crm.lead_routing import ensure_lead_employee_status
+    return ensure_lead_employee_status(employee)
 
 
 @transaction.atomic
@@ -183,12 +140,8 @@ def create_lead_from_parsed(data: dict) -> Client:
         notes_block += ["", "Ответы из формы:", answers_text]
     notes_text = "\n".join(x for x in notes_block if x)
 
-    # Дедуп по телефону: если клиент уже есть — только событие, не создаём.
-    existing = None
-    if phone:
-        existing = Client.objects.filter(
-            Q(whatsapp_phone=phone) | Q(phone="+" + phone) | Q(phone=phone)
-        ).first()
+    # Дедуп по телефону: если клиент уже есть — только событие.
+    existing = find_client_by_phone(phone) if phone else None
     if existing is not None:
         desc = f"Повторный лид с лендинга (заявка №{number}, форма «{form}»)"
         if answers_text:
@@ -209,44 +162,18 @@ def create_lead_from_parsed(data: dict) -> Client:
         notes=notes_text,
         last_message_at=timezone.now(),
     )
+    if phone:
+        add_client_phone(client, phone, "primary")
+        add_client_phone(client, phone, "whatsapp")
     logger.info("lead %s: создан клиент %s (%s)", number, client.id, name)
 
-    # Привязка получателей.
-    recipients = _lead_recipients()
-    if not recipients:
-        logger.error("lead %s: нет получателей (ни галок, ни fallback РОПа)", number)
-        ClientEvent.objects.create(
-            client=client, event_type="lead_received", employee=None,
-            description=f"Новый лид с лендинга «{page}» (№{number}). "
-                        f"Получателей не найдено — назначьте вручную.",
-        )
-        return client
-
-    for emp in recipients:
-        ClientEmployee.objects.get_or_create(client=client, employee=emp)
-
-    # Услуга + ServiceEmployeeState для каждого получателя.
-    sn = _bfl_service_name()
-    if sn is not None:
-        service = Service.objects.create(client=client, name=sn, is_active=True)
-        for emp in recipients:
-            emp_status = _ensure_leads_emp_status(emp)
-            ServiceEmployeeState.objects.update_or_create(
-                service=service, employee=emp,
-                defaults={"status": emp_status},
-            )
-
+    source_label = f"Лендинг «{page}» · заявка №{number} · форма «{form}»"
     desc = (
-        f"Новый лид с лендинга «{page}» (заявка №{number}, форма «{form}»). "
-        f"Распределён сотрудникам: "
-        + ", ".join(e.user.get_full_name() or e.user.username for e in recipients)
+        f"Новый лид с лендинга «{page}» (заявка №{number}, форма «{form}»)."
     )
     if answers_text:
         desc += "\n\nОтветы из формы:\n" + answers_text
-    ClientEvent.objects.create(
-        client=client, event_type="lead_received", employee=None,
-        description=desc,
-    )
+    route_new_lead(client, source_label=source_label, event_description=desc)
     return client
 
 

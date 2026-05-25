@@ -279,8 +279,9 @@ def client_search(request):
     if len(q) >= 2:
         clients = Client.objects.filter(
             Q(last_name__icontains=q) | Q(first_name__icontains=q) |
-            Q(phone__icontains=q) | Q(username__icontains=q)
-        ).order_by("last_name", "first_name")[:15]
+            Q(phone__icontains=q) | Q(phones__phone__icontains=q)
+            | Q(username__icontains=q)
+        ).distinct().order_by("last_name", "first_name")[:15]
     return render(request, "consultations/partials/client_search.html", {"clients": clients, "q": q})
 
 

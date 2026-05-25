@@ -1,9 +1,18 @@
 from django.contrib import admin
 from .models import (
-    Client, ClientEmployee, Message, Service, Region, LegalEntityKind, ClientEvent,
-    ServiceName, PaymentProcedure, ServiceCommonStatus, ServiceEmployeeStatus,
-    ServiceTag, ServiceEmployeeState, ServiceTagAssignment, ServiceLog,
+    Client, ClientEmployee, ClientPhone, Message, Service, Region,
+    LegalEntityKind, ClientEvent, ServiceName, PaymentProcedure,
+    ServiceCommonStatus, ServiceEmployeeStatus, ServiceTag,
+    ServiceEmployeeState, ServiceTagAssignment, ServiceLog,
 )
+
+
+@admin.register(ClientPhone)
+class ClientPhoneAdmin(admin.ModelAdmin):
+    list_display = ("client", "phone", "purpose", "is_active", "created_at")
+    list_filter = ("purpose", "is_active")
+    search_fields = ("phone", "client__last_name", "client__first_name")
+    autocomplete_fields = ("client",)
 
 
 @admin.register(LegalEntityKind)
@@ -36,6 +45,7 @@ class ClientAdmin(admin.ModelAdmin):
         "last_name",
         "username",
         "phone",
+        "phones__phone",
         "email",
         "telegram_id",
         "contacts_confirmed",
@@ -58,7 +68,10 @@ class MessageAdmin(admin.ModelAdmin):
         "raw_payload",
     )
     list_filter = ("direction", "message_type", "is_read", "client")  # ✅ добавили "client"
-    search_fields = ("content", "client__first_name", "client__last_name", "client__username", "client__phone")  # ✅ расширили поиск
+    search_fields = (
+        "content", "client__first_name", "client__last_name",
+        "client__username", "client__phone", "client__phones__phone",
+    )
     autocomplete_fields = ("client", "employee",)
     date_hierarchy = "created_at"
     ordering = ("created_at",)

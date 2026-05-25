@@ -257,8 +257,9 @@ def telegram_clients_list(request):
             | Q(last_name__icontains=query)
             | Q(username__icontains=query)
             | Q(phone__icontains=query)
+            | Q(phones__phone__icontains=query)
         )
-        qs = qs.filter(search_q)
+        qs = qs.filter(search_q).distinct()
 
     paginator = Paginator(qs, CLIENTS_PER_PAGE)
     page_obj = paginator.get_page(page_number)
@@ -634,8 +635,9 @@ def clients_list(request):
             | models.Q(last_name__icontains=search)
             | models.Q(username__icontains=search)
             | models.Q(phone__icontains=search)
+            | models.Q(phones__phone__icontains=search)
             | models.Q(email__icontains=search)
-        )
+        ).distinct()
 
     paginator = Paginator(qs.order_by("-last_message_at"), 15)
     page_number = request.GET.get("page") or 1
@@ -756,9 +758,11 @@ def client_merge_search(request):
                 | Q(last_name__icontains=query)
                 | Q(patronymic__icontains=query)
                 | Q(phone__icontains=query)
+                | Q(phones__phone__icontains=query)
                 | Q(username__icontains=query)
             )
             .exclude(pk=source_id)
+            .distinct()
             .order_by("last_name", "first_name")[:20]
         )
 
@@ -1006,8 +1010,8 @@ def global_search(request):
     clients = Client.objects.filter(
         Q(first_name__icontains=q) | Q(last_name__icontains=q) |
         Q(patronymic__icontains=q) | Q(username__icontains=q) |
-        Q(phone__icontains=q)
-    ).prefetch_related(
+        Q(phone__icontains=q) | Q(phones__phone__icontains=q)
+    ).distinct().prefetch_related(
         "services__name", "services__common_status",
     ).order_by("last_name", "first_name")[:12]
 
@@ -1342,8 +1346,9 @@ def service_client_search(request):
                 | Q(last_name__icontains=q)
                 | Q(patronymic__icontains=q)
                 | Q(phone__icontains=q)
+                | Q(phones__phone__icontains=q)
                 | Q(username__icontains=q)
-            ).order_by("last_name", "first_name")[:15]
+            ).distinct().order_by("last_name", "first_name")[:15]
         )
     return render(request, "crm/services/client_search_results.html", {
         "clients": clients, "target": target, "query": q,
@@ -1651,6 +1656,9 @@ def client_identify_modal(request, client_id):
                 "last_name", "first_name", "patronymic", "phone",
                 "is_identified", "updated_at",
             ])
+            if phone:
+                from apps.crm.phone_utils import add_client_phone
+                add_client_phone(client, phone, purpose="primary")
 
             try:
                 actor = Employee.objects.get(user=request.user)

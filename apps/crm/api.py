@@ -41,7 +41,7 @@ class ClientViewSet(viewsets.ModelViewSet):
     permission_classes = [ReadOnlyOrIsAdmin]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     filterset_fields = ['status']
-    search_fields = ['first_name', 'last_name', 'username', 'phone', 'email']
+    search_fields = ['first_name', 'last_name', 'username', 'phone', 'phones__phone', 'email']
     ordering_fields = ['last_message_at', 'created_at']
 
     def get_queryset(self):
