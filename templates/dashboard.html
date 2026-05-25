@@ -576,9 +576,17 @@ document.addEventListener('htmx:afterRequest', (event) => {
     updateKanbanFiltersIndicator();
   }
 
+  // Триггер: после любого HTMX-swap проверяем, появилась ли модалка
+  // файлового менеджера с data-highlight-id — если да, раскрываем дерево.
+  document.body.addEventListener('htmx:afterSettle', function(e) {
+    const dlg = document.getElementById('files-dialog');
+    if (dlg && window.filesManagerOpenToActive) {
+      window.filesManagerOpenToActive();
+    }
+  });
+
   // Раскрыть путь в дереве файлового менеджера до активной папки,
   // подсветить целевой файл и проскроллить к нему.
-  // Вызывается из manager.html через hx-on::load.
   window.filesManagerOpenToActive = function() {
     setTimeout(function() {
       const activeItem = document.querySelector('#files-tree-panel .tree-item--active');
