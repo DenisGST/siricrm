@@ -346,6 +346,13 @@
   </div>
 
   <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+    <label class="form-control w-full sm:col-span-2">
+      <span class="label label-text !text-xs !py-0 !pb-1 opacity-70">Поиск (ФИО / телефон)</span>
+      <input id="flt-q" type="search" name="q"
+             placeholder="Иванов, +7 999..., 79991234567"
+             class="input input-bordered input-sm"
+             oninput="clearTimeout(window._fltQTimer); window._fltQTimer=setTimeout(function(){document.body.dispatchEvent(new CustomEvent('kanbanRefresh'))}, 400);">
+    </label>
     <label class="form-control w-full">
       <span class="label label-text !text-xs !py-0 !pb-1 opacity-70">Закреплён за</span>
       <select id="flt-employee" name="employee" class="select select-bordered select-sm">

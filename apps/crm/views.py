@@ -435,8 +435,17 @@ def kanban_column(request, status):
     ms_status    = request.GET.get("ms_status") or ""
     created_from = request.GET.get("created_from") or ""
     created_to   = request.GET.get("created_to") or ""
+    q            = (request.GET.get("q") or "").strip()
 
     qs = Client.objects.filter(status=status)
+    if q:
+        qs = qs.filter(
+            Q(first_name__icontains=q)
+            | Q(last_name__icontains=q)
+            | Q(patronymic__icontains=q)
+            | Q(phone__icontains=q)
+            | Q(phones__phone__icontains=q)
+        ).distinct()
     if employee_id == "__none__":
         qs = qs.filter(employees__isnull=True)
     elif employee_id:
