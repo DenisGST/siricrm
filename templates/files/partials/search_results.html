@@ -37,7 +37,7 @@
                hx-on::after-request="document.getElementById('files-preview-modal').showModal()">{{ f.name }}</a>
           </td>
           <td class="files-who">{{ f.folder.name }}</td>
-          <td class="files-size">{{ f.size|file_size }}</td>
+          <td class="files-size">{{ f.size|filesizeformat }}</td>
           <td class="files-who">
             {% if f.uploaded_by %}{{ f.uploaded_by.user.last_name }} {{ f.uploaded_by.user.first_name|first }}.{% else %}—{% endif %}
           </td>
