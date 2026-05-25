@@ -25,15 +25,30 @@ def _current_employee(request):
 
 @login_required
 def file_manager(request, client_pk):
+    """Файловый менеджер клиента. Поддерживает ?file=<uuid> — открыть
+    папку конкретного файла и подсветить запись."""
     from django.shortcuts import render
+    from .models import ClientFile
+
     client = get_object_or_404(Client, pk=client_pk)
     # Создаём папки по умолчанию если их нет
     if not ClientFolder.objects.filter(client=client).exists():
         create_default_folders(client)
     tree = build_tree(client)
-    # Открываем корневую папку по умолчанию
     root = next((f for f in tree), None)
+
     active = root
+    highlight_id = ""
+    target_file_id = request.GET.get("file") or ""
+    if target_file_id:
+        cf = (
+            ClientFile.objects.filter(pk=target_file_id, folder__client=client)
+            .select_related("folder").first()
+        )
+        if cf is not None:
+            active = cf.folder
+            highlight_id = str(cf.pk)
+
     files = list(active.files.select_related("uploaded_by__user").all()) if active else []
     breadcrumb = get_folder_path(active) if active else []
     all_folders = _flat_folders(tree)
@@ -44,6 +59,27 @@ def file_manager(request, client_pk):
         "files": files,
         "breadcrumb": breadcrumb,
         "all_folders": all_folders,
+        "highlight_id": highlight_id,
+    })
+
+
+@login_required
+def file_search(request, client_pk):
+    """HTMX-партиал: список файлов клиента, отфильтрованный по имени."""
+    from django.shortcuts import render
+    from .models import ClientFile
+
+    client = get_object_or_404(Client, pk=client_pk)
+    q = (request.GET.get("q") or "").strip()
+    qs = (
+        ClientFile.objects.filter(folder__client=client)
+        .select_related("folder", "uploaded_by__user")
+    )
+    for word in q.split():
+        qs = qs.filter(name__icontains=word)
+    files = list(qs.order_by("folder__name", "name")[:200])
+    return render(request, "files/partials/search_results.html", {
+        "client": client, "files": files, "q": q,
     })
 
 

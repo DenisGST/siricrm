@@ -108,7 +108,7 @@
       </thead>
       <tbody>
         {% for f in files %}
-        <tr class="files-row" data-file-pk="{{ f.pk }}">
+        <tr class="files-row{% if highlight_id and highlight_id == f.pk|stringformat:'s' %} files-row--highlight{% endif %}" data-file-pk="{{ f.pk }}">
           <td class="files-name">
             <span class="files-icon">{{ f.name|file_icon }}</span>
             <a href="{% url 'files:file_download' f.pk %}" target="_blank" class="files-link">{{ f.name }}</a>

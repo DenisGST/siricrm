@@ -87,7 +87,7 @@
     <div class="global-search-group-title">Файлы</div>
     {% for f in files %}
       <a href="#" class="global-search-item"
-         hx-get="{% url 'files:manager' f.folder.client_id %}"
+         hx-get="{% url 'files:manager' f.folder.client_id %}?file={{ f.id }}"
          hx-target="body" hx-swap="beforeend"
          onclick="closeGlobalSearch()">
         {% icon "file" size=14 %}

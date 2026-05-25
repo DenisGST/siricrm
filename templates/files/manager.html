@@ -11,6 +11,13 @@
         <span style="color:#94a3b8;">·</span>
         <span style="color:#64748b;">{{ client.last_name }} {{ client.first_name }}</span>
       </div>
+      <input type="search" placeholder="Поиск по имени файла…"
+             class="input input-bordered input-xs"
+             style="width:280px;"
+             hx-get="{% url 'files:search' client.id %}"
+             hx-trigger="input changed delay:300ms, search"
+             hx-target="#files-main" hx-swap="outerHTML"
+             name="q">
       <button type="button" class="btn btn-sm btn-ghost btn-circle"
               onclick="document.getElementById('files-dialog').remove()">✕</button>
     </div>
@@ -34,6 +41,17 @@
   </div>
   <div class="modal-backdrop" onclick="document.getElementById('files-dialog').remove()"></div>
 </dialog>
+
+{% if highlight_id %}
+<script>
+  (function() {
+    setTimeout(function() {
+      const row = document.querySelector('.files-row--highlight');
+      if (row && row.scrollIntoView) row.scrollIntoView({block:'center', behavior:'smooth'});
+    }, 100);
+  })();
+</script>
+{% endif %}
 
 <!-- Модалка предпросмотра -->
 <dialog id="files-preview-modal" class="modal" style="z-index:1200;">
@@ -134,6 +152,14 @@
 }
 .files-row { border-bottom: 1px solid #f1f5f9; }
 .files-row:hover { background: #f8fafc; }
+.files-row--highlight {
+  background: #fef3c7 !important;
+  animation: files-row-pulse 1.5s ease-out;
+}
+@keyframes files-row-pulse {
+  0%   { background: #fde68a; }
+  100% { background: #fef3c7; }
+}
 .files-row td { padding: 6px 10px; vertical-align: middle; }
 .files-name { display: flex; align-items: center; gap: 6px; }
 .files-link { color: #1e293b; } .files-link:hover { color: #2563eb; text-decoration: underline; }
