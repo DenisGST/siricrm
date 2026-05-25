@@ -51,6 +51,16 @@
       {% endwith %}
     </div>
 
+    {% if client.phone %}
+    <a href="tel:{{ client.phone }}"
+       class="inline-flex items-center gap-1 text-xs text-base-content/70 hover:text-base-content hover:underline"
+       onclick="event.stopPropagation()"
+       title="Позвонить">
+      {% icon "phone" size=12 %}
+      {{ client.phone }}
+    </a>
+    {% endif %}
+
     <!-- Услуги -->
     {% with svcs=client.services.all %}
       {% if svcs %}
