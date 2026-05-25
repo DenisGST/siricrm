@@ -576,6 +576,14 @@ document.addEventListener('htmx:afterRequest', (event) => {
     updateKanbanFiltersIndicator();
   }
 
+  function pickClientForKanbanFilter(fio) {
+    const input = document.getElementById('flt-q');
+    if (!input) return;
+    input.value = fio;
+    document.body.dispatchEvent(new CustomEvent('kanbanRefresh'));
+    updateKanbanFiltersIndicator();
+  }
+
   function updateKanbanFiltersIndicator() {
     const form = document.getElementById('kanban-filter-form');
     const btn  = document.getElementById('kanban-filters-btn');

@@ -6,7 +6,9 @@
   {% if clients %}
     <div class="global-search-group-title">Клиенты</div>
     {% for c in clients %}
-      <div class="global-search-item">
+      <div class="global-search-item cursor-pointer"
+           title="Кликни — закрепить ФИО в фильтре канбана"
+           onclick="pickClientForKanbanFilter('{{ c.last_name }} {{ c.first_name }}'); closeGlobalSearch();">
         {% icon "user" size=14 %}
         <span class="gs-body">
           <span class="gs-main">{{ c.last_name }} {{ c.first_name }} {{ c.patronymic }}</span>
@@ -17,7 +19,7 @@
             {% endfor %}
           </span>
         </span>
-        <span class="gs-actions">
+        <span class="gs-actions" onclick="event.stopPropagation()">
           <button type="button" class="gs-act" title="Чат"
                   onclick="openTelegramChatModalForClient('{{ c.id }}'); closeGlobalSearch();">
             {% icon "message-square" size=15 %}
