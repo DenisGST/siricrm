@@ -7,15 +7,17 @@
 {% endfor %}
 
 {% if has_more %}
+{# revealed → автодогрузка при попадании в viewport; клик по кнопке остаётся как fallback. #}
 <button type="button"
         class="btn btn-xs btn-ghost w-full text-base-content/50 mt-2"
         hx-get="{% url 'kanban_column' status %}?offset={{ next_offset }}"
         hx-target="this"
         hx-swap="outerHTML"
+        hx-trigger="revealed, click"
         hx-include="#kanban-filter-form"
         hx-indicator="find .htmx-indicator">
   <span class="htmx-indicator loading loading-spinner loading-xs"></span>
-  Показать ещё 50 <span class="opacity-60">(осталось {{ remaining }})</span>
+  Показать ещё {{ page_size }} <span class="opacity-60">(осталось {{ remaining }})</span>
 </button>
 {% endif %}
 

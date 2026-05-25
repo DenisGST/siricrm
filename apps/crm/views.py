@@ -469,7 +469,7 @@ def kanban_column(request, status):
     # Bubble) рендер всех карточек разом вешает страницу. ВАЖНО: total
     # считаем через qs.count() и режем срезом, чтобы не тащить весь
     # queryset в память (это и был причиной тормозов).
-    PAGE_SIZE = 20
+    PAGE_SIZE = 30
     total = qs.count()
     try:
         offset = max(int(request.GET.get("offset") or 0), 0)
@@ -488,6 +488,7 @@ def kanban_column(request, status):
         "has_more":  has_more,
         "next_offset": next_offset,
         "remaining": max(total - next_offset, 0),
+        "page_size": PAGE_SIZE,
     })
 
 
