@@ -42,16 +42,35 @@
   <div class="modal-backdrop" onclick="document.getElementById('files-dialog').remove()"></div>
 </dialog>
 
-{% if highlight_id %}
 <script>
   (function() {
+    // Раскрыть путь в дереве до активной папки + проскроллить туда.
     setTimeout(function() {
+      const activeItem = document.querySelector('#files-tree-panel .tree-item--active');
+      if (activeItem) {
+        let parent = activeItem.parentElement;
+        while (parent) {
+          if (parent.classList && parent.classList.contains('tree-children')) {
+            parent.style.display = 'block';
+            const parentItem = parent.parentElement;
+            if (parentItem && parentItem.classList) {
+              parentItem.classList.add('tree-item--open');
+            }
+          }
+          parent = parent.parentElement;
+          if (parent && parent.id === 'files-tree-panel') break;
+        }
+        if (activeItem.scrollIntoView) {
+          activeItem.scrollIntoView({block:'center', behavior:'smooth'});
+        }
+      }
+      {% if highlight_id %}
       const row = document.querySelector('.files-row--highlight');
       if (row && row.scrollIntoView) row.scrollIntoView({block:'center', behavior:'smooth'});
+      {% endif %}
     }, 100);
   })();
 </script>
-{% endif %}
 
 <!-- Модалка предпросмотра -->
 <dialog id="files-preview-modal" class="modal" style="z-index:1200;">
