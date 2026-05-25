@@ -7,22 +7,19 @@
 {% endfor %}
 
 {% if has_more %}
-{# revealed → автодогрузка при попадании в viewport; клик остаётся как fallback. #}
+{# intersect с root:closest .kanban-col-body — потому что колонка скроллится
+   внутри себя (overflow-y:auto, см. .kanban-col-body), и revealed от viewport
+   документа не срабатывает. Клик остаётся как fallback. #}
 <button type="button"
         class="kanban-load-more btn btn-xs btn-ghost w-full text-base-content/50 mt-2"
         hx-get="{% url 'kanban_column' status %}?offset={{ next_offset }}"
         hx-target="this"
         hx-swap="outerHTML"
-        hx-trigger="revealed, click"
+        hx-trigger="intersect root:closest .kanban-col-body threshold:0.1, click"
         hx-disabled-elt="this"
+        hx-indicator="closest .kanban-col-body"
         hx-include="#kanban-filter-form">
-  <span class="idle-state">
-    Показать ещё {{ page_size }} <span class="opacity-60">(осталось {{ remaining }})</span>
-  </span>
-  <span class="loading-state">
-    <span class="loading loading-spinner loading-xs"></span>
-    Загружаю…
-  </span>
+  Показать ещё {{ page_size }} <span class="opacity-60">(осталось {{ remaining }})</span>
 </button>
 {% endif %}
 
