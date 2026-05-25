@@ -611,8 +611,44 @@ document.addEventListener('htmx:afterRequest', (event) => {
   };
 
   function globalSearchNoAccess() {
-    alert("У вас нет доступа к информации");
+    showToast("У вас нет доступа к информации", "warning");
   }
+
+  // Простая система toast-уведомлений в правом нижнем углу.
+  // showToast("текст", type) — type: "info" | "success" | "warning" | "error".
+  window.showToast = function(msg, type) {
+    let host = document.getElementById("toast-host");
+    if (!host) {
+      host = document.createElement("div");
+      host.id = "toast-host";
+      host.style.cssText = "position:fixed;bottom:24px;right:24px;z-index:99999;display:flex;flex-direction:column;gap:8px;pointer-events:none;";
+      document.body.appendChild(host);
+    }
+    const colors = {
+      info:    {bg:"#dbeafe", bd:"#3b82f6", fg:"#1e3a8a", icon:"ℹ️"},
+      success: {bg:"#d1fae5", bd:"#10b981", fg:"#064e3b", icon:"✓"},
+      warning: {bg:"#fef3c7", bd:"#f59e0b", fg:"#78350f", icon:"🔒"},
+      error:   {bg:"#fee2e2", bd:"#ef4444", fg:"#7f1d1d", icon:"⚠"},
+    };
+    const c = colors[type] || colors.info;
+    const t = document.createElement("div");
+    t.style.cssText = `
+      display:flex; align-items:center; gap:10px;
+      background:${c.bg}; border-left:4px solid ${c.bd}; color:${c.fg};
+      padding:10px 16px 10px 14px; border-radius:6px;
+      box-shadow:0 4px 14px rgba(0,0,0,0.12);
+      font-size:13px; font-weight:500; min-width:240px; max-width:380px;
+      transform:translateX(100%); opacity:0; transition:all .25s ease;
+      pointer-events:auto;
+    `;
+    t.innerHTML = `<span style="font-size:18px;flex-shrink:0;">${c.icon}</span><span>${msg}</span>`;
+    host.appendChild(t);
+    requestAnimationFrame(() => { t.style.transform = "translateX(0)"; t.style.opacity = "1"; });
+    setTimeout(() => {
+      t.style.transform = "translateX(100%)"; t.style.opacity = "0";
+      setTimeout(() => t.remove(), 250);
+    }, 3000);
+  };
 
   function pickClientForKanbanFilter(fio) {
     const input = document.getElementById('flt-q');
