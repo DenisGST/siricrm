@@ -1140,10 +1140,19 @@ def global_search(request):
         content__icontains=q
     ).select_related("client").order_by("-created_at")[:12]
 
-    empty = not (clients or legal_entities or messages)
+    # Файлы клиентов — по ClientFile.name (мультислово AND).
+    from apps.files.models import ClientFile
+    files_qs = ClientFile.objects.all()
+    for word in q.split():
+        files_qs = files_qs.filter(name__icontains=word)
+    files = files_qs.select_related(
+        "folder__client", "stored_file"
+    ).order_by("-created_at")[:12]
+
+    empty = not (clients or legal_entities or messages or files)
     return render(request, "crm/partials/global_search_results.html", {
         "q": q, "clients": clients, "legal_entities": legal_entities,
-        "messages": messages, "empty": empty,
+        "messages": messages, "files": files, "empty": empty,
     })
 
 

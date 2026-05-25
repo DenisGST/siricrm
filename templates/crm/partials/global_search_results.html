@@ -1,7 +1,7 @@
 {% load icons %}
 {% if empty and q|length >= 2 %}
   <div class="global-search-empty">Ничего не найдено</div>
-{% elif clients or legal_entities or messages %}
+{% elif clients or legal_entities or messages or files %}
 
   {% if clients %}
     <div class="global-search-group-title">Клиенты</div>
@@ -79,6 +79,25 @@
         {% icon "building-2" size=14 %}
         <span class="gs-main">{{ le.name }}</span>
         <span class="gs-aux">{% if le.inn %}ИНН {{ le.inn }}{% endif %}</span>
+      </a>
+    {% endfor %}
+  {% endif %}
+
+  {% if files %}
+    <div class="global-search-group-title">Файлы</div>
+    {% for f in files %}
+      <a href="#" class="global-search-item"
+         hx-get="{% url 'files:manager' f.folder.client_id %}"
+         hx-target="body" hx-swap="beforeend"
+         onclick="closeGlobalSearch()">
+        {% icon "file" size=14 %}
+        <span class="gs-body">
+          <span class="gs-main">{{ f.name }}</span>
+          <span class="gs-meta">
+            {{ f.folder.client.last_name }} {{ f.folder.client.first_name }}
+            · {{ f.folder.name }}
+          </span>
+        </span>
       </a>
     {% endfor %}
   {% endif %}
