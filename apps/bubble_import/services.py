@@ -13,14 +13,22 @@ logger = logging.getLogger("bubble_import")
 # Сколько записей тянуть за одно нажатие «Загрузить ещё».
 DEFAULT_BATCH = 50
 
-# WhatsApp-сообщения импортируем только за последние N лет.
+# WhatsApp-сообщения и Files импортируем только за последние N лет.
 MESSAGEWSP_YEARS = 3
+FILES_YEARS = 3
 
 
 def _entity_constraints(entity: str) -> list | None:
     """Серверные фильтры Bubble для конкретной сущности."""
     if entity == "MessageWSP":
         cutoff = timezone.now() - datetime.timedelta(days=365 * MESSAGEWSP_YEARS)
+        return [{
+            "key": "Created Date",
+            "constraint_type": "greater than",
+            "value": cutoff.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        }]
+    if entity == "Files":
+        cutoff = timezone.now() - datetime.timedelta(days=365 * FILES_YEARS)
         return [{
             "key": "Created Date",
             "constraint_type": "greater than",

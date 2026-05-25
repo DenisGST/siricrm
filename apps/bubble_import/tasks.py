@@ -14,13 +14,17 @@ from . import bubble_api
 from .appliers import apply_record, link_spouses
 from .models import BubbleImportJob, BubbleRecord
 from .services import (
-    MESSAGEWSP_YEARS, fetch_batch, fetch_window, get_state,
+    FILES_YEARS, MESSAGEWSP_YEARS, fetch_batch, fetch_window, get_state,
 )
 
 # Bubble Data API режет cursor-пагинацию на 50 000 записей за один запрос.
 # Для сущностей с большим объёмом дофетчиваем оконно по Created Date.
-WINDOWED_ENTITIES = {"MessageWSP"}
+WINDOWED_ENTITIES = {"MessageWSP", "Files"}
 WINDOW_DAYS = 30
+WINDOW_YEARS_BY_ENTITY = {
+    "MessageWSP": MESSAGEWSP_YEARS,
+    "Files": FILES_YEARS,
+}
 
 logger = logging.getLogger("bubble_import")
 
@@ -82,7 +86,9 @@ def full_import_task(self, job_id: str):
             # Окно [cutoff..now] бьём на куски по WINDOW_DAYS — каждый кусок
             # гарантированно <50 000 записей, обходим жёсткий лимит Bubble.
             now = timezone.now()
-            cutoff = now - datetime.timedelta(days=365 * MESSAGEWSP_YEARS)
+            cutoff = now - datetime.timedelta(
+                days=365 * WINDOW_YEARS_BY_ENTITY.get(entity, MESSAGEWSP_YEARS)
+            )
             step = datetime.timedelta(days=WINDOW_DAYS)
             start = cutoff
             n_win = 0
