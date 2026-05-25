@@ -67,6 +67,10 @@
     }
     @keyframes kanban-col-spin { to { transform: rotate(360deg); } }
 
+    /* Подсветка кнопки фильтра канбана, когда хоть один фильтр установлен. */
+    #kanban-filters-btn { position: relative; }
+    #kanban-filters-btn.has-active-filter { color: #dc2626; }  /* red-600 */
+
     /* Глобальный индикатор загрузки — полоса вверху страницы при HTMX-запросах */
     #global-progress {
       position: fixed; top: 0; left: 0; right: 0; height: 4px;
@@ -215,6 +219,7 @@
           <button id="kanban-filters-btn" type="button" class="btn btn-ghost btn-xs btn-square"
                   onclick="toggleGlobalFilters()">
             {% icon "filter" size=14 %}
+            <span id="kanban-filters-dot" class="hidden absolute top-0 right-0 w-2 h-2 rounded-full bg-error"></span>
           </button>
         </div>
         <span class="navbar-divider"></span>
@@ -559,7 +564,23 @@ document.addEventListener('htmx:afterRequest', (event) => {
     const inl = document.getElementById('kanban-emp-filter');
     if (inl) inl.value = '';
     document.body.dispatchEvent(new CustomEvent('kanbanRefresh'));
+    updateKanbanFiltersIndicator();
   }
+
+  function updateKanbanFiltersIndicator() {
+    const form = document.getElementById('kanban-filter-form');
+    const btn  = document.getElementById('kanban-filters-btn');
+    const dot  = document.getElementById('kanban-filters-dot');
+    if (!form || !btn) return;
+    let active = false;
+    new FormData(form).forEach(function(v) {
+      if (String(v || '').trim() !== '') active = true;
+    });
+    btn.classList.toggle('has-active-filter', active);
+    if (dot) dot.classList.toggle('hidden', !active);
+  }
+  document.body.addEventListener('kanbanRefresh', updateKanbanFiltersIndicator);
+  document.addEventListener('DOMContentLoaded', updateKanbanFiltersIndicator);
   // Синхронизация поповера → inline-селект
   document.getElementById('flt-employee')?.addEventListener('change', function() {
     const inl = document.getElementById('kanban-emp-filter');
