@@ -1119,11 +1119,16 @@ def global_search(request):
         return render(request, "crm/partials/global_search_results.html",
                       {"q": q, "clients": [], "legal_entities": [], "messages": [], "empty": True})
 
-    clients = Client.objects.filter(
-        Q(first_name__icontains=q) | Q(last_name__icontains=q) |
-        Q(patronymic__icontains=q) | Q(username__icontains=q) |
-        Q(phone__icontains=q) | Q(phones__phone__icontains=q)
-    ).distinct().prefetch_related(
+    # Мультислово: «Каныгин Денис» → каждое слово должно match'иться
+    # хоть в одном из полей.
+    clients_qs = Client.objects.all()
+    for word in q.split():
+        clients_qs = clients_qs.filter(
+            Q(first_name__icontains=word) | Q(last_name__icontains=word) |
+            Q(patronymic__icontains=word) | Q(username__icontains=word) |
+            Q(phone__icontains=word) | Q(phones__phone__icontains=word)
+        )
+    clients = clients_qs.distinct().prefetch_related(
         "services__name", "services__common_status",
     ).order_by("last_name", "first_name")[:12]
 
