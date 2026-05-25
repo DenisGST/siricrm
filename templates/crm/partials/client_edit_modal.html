@@ -38,11 +38,6 @@
           <!-- Контакты -->
           <div class="grid grid-cols-2 gap-3">
             <div>
-              <label class="label"><span class="label-text">Телефон</span></label>
-              <input type="text" name="phone" value="{{ form.phone.value|default:'' }}"
-                class="input input-bordered w-full input-sm">
-            </div>
-            <div>
               <label class="label"><span class="label-text">Email</span></label>
               <input type="email" name="email" value="{{ form.email.value|default:'' }}"
                 class="input input-bordered w-full input-sm">
@@ -52,6 +47,8 @@
               <input type="text" name="username" value="{{ form.username.value|default:'' }}"
                 class="input input-bordered w-full input-sm">
             </div>
+            {# Скрытый kэш-phone: ClientForm.save() ожидает поле; реальный CRUD ниже #}
+            <input type="hidden" name="phone" value="{{ form.phone.value|default:'' }}">
             <div>
               <label class="label"><span class="label-text">Статус</span></label>
               <select name="status" class="select select-bordered w-full select-sm">
@@ -75,6 +72,14 @@
             </button>
           </div>
         </form>
+
+        <div class="divider text-xs">Контакты</div>
+        <div hx-get="{% url 'client_phones_block' client.id %}"
+             hx-trigger="load"
+             hx-swap="innerHTML">
+          <span class="loading loading-spinner loading-xs"></span>
+          Загружаем телефоны…
+        </div>
 
       </div>
 

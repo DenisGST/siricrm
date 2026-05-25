@@ -743,6 +743,98 @@ def client_edit(request, client_id):
     })
 
 
+# ─── CRUD телефонов клиента (ClientPhone) ────────────────────
+
+
+from .models import ClientPhone  # noqa: E402
+from .phone_utils import add_client_phone, normalize_phone, sync_client_phone_cache  # noqa: E402
+
+
+def _render_phones_block(request, client):
+    return render(request, "crm/partials/client_phones_block.html", {
+        "client": client,
+        "phones": client.phones.order_by("purpose", "phone"),
+        "purpose_choices": ClientPhone.PURPOSE_CHOICES,
+    })
+
+
+@login_required
+def client_phones_block(request, client_id):
+    """HTMX-партиал со списком телефонов клиента + формой добавления."""
+    client = get_object_or_404(Client, pk=client_id)
+    return _render_phones_block(request, client)
+
+
+@login_required
+def client_phone_add(request, client_id):
+    """POST: добавить новый телефон клиента (или вернуть ошибку)."""
+    client = get_object_or_404(Client, pk=client_id)
+    if request.method != "POST":
+        return HttpResponseBadRequest("POST only")
+    raw = (request.POST.get("phone") or "").strip()
+    purpose = (request.POST.get("purpose") or "additional").strip()
+    if purpose not in dict(ClientPhone.PURPOSE_CHOICES):
+        return HttpResponseBadRequest("bad purpose")
+    phone = normalize_phone(raw)
+    if not phone:
+        return render(request, "crm/partials/client_phones_block.html", {
+            "client": client,
+            "phones": client.phones.order_by("purpose", "phone"),
+            "purpose_choices": ClientPhone.PURPOSE_CHOICES,
+            "error": f"Неверный номер: {raw}",
+        })
+    obj = add_client_phone(client, phone, purpose)
+    if obj is None:
+        return render(request, "crm/partials/client_phones_block.html", {
+            "client": client,
+            "phones": client.phones.order_by("purpose", "phone"),
+            "purpose_choices": ClientPhone.PURPOSE_CHOICES,
+            "error": f"+{phone} уже привязан к другому клиенту в назначении "
+                     f"«{dict(ClientPhone.PURPOSE_CHOICES).get(purpose)}»",
+        })
+    sync_client_phone_cache(client)
+    return _render_phones_block(request, client)
+
+
+@login_required
+def client_phone_delete(request, phone_id):
+    """POST: удалить телефон у клиента."""
+    if request.method != "POST":
+        return HttpResponseBadRequest("POST only")
+    cp = get_object_or_404(ClientPhone, pk=phone_id)
+    client = cp.client
+    cp.delete()
+    sync_client_phone_cache(client)
+    return _render_phones_block(request, client)
+
+
+@login_required
+def client_phone_set_purpose(request, phone_id):
+    """POST: сменить назначение существующего телефона."""
+    if request.method != "POST":
+        return HttpResponseBadRequest("POST only")
+    cp = get_object_or_404(ClientPhone, pk=phone_id)
+    purpose = (request.POST.get("purpose") or "").strip()
+    if purpose not in dict(ClientPhone.PURPOSE_CHOICES):
+        return HttpResponseBadRequest("bad purpose")
+    # Конфликт: если такой phone уже занят в новом назначении.
+    conflict = ClientPhone.objects.filter(
+        phone=cp.phone, purpose=purpose,
+    ).exclude(pk=cp.pk).first()
+    if conflict:
+        client = cp.client
+        return render(request, "crm/partials/client_phones_block.html", {
+            "client": client,
+            "phones": client.phones.order_by("purpose", "phone"),
+            "purpose_choices": ClientPhone.PURPOSE_CHOICES,
+            "error": f"+{cp.phone} в назначении «{dict(ClientPhone.PURPOSE_CHOICES).get(purpose)}» уже занят",
+        })
+    cp.purpose = purpose
+    cp.save(update_fields=["purpose", "updated_at"])
+    sync_client_phone_cache(cp.client)
+    return _render_phones_block(request, cp.client)
+
+
 @login_required
 def client_merge_search(request):
     """HTMX: search clients to merge with (excludes the source client)."""
