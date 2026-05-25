@@ -436,7 +436,7 @@ img.emoji {
   position: fixed;
   top: 60px;
   left: 50%;
-  width: 440px;
+  width: 880px;
   max-width: calc(100vw - 16px);
   padding: 14px 14px 12px;
   background: var(--ms-surface);
