@@ -206,15 +206,22 @@ def telegram_chat_for_client(request, client_id):
 def _telegram_clients_base_qs(emp, scope):
     """Базовый queryset клиентов для scope ('mine'/'dept'/'all'). Без search/sort/paginate.
 
-    Используется и для самого списка, и для подсчёта количества клиентов
-    в кнопках-фильтрах сверху панели.
+    «Мои» / «Отдел» учитывают клиента и как ответственного
+    (Client.employees), и как исполнителя по любой его услуге
+    (Service.employees).
     """
+    from django.db.models import Q
     qs = Client.objects.all()
     if emp:
         if scope == "mine":
-            qs = qs.filter(employees=emp).distinct()
+            qs = qs.filter(
+                Q(employees=emp) | Q(services__employees=emp)
+            ).distinct()
         elif scope == "dept" and emp.department_id:
-            qs = qs.filter(employees__department_id=emp.department_id).distinct()
+            qs = qs.filter(
+                Q(employees__department_id=emp.department_id)
+                | Q(services__employees__department_id=emp.department_id)
+            ).distinct()
         # "all" → без фильтрации
     elif scope != "all":
         # Если не сотрудник и фильтр не "all" — пусто
