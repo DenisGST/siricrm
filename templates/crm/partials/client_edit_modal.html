@@ -1,11 +1,16 @@
 <!-- templates/crm/partials/client_edit_modal.html -->
 <dialog id="client-edit-modal" class="modal modal-middle">
   <div class="modal-box w-full max-w-4xl">
-    <h3 class="font-bold text-lg mb-4">Редактирование клиента</h3>
+    <h3 class="font-bold text-lg mb-4">
+      Редактирование клиента —
+      <span class="font-normal">
+        {{ client.last_name }} {{ client.first_name }}{% if client.patronymic %} {{ client.patronymic }}{% endif %}
+      </span>
+    </h3>
 
     <!-- Табы -->
     <div role="tablist" class="tabs tabs-bordered mb-4">
-      <input type="radio" name="client-edit-tabs" role="tab" class="tab" aria-label="Основное" {% if open_tab != "addresses" %}checked{% endif %} />
+      <input type="radio" name="client-edit-tabs" role="tab" class="tab" aria-label="Основное" {% if open_tab != "documents" and open_tab != "addresses" %}checked{% endif %} />
       <div role="tabpanel" class="tab-content pt-4">
 
         <form id="client-edit-form"
