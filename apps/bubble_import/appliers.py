@@ -31,7 +31,22 @@ logger = logging.getLogger("bubble_import")
 # ─── Скачивание файлов в наш S3 ────────────────────────────
 
 def _gdrive_direct_url(url: str) -> str:
-    """Ссылку на просмотр Google Drive → прямую download-ссылку."""
+    """Ссылку на Google Drive / Docs → прямую download-ссылку.
+
+    Поддерживает 4 кейса:
+      * drive.google.com/file/d/<ID>/...      → uc?export=download&id=<ID>
+      * drive.google.com/...?id=<ID>          → uc?export=download&id=<ID>
+      * docs.google.com/document/d/<ID>/...   → export?format=pdf
+      * docs.google.com/spreadsheets/d/<ID>/  → export?format=xlsx
+      * docs.google.com/presentation/d/<ID>/  → export?format=pdf
+    """
+    # Google Docs / Sheets / Slides — отдельные эндпоинты экспорта.
+    m_doc = re.search(r"docs\.google\.com/(document|spreadsheets|presentation)/d/([^/]+)", url)
+    if m_doc:
+        kind, gid = m_doc.group(1), m_doc.group(2)
+        fmt = {"document": "pdf", "spreadsheets": "xlsx", "presentation": "pdf"}.get(kind, "pdf")
+        return f"https://docs.google.com/{kind}/d/{gid}/export?format={fmt}"
+    # Drive file.
     m = re.search(r"/file/d/([^/]+)", url) or re.search(r"[?&]id=([^&]+)", url)
     if m:
         return f"https://drive.google.com/uc?export=download&id={m.group(1)}"
@@ -45,9 +60,38 @@ def _normalize_file_url(url: str) -> str:
         return ""
     if url.startswith("//"):
         return "https:" + url
-    if "drive.google.com" in url:
+    if "drive.google.com" in url or "docs.google.com" in url:
         return _gdrive_direct_url(url)
     return url
+
+
+def _gdrive_fetch_with_confirm(url: str, timeout: int = 60):
+    """Скачать файл с Drive, обходя страницу подтверждения для больших файлов.
+
+    Если первый GET вернул HTML с предупреждением — извлекаем confirm-токен
+    из cookies / query-string-параметра и повторяем GET с ним.
+    """
+    s = requests.Session()
+    r = s.get(url, timeout=timeout, allow_redirects=True)
+    ct = (r.headers.get("Content-Type") or "").lower()
+    if not ct.startswith("text/html"):
+        return r
+    # Большой файл → confirm-token. Может быть в cookies или в HTML form.
+    confirm = ""
+    for k, v in s.cookies.items():
+        if k.startswith("download_warning"):
+            confirm = v
+            break
+    if not confirm:
+        m = re.search(r'name="confirm"\s+value="([^"]+)"', r.text)
+        if m:
+            confirm = m.group(1)
+    if not confirm:
+        # Не получилось извлечь — отдаём как есть, выше определят HTML.
+        return r
+    sep = "&" if "?" in url else "?"
+    r2 = s.get(f"{url}{sep}confirm={confirm}", timeout=timeout, allow_redirects=True)
+    return r2
 
 
 def download_to_storedfile(url: str, filename: str, bubble_id: str | None = None):
@@ -68,15 +112,21 @@ def download_to_storedfile(url: str, filename: str, bubble_id: str | None = None
     if not real_url:
         raise ValueError("Пустая ссылка на файл")
 
-    resp = requests.get(real_url, timeout=60, allow_redirects=True)
+    # Для drive.google.com — отдельная функция с обходом confirm-страницы
+    # на больших файлах. Для остальных URL — обычный requests.get.
+    if "drive.google.com" in real_url:
+        resp = _gdrive_fetch_with_confirm(real_url, timeout=60)
+    else:
+        resp = requests.get(real_url, timeout=60, allow_redirects=True)
     resp.raise_for_status()
     content_type = (resp.headers.get("Content-Type") or "").lower()
     data = resp.content
 
-    # Google Drive на больших/непубличных файлах отдаёт HTML-страницу.
-    if "drive.google.com" in real_url and content_type.startswith("text/html"):
+    # Если после всех попыток всё ещё HTML — файл реально недоступен
+    # (403/закрытый доступ/удалённый).
+    if ("drive.google.com" in real_url or "docs.google.com" in real_url) and content_type.startswith("text/html"):
         raise RuntimeError(
-            "Google Drive вернул HTML — файл недоступен по ссылке "
+            "Google Drive/Docs вернул HTML — файл недоступен по ссылке "
             "или требует подтверждения. Проверьте доступ «всем по ссылке»."
         )
 
