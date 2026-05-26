@@ -624,7 +624,11 @@ def employees_list(request):
 @login_required
 def logs_list(request):
     search = request.GET.get("search", "").strip()
-    qs = EmployeeLog.objects.select_related("employee", "client", "message")
+    emp_id = (request.GET.get("employee") or "").strip()
+    date_from = (request.GET.get("date_from") or "").strip()
+    date_to = (request.GET.get("date_to") or "").strip()
+
+    qs = EmployeeLog.objects.select_related("employee__user", "client", "message")
 
     if search:
         qs = qs.filter(
@@ -635,6 +639,12 @@ def logs_list(request):
             | models.Q(client__first_name__icontains=search)
             | models.Q(client__last_name__icontains=search)
         )
+    if emp_id:
+        qs = qs.filter(employee_id=emp_id)
+    if date_from:
+        qs = qs.filter(timestamp__date__gte=date_from)
+    if date_to:
+        qs = qs.filter(timestamp__date__lte=date_to)
 
     paginator = Paginator(qs.order_by("-timestamp"), 50)
     page_number = request.GET.get("page") or 1
@@ -646,14 +656,15 @@ def logs_list(request):
         else "crm/logs/list.html"
     )
 
-    return render(
-        request,
-        template,
-        {
-            "page_obj": page_obj,
-            "search": search,
-        },
-    )
+    return render(request, template, {
+        "page_obj": page_obj,
+        "search": search,
+        "emp_id": emp_id,
+        "date_from": date_from,
+        "date_to": date_to,
+        "employees_all": Employee.objects.filter(is_active=True)
+            .select_related("user").order_by("user__last_name", "user__first_name"),
+    })
 
 
 @login_required
