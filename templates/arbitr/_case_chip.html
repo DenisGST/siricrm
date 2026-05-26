@@ -1,0 +1,9 @@
+{% comment %}Компактный бейдж арбитражного дела в карточке услуги канбана.{% endcomment %}
+{% if case %}
+  <a class="badge badge-info gap-1 mt-1 cursor-pointer"
+     {% if case.kad_url %}href="{{ case.kad_url }}" target="_blank" rel="noopener"{% endif %}
+     title="{{ case.get_status_display }}"
+     onclick="event.stopPropagation()">
+    ⚖ {{ case.case_number|default:"(дело ищется)" }}
+  </a>
+{% endif %}

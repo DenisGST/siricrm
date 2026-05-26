@@ -37,6 +37,10 @@ def mark_iskotpravlen(request, service_id):
             f"(услуга {service.name.short_name if service.name else '—'})"
         ),
     )
+    # Канбан-карточка ждёт компактный бейдж (chip), а полная карточка
+    # услуги — расширенный блок. Различаем по параметру partial.
+    if request.GET.get("partial") == "chip":
+        return render(request, "arbitr/_case_chip.html", {"case": case})
     return render(request, "arbitr/_case_block.html", {
         "case": case, "service": service,
     })

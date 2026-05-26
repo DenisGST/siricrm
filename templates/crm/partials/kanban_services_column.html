@@ -37,6 +37,33 @@
       {% if s.date_start %}<span>{% icon "calendar" size=12 %} {{ s.date_start|date:"d.m.Y" }}</span>{% endif %}
     </div>
 
+    {# Арбитражное дело: для услуг БФЛ. Кнопка «Иск отправлен» — пока
+       только админу. Если дело уже заведено — показываем номер/статус. #}
+    {% if s.name and s.name.short_name == "БФЛ" %}
+      {% with case=s.arbitr_case %}
+        {% if case %}
+          <a class="badge badge-info gap-1 mt-1 cursor-pointer"
+             {% if case.kad_url %}href="{{ case.kad_url }}" target="_blank" rel="noopener"{% endif %}
+             title="{{ case.get_status_display }}"
+             onclick="event.stopPropagation()">
+            ⚖ {{ case.case_number|default:"(дело ищется)" }}
+          </a>
+        {% elif user.is_superuser %}
+          <button type="button"
+                  class="btn btn-xs btn-warning gap-1 mt-1"
+                  title="Запустить мониторинг арбитражного дела на kad.arbitr.ru"
+                  hx-post="{% url 'arbitr:mark_iskotpravlen' s.pk %}?partial=chip"
+                  hx-target="this"
+                  hx-swap="outerHTML"
+                  hx-confirm="Поставить «Иск отправлен в суд» по этому клиенту?"
+                  onclick="event.stopPropagation()"
+                  hx-on:click="event.stopPropagation()">
+            ⚖ Иск отправлен в суд
+          </button>
+        {% endif %}
+      {% endwith %}
+    {% endif %}
+
     {% with states=s.employee_states.all %}
     <div id="svc-emp-list-{{ s.pk }}" class="flex flex-wrap gap-1 items-center mb-1">
       {% for state in states %}

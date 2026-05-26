@@ -278,13 +278,6 @@
         </div>
       </div>
 
-      {% if service and service.name and service.name.short_name == "БФЛ" %}
-      <div hx-get="{% url 'arbitr:case_block' service.pk %}"
-           hx-trigger="load"
-           hx-swap="innerHTML"
-           class="mt-2"></div>
-      {% endif %}
-
       <div class="modal-action mt-3 flex-shrink-0">
         {% if service %}
         <button type="button" class="btn btn-sm btn-outline gap-1 mr-auto"
