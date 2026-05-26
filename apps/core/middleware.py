@@ -7,6 +7,7 @@ django.contrib.auth.logout(request), помечает причину в session 
 """
 from django.conf import settings
 from django.contrib.auth import logout as auth_logout
+from django.http import HttpResponse
 from django.utils import timezone
 
 IDLE_TIMEOUT_MINUTES = getattr(settings, "IDLE_TIMEOUT_MINUTES", 5)
@@ -50,3 +51,31 @@ class IdleAutoLogoutMiddleware:
                     return self.get_response(request)
             request.session["last_activity"] = now_ts
         return self.get_response(request)
+
+
+class HtmxLoginRedirectMiddleware:
+    """HTMX по умолчанию не делает full reload при 302 redirect → /login/.
+    Если view вернул такой редирект, перехватываем и отвечаем 204 +
+    `HX-Redirect: /accounts/login/` — браузер перезагрузит страницу
+    и юзер увидит нормальную страницу входа, а не вложенный login-форм
+    поверх чата/канбана.
+    """
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        resp = self.get_response(request)
+        if not request.headers.get("HX-Request"):
+            return resp
+        if resp.status_code not in (301, 302):
+            return resp
+        loc = ""
+        try:
+            loc = resp.headers.get("Location", "")
+        except Exception:
+            loc = resp.get("Location", "") if hasattr(resp, "get") else ""
+        if "/accounts/login/" not in loc:
+            return resp
+        new = HttpResponse(status=204)
+        new["HX-Redirect"] = loc
+        return new

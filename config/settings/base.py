@@ -75,6 +75,7 @@ MIDDLEWARE = [
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "apps.core.middleware.IdleAutoLogoutMiddleware",
+    "apps.core.middleware.HtmxLoginRedirectMiddleware",
 ]
 
 # Авто-логаут после N минут бездействия (HTTP-неактивности).
