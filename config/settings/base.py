@@ -74,7 +74,11 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    "apps.core.middleware.IdleAutoLogoutMiddleware",
 ]
+
+# Авто-логаут после N минут бездействия (HTTP-неактивности).
+IDLE_TIMEOUT_MINUTES = 5
 
 ROOT_URLCONF = "config.urls"
 
