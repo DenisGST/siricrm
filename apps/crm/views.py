@@ -1714,11 +1714,15 @@ def services_kanban_column(request, status_id):
     qs = _visible_services_qs(request.user).filter(common_status=status)
     if employee_id:
         qs = qs.filter(employees__id=employee_id)
-    qs = qs.order_by("-created_at")
-    services = list(qs[:200])
+    # Считаем total отдельным count() и режем срезом — иначе при большом
+    # количестве услуг каждая колонка тянет всё в память (5-10 колонок
+    # параллельно × сотни услуг с prefetch — отсюда «постоянно грузится»).
+    PAGE_SIZE = 30
+    total = qs.count()
+    services = list(qs.order_by("-created_at")[:PAGE_SIZE])
     return render(request, "crm/partials/kanban_services_column.html", {
         "services": services, "status": status,
-        "for_my_kanban": False, "count": len(services),
+        "for_my_kanban": False, "count": total,
     })
 
 
