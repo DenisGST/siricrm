@@ -35,6 +35,17 @@ app.conf.beat_schedule = {
         'task': 'telegram.poll_telegram_leads',
         'schedule': 10,
     },
+    # Мониторинг арбитражных дел (kad.arbitr.ru). Сами таски имеют
+    # внутреннюю проверку «работаем только 18:00–08:00», поэтому beat
+    # просто будит их часто — оверхеда нет, реальная работа в окне.
+    'arbitr-kad-monitor-pending': {
+        'task': 'arbitr.kad_monitor_pending',
+        'schedule': crontab(minute=0, hour='18-23,0-7'),
+    },
+    'arbitr-kad-monitor-case': {
+        'task': 'arbitr.kad_monitor_case',
+        'schedule': crontab(minute=30, hour='19,23,3,7'),
+    },
 }
 
 @setup_logging.connect
