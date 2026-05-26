@@ -1,0 +1,116 @@
+{% load icons %}
+<div id="report-wrap">
+
+  <div class="flex items-center justify-between mb-3">
+    <h2 class="text-lg font-bold">Табель сотрудника</h2>
+    <button type="button" class="btn btn-xs btn-ghost"
+            hx-get="{% url 'logs_list' %}"
+            hx-target="#content-area" hx-swap="innerHTML">← Назад в логи</button>
+  </div>
+
+  <form hx-get="{% url 'employee_report' %}"
+        hx-target="#report-wrap" hx-swap="outerHTML"
+        hx-trigger="change"
+        class="flex flex-wrap items-end gap-2 mb-3">
+    <label class="form-control">
+      <span class="label label-text !text-xs !py-0 !pb-1 opacity-70">Год</span>
+      <select name="year" class="select select-bordered select-sm">
+        {% for y in year_choices %}
+          <option value="{{ y }}" {% if year == y %}selected{% endif %}>{{ y }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label class="form-control">
+      <span class="label label-text !text-xs !py-0 !pb-1 opacity-70">Месяц</span>
+      <select name="month" class="select select-bordered select-sm">
+        {% for m, mn in month_choices %}
+          <option value="{{ m }}" {% if month == m %}selected{% endif %}>{{ mn }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label class="form-control">
+      <span class="label label-text !text-xs !py-0 !pb-1 opacity-70">Сотрудник</span>
+      <select name="employee" class="select select-bordered select-sm w-64">
+        <option value="">— выбери сотрудника —</option>
+        {% for e in employees_all %}
+          <option value="{{ e.pk }}" {% if emp_id == e.pk|stringformat:'s' %}selected{% endif %}>
+            {{ e.user.last_name }} {{ e.user.first_name }}
+          </option>
+        {% endfor %}
+      </select>
+    </label>
+  </form>
+
+  {% if selected_emp %}
+
+  <div class="grid grid-cols-2 sm:grid-cols-5 gap-2 mb-3">
+    <div class="stat bg-base-200 rounded p-2">
+      <div class="stat-title text-xs">Норма (пн-пт × 8ч)</div>
+      <div class="stat-value text-lg">{{ norm_total_h }} ч</div>
+    </div>
+    <div class="stat bg-base-200 rounded p-2">
+      <div class="stat-title text-xs">Отработано</div>
+      <div class="stat-value text-lg text-success">{{ month_total_h }} ч</div>
+    </div>
+    <div class="stat bg-base-200 rounded p-2">
+      <div class="stat-title text-xs">Раб. дней</div>
+      <div class="stat-value text-lg">{{ work_days }}</div>
+    </div>
+    <div class="stat bg-base-200 rounded p-2">
+      <div class="stat-title text-xs">Опоздания</div>
+      <div class="stat-value text-lg text-warning">{{ late_days }}</div>
+    </div>
+    <div class="stat bg-base-200 rounded p-2">
+      <div class="stat-title text-xs">Ранний уход</div>
+      <div class="stat-value text-lg text-warning">{{ early_leave_days }}</div>
+    </div>
+  </div>
+
+  <div class="overflow-x-auto border border-base-300 rounded mb-3">
+    <table class="table table-xs table-zebra">
+      <thead>
+        <tr class="bg-base-200">
+          <th>Дата</th>
+          <th>День</th>
+          <th>Вход</th>
+          <th>Выход</th>
+          <th class="text-right">Отработано</th>
+          <th>Метки</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for d in days_data %}
+        <tr {% if d.is_weekend %}class="opacity-60"{% endif %}>
+          <td>{{ d.date|date:"d.m" }}</td>
+          <td>
+            {% if d.weekday == 0 %}Пн{% elif d.weekday == 1 %}Вт{% elif d.weekday == 2 %}Ср{% elif d.weekday == 3 %}Чт{% elif d.weekday == 4 %}Пт{% elif d.weekday == 5 %}Сб{% else %}Вс{% endif %}
+          </td>
+          <td>{% if d.first_login %}{{ d.first_login|date:"H:i" }}{% else %}—{% endif %}</td>
+          <td>{% if d.last_logout %}{{ d.last_logout|date:"H:i" }}{% else %}—{% endif %}</td>
+          <td class="text-right">
+            {% if d.worked %}{{ d.worked|stringformat:"s"|slice:":-3" }}{% else %}—{% endif %}
+          </td>
+          <td class="text-xs">
+            {% if d.is_late %}<span class="badge badge-warning badge-xs">опоздание</span>{% endif %}
+            {% if d.is_early_leave %}<span class="badge badge-warning badge-xs">ранний уход</span>{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="border border-base-300 rounded p-3">
+    <h3 class="font-semibold text-sm mb-2">По неделям (ISO)</h3>
+    <div class="flex flex-wrap gap-2">
+      {% for wnum, hours in week_rows %}
+        <div class="badge badge-outline">Неделя {{ wnum }}: <b class="ml-1">{{ hours }} ч</b></div>
+      {% endfor %}
+    </div>
+  </div>
+
+  {% else %}
+    <p class="text-sm text-base-content/60">Выберите сотрудника для построения отчёта.</p>
+  {% endif %}
+
+</div>

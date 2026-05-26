@@ -2,7 +2,14 @@
 <div id="logs-wrap">
   <div class="flex items-center justify-between mb-3">
     <h2 class="text-lg font-bold">Логи сотрудников</h2>
-    <span class="text-xs text-base-content/60">{{ page_obj.paginator.count }} запис(ей)</span>
+    <div class="flex items-center gap-3">
+      <span class="text-xs text-base-content/60">{{ page_obj.paginator.count }} запис(ей)</span>
+      <button type="button" class="btn btn-xs btn-primary"
+              hx-get="{% url 'employee_report' %}"
+              hx-target="#content-area" hx-swap="innerHTML">
+        Отчёт по сотруднику
+      </button>
+    </div>
   </div>
 
   <form id="logs-filter-form"

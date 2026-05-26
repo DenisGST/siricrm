@@ -622,6 +622,155 @@ def employees_list(request):
 
 
 @login_required
+def employee_report(request):
+    """Помесячный табель сотрудника по EmployeeLog (login/logout).
+
+    Рабочее окно 09:00–18:00 пн-пт, обед 13:00–14:00 (1 час). Норма
+    8 часов в день. Опоздание — день где первый login позже 09:00 или
+    последний logout раньше 18:00.
+    """
+    from datetime import date, datetime, time, timedelta
+    from calendar import monthrange
+    from collections import defaultdict
+
+    today = timezone.localdate()
+    try:
+        year = int(request.GET.get("year") or today.year)
+        month = int(request.GET.get("month") or today.month)
+    except (TypeError, ValueError):
+        year, month = today.year, today.month
+    emp_id = (request.GET.get("employee") or "").strip()
+
+    employees_all = (
+        Employee.objects.filter(is_active=True)
+        .select_related("user").order_by("user__last_name", "user__first_name")
+    )
+    selected_emp = None
+    if emp_id:
+        selected_emp = Employee.objects.filter(pk=emp_id).select_related("user").first()
+
+    # Месяц как диапазон.
+    last_day = monthrange(year, month)[1]
+    month_start = date(year, month, 1)
+    month_end = date(year, month, last_day)
+
+    days_data = []
+    week_totals = defaultdict(timedelta)  # iso week → timedelta
+    month_total = timedelta()
+    norm_per_day = timedelta(hours=8)
+    work_days = 0
+    late_days = 0
+    early_leave_days = 0
+    weekend_work_days = 0
+
+    if selected_emp:
+        # Берём все login/logout за месяц.
+        logs = list(
+            EmployeeLog.objects.filter(
+                employee=selected_emp,
+                action__in=("login", "logout"),
+                timestamp__date__gte=month_start,
+                timestamp__date__lte=month_end,
+            ).order_by("timestamp")
+        )
+        # Группируем по дате.
+        by_day = defaultdict(list)
+        for log in logs:
+            by_day[timezone.localtime(log.timestamp).date()].append(log)
+
+        cur = month_start
+        while cur <= month_end:
+            day_logs = by_day.get(cur, [])
+            first_login = None
+            last_logout = None
+            worked = timedelta()
+            for log in day_logs:
+                ts_local = timezone.localtime(log.timestamp)
+                if log.action == "login":
+                    if first_login is None:
+                        first_login = ts_local
+                elif log.action == "logout":
+                    last_logout = ts_local
+            if first_login and last_logout:
+                start = first_login.time()
+                end = last_logout.time()
+                # Усекаем окно до рабочего интервала.
+                eff_start = max(start, time(9, 0))
+                eff_end = min(end, time(18, 0))
+                if eff_end > eff_start:
+                    seconds = (
+                        datetime.combine(date.min, eff_end)
+                        - datetime.combine(date.min, eff_start)
+                    ).total_seconds()
+                    # Вычитаем обед 13-14 если окно покрывает.
+                    if eff_start <= time(13, 0) and eff_end >= time(14, 0):
+                        seconds -= 3600
+                    worked = timedelta(seconds=max(0, seconds))
+            iso_week = cur.isocalendar().week
+            week_totals[iso_week] += worked
+            month_total += worked
+            is_weekend = cur.weekday() >= 5
+            is_late = bool(first_login and first_login.time() > time(9, 0))
+            is_early_leave = bool(last_logout and last_logout.time() < time(18, 0))
+            if not is_weekend and worked > timedelta(0):
+                work_days += 1
+                if is_late:
+                    late_days += 1
+                if is_early_leave:
+                    early_leave_days += 1
+            if is_weekend and worked > timedelta(0):
+                weekend_work_days += 1
+            days_data.append({
+                "date": cur,
+                "weekday": cur.weekday(),
+                "is_weekend": is_weekend,
+                "first_login": first_login,
+                "last_logout": last_logout,
+                "worked": worked,
+                "is_late": is_late and not is_weekend,
+                "is_early_leave": is_early_leave and not is_weekend,
+                "iso_week": iso_week,
+            })
+            cur += timedelta(days=1)
+
+    def _td_h(td):
+        total = td.total_seconds() / 3600
+        return round(total, 2)
+
+    # Норма за месяц (пн-пт × 8ч).
+    norm_total = timedelta(hours=0)
+    cur = month_start
+    while cur <= month_end:
+        if cur.weekday() < 5:
+            norm_total += norm_per_day
+        cur += timedelta(days=1)
+
+    week_rows = sorted(week_totals.items())
+
+    return render(request, "crm/logs/report.html", {
+        "year": year, "month": month,
+        "employees_all": employees_all,
+        "selected_emp": selected_emp,
+        "emp_id": emp_id,
+        "days_data": days_data,
+        "week_rows": [(w, _td_h(t)) for w, t in week_rows],
+        "month_total_h": _td_h(month_total),
+        "norm_total_h": _td_h(norm_total),
+        "work_days": work_days,
+        "late_days": late_days,
+        "early_leave_days": early_leave_days,
+        "weekend_work_days": weekend_work_days,
+        "td_h": _td_h,
+        "year_choices": range(today.year - 3, today.year + 1),
+        "month_choices": [
+            (1, "Январь"), (2, "Февраль"), (3, "Март"), (4, "Апрель"),
+            (5, "Май"), (6, "Июнь"), (7, "Июль"), (8, "Август"),
+            (9, "Сентябрь"), (10, "Октябрь"), (11, "Ноябрь"), (12, "Декабрь"),
+        ],
+    })
+
+
+@login_required
 def logs_list(request):
     from datetime import timedelta
     search = request.GET.get("search", "").strip()

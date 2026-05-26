@@ -20,6 +20,7 @@ urlpatterns = [
     path("client-phones/<uuid:phone_id>/delete/", views.client_phone_delete, name="client_phone_delete"),
     path("client-phones/<uuid:phone_id>/set-purpose/", views.client_phone_set_purpose, name="client_phone_set_purpose"),
     path('logs/', views.logs_list, name='logs_list'),
+    path('logs/report/', views.employee_report, name='employee_report'),
     path("dashboard/stats/employee-online/", employees_online_count, name="employees_online_count"),
     path("dashboard/stats/client-active/", clients_active_count, name="clients_active_count"),
     path("dashboard/stats/message-new/", messages_new_count, name="messages_new_count"),
