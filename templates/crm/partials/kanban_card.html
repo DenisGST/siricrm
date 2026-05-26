@@ -82,8 +82,9 @@
     {% endwith %}
 
     {% if client.last_message_content %}
-      <p class="text-xs mt-1 truncate text-base-content/60 italic"
-         title="{{ client.last_message_content }}">
+      <p class="text-xs mt-1 truncate text-base-content/60 italic cursor-pointer hover:text-base-content"
+         title="Открыть чат — {{ client.last_message_content }}"
+         onclick="event.stopPropagation(); openTelegramChatModalForClient('{{ client.id }}')">
         💬 {{ client.last_message_content }}
       </p>
     {% endif %}
