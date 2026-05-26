@@ -1,0 +1,53 @@
+{% load icons %}
+
+<div class="overflow-x-auto border border-base-300 rounded">
+  <table class="table table-xs table-zebra">
+    <thead>
+      <tr class="bg-base-200">
+        <th class="w-44">Время</th>
+        <th>Сотрудник</th>
+        <th>Действие</th>
+        <th>Описание</th>
+        <th>Клиент</th>
+        <th class="w-32">IP</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for log in page_obj %}
+      <tr>
+        <td class="text-xs text-base-content/70">{{ log.timestamp|date:"d.m.Y H:i:s" }}</td>
+        <td>
+          {% if log.employee %}{{ log.employee.user.last_name }} {{ log.employee.user.first_name }}{% else %}—{% endif %}
+        </td>
+        <td><span class="badge badge-sm">{{ log.get_action_display }}</span></td>
+        <td class="text-xs">{{ log.description|truncatechars:120 }}</td>
+        <td class="text-xs">
+          {% if log.client %}{{ log.client.last_name }} {{ log.client.first_name }}{% else %}—{% endif %}
+        </td>
+        <td class="text-xs text-base-content/60">{{ log.ip_address|default:"—" }}</td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="6" class="text-center text-base-content/60 py-4">Записей нет</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% if page_obj.paginator.num_pages > 1 %}
+<div class="flex items-center justify-center gap-1 mt-3">
+  {% if page_obj.has_previous %}
+    <a class="btn btn-xs"
+       hx-get="{% url 'logs_list' %}?search={{ search }}&employee={{ emp_id }}&date_from={{ date_from }}&date_to={{ date_to }}&page={{ page_obj.previous_page_number }}"
+       hx-target="#logs-table" hx-swap="innerHTML">←</a>
+  {% endif %}
+  <span class="text-xs px-2">
+    стр. {{ page_obj.number }} из {{ page_obj.paginator.num_pages }}
+    ({{ page_obj.paginator.count }} записей)
+  </span>
+  {% if page_obj.has_next %}
+    <a class="btn btn-xs"
+       hx-get="{% url 'logs_list' %}?search={{ search }}&employee={{ emp_id }}&date_from={{ date_from }}&date_to={{ date_to }}&page={{ page_obj.next_page_number }}"
+       hx-target="#logs-table" hx-swap="innerHTML">→</a>
+  {% endif %}
+</div>
+{% endif %}
