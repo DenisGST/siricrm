@@ -1,5 +1,6 @@
-"""Сигналы login/logout: пишут в EmployeeLog и проставляют Employee.is_online."""
+"""Сигналы login/logout + outgoing message: пишут в EmployeeLog."""
 from django.contrib.auth.signals import user_logged_in, user_logged_out
+from django.db.models.signals import post_save
 from django.dispatch import receiver
 
 from apps.core.models import Employee
@@ -54,3 +55,34 @@ def on_logout(sender, request, user, **kwargs):
         reason = (request.session.pop("logout_reason", "") or "")
     desc = "Выход из системы" + (f" ({reason})" if reason else "")
     _log(emp, "logout", desc, request=request)
+
+
+_CHANNEL_LABEL = {
+    "whatsapp": "WhatsApp",
+    "wa": "WhatsApp",
+    "telegram": "Telegram",
+    "tg": "Telegram",
+    "max": "MAX",
+}
+
+
+@receiver(post_save, sender="crm.Message")
+def on_message_sent(sender, instance, created, **kwargs):
+    """Логируем каждое исходящее сообщение, отправленное сотрудником."""
+    if not created:
+        return
+    if instance.direction != "outgoing":
+        return
+    if instance.employee_id is None:
+        return  # системные/импортные сообщения без автора
+    from apps.core.models import EmployeeLog
+    channel = _CHANNEL_LABEL.get((instance.channel or "").lower(), instance.channel or "?")
+    client = instance.client
+    fio = ""
+    if client:
+        fio = f"{client.last_name} {client.first_name}".strip() or "(без ФИО)"
+    desc = f"Отправлено сообщение клиенту в {channel}" + (f": {fio}" if fio else "")
+    EmployeeLog.objects.create(
+        employee_id=instance.employee_id, action="message_sent",
+        description=desc, client=client, message=instance,
+    )
