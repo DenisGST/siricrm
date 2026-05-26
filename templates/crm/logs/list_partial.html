@@ -37,7 +37,7 @@
 <div class="flex items-center justify-center gap-1 mt-3">
   {% if page_obj.has_previous %}
     <a class="btn btn-xs"
-       hx-get="{% url 'logs_list' %}?search={{ search }}&employee={{ emp_id }}&date_from={{ date_from }}&date_to={{ date_to }}&page={{ page_obj.previous_page_number }}"
+       hx-get="{% url 'logs_list' %}?partial=1&search={{ search }}&employee={{ emp_id }}&date_from={{ date_from }}&date_to={{ date_to }}&page={{ page_obj.previous_page_number }}"
        hx-target="#logs-table" hx-swap="innerHTML">←</a>
   {% endif %}
   <span class="text-xs px-2">
@@ -46,7 +46,7 @@
   </span>
   {% if page_obj.has_next %}
     <a class="btn btn-xs"
-       hx-get="{% url 'logs_list' %}?search={{ search }}&employee={{ emp_id }}&date_from={{ date_from }}&date_to={{ date_to }}&page={{ page_obj.next_page_number }}"
+       hx-get="{% url 'logs_list' %}?partial=1&search={{ search }}&employee={{ emp_id }}&date_from={{ date_from }}&date_to={{ date_to }}&page={{ page_obj.next_page_number }}"
        hx-target="#logs-table" hx-swap="innerHTML">→</a>
   {% endif %}
 </div>

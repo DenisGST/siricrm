@@ -6,7 +6,7 @@
   </div>
 
   <form id="logs-filter-form"
-        hx-get="{% url 'logs_list' %}"
+        hx-get="{% url 'logs_list' %}?partial=1"
         hx-target="#logs-table"
         hx-swap="innerHTML"
         hx-trigger="change, keyup changed delay:400ms from:input[type=search]"

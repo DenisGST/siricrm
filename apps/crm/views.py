@@ -623,10 +623,16 @@ def employees_list(request):
 
 @login_required
 def logs_list(request):
+    from datetime import timedelta
     search = request.GET.get("search", "").strip()
     emp_id = (request.GET.get("employee") or "").strip()
     date_from = (request.GET.get("date_from") or "").strip()
     date_to = (request.GET.get("date_to") or "").strip()
+
+    # Дефолт «последние 7 дней» — иначе COUNT(*) по огромной EmployeeLog
+    # делает страницу очень медленной. Юзер может поменять период вручную.
+    if not (search or emp_id or date_from or date_to):
+        date_from = (timezone.now().date() - timedelta(days=7)).isoformat()
 
     qs = EmployeeLog.objects.select_related("employee__user", "client", "message")
 
@@ -650,9 +656,12 @@ def logs_list(request):
     page_number = request.GET.get("page") or 1
     page_obj = paginator.get_page(page_number)
 
+    # partial=1 → только таблица (для HTMX-filter-form, target=#logs-table).
+    # Иначе — full list.html с формой фильтров (открывается через меню HTMX
+    # в #content-area).
     template = (
         "crm/logs/list_partial.html"
-        if request.headers.get("HX-Request")
+        if request.GET.get("partial") == "1"
         else "crm/logs/list.html"
     )
 
