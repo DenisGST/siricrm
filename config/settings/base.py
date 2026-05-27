@@ -209,9 +209,13 @@ CELERY_TIMEZONE = TIME_ZONE
 CELERY_TASK_TRACK_STARTED = True
 CELERY_TASK_TIME_LIMIT = 30 * 60
 
-# Routing: задачи devops.* идут в очередь devops (исполняется devops-runner контейнером)
+# Routing: задачи <prefix>.* идут в отдельные очереди — каждую обслуживает свой контейнер:
+#   devops-runner  — очередь `devops`  (docker.sock, git, compose; обычный python:slim)
+#   arbitr-runner  — очередь `arbitr`  (Playwright + Chromium, образ mcr.microsoft.com/playwright)
+# Web/celery (общий worker) НЕ слушает эти очереди — задачи туда не попадут случайно.
 CELERY_TASK_ROUTES = {
     "devops.*": {"queue": "devops"},
+    "arbitr.*": {"queue": "arbitr"},
 }
 
 # --- Telegram ---
@@ -227,6 +231,13 @@ DADATA_SECRET_KEY = config("DADATA_SECRET_KEY", default="")
 MAX_BOT_TOKEN = config("MAX_BOT_TOKEN", default="")
 MAX_API_BASE_URL = "https://platform-api.max.ru"
 MAX_WEBHOOK_SECRET = config("MAX_WEBHOOK_SECRET", default="")
+
+# --- Arbitr (kad.arbitr.ru) parser ---
+# Куда слать алёрты при капче / других интерактивных ошибках парсера.
+# Пока — один MAX chat_id админа; позже разнесём по Employee.max_chat_id.
+ARBITR_CAPTCHA_NOTIFY_MAX_CHAT_ID = config("ARBITR_CAPTCHA_NOTIFY_MAX_CHAT_ID", default="")
+# Headless по умолчанию. Для локальной отладки парсера выставить ARBITR_HEADLESS=false.
+ARBITR_HEADLESS = config("ARBITR_HEADLESS", default="true").lower() != "false"
 
 # --- Auth redirects ---
 LOGIN_URL = "/accounts/login/"
