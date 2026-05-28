@@ -37,6 +37,62 @@ def _entity_constraints(entity: str) -> list | None:
     return None
 
 
+def fetch_modified_since(entity: str, since: datetime.datetime) -> dict:
+    """Доливка: выгрузить записи entity, изменённые ПОСЛЕ `since`.
+
+    Фильтр по `Modified Date` (а не Created Date) — попадают и новые,
+    и обновлённые в Bubble записи. Bubble Data API «greater than» —
+    сдвигаем `since` на 1 сек назад для покрытия границы.
+    """
+    constraints = [{
+        "key": "Modified Date",
+        "constraint_type": "greater than",
+        "value": (since - datetime.timedelta(seconds=1)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    }]
+    cursor = 0
+    created = updated = 0
+    while True:
+        page = bubble_api.fetch_page(
+            entity, cursor=cursor, limit=bubble_api.PAGE_LIMIT,
+            constraints=constraints,
+        )
+        results = page["results"]
+        if not results:
+            break
+        for obj in results:
+            bid = obj.get("_id")
+            if not bid:
+                continue
+            display = extract_display(entity, obj)
+            if entity == "ProjectBFL":
+                from . import resolvers
+                display["display_status"] = resolvers.lookup(
+                    "StatusPrj", obj.get("statusPrj"), "nameStatusPrj",
+                )
+            _, is_new = BubbleRecord.objects.update_or_create(
+                entity=entity, bubble_id=bid,
+                defaults={"raw": obj, **display},
+            )
+            if is_new:
+                created += 1
+            else:
+                updated += 1
+        cursor += len(results)
+        if page.get("remaining", 0) <= 0:
+            break
+
+    state = get_state(entity)
+    state.total_fetched = BubbleRecord.objects.filter(entity=entity).count()
+    state.last_fetch_at = timezone.now()
+    state.save(update_fields=["total_fetched", "last_fetch_at"])
+
+    logger.info(
+        "Bubble fetch_modified_since %s since %s: +%d new, %d updated",
+        entity, since.date(), created, updated,
+    )
+    return {"created": created, "updated": updated}
+
+
 def _window_constraints(entity: str, start: datetime.datetime,
                         end: datetime.datetime) -> list:
     """Constraints для конкретного временного окна. Bubble Data API
