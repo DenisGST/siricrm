@@ -89,8 +89,7 @@
       0%   { left: -35%; }
       100% { left: 100%; }
     }
-  </style>
-
+  </style>  <script src="{% static 'js/multi-tab-logout.js' %}" defer></script>
 
 
 </head>
@@ -614,48 +613,10 @@ document.addEventListener('htmx:afterRequest', (event) => {
     showToast("У вас нет доступа к информации", "warning");
   }
 
-  // Multi-tab logout: при закрытии ПОСЛЕДНЕЙ вкладки приложения шлём
-  // POST /accounts/logout/ через sendBeacon. Если осталась хоть одна
-  // вкладка с тем же доменом — никаких действий.
-  (function() {
-    const KEY = "sirius_tabs";
-    const tabId = (crypto.randomUUID && crypto.randomUUID()) || String(Math.random());
-
-    function readTabs() {
-      try { return JSON.parse(localStorage.getItem(KEY) || "{}"); }
-      catch (e) { return {}; }
-    }
-    function writeTabs(o) {
-      try { localStorage.setItem(KEY, JSON.stringify(o)); } catch (e) {}
-    }
-    function heartbeat() {
-      const tabs = readTabs();
-      tabs[tabId] = Date.now();
-      // Очищаем устаревшие записи (>10с старые — закрытые вкладки).
-      const cutoff = Date.now() - 10000;
-      for (const k of Object.keys(tabs)) if (tabs[k] < cutoff) delete tabs[k];
-      writeTabs(tabs);
-    }
-    heartbeat();
-    setInterval(heartbeat, 3000);
-
-    window.addEventListener("beforeunload", function() {
-      const tabs = readTabs();
-      delete tabs[tabId];
-      // Считаем «живые» оставшиеся вкладки (ts свежее 10с).
-      const cutoff = Date.now() - 10000;
-      const alive = Object.values(tabs).filter(ts => ts > cutoff).length;
-      writeTabs(tabs);
-      if (alive === 0) {
-        // Последняя вкладка — отдадим logout-запрос через Beacon,
-        // он гарантированно уйдёт даже после unload.
-        const csrf = (document.cookie.split('; ').find(r => r.startsWith('csrftoken=')) || '').split('=')[1] || '';
-        const fd = new FormData();
-        fd.append("csrfmiddlewaretoken", csrf);
-        navigator.sendBeacon("/accounts/logout/", fd);
-      }
-    });
-  })();
+  // Multi-tab logout вынесен в static/js/multi-tab-logout.js — он должен
+  // быть подключён на ВСЕХ layout'ах приложения (dashboard, arbitr, devops),
+  // иначе при навигации между ними счётчик активных вкладок ломается и
+  // beforeunload-handler шлёт лишний logout.
 
   // Простая система toast-уведомлений в правом нижнем углу.
   // showToast("текст", type) — type: "info" | "success" | "warning" | "error".
