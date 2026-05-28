@@ -169,10 +169,30 @@ docker exec siricrm-arbitr-runner-1 python manage.py kad_probe case https://kad.
 - `ARBITR_CAPTCHA_NOTIFY_MAX_CHAT_ID` — куда слать алёрт о капче (один на всех).
 - `ARBITR_HEADLESS=true|false` — для локальной отладки парсера без Xvfb (по умолчанию `true` — но Chrome в нашем контейнере фактически headed через Xvfb, флаг управляет только `--headless=new` arg).
 
+### Скачивание PDF — особая защита kad
+
+Endpoint `/Kad/PdfDocument/<case>/<doc>/<filename>.pdf` нельзя дёрнуть напрямую — kad отдаёт **ПравоКапчу** (`<form id="tokenFrom">` + JS `pravocaptcha.execute`). Эта защита не снимается ни правильным `Referer`'ом через CDP, ни UA, ни прогретой сессией с куки. **Срабатывает только legitimate-flow**: open card → click on PDF link (= same JS-context, same opener).
+
+Поэтому `KadSession.download_pdf(url, *, referer=card_url)`:
+1. Если карточка дела (`referer`) ещё не открыта — `driver.get(referer)`
+2. `window.open(pdf_url, '_blank')` — новая вкладка с тем же browsing-context, opener = карточка. kad доверяет такому запросу.
+3. Chrome скачивает PDF на диск (Chrome prefs `plugins.always_open_pdf_externally=True` + `download.default_directory=/tmp/arbitr_dl_<uuid>/`, дублирован через CDP `Page.setDownloadBehavior`).
+4. Ждём появления файла без `.crdownload` → читаем bytes → удаляем → закрываем «лишние» вкладки (в `finally`, чтоб подчистить и при captcha/error).
+
+`_download_new_attachments(kad, case)` пробегает все `ArbitrAttachment.stored_file IS NULL` → `download_pdf(att.kad_url, referer=case.kad_url)` → `upload_file_to_s3(prefix='arbitr/<case_id>')` → `StoredFile` → `att.stored_file = stored`. Best-effort: ошибки отдельного файла не валят батч, capcha — пробрасываем (батч остановится, MAX-alert).
+
+### IP-репутация kad
+
+После 100-200 быстрых запросов с одного IP kad **жёстко повышает планку**: даже `/Card/<uuid>` начинает отдавать captcha. Уровень доверия откисает за несколько часов / суток. На dev-сервере (5.35.94.218) это подтверждено: после двух полных батчей parse_case + download_pdf эксперимент карточка стала возвращать 3.4КБ challenge вместо нормального 247КБ контента.
+
+Стратегии:
+- Не дёргать kad чаще `WORK_WINDOW` + 1 раз/час в авто-режиме.
+- Ручные «Парсить сейчас» из UI — короткими сериями, не повторять одно и то же дело подряд.
+- Для долгоиграющей prod-нагрузки имеет смысл residential-прокси (например через [proxy.bright-data.com](https://proxy.bright-data.com)) — opts `--proxy-server` в KadSession.
+
 ### Известные ограничения
 
-- **Скачивание PDF в S3 ещё не реализовано** — `ArbitrAttachment.kad_url` есть, `stored_file=None`. UI показывает только ссылки на kad. Следующая итерация: качать через тот же Chrome-сессию (PDF за auth) → S3.
-- **Подтверждение найденного дела** — после `_search_one` нашёл совпадения, статус НЕ меняется на `monitoring` автоматически; нужен ручной шаг (есть `views.confirm_case`, но без выбора из списка). Список найденных `KadSearchHit` пока в `ArbitrCheckLog.notes` строкой.
+- **PDF flow не оттестирован end-to-end** — архитектура через `window.open` + `Chrome download prefs` готова, но во время разработки IP попал в kad blacklist (см. выше), и финальный прогон не получилось сделать. Когда репутация откиснет — `docker exec siricrm-arbitr-runner-1 python manage.py pdf_diag --referer <card_url> <pdf_url>` должен вернуть `OK: ct='application/pdf' bytes=… magic=b'%PDF-'`.
 
 ## Инфраструктурные особенности
 

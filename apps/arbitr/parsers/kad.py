@@ -31,6 +31,9 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import os
+import shutil
+import tempfile
 import time
 from dataclasses import dataclass, field
 from typing import Optional
@@ -138,6 +141,9 @@ class KadSession:
         # но если до того в этой же Chrome-сессии прошёл поиск через UI —
         # переход на карточку работает. Прогреваем 1 раз на сессию.
         self._warmed = False
+        # Папка для download'ов PDF. Каждый Chrome-инстанс — своя tmp-папка,
+        # чтобы не пересекаться при параллельных воркерах.
+        self._download_dir = tempfile.mkdtemp(prefix="arbitr_dl_")
 
     def __enter__(self) -> "KadSession":
         # Ленивые импорты — selenium есть только в arbitr-runner.
@@ -167,6 +173,18 @@ class KadSession:
             "AppleWebKit/537.36 (KHTML, like Gecko) "
             "Chrome/120.0.0.0 Safari/537.36"
         )
+        # Скачивание PDF: kad защищён DDoS-Guard'ом (GET /Kad/PdfDocument/
+        # отдаёт обфусцированный JS-challenge, через requests не пройти).
+        # Поэтому качаем самим Chrome'ом: navigate → JS отрабатывает →
+        # POST форму → редирект → PDF. always_open_pdf_externally=True
+        # заставляет Chrome скачивать PDF на диск, а не открывать в PDF.js.
+        opts.add_experimental_option("prefs", {
+            "plugins.always_open_pdf_externally": True,
+            "download.default_directory": self._download_dir,
+            "download.prompt_for_download": False,
+            "download.directory_upgrade": True,
+            "safebrowsing.enabled": False,
+        })
 
         logger.info("kad: starting Chrome (headless=%s)", self.headless)
         self.driver = webdriver.Chrome(options=opts)
@@ -184,6 +202,15 @@ class KadSession:
         )
 
         self._wait = WebDriverWait(self.driver, WAIT_TIMEOUT_S)
+        # Дублируем download path через CDP — Chrome experimental prefs
+        # не всегда срабатывают при automation-флагах.
+        try:
+            self.driver.execute_cdp_cmd("Page.setDownloadBehavior", {
+                "behavior": "allow",
+                "downloadPath": self._download_dir,
+            })
+        except Exception as exc:  # noqa: BLE001 — non-fatal
+            logger.debug("CDP setDownloadBehavior failed: %s", exc)
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
@@ -192,6 +219,10 @@ class KadSession:
                 self.driver.quit()
         finally:
             self.driver = None
+            try:
+                shutil.rmtree(self._download_dir, ignore_errors=True)
+            except Exception:
+                pass
         return False
 
     # ---------- внутренние ----------
@@ -784,55 +815,123 @@ class KadSession:
             attachments=attachments,
         )
 
-    def download_pdf(self, url: str, timeout: int = 60) -> tuple[bytes, str]:
-        """Скачивает PDF-документ kad по URL.
+    def download_pdf(
+        self, url: str, timeout: int = 60, *, referer: str = "",
+    ) -> tuple[bytes, str]:
+        """Скачивает PDF kad через ту же Chrome-сессию.
 
-        Через requests с куки + UA из Selenium-сессии — kad PDF endpoint
-        требует валидную сессию. Если kad подсунул captcha challenge
-        вместо PDF — кидаем KadCaptchaRequired.
+        kad даёт PDF только если запрос идёт ВНУТРИ существующей session-
+        сессии (cookies + JS-state от загруженной карточки). Прямой
+        navigate на /Kad/PdfDocument/... → ПравоКапча.
 
-        Возвращает (content_bytes, content_type).
+        Решение: если открыта страница карточки (referer задан), открываем
+        PDF в новой вкладке через window.open — Chrome скачивает PDF
+        (always_open_pdf_externally=True), потом вкладку закрываем.
+        Если карточка не открыта — открываем её сначала.
+
+        Возвращает (content_bytes, 'application/pdf').
         """
-        import requests  # лениво — модуль вне Django-core путей
-
         if not self._warmed:
-            # PDF тоже требует прогретой сессии (cookies).
             self._warm_up()
 
-        cookies = {
-            c["name"]: c["value"] for c in self.driver.get_cookies()
-        }
-        user_agent = self.driver.execute_script(
-            "return navigator.userAgent",
-        ) or ""
-        headers = {
-            "User-Agent": user_agent,
-            "Referer": KAD_BASE_URL + "/",
-            "Accept": "application/pdf,application/octet-stream,*/*",
-        }
-        logger.info("kad.download_pdf: %s", url)
-        resp = requests.get(
-            url, cookies=cookies, headers=headers,
-            timeout=timeout, allow_redirects=True,
-        )
-        if resp.status_code >= 400:
-            # Проверим что в теле — может captcha, может реально 404
-            body = (resp.content[:4000] or b"").decode("utf-8", errors="ignore")
-            if self._is_captcha_response(body):
-                raise KadCaptchaRequired(page_url=url)
-            raise KadParserError(
-                f"PDF HTTP {resp.status_code}: {body[:300]}"
-            )
-        content_type = (resp.headers.get("Content-Type") or "").split(";")[0].strip()
-        # kad на captcha challenge может вернуть 200 с HTML — проверим.
-        if "text/html" in content_type:
-            body = (resp.content[:4000] or b"").decode("utf-8", errors="ignore")
-            if self._is_captcha_response(body):
-                raise KadCaptchaRequired(page_url=url)
-            raise KadParserError(
-                f"PDF endpoint вернул HTML вместо PDF: {body[:300]}"
-            )
-        return resp.content, (content_type or "application/pdf")
+        # Карточка дела ОБЯЗАТЕЛЬНА для прохождения kad-защиты PDF.
+        if not referer:
+            raise KadParserError("download_pdf: нужен referer (URL карточки дела)")
+
+        if self.driver.current_url != referer:
+            logger.info("kad.download_pdf: navigate to card %s", referer)
+            self.driver.get(referer)
+            time.sleep(3)
+            self._raise_if_captcha()
+
+        # Чистим папку перед загрузкой
+        for fname in os.listdir(self._download_dir):
+            try:
+                os.remove(os.path.join(self._download_dir, fname))
+            except OSError:
+                pass
+
+        main_handle = self.driver.current_window_handle
+        before_handles = set(self.driver.window_handles)
+
+        logger.info("kad.download_pdf: window.open %s", url)
+        # Через window.open сохраняется browsing-context (origin, opener),
+        # и kad считает это легитимным click-like запросом.
+        self.driver.execute_script("window.open(arguments[0], '_blank')", url)
+
+        # Ждём появления PDF (не *.crdownload — partial). Лимит timeout сек.
+        deadline = time.monotonic() + timeout
+        pdf_path: Optional[str] = None
+        while time.monotonic() < deadline:
+            time.sleep(0.5)
+            files = os.listdir(self._download_dir)
+            # Chrome скачивает в *.crdownload → потом переименовывает.
+            finished = [
+                f for f in files
+                if not f.endswith(".crdownload") and not f.startswith(".")
+            ]
+            if finished:
+                pdf_path = os.path.join(self._download_dir, finished[0])
+                # Дожидаемся стабильности размера (1 проверка через 0.5с).
+                size1 = os.path.getsize(pdf_path)
+                time.sleep(0.5)
+                if os.path.exists(pdf_path) and os.path.getsize(pdf_path) == size1:
+                    break
+                pdf_path = None
+
+        # Закрываем все «лишние» вкладки и возвращаемся к карточке.
+        # Делаем это В FINALLY — чтобы при KadCaptchaRequired/Error
+        # тоже подтереть вкладки.
+        try:
+            if not pdf_path:
+                # Проверим — может PDF-вкладка показала capcha
+                page_html = ""
+                for h in self.driver.window_handles:
+                    if h in before_handles:
+                        continue
+                    self.driver.switch_to.window(h)
+                    try:
+                        page_html = self.driver.page_source or ""
+                    except Exception:
+                        page_html = ""
+                    if self._is_captcha_response(page_html):
+                        break
+                if self._is_captcha_response(page_html):
+                    raise KadCaptchaRequired(page_url=url)
+                raise KadParserError(
+                    f"PDF не скачался за {timeout}с (url={url}; "
+                    f"title={self.driver.title!r})"
+                )
+
+            with open(pdf_path, "rb") as f:
+                content = f.read()
+            try:
+                os.remove(pdf_path)
+            except OSError:
+                pass
+
+            # Грубая проверка что это PDF
+            if not content[:5].startswith(b"%PDF-"):
+                head = content[:300].decode("utf-8", errors="ignore")
+                if self._is_captcha_response(head):
+                    raise KadCaptchaRequired(page_url=url)
+                raise KadParserError(f"Скачанный файл не PDF (head={head!r})")
+
+            logger.info("kad.download_pdf: OK len=%d", len(content))
+            return content, "application/pdf"
+        finally:
+            # Закрываем все вкладки кроме исходной (main_handle)
+            try:
+                for h in list(self.driver.window_handles):
+                    if h != main_handle:
+                        try:
+                            self.driver.switch_to.window(h)
+                            self.driver.close()
+                        except Exception:
+                            pass
+                self.driver.switch_to.window(main_handle)
+            except Exception as exc:  # noqa: BLE001
+                logger.debug("kad.download_pdf: tab cleanup error: %s", exc)
 
 
 # ---------- one-shot helpers (используются в tasks.py / management) ----------

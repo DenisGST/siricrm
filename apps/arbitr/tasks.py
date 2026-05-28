@@ -337,7 +337,9 @@ def _download_new_attachments(kad: KadSession, case: ArbitrCase) -> dict:
             stats["skipped"] += 1
             continue
         try:
-            content, content_type = kad.download_pdf(att.kad_url)
+            content, content_type = kad.download_pdf(
+                att.kad_url, referer=case.kad_url,
+            )
         except KadCaptchaRequired:
             # пробрасываем — пусть оборачивающий код вызовет alert
             raise
