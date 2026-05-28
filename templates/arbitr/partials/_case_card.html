@@ -6,9 +6,7 @@
       <div class="min-w-0">
         <div class="text-xs opacity-60">
           {% if case.service.client_id %}
-            <a href="/clients/{{ case.service.client_id }}/" class="link link-hover">
-              {{ case.service.client.last_name }} {{ case.service.client.first_name }} {{ case.service.client.patronymic }}
-            </a>
+            {{ case.service.client.last_name }} {{ case.service.client.first_name }} {{ case.service.client.patronymic }}
           {% else %}—{% endif %}
         </div>
         <div class="font-mono text-base font-semibold">
