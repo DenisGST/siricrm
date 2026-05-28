@@ -256,7 +256,11 @@ def apply_man(rec: BubbleRecord) -> str:
     """Перенести одну запись Man в Client. Возвращает итоговый статус."""
     bid = rec.bubble_id
     fields = _man_fields(rec)
-    raw_tel = rec.value("tel")
+    # phone_override — оператор подменил номер в overrides (например, для
+    # семейного дубля, когда у двух людей реально один общий номер: одному
+    # ставим fake-номер 7999990000X, чтобы не падал unique-constraint).
+    phone_override = clean_str(rec.value("phone_override"))
+    raw_tel = phone_override or rec.value("tel")
 
     # Телефон-заглушка из нулей → клиента не импортируем.
     if _is_dummy_phone(raw_tel):
@@ -276,6 +280,27 @@ def apply_man(rec: BubbleRecord) -> str:
     # дубля по телефону (для случаев, когда в Bubble клиент задвоен и
     # эта запись — правильная). Флаг ставится из UI в overrides.
     force_overwrite = bool(rec.value("overwrite_dup"))
+    # merge_into_client_id — оператор указал конкретного клиента для слияния
+    # (когда автоматическая FIO-проверка не сработала, но мы знаем, что это
+    # один и тот же человек). Принудительное merged_existing.
+    forced_merge_id = clean_str(rec.value("merge_into_client_id"))
+    # force_rename_existing — при merged_existing перезаписать ФИО клиента
+    # данными из Bubble (для случаев «Объединить в X», когда существующий
+    # клиент был «Неизвестно 3398», а Bubble прислал полное ФИО).
+    force_rename = bool(rec.value("force_rename_existing"))
+
+    if client is None and forced_merge_id:
+        forced = Client.objects.filter(pk=forced_merge_id).first()
+        if not forced:
+            rec.status = "error"
+            rec.error = (
+                f"merge_into_client_id={forced_merge_id} — клиент не найден"
+            )
+            rec.imported_at = None
+            rec.save(update_fields=["status", "error", "imported_at"])
+            return rec.status
+        client = forced
+        merged_existing = True
 
     # Новый клиент — проверка на дубль по телефону.
     if client is None and phone:
@@ -307,6 +332,25 @@ def apply_man(rec: BubbleRecord) -> str:
 
     if client is None:
         client = Client(bubble_id=bid, **fields)
+    elif merged_existing and force_rename:
+        # «Объединить в X» — обновляем ФИО клиента из Bubble (полное ФИО
+        # заменяет огрызок типа «Неизвестно 3398»). Прежнее ФИО — в историю.
+        old_last = client.last_name or ""
+        old_first = client.first_name or ""
+        old_patr = client.patronymic or ""
+        if old_last or old_first or old_patr:
+            ClientNameHistory.objects.get_or_create(
+                client=client,
+                last_name=old_last[:255],
+                first_name=old_first[:255],
+                patronymic=old_patr[:255],
+                defaults={"note": "Прежнее ФИО до объединения с Bubble"},
+            )
+        for k, val in fields.items():
+            if val:  # не перетираем пустыми
+                setattr(client, k, val)
+        if not client.bubble_id:
+            client.bubble_id = bid
     elif merged_existing:
         # Обогащение существующего клиента: заполняем только пустые поля.
         _enrich_client(client, fields)
