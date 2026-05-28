@@ -37,20 +37,27 @@ def _entity_constraints(entity: str) -> list | None:
     return None
 
 
-def fetch_modified_since(entity: str, since: datetime.datetime) -> dict:
-    """Доливка: выгрузить записи entity, изменённые ПОСЛЕ `since`.
+def fetch_modified_since(entity: str, since: datetime.datetime,
+                         by: str = "created") -> dict:
+    """Доливка: выгрузить записи entity, появившиеся/изменённые ПОСЛЕ `since`.
 
-    Фильтр по `Modified Date` (а не Created Date) — попадают и новые,
-    и обновлённые в Bubble записи. Bubble Data API «greater than» —
-    сдвигаем `since` на 1 сек назад для покрытия границы.
+    by='created' (по умолчанию) — фильтр Bubble по `Created Date`.
+    by='modified' — по `Modified Date` (на практике Bubble Data API часто
+    отдаёт ноль на этом ключе — оставлен для будущих экспериментов).
+
+    Возвращает dict с `created`, `updated`, `touched_ids` — список
+    bubble_id'ов, реально fetched в этот вызов. Команда метит approved=True
+    ТОЛЬКО для них (не для всех existing-pending).
     """
+    key = "Created Date" if by == "created" else "Modified Date"
     constraints = [{
-        "key": "Modified Date",
+        "key": key,
         "constraint_type": "greater than",
         "value": (since - datetime.timedelta(seconds=1)).strftime("%Y-%m-%dT%H:%M:%SZ"),
     }]
     cursor = 0
     created = updated = 0
+    touched_ids: list[str] = []
     while True:
         page = bubble_api.fetch_page(
             entity, cursor=cursor, limit=bubble_api.PAGE_LIMIT,
@@ -73,6 +80,7 @@ def fetch_modified_since(entity: str, since: datetime.datetime) -> dict:
                 entity=entity, bubble_id=bid,
                 defaults={"raw": obj, **display},
             )
+            touched_ids.append(bid)
             if is_new:
                 created += 1
             else:
@@ -90,7 +98,7 @@ def fetch_modified_since(entity: str, since: datetime.datetime) -> dict:
         "Bubble fetch_modified_since %s since %s: +%d new, %d updated",
         entity, since.date(), created, updated,
     )
-    return {"created": created, "updated": updated}
+    return {"created": created, "updated": updated, "touched_ids": touched_ids}
 
 
 def _window_constraints(entity: str, start: datetime.datetime,

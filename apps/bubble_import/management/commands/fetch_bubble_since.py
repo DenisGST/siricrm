@@ -40,6 +40,10 @@ class Command(BaseCommand):
             "--apply", action="store_true",
             help="После fetch прогнать apply_approved для каждой сущности",
         )
+        parser.add_argument(
+            "--by", default="created", choices=["created", "modified"],
+            help="По какому полю Bubble фильтровать (default: created)",
+        )
 
     def handle(self, *args, **opts):
         raw = opts["since"]
@@ -57,18 +61,21 @@ class Command(BaseCommand):
         for entity in entities:
             self.stdout.write(f"\n=== {entity} ===")
             try:
-                res = fetch_modified_since(entity, since)
+                res = fetch_modified_since(entity, since, by=opts["by"])
             except Exception as e:  # noqa: BLE001
                 self.stderr.write(f"  ОШИБКА: {e}")
                 continue
             n_new = res["created"]; n_upd = res["updated"]
+            touched = res.get("touched_ids") or []
             self.stdout.write(f"  fetched: {n_new} new, {n_upd} updated")
-            # Одобряем всё новое + изменённое, чтобы apply подхватил.
-            n_appr = BubbleRecord.objects.filter(
-                entity=entity, approved=False,
-            ).update(approved=True)
-            self.stdout.write(f"  одобрено новых: {n_appr}")
-            totals[entity] = {"new": n_new, "upd": n_upd}
+            # Одобряем ТОЛЬКО fetched-этим-вызовом записи, иначе массово
+            # вернём в очередь все skipped (appforest/мёртвые GDrive).
+            if touched:
+                n_appr = BubbleRecord.objects.filter(
+                    entity=entity, bubble_id__in=touched,
+                ).exclude(status="imported").update(approved=True)
+                self.stdout.write(f"  одобрено: {n_appr}")
+            totals[entity] = {"new": n_new, "upd": n_upd, "touched": len(touched)}
 
         if opts["apply"]:
             self.stdout.write("\n=== APPLY ===")
