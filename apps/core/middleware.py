@@ -18,11 +18,15 @@ IDLE_TIMEOUT_MINUTES = getattr(settings, "IDLE_TIMEOUT_MINUTES", 5)
 IDLE_IGNORE_PREFIXES = (
     "/api/notifications/",
     "/api/stats/",
+    "/api/session/idle-check/",  # idle-warning поллер — не считаем активностью
     "/static/",
     "/media/",
     "/health/",
     "/ws/",
 )
+# Внимание: /api/session/stay/ и /api/session/login/ НЕ в этом списке —
+# они должны обновлять last_activity (stay — кнопкой «Остаться», login —
+# после успешного входа).
 
 
 class IdleAutoLogoutMiddleware:

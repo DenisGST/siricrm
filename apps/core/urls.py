@@ -73,4 +73,11 @@ urlpatterns = [
     path('references/message-template/add/', views.reference_message_template_edit, name='reference_message_template_add'),
     path('references/message-template/<uuid:pk>/', views.reference_message_template_edit, name='reference_message_template_edit'),
     path('references/message-template/<uuid:pk>/delete/', views.reference_message_template_delete, name='reference_message_template_delete'),
+
+    # ─── Session idle / inline-login ───
+    # Префикс /api/session/ должен быть в IDLE_IGNORE_PREFIXES (middleware.py),
+    # чтобы поллер не считался активностью и не дёргал auto-logout сам.
+    path('api/session/idle-check/', views.session_idle_check, name='session_idle_check'),
+    path('api/session/stay/',       views.session_stay,       name='session_stay'),
+    path('api/session/login/',      views.session_login,      name='session_login'),
 ]

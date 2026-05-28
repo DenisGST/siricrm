@@ -779,3 +779,84 @@ def reference_message_template_delete(request, pk):
     obj = get_object_or_404(MessageTemplate, pk=pk)
     obj.delete()
     return HttpResponse(headers={"HX-Trigger": "reloadMessageTemplates"})
+
+
+# ─── Idle-sessions API ──────────────────────────────────────────────────
+# Используется фронтендом для предупреждения о близком авто-логауте и
+# для locked-overlay при истечении сессии. Все три endpoint'а в
+# /api/session/* — этот префикс добавлен в IDLE_IGNORE_PREFIXES, чтобы
+# поллер сам не сбрасывал/не вызывал idle-timeout.
+
+def session_idle_check(request):
+    """Сколько прошло с последней активности; нужен ли warning/locked.
+
+    Не требует авторизации — публичный endpoint. Возвращает JSON с
+    `authenticated`, `idle_seconds`, `timeout_seconds`, `warning_seconds`
+    (за сколько секунд до timeout начинаем показывать warning), а также
+    `logout_reason` (если ранее сработал auto-logout — забираем из сессии
+    и стираем, чтобы overlay показал причину один раз).
+    """
+    from django.conf import settings
+    timeout = int(getattr(settings, "IDLE_TIMEOUT_MINUTES", 5)) * 60
+    warning = 60  # за минуту до logout — показываем warning
+
+    if not request.user.is_authenticated:
+        reason = request.session.pop("logout_reason", "") if hasattr(request, "session") else ""
+        return JsonResponse({
+            "authenticated": False,
+            "idle_seconds": 0,
+            "timeout_seconds": timeout,
+            "warning_seconds": warning,
+            "logout_reason": reason,
+        })
+
+    now_ts = timezone.now().timestamp()
+    last = request.session.get("last_activity")
+    idle_sec = (now_ts - float(last)) if last else 0
+    return JsonResponse({
+        "authenticated": True,
+        "idle_seconds": int(idle_sec),
+        "timeout_seconds": timeout,
+        "warning_seconds": warning,
+        "logout_reason": "",
+    })
+
+
+@require_POST
+def session_stay(request):
+    """Продлить сессию — сбросить idle-таймер. Дёргается из warning
+    модалки кнопкой «Остаться». Так как путь /api/session/stay/
+    тоже в IDLE_IGNORE_PREFIXES — middleware сам не обновит
+    last_activity. Делаем это руками здесь."""
+    if not request.user.is_authenticated:
+        return JsonResponse({"ok": False}, status=401)
+    request.session["last_activity"] = timezone.now().timestamp()
+    return JsonResponse({"ok": True})
+
+
+@require_POST
+def session_login(request):
+    """Inline-login из locked-overlay. Принимает JSON или form-encoded
+    {username, password}. При успехе логинит в текущую сессию (страница
+    клиента в браузере остаётся открытой). При ошибке — 401 с текстом."""
+    import json
+    from django.contrib.auth import authenticate, login as auth_login
+
+    if request.content_type == "application/json":
+        try:
+            payload = json.loads(request.body.decode() or "{}")
+        except ValueError:
+            payload = {}
+    else:
+        payload = request.POST
+    username = (payload.get("username") or "").strip()
+    password = payload.get("password") or ""
+    if not username or not password:
+        return JsonResponse({"ok": False, "error": "Введите логин и пароль"}, status=400)
+
+    user = authenticate(request, username=username, password=password)
+    if user is None or not user.is_active:
+        return JsonResponse({"ok": False, "error": "Неверный логин или пароль"}, status=401)
+    auth_login(request, user)
+    request.session["last_activity"] = timezone.now().timestamp()
+    return JsonResponse({"ok": True, "username": user.get_username()})

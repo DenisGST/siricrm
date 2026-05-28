@@ -2329,5 +2329,209 @@ function initMsSearch() {
 }
 </script>
 
+{# ── Idle UX: warning за 60 сек до auto-logout + locked overlay с inline-login ── #}
+<div id="idle-warning"
+     style="display:none;position:fixed;inset:0;z-index:9998;background:rgba(0,0,0,0.35);align-items:center;justify-content:center;">
+  <div style="background:white;border-radius:12px;padding:24px 28px;max-width:420px;box-shadow:0 8px 24px rgba(0,0,0,0.18);font-family:inherit;">
+    <h3 style="font-size:1.1rem;font-weight:600;margin:0 0 8px;color:#333;">Сессия скоро завершится</h3>
+    <p style="font-size:0.95rem;color:#555;margin:0 0 18px;line-height:1.5;">
+      Вы бездействовали продолжительное время. Через
+      <span id="idle-countdown" style="font-weight:700;color:#dc2626;">60</span> сек
+      вы будете автоматически разлогинены.
+    </p>
+    <div style="display:flex;gap:8px;justify-content:flex-end;">
+      <button type="button" id="idle-stay-btn"
+              style="background:#2563eb;color:white;border:none;border-radius:8px;padding:8px 18px;font-weight:600;cursor:pointer;font-size:0.9rem;">
+        Остаться в системе
+      </button>
+    </div>
+  </div>
+</div>
+
+<div id="idle-locked"
+     style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.6);align-items:center;justify-content:center;">
+  <div style="background:white;border-radius:12px;padding:28px 32px;max-width:380px;width:90%;box-shadow:0 12px 32px rgba(0,0,0,0.25);font-family:inherit;">
+    <h3 style="font-size:1.15rem;font-weight:600;margin:0 0 6px;color:#333;">Сессия завершена</h3>
+    <p id="idle-locked-reason" style="font-size:0.9rem;color:#666;margin:0 0 18px;line-height:1.5;">
+      Введите пароль чтобы продолжить работу.
+    </p>
+    <form id="idle-login-form" autocomplete="off" onsubmit="return idleLogin(event);">
+      <input type="text" id="idle-username" placeholder="Логин"
+             style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:8px;margin-bottom:10px;font-size:0.95rem;box-sizing:border-box;">
+      <input type="password" id="idle-password" placeholder="Пароль"
+             style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:8px;margin-bottom:12px;font-size:0.95rem;box-sizing:border-box;">
+      <div id="idle-login-error" style="display:none;color:#dc2626;font-size:0.85rem;margin-bottom:10px;"></div>
+      <button type="submit" id="idle-login-btn"
+              style="width:100%;background:#2563eb;color:white;border:none;border-radius:8px;padding:10px 18px;font-weight:600;cursor:pointer;font-size:0.95rem;">
+        Войти
+      </button>
+    </form>
+  </div>
+</div>
+
+<script>
+(function() {
+  // Полная схема:
+  //  1. Каждые 15 сек дёргаем /api/session/idle-check/ (не считается активностью).
+  //  2. Сервер отдаёт idle_seconds, timeout_seconds (=5 мин), warning_seconds (=60).
+  //  3. Если idle > timeout - warning → показываем warning-модалку с обратным
+  //     отсчётом до timeout (на основе клиентского времени, чтобы не ждать
+  //     следующего опроса).
+  //  4. Кнопка «Остаться» → POST /api/session/stay/ — продлевает сессию.
+  //  5. Если сервер вернул authenticated=false → показываем locked-overlay
+  //     с inline-формой логина. Login → POST /api/session/login/ → закрытие
+  //     overlay без редиректа.
+
+  var POLL_INTERVAL_MS = 15000;
+  var CSRF = (document.cookie.match(/csrftoken=([^;]+)/) || [])[1] || '';
+
+  var warningEl  = document.getElementById('idle-warning');
+  var lockedEl   = document.getElementById('idle-locked');
+  var countdown  = document.getElementById('idle-countdown');
+  var reasonEl   = document.getElementById('idle-locked-reason');
+  var stayBtn    = document.getElementById('idle-stay-btn');
+  var loginBtn   = document.getElementById('idle-login-btn');
+  var loginError = document.getElementById('idle-login-error');
+  var usernameInput = document.getElementById('idle-username');
+  var passwordInput = document.getElementById('idle-password');
+
+  var _showLocked = false;
+  var _showWarning = false;
+  var _countdownTimer = null;
+  var _warningExpiresAt = 0;   // ms — когда модалка должна закрыться сама
+
+  function showWarning(remainingSec) {
+    _showWarning = true;
+    warningEl.style.display = 'flex';
+    _warningExpiresAt = Date.now() + remainingSec * 1000;
+    _tickCountdown();
+    if (_countdownTimer) clearInterval(_countdownTimer);
+    _countdownTimer = setInterval(_tickCountdown, 1000);
+  }
+  function _tickCountdown() {
+    var left = Math.max(0, Math.round((_warningExpiresAt - Date.now()) / 1000));
+    if (countdown) countdown.textContent = left;
+    if (left <= 0) {
+      hideWarning();
+      // Не вызываем logout — следующий poll сам определит что сессия истекла.
+    }
+  }
+  function hideWarning() {
+    _showWarning = false;
+    if (_countdownTimer) { clearInterval(_countdownTimer); _countdownTimer = null; }
+    warningEl.style.display = 'none';
+  }
+
+  function showLocked(reason) {
+    if (_showLocked) return;
+    _showLocked = true;
+    hideWarning();
+    if (reason && reasonEl) {
+      reasonEl.textContent = reason + ' Введите пароль чтобы продолжить работу.';
+    }
+    lockedEl.style.display = 'flex';
+    if (usernameInput) setTimeout(function(){ usernameInput.focus(); }, 100);
+  }
+  function hideLocked() {
+    _showLocked = false;
+    lockedEl.style.display = 'none';
+    if (loginError) loginError.style.display = 'none';
+    if (passwordInput) passwordInput.value = '';
+  }
+
+  function poll() {
+    fetch('/api/session/idle-check/', {credentials: 'same-origin'})
+      .then(function(r) { return r.ok ? r.json() : null; })
+      .then(function(d) {
+        if (!d) return;
+        if (!d.authenticated) {
+          var reason = d.logout_reason ? ('Причина: ' + d.logout_reason + '.') : 'Сессия завершена.';
+          showLocked(reason);
+          return;
+        }
+        // Если был locked, а сервер говорит «авторизован» — значит юзер вошёл
+        // в другой вкладке. Закроем оверлей.
+        if (_showLocked) hideLocked();
+
+        var leftSec = d.timeout_seconds - d.idle_seconds;
+        if (leftSec <= 0) {
+          // Сессия уже истекла, но мы ещё авторизованы (race condition) —
+          // следующий запрос middleware точно дропнет. Показываем warning
+          // с 0 — он не вреден.
+          showWarning(0);
+        } else if (leftSec <= d.warning_seconds) {
+          if (!_showWarning) showWarning(leftSec);
+        } else {
+          if (_showWarning) hideWarning();
+        }
+      })
+      .catch(function() { /* сеть упала — следующий poll попробует снова */ });
+  }
+
+  if (stayBtn) {
+    stayBtn.addEventListener('click', function() {
+      fetch('/api/session/stay/', {
+        method: 'POST',
+        headers: {'X-CSRFToken': CSRF, 'X-Requested-With': 'XMLHttpRequest'},
+        credentials: 'same-origin',
+      }).then(function(r) {
+        if (r.ok) { hideWarning(); }
+        else { showLocked('Сессия истекла.'); }
+      }).catch(function() { showLocked('Сетевая ошибка.'); });
+    });
+  }
+
+  window.idleLogin = function(event) {
+    event.preventDefault();
+    if (loginError) loginError.style.display = 'none';
+    var u = (usernameInput.value || '').trim();
+    var p = passwordInput.value || '';
+    if (!u || !p) {
+      loginError.textContent = 'Введите логин и пароль';
+      loginError.style.display = 'block';
+      return false;
+    }
+    loginBtn.disabled = true;
+    loginBtn.textContent = 'Вход…';
+    fetch('/api/session/login/', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': CSRF,
+        'X-Requested-With': 'XMLHttpRequest',
+      },
+      credentials: 'same-origin',
+      body: JSON.stringify({username: u, password: p}),
+    }).then(function(r) {
+      return r.json().then(function(d) { return {status: r.status, data: d}; });
+    }).then(function(res) {
+      loginBtn.disabled = false;
+      loginBtn.textContent = 'Войти';
+      if (res.status === 200 && res.data.ok) {
+        hideLocked();
+        // Soft refresh: перезагрузим страницу, чтобы данные обновились
+        // (CSRF, права, состояние). Иначе HTMX-запросы могут падать.
+        window.location.reload();
+      } else {
+        loginError.textContent = (res.data && res.data.error) || 'Не удалось войти';
+        loginError.style.display = 'block';
+        if (passwordInput) { passwordInput.value = ''; passwordInput.focus(); }
+      }
+    }).catch(function() {
+      loginBtn.disabled = false;
+      loginBtn.textContent = 'Войти';
+      loginError.textContent = 'Сетевая ошибка, попробуйте снова';
+      loginError.style.display = 'block';
+    });
+    return false;
+  };
+
+  // Стартуем поллер с небольшой задержкой, чтобы при перезагрузке успели
+  // прогрузиться остальные скрипты.
+  setTimeout(poll, 2000);
+  setInterval(poll, POLL_INTERVAL_MS);
+})();
+</script>
+
 </body>
 </html>
