@@ -382,6 +382,10 @@ class Address(TimeStampedModel):
 class LegalEntityKind(TimeStampedModel):
     """Справочник типов юридических лиц (Банк, МФО, СРО, КО, ФНС, ФССП и т. п.)."""
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    bubble_id = models.CharField(
+        "Bubble ID", max_length=64, blank=True, null=True, unique=True,
+        help_text="ID соответствующей записи в Bubble (для импорта).",
+    )
     name = models.CharField(max_length=255, unique=True, verbose_name="Наименование типа")
     short_name = models.CharField(max_length=50, verbose_name="Сокращённое наименование")
 
@@ -397,6 +401,10 @@ class LegalEntityKind(TimeStampedModel):
 class LegalEntity(TimeStampedModel):
     """Юридическое лицо"""
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    bubble_id = models.CharField(
+        "Bubble ID", max_length=64, blank=True, null=True, unique=True,
+        help_text="ID соответствующей записи в Bubble (для импорта Organization).",
+    )
 
     ENTITY_TYPE_CHOICES = [
         ("ooo", "ООО"),
@@ -1339,4 +1347,171 @@ class MessageTemplate(models.Model):
     @property
     def is_for_whatsapp(self) -> bool:
         return 'whatsapp' in (self.channels or [])
+
+
+# ============================================================================
+# Кредиторы клиента (для БФЛ)
+# ============================================================================
+
+class Kreditor(TimeStampedModel):
+    """Кредитор клиента в рамках процедуры банкротства.
+
+    Жизненный цикл:
+    1. Заполняется в анкете БФЛ (source='anketa', sum_anketa со слов клиента).
+    2. После сбора справок юрист сверяет и корректирует (source='verified',
+       sum_verified — по факту).
+    3. В ходе процедуры пишутся события смены статуса (KreditorStatusEvent):
+       заявление подано → включено в РТК → оплачено частично / полностью.
+
+    Субъект кредитора — ровно одно из трёх (CheckConstraint):
+    legal_entity (юрлицо/ИП/банк/МФО/госорган), client_person (физлицо-
+    клиент Сириуса) или name_manual (свободная строка для случаев, когда
+    справочник ещё не привязан).
+    """
+    SOURCE_CHOICES = [
+        ('anketa', 'Из анкеты клиента'),
+        ('verified', 'По полученным справкам'),
+        ('manual', 'Добавлен вручную'),
+    ]
+    STATUS_CHOICES = [
+        ('', '—'),
+        ('claim_filed', 'Подано заявление о включении в РТК'),
+        ('included', 'Включено в РТК'),
+        ('paid_partial', 'Оплачено частично'),
+        ('paid_full', 'Оплачено полностью'),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    bubble_id = models.CharField(
+        "Bubble ID", max_length=64, blank=True, null=True, unique=True,
+    )
+
+    service = models.ForeignKey(
+        Service, on_delete=models.CASCADE, related_name='kreditors',
+        verbose_name='Услуга БФЛ',
+    )
+
+    legal_entity = models.ForeignKey(
+        LegalEntity, on_delete=models.PROTECT,
+        null=True, blank=True, related_name='kreditor_of',
+        verbose_name='Юрлицо/ИП (кредитор)',
+    )
+    client_person = models.ForeignKey(
+        Client, on_delete=models.PROTECT,
+        null=True, blank=True, related_name='as_kreditor_for',
+        verbose_name='Физлицо (кредитор)',
+    )
+    name_manual = models.CharField(
+        'Имя кредитора (свободный ввод)', max_length=500, blank=True,
+        help_text='Заполняется, когда субъект ещё не привязан к справочнику.',
+    )
+
+    source = models.CharField(
+        'Источник', max_length=12, choices=SOURCE_CHOICES, default='anketa',
+    )
+    debt_basis = models.TextField('Основание долга', blank=True)
+    sum_anketa = models.DecimalField(
+        'Сумма со слов клиента (анкета)', max_digits=14, decimal_places=2,
+        null=True, blank=True,
+    )
+    sum_verified = models.DecimalField(
+        'Сумма по справке', max_digits=14, decimal_places=2,
+        null=True, blank=True,
+    )
+
+    current_status = models.CharField(
+        'Текущий статус по процедуре', max_length=20,
+        choices=STATUS_CHOICES, blank=True, default='',
+    )
+    current_status_date = models.DateField(
+        'Дата текущего статуса', null=True, blank=True,
+    )
+
+    secured_by_collateral = models.BooleanField('Обеспечено залогом', default=False)
+    collateral_description = models.TextField('Описание залога', blank=True)
+
+    class Meta:
+        verbose_name = 'Кредитор'
+        verbose_name_plural = 'Кредиторы'
+        ordering = ['-sum_anketa', 'created_at']
+        constraints = [
+            models.CheckConstraint(
+                check=(
+                    models.Q(legal_entity__isnull=False)
+                    | models.Q(client_person__isnull=False)
+                    | ~models.Q(name_manual='')
+                ),
+                name='kreditor_has_subject',
+            ),
+        ]
+        indexes = [
+            models.Index(fields=['service']),
+            models.Index(fields=['current_status']),
+        ]
+
+    def __str__(self):
+        if self.legal_entity:
+            subj = str(self.legal_entity)
+        elif self.client_person:
+            subj = str(self.client_person)
+        else:
+            subj = self.name_manual or '—'
+        return f'{subj} ({self.sum_anketa or 0} ₽)'
+
+
+class KreditorStatusEvent(models.Model):
+    """История смены статусов кредитора в ходе процедуры банкротства.
+
+    Каждое изменение — отдельная запись с датой/суммой/описанием. Текущий
+    статус кредитора (Kreditor.current_status) денормализуется через
+    post_save сигнал — это последний event по дате.
+    """
+    STATUS_CHOICES = [
+        ('claim_filed', 'Подано заявление о включении в РТК'),
+        ('included', 'Включено в РТК'),
+        ('paid_partial', 'Оплачено частично'),
+        ('paid_full', 'Оплачено полностью'),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    kreditor = models.ForeignKey(
+        Kreditor, on_delete=models.CASCADE, related_name='status_events',
+        verbose_name='Кредитор',
+    )
+    status = models.CharField('Статус', max_length=20, choices=STATUS_CHOICES)
+    date = models.DateField('Дата')
+    amount = models.DecimalField(
+        'Сумма', max_digits=14, decimal_places=2, null=True, blank=True,
+    )
+    description = models.TextField('Описание', blank=True)
+    employee = models.ForeignKey(
+        'core.Employee', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='kreditor_events',
+        verbose_name='Сотрудник',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Событие смены статуса кредитора'
+        verbose_name_plural = 'События смены статусов кредиторов'
+        ordering = ['-date', '-created_at']
+
+    def __str__(self):
+        return f'{self.kreditor_id} → {self.get_status_display()} ({self.date})'
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        # Денормализуем «последний по дате» статус в Kreditor — чтобы списки
+        # кредиторов услуги не делали join к истории на каждый рендер.
+        latest = (
+            type(self).objects
+            .filter(kreditor_id=self.kreditor_id)
+            .order_by('-date', '-created_at')
+            .first()
+        )
+        if latest and latest.pk == self.pk:
+            Kreditor.objects.filter(pk=self.kreditor_id).update(
+                current_status=self.status,
+                current_status_date=self.date,
+            )
 

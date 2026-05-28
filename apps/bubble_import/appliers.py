@@ -933,6 +933,202 @@ def apply_user(rec: BubbleRecord) -> str:
     return rec.status
 
 
+# ─── Organization → LegalEntity ──────────────────────────────
+
+def _normalize_inn_candidates(raw) -> list[str]:
+    """Кандидаты валидного ИНН из «грязного» ввода Bubble.
+
+    Возвращает список вариантов 10/12-значного ИНН для пробинга в
+    LegalEntity / DaData. Для 11-значного — обе версии (срез первой и
+    последней цифры), для 10/12 — сам ИНН.
+    """
+    digits = re.sub(r"\D", "", str(raw or ""))
+    if len(digits) in (10, 12):
+        return [digits]
+    if len(digits) == 11:
+        return [digits[1:], digits[:-1]]
+    return []
+
+
+def _normalize_inn(raw) -> str:
+    """Возвращает первый кандидат (для случаев, когда нужен один ИНН)."""
+    c = _normalize_inn_candidates(raw)
+    return c[0] if c else ""
+
+
+def apply_organization(rec: BubbleRecord) -> str:
+    """Bubble Organization → LegalEntity.
+
+    Pipeline:
+      1. По bubble_id — повторный импорт той же записи.
+      2. По ИНН — есть в нашем справочнике (>10 тыс. юрлиц уже залиты).
+      3. DaData findById/party — если ИНН валидный, тянем реквизиты и
+         создаём новый LegalEntity.
+      4. DaData suggest/party — если ИНН нет/невалидный, fuzzy по
+         shortOrgName/fullOrgName.
+      5. Не нашли — error (юрист разрулит вручную).
+    """
+    from apps.crm.models import LegalEntity
+    from apps.crm.dadata_legal import find_by_inn, search_by_name
+
+    v = rec.value
+    bid = rec.bubble_id
+    inn_candidates = _normalize_inn_candidates(v("innOrg"))
+    short_name = clean_str(v("shortOrgName"))
+    full_name = clean_str(v("fullOrgName"))
+
+    # 1. Повторный импорт по bubble_id
+    le = LegalEntity.objects.filter(bubble_id=bid).first()
+    matched_by = "bubble_id" if le else None
+    inn = inn_candidates[0] if inn_candidates else ""
+
+    # 2. По ИНН в нашем справочнике — пробуем все кандидаты
+    if le is None and inn_candidates:
+        for cand in inn_candidates:
+            le = LegalEntity.objects.filter(inn=cand).first()
+            if le:
+                matched_by = "inn_local"
+                inn = cand
+                break
+
+    dadata_payload = None
+    # 3. DaData по ИНН — пробуем все кандидаты
+    if le is None and inn_candidates:
+        for cand in inn_candidates:
+            dadata_payload = find_by_inn(cand)
+            if dadata_payload:
+                matched_by = "dadata_inn"
+                inn = cand
+                break
+
+    # 4. DaData по имени
+    if le is None and not dadata_payload:
+        query = full_name or short_name
+        if query:
+            dadata_payload = search_by_name(query)
+            if dadata_payload:
+                matched_by = "dadata_name"
+                inn = dadata_payload.get("inn") or inn
+
+    # Создание или обогащение LegalEntity
+    if le is None and dadata_payload is None:
+        rec.status = "error"
+        rec.error = (
+            f"LegalEntity не найдено по ИНН={inn!r}, DaData тоже не "
+            f"распознал. Нужно завести вручную: {short_name or full_name}"
+        )
+        rec.imported_at = None
+        rec.save(update_fields=["status", "error", "imported_at"])
+        return rec.status
+
+    if le is None:
+        # Создание нового из DaData payload — дополняем нашими адресными
+        # полями из Bubble (Bubble хранит почтовый адрес, DaData — юр.).
+        bubble_address = clean_str(v("adres"))
+        le = LegalEntity.objects.create(
+            bubble_id=bid,
+            postal_address=bubble_address[:1000],
+            **dadata_payload,
+        )
+    else:
+        # Существующий — закрепляем bubble_id (если ещё нет), дозаполняем
+        # пустые поля. Существующие значения не перезаписываем — справочник
+        # может быть проверен оператором.
+        changed = []
+        if not le.bubble_id:
+            le.bubble_id = bid
+            changed.append("bubble_id")
+        # postal_address из Bubble обычно полнее (с индексом)
+        if not le.postal_address and v("adres"):
+            le.postal_address = clean_str(v("adres"))[:1000]
+            changed.append("postal_address")
+        if dadata_payload:
+            for k, val in dadata_payload.items():
+                if val and not getattr(le, k, None):
+                    setattr(le, k, val)
+                    changed.append(k)
+        if changed:
+            le.save(update_fields=changed + ["updated_at"])
+
+    rec.status = "imported"
+    rec.target_type = "LegalEntity"
+    rec.target_id = str(le.id)
+    rec.error = f"Найдено через {matched_by}"
+    rec.imported_at = timezone.now()
+    rec.save(update_fields=["status", "target_type", "target_id", "error", "imported_at"])
+    return rec.status
+
+
+# ─── Kreditors → Kreditor ────────────────────────────────────
+
+def apply_kreditor(rec: BubbleRecord) -> str:
+    """Bubble Kreditors → Kreditor.
+
+    Связи:
+      - bfl → Service (с fallback через BubbleRecord(ProjectBFL).target_id
+        для редких случаев, когда Service.bubble_id мог разойтись);
+      - organization → LegalEntity (по bubble_id — должен быть уже
+        импортирован applier'ом apply_organization).
+    """
+    from apps.crm.models import Service, LegalEntity, Kreditor
+
+    v = rec.value
+    bid = rec.bubble_id
+
+    bfl_bid = v("bfl")
+    service = Service.objects.filter(bubble_id=bfl_bid).first() if bfl_bid else None
+    if service is None and bfl_bid:
+        pf = BubbleRecord.objects.filter(
+            entity="ProjectBFL", bubble_id=bfl_bid, status="imported",
+        ).first()
+        if pf and pf.target_id:
+            service = Service.objects.filter(pk=pf.target_id).first()
+    if service is None:
+        rec.status = "error"
+        rec.error = "Услуга (bfl) не импортирована. Сначала ProjectBFL."
+        rec.imported_at = None
+        rec.save(update_fields=["status", "error", "imported_at"])
+        return rec.status
+
+    org_bid = v("organization")
+    legal_entity = None
+    if org_bid:
+        legal_entity = LegalEntity.objects.filter(bubble_id=org_bid).first()
+        if legal_entity is None:
+            # Может быть импортированный, но bubble_id не привязан (matched
+            # по ИНН) — спросим через BubbleRecord(Organization).target_id.
+            or_rec = BubbleRecord.objects.filter(
+                entity="Organization", bubble_id=org_bid, status="imported",
+            ).first()
+            if or_rec and or_rec.target_id:
+                legal_entity = LegalEntity.objects.filter(pk=or_rec.target_id).first()
+
+    sum_all = parse_decimal(v("summAll"))
+    debt_basis = strip_bbcode(v("debtBasis"))
+
+    kreditor, _ = Kreditor.objects.update_or_create(
+        bubble_id=bid,
+        defaults={
+            "service": service,
+            "legal_entity": legal_entity,
+            "name_manual": "" if legal_entity else (
+                clean_str(v("organization")) or "Без названия"
+            )[:500],
+            "source": "anketa",
+            "debt_basis": debt_basis,
+            "sum_anketa": sum_all,
+        },
+    )
+
+    rec.status = "imported"
+    rec.target_type = "Kreditor"
+    rec.target_id = str(kreditor.id)
+    rec.error = ""
+    rec.imported_at = timezone.now()
+    rec.save(update_fields=["status", "target_type", "target_id", "error", "imported_at"])
+    return rec.status
+
+
 # Реестр applier'ов по типу сущности.
 APPLIERS = {
     "Man": apply_man,
@@ -941,6 +1137,8 @@ APPLIERS = {
     "MessageWSP": apply_messagewsp,
     "Files": apply_files,
     "User": apply_user,
+    "Organization": apply_organization,
+    "Kreditors": apply_kreditor,
 }
 
 

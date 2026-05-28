@@ -24,6 +24,8 @@ ENTITY_CHOICES = [
     ("Money", "Платежи и начисления (Money)"),
     ("MessageWSP", "Сообщения WhatsApp (MessageWSP)"),
     ("Files", "Файлы (Files)"),
+    ("Organization", "Юрлица (Organization → LegalEntity)"),
+    ("Kreditors", "Кредиторы клиента (Kreditors → Kreditor)"),
 ]
 
 STATUS_CHOICES = [

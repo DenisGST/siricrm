@@ -282,6 +282,38 @@ def user_display(raw: dict) -> dict:
     }
 
 
+def organization_display(raw: dict) -> dict:
+    """Юрлицо: имя + ИНН для быстрой идентификации в таблице импорта."""
+    name = (clean_str(raw.get("shortOrgName"))
+            or clean_str(raw.get("fullOrgName")) or "(без названия)")
+    inn = str(raw.get("innOrg") or "").strip()
+    parts = [f"ИНН {inn}"] if inn else []
+    if raw.get("adres"):
+        parts.append(clean_str(raw.get("adres"))[:80])
+    return {
+        "display_title": name[:300],
+        "display_subtitle": " · ".join(parts)[:300],
+        "bubble_created": parse_bubble_dt(raw.get("Created Date")),
+    }
+
+
+def kreditor_display(raw: dict) -> dict:
+    """Кредитор: основание + сумма (без распутывания организации — она в FK)."""
+    basis = strip_bbcode(raw.get("debtBasis"))[:80]
+    summ = raw.get("summAll")
+    typ = clean_str(raw.get("type"))
+    parts = []
+    if summ:
+        parts.append(f"{summ} ₽")
+    if typ:
+        parts.append(typ)
+    return {
+        "display_title": (basis or "(без основания)")[:300],
+        "display_subtitle": " · ".join(parts)[:300],
+        "bubble_created": parse_bubble_dt(raw.get("Created Date")),
+    }
+
+
 # Реестр extractor'ов по типу сущности.
 DISPLAY_EXTRACTORS = {
     "Man": man_display,
@@ -290,6 +322,8 @@ DISPLAY_EXTRACTORS = {
     "MessageWSP": messagewsp_display,
     "Files": files_display,
     "User": user_display,
+    "Organization": organization_display,
+    "Kreditors": kreditor_display,
 }
 
 

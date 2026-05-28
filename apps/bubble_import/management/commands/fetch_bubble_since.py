@@ -21,7 +21,12 @@ from apps.bubble_import.services import fetch_modified_since
 
 logger = logging.getLogger("bubble_import")
 
-DEFAULT_ENTITIES = ["User", "Man", "ProjectBFL", "Money", "MessageWSP", "Files"]
+DEFAULT_ENTITIES = [
+    "User", "Man", "ProjectBFL",
+    "Organization",  # юрлица перед Kreditors (organization → LegalEntity)
+    "Kreditors",
+    "Money", "MessageWSP", "Files",
+]
 
 
 class Command(BaseCommand):
