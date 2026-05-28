@@ -512,9 +512,15 @@ def kanban_column(request, status):
     next_offset = offset + PAGE_SIZE
     has_more = next_offset < total
 
+    # column_id — DOM-идентификатор колонки (для intersect-root, OOB-счётчика,
+    # «Показать ещё»). Обычно совпадает со status, но для динамической
+    # колонки «Архивные» (где select переключает status) колонка остаётся
+    # одна — id всегда "archive", а status меняется.
+    column_id = request.GET.get("column_id") or status
     return render(request, "crm/partials/kanban_column.html", {
         "clients":   shown,
         "status":    status,
+        "column_id": column_id,
         "count":     total,
         "offset":    offset,
         "has_more":  has_more,

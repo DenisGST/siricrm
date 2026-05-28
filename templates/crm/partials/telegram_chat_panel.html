@@ -236,11 +236,14 @@
     </form>
   </div>
 
-  <!-- WebSocket для чата -->
+  <!-- WebSocket для чата.
+       Хост определяется из request.scheme + request.get_host(), чтобы на
+       dev (crmsiri.ru) соединение шло на dev, а не было захардкожено
+       siricrm.ru. -->
   <div
     id="telegram-chat-ws"
     hx-ext="ws"
-    ws-connect="wss://siricrm.ru/ws/telegram/client/{{ client.id }}/"
+    ws-connect="{% if request.is_secure %}wss{% else %}ws{% endif %}://{{ request.get_host }}/ws/telegram/client/{{ client.id }}/"
   ></div>
 
   <audio id="incoming-sound" src="{% static 'sounds/incoming.mp3' %}" preload="auto"></audio>
