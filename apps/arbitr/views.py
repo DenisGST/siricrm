@@ -3,7 +3,7 @@ from datetime import timedelta
 
 from django.contrib.auth.decorators import login_required
 from django.db.models import Count, Q
-from django.http import HttpResponse, HttpResponseBadRequest
+from django.http import HttpResponse, HttpResponseBadRequest, HttpResponseRedirect
 from django.shortcuts import get_object_or_404, render
 from django.utils import timezone
 from django.views.decorators.http import require_POST
@@ -253,3 +253,62 @@ def _render_case_card(request, case):
     case.next_check_at = _estimate_next_check_at(case)
     case.last_log_state = _last_log_state(case)
     return render(request, "arbitr/partials/_case_card.html", {"case": case})
+
+
+@login_required
+@require_POST
+def case_confirm_hit(request, case_id, hit_index):
+    """Сотрудник выбрал «своё» дело из найденных кандидатов.
+
+    Берёт hit из case.search_hits[hit_index], выставляет case_number/kad_url,
+    переводит case в MONITORING, очищает search_hits, пишет ClientEvent.
+    Возвращает HX-Redirect на ту же страницу — нужна полная перезагрузка,
+    т.к. меняется status и весь блок карточки рендерится по-другому.
+    """
+    if not is_admin(request.user):
+        return HttpResponse("forbidden", status=403)
+    case = get_object_or_404(ArbitrCase, pk=case_id)
+    if case.status != ArbitrCase.STATUS_SEARCHING:
+        return HttpResponseBadRequest("Подтверждение возможно только для status=searching")
+    hits = case.search_hits or []
+    if not (0 <= hit_index < len(hits)):
+        return HttpResponseBadRequest(f"Кандидата с индексом {hit_index} нет")
+    hit = hits[hit_index]
+    case_number = (hit.get("case_number") or "").strip()
+    kad_url = (hit.get("kad_url") or "").strip()
+    if not case_number or not kad_url:
+        return HttpResponseBadRequest("У кандидата нет case_number/kad_url")
+
+    case.case_number = case_number
+    case.kad_url = kad_url
+    case.court_name = (hit.get("court_name") or "").strip()
+    case.status = ArbitrCase.STATUS_MONITORING
+    case.search_hits = []
+    case.search_hits_at = None
+    case.save(update_fields=[
+        "case_number", "kad_url", "court_name", "status",
+        "search_hits", "search_hits_at", "updated_at",
+    ])
+
+    emp = Employee.objects.filter(user=request.user).first()
+    ClientEvent.objects.create(
+        client=case.service.client,
+        event_type="iskotpravlen",
+        employee=emp,
+        description=(
+            f"Подтверждено арбитражное дело №{case_number} (из найденных "
+            f"парсером). Перевод в мониторинг карточки."
+        ),
+    )
+    ArbitrCheckLog.objects.create(
+        case=case, state=ArbitrCheckLog.STATE_OK,
+        notes=f"Сотрудник подтвердил дело {case_number} — переводим в MONITORING",
+    )
+    # После confirm весь блок страницы рендерится по-другому (нет
+    # «кандидатов», есть инстанции/события). Проще всего — full reload.
+    redirect_url = request.path.rsplit("/confirm-hit/", 1)[0] + "/"
+    if request.headers.get("HX-Request"):
+        response = HttpResponse(status=204)
+        response["HX-Redirect"] = redirect_url
+        return response
+    return HttpResponseRedirect(redirect_url)

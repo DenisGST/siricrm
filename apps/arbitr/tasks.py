@@ -200,16 +200,31 @@ def _search_one(kad: KadSession, case: ArbitrCase) -> str:
         case.save(update_fields=["last_check_at", "last_check_ok"])
         return "nothing"
 
-    # Найдено хотя бы что-то — пока что не двигаем case в monitoring сами:
-    # сотрудник должен подтвердить, что именно ЭТО дело принадлежит клиенту.
-    # TODO: сохранить найденные KadSearchHit'ы куда-то для UI выбора.
-    notes = "Найдено: " + "; ".join(
+    # Найдено хотя бы что-то — сохраняем в case.search_hits для UI выбора.
+    # Сотрудник в карточке дела увидит список кандидатов и нажмёт «Это моё дело»
+    # → confirm_hit-view выставит case_number/kad_url и переведёт в MONITORING.
+    hits_payload = [
+        {
+            "case_number": h.case_number,
+            "kad_url": h.kad_url,
+            "court_name": h.court_name,
+            "parties": list(h.parties),
+            "filed_at": h.filed_at,
+        }
+        for h in hits
+    ]
+    case.search_hits = hits_payload
+    case.search_hits_at = timezone.now()
+    case.last_check_at = timezone.now()
+    case.last_check_ok = True
+    case.save(update_fields=[
+        "search_hits", "search_hits_at", "last_check_at", "last_check_ok",
+    ])
+
+    notes = f"Найдено {len(hits_payload)} кандидат(ов): " + "; ".join(
         f"{h.case_number} ({h.court_name})" for h in hits[:5]
     )
     _log_check(case, ArbitrCheckLog.STATE_OK, duration_ms=duration_ms, notes=notes)
-    case.last_check_at = timezone.now()
-    case.last_check_ok = True
-    case.save(update_fields=["last_check_at", "last_check_ok"])
     return "ok"
 
 
@@ -273,12 +288,18 @@ def _parse_one(kad: KadSession, case: ArbitrCase) -> str:
 
     duration_ms = int((time.monotonic() - started) * 1000)
     persisted = _persist_case_info(case, info)
+
+    # Скачиваем PDF'ы новых вложений в S3 (best-effort: ошибка отдельного
+    # документа не валит обработку дела целиком).
+    downloaded = _download_new_attachments(kad, case)
+
     _log_check(
         case, ArbitrCheckLog.STATE_OK, duration_ms=duration_ms,
         notes=(
             f"events={len(info.events)} "
             f"new={persisted['new_events']} "
-            f"docs+={persisted['new_attachments']}"
+            f"docs+={persisted['new_attachments']} "
+            f"dl={downloaded['ok']}/{downloaded['ok'] + downloaded['failed']}"
         ),
     )
     case.court_name = info.court_name or case.court_name
@@ -292,6 +313,75 @@ def _parse_one(kad: KadSession, case: ArbitrCase) -> str:
         "last_check_at", "last_check_ok",
     ])
     return "ok"
+
+
+def _download_new_attachments(kad: KadSession, case: ArbitrCase) -> dict:
+    """Качает все ArbitrAttachment этого дела без stored_file → S3.
+
+    Best-effort: ошибки скачивания отдельного файла логируем и идём дальше.
+    Captcha — поднимаем выше (KadCaptchaRequired), пусть batch остановится.
+    Возвращает {'ok': N, 'failed': M, 'locked': K, 'skipped': X}.
+    """
+    from apps.files.models import StoredFile  # лениво — кросс-аппный импорт
+    from apps.files.s3_utils import upload_file_to_s3
+
+    stats = {"ok": 0, "failed": 0, "locked": 0, "skipped": 0}
+    qs = ArbitrAttachment.objects.filter(
+        event__case=case, stored_file__isnull=True,
+    ).select_related("event")
+    for att in qs:
+        if att.is_locked:
+            stats["locked"] += 1
+            continue
+        if not att.kad_url:
+            stats["skipped"] += 1
+            continue
+        try:
+            content, content_type = kad.download_pdf(att.kad_url)
+        except KadCaptchaRequired:
+            # пробрасываем — пусть оборачивающий код вызовет alert
+            raise
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "kad: PDF не скачался (att=%s url=%s): %s",
+                att.id, att.kad_url, exc,
+            )
+            stats["failed"] += 1
+            continue
+
+        # Имя для S3 + StoredFile. Если kad name пустой — используем att.id.
+        ext = "pdf"
+        if "pdf" not in content_type.lower():
+            # Попробуем угадать по url — обычно kad даёт ?key=<doc>.pdf
+            if ".pdf" in att.kad_url.lower():
+                ext = "pdf"
+            else:
+                ext = "bin"
+        safe_name = (att.name or f"document-{att.id}").strip()
+        if not safe_name.lower().endswith(f".{ext}"):
+            safe_name = f"{safe_name}.{ext}"
+
+        try:
+            bucket, key = upload_file_to_s3(
+                content,
+                prefix=f"arbitr/{case.id}",
+                filename=safe_name,
+                content_type=content_type,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("kad: S3 upload failed for att %s: %s", att.id, exc)
+            stats["failed"] += 1
+            continue
+
+        stored = StoredFile.objects.create(
+            bucket=bucket, key=key, filename=safe_name,
+            content_type=content_type, size=len(content),
+        )
+        att.stored_file = stored
+        att.save(update_fields=["stored_file"])
+        stats["ok"] += 1
+
+    return stats
 
 
 @shared_task(name="arbitr.kad_monitor_one_case")

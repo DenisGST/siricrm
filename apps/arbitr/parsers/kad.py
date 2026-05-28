@@ -201,7 +201,12 @@ class KadSession:
             src = self.driver.page_source or ""
         except Exception:
             src = ""
-        return any(marker in src for marker in CAPTCHA_MARKERS)
+        return self._is_captcha_response(src)
+
+    @staticmethod
+    def _is_captcha_response(body: str) -> bool:
+        """True если в HTML-теле есть маркеры активного captcha challenge."""
+        return any(marker in (body or "") for marker in CAPTCHA_MARKERS)
 
     def _raise_if_captcha(self) -> None:
         if self._is_captcha_page():
@@ -778,6 +783,56 @@ class KadSession:
             description=description,
             attachments=attachments,
         )
+
+    def download_pdf(self, url: str, timeout: int = 60) -> tuple[bytes, str]:
+        """Скачивает PDF-документ kad по URL.
+
+        Через requests с куки + UA из Selenium-сессии — kad PDF endpoint
+        требует валидную сессию. Если kad подсунул captcha challenge
+        вместо PDF — кидаем KadCaptchaRequired.
+
+        Возвращает (content_bytes, content_type).
+        """
+        import requests  # лениво — модуль вне Django-core путей
+
+        if not self._warmed:
+            # PDF тоже требует прогретой сессии (cookies).
+            self._warm_up()
+
+        cookies = {
+            c["name"]: c["value"] for c in self.driver.get_cookies()
+        }
+        user_agent = self.driver.execute_script(
+            "return navigator.userAgent",
+        ) or ""
+        headers = {
+            "User-Agent": user_agent,
+            "Referer": KAD_BASE_URL + "/",
+            "Accept": "application/pdf,application/octet-stream,*/*",
+        }
+        logger.info("kad.download_pdf: %s", url)
+        resp = requests.get(
+            url, cookies=cookies, headers=headers,
+            timeout=timeout, allow_redirects=True,
+        )
+        if resp.status_code >= 400:
+            # Проверим что в теле — может captcha, может реально 404
+            body = (resp.content[:4000] or b"").decode("utf-8", errors="ignore")
+            if self._is_captcha_response(body):
+                raise KadCaptchaRequired(page_url=url)
+            raise KadParserError(
+                f"PDF HTTP {resp.status_code}: {body[:300]}"
+            )
+        content_type = (resp.headers.get("Content-Type") or "").split(";")[0].strip()
+        # kad на captcha challenge может вернуть 200 с HTML — проверим.
+        if "text/html" in content_type:
+            body = (resp.content[:4000] or b"").decode("utf-8", errors="ignore")
+            if self._is_captcha_response(body):
+                raise KadCaptchaRequired(page_url=url)
+            raise KadParserError(
+                f"PDF endpoint вернул HTML вместо PDF: {body[:300]}"
+            )
+        return resp.content, (content_type or "application/pdf")
 
 
 # ---------- one-shot helpers (используются в tasks.py / management) ----------

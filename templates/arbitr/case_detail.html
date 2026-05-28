@@ -12,6 +12,66 @@
   {# ═══════════════ Карточка дела (HTMX-swap при ручном запуске) ═══════════════ #}
   {% include "arbitr/partials/_case_card.html" with case=case %}
 
+  {# ═══════════════ Найденные кандидаты (Этап 1) ═══════════════ #}
+  {% if case.status == 'searching' and case.search_hits %}
+  <section class="card bg-base-100 shadow-sm border border-warning/30">
+    <div class="card-body p-4 gap-3">
+      <div class="flex items-center justify-between">
+        <h2 class="card-title text-base">🎯 Найденные кандидаты ({{ case.search_hits|length }})</h2>
+        {% if case.search_hits_at %}
+          <div class="text-xs opacity-60">найдено {{ case.search_hits_at|naturaltime }}</div>
+        {% endif %}
+      </div>
+      <p class="text-xs opacity-60">
+        Парсер нашёл дела по ФИО клиента. Подтверди какое из них «своё» —
+        дело перейдёт в этап 2 (мониторинг карточки).
+      </p>
+      <ul class="divide-y divide-base-200">
+        {% for hit in case.search_hits %}
+        <li class="py-3 flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+          <div class="min-w-0 flex-1">
+            <div class="font-mono font-semibold">{{ hit.case_number }}</div>
+            <div class="text-xs opacity-70">{{ hit.court_name }}</div>
+            {% if hit.filed_at %}
+              <div class="text-xs opacity-60">подан {{ hit.filed_at }}</div>
+            {% endif %}
+            {% if hit.parties %}
+              <div class="text-xs opacity-60 mt-1">
+                <span class="opacity-50">стороны:</span>
+                {{ hit.parties|join:", "|truncatechars:200 }}
+              </div>
+            {% endif %}
+            <a href="{{ hit.kad_url }}" target="_blank" rel="noopener"
+               class="link link-xs link-primary mt-1 inline-block">
+              открыть в kad ↗
+            </a>
+          </div>
+          <form method="post"
+                action="{% url 'arbitr:case_confirm_hit' case.id forloop.counter0 %}"
+                class="shrink-0">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-success btn-sm">
+              ✓ Это моё дело
+            </button>
+          </form>
+        </li>
+        {% endfor %}
+      </ul>
+    </div>
+  </section>
+  {% elif case.status == 'searching' %}
+  <section class="card bg-base-100 shadow-sm border border-base-300">
+    <div class="card-body p-4 gap-2">
+      <h2 class="card-title text-base">🎯 Найденные кандидаты</h2>
+      <p class="text-sm opacity-60">
+        Парсер ещё не находил совпадений по ФИО клиента
+        {% if case.last_check_at %}(последняя проверка {{ case.last_check_at|naturaltime }}){% endif %}.
+        Запусти «Парсить сейчас» в карточке выше или дождись следующей итерации.
+      </p>
+    </div>
+  </section>
+  {% endif %}
+
   {# ═══════════════ Шапка дела на kad ═══════════════ #}
   {% if case.kad_url %}
   <section class="card bg-base-100 shadow-sm">

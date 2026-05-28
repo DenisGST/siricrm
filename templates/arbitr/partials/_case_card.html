@@ -24,6 +24,14 @@
       </div>
 
       <div class="flex items-center gap-2 shrink-0">
+        {# Для SEARCHING с найденными кандидатами — приоритетный бейдж #}
+        {% if case.status == 'searching' and case.search_hits %}
+          <a href="{% url 'arbitr:case_detail' case.id %}"
+             class="badge badge-warning badge-sm gap-1"
+             title="Подтверди какое из найденных дел — клиента">
+            🎯 кандидатов: {{ case.search_hits|length }}
+          </a>
+        {% endif %}
         {# Бейдж последнего состояния #}
         {% if case.last_log_state == 'ok' %}
           <span class="badge badge-success badge-sm">✓ OK</span>

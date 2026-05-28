@@ -81,6 +81,17 @@ class ArbitrCase(models.Model):
     )
     last_error = models.TextField("Последняя ошибка", blank=True)
 
+    # Найденные кандидаты на этапе SEARCHING (последний поиск по ФИО).
+    # Каждый элемент — dict {case_number, kad_url, court_name, parties, filed_at}.
+    # Сотрудник выбирает «своё» дело в UI → confirm_hit → case переходит в MONITORING,
+    # список очищается.
+    search_hits = models.JSONField(
+        "Найденные кандидаты", default=list, blank=True,
+    )
+    search_hits_at = models.DateTimeField(
+        "Когда найдены", null=True, blank=True,
+    )
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
