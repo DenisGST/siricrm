@@ -51,6 +51,7 @@ apps/maxchat        — интеграция MaxChat
 apps/consultations  — график консультаций
 apps/questionnaire  — анкеты БФЛ (типизированные вопросы), PDF через ReportLab, S3
 apps/devops         — DevOps-панель (см. ниже)
+apps/arbitr         — мониторинг арбитражных дел kad.arbitr.ru (Selenium-парсер, см. ниже)
 apps/finance        — финансовый учёт: Payment, Charge, справочники, генератор графика платежей
 config/             — settings/, urls, asgi (ASGI: HTTP+WS через daphne), celery
 templates/          — Django-шаблоны (проект НЕ использует base.html — dashboard.html самодостаточен)
@@ -70,6 +71,108 @@ guides/             — пользовательские инструкции (d
 - Синк статуса `DevopsAction`: HTMX-поллинг раз в 2с при открытой карточке + фоновый Celery-task `devops.sync_action` в dev-runner (общая логика — `sync_action_once` в `tasks.py`). Таск перепланирует сам себя `apply_async(countdown=3)` до done/failed, потолок 60 мин. Action закрывается даже если вкладка закрыта. Транзитивные DB-ошибки (БД схемы временно нет во время `pull_db`) — перепланируются, цепочка не обрывается.
 - `action_poll` редиректит на `action_detail` при не-HTMX запросе — чтобы после логин-редиректа пользователь не приземлялся на голый партиал.
 - `deploy`/`rebuild`/`rollback` НЕ перезапускают сам `devops-runner` — после деплоя нового кода на сервер его воркер остаётся на старом коде, нужен ручной `docker compose ... restart devops-runner` на этом сервере (иначе новые action_type / новые celery-tasks типа `sync_action` падают с «Неизвестный action_type» или просто не запускаются)
+
+## Арбитраж — мониторинг kad.arbitr.ru (apps/arbitr)
+
+**Цель:** автоматически следить за делами клиентов БФЛ на kad.arbitr.ru. Сотрудник в карточке услуги ставит «иск отправлен в суд» → создаётся `ArbitrCase(status='searching')` → парсер ищет дело по ФИО → сотрудник подтверждает найденную карточку → `status='monitoring'` → парсер регулярно собирает события (ходатайства, определения, расписания заседаний) и документы.
+
+### Контейнер `arbitr-runner` (отдельный)
+
+- `docker/arbitr/Dockerfile` — python:3.11-slim + **google-chrome-stable** (из официального deb-репо) + **chromedriver** (под мажор-версию Chrome, тянем с chrome-for-testing) + **Xvfb** (виртуальный X-сервер). selenium 4.27 + selenium-stealth.
+- `docker/arbitr/entrypoint.sh` — поднимает Xvfb на `:99` в фоне → `exec celery worker -Q arbitr`. `ENV DISPLAY=:99` в Dockerfile — чтобы и worker, и `docker exec` (kad_probe) ходили на один Xvfb.
+- Сервис в обоих compose-файлах: `shm_size: '2gb'`, `concurrency=1`, `max-tasks-per-child=20` (Chromium течёт).
+- Очередь celery `arbitr` — `CELERY_TASK_ROUTES['arbitr.*']={'queue':'arbitr'}` в `base.py`. Общий celery worker эти таски не подхватит.
+
+### Почему Selenium, а не Playwright
+
+Сначала пробовал Playwright headless (jammy/noble образы microsoft/playwright-python). **Не пошло**: kad возвращал captcha challenge на любой data-запрос (`/Card/<uuid>`, `/Kad/SearchInstances`) — даже с `playwright-stealth`. Главная страница отдавалась (она статика), но контент — никогда. Selenium + selenium-stealth с **headed Chromium через Xvfb** проходит anti-bot kad.
+
+### Антидетект-стек (`apps/arbitr/parsers/kad.py:KadSession`)
+
+- **headed Chrome через Xvfb** (НЕ headless) — главное оружие.
+- `selenium-stealth(vendor='Google Inc.', platform='Win32', webgl_vendor='Intel Inc.', renderer='Intel Iris OpenGL Engine')` — глубже подделывает navigator + WebGL, чем playwright-stealth.
+- Chrome args: `--disable-blink-features=AutomationControlled`, `excludeSwitches=['enable-automation']`, `useAutomationExtension=False`, `--disable-webgl --disable-gpu --enable-unsafe-swiftshader --disable-accelerated-2d-canvas` (kad фингерпринтит WebGL renderer).
+- UA `Mozilla/5.0 (Windows NT 10.0; Win64; x64) … Chrome/120` — Linux-UA подозрительный для kad.
+
+### Главный трюк: «прогрев» сессии
+
+Прямой `GET /Card/<uuid>` всегда возвращает captcha. Но если в той же Chrome-сессии сначала сделать **поиск через UI** (главная → ввод в `[placeholder="например, А50-5568/08"]` → клик `[alt="Найти"]` → ждать `.b-case-loading` 10-15с) — kad ставит session-cookies и дальше отдаёт `/Card/` без капчи. Это и есть `KadSession._warm_up()` — один раз на жизнь сессии, потом много операций.
+
+### Capture detection
+
+Маркеры в `apps/arbitr/parsers/kad.py:CAPTCHA_MARKERS`:
+- `id="tokenFrom"` — форма submit'а captcha challenge
+- `pravocaptcha.execute` — JS-вызов на странице challenge
+- `"Доступ заблокирован"` — IP-блок (HTTP 451)
+- `"Подтвердите, что вы не робот"`
+
+**НЕ маркер** — `b-pravocaptcha` сам по себе или текст «Превышено количество попыток»: оба присутствуют в обычной kad-странице как `<script type="x-jquery-tmpl">`-шаблон → ложные срабатывания.
+
+### Селекторы (по состоянию 2026)
+
+Search results (таблица `#b-cases` tbody, **не** `b-cases tablesorter`):
+- `td.num a.num_case` — номер дела + ссылка
+- `td.num .b-container > div > span` — дата подачи
+- `td.court .judge` — судья (отдельно)
+- `td.court .b-container > div:not(.judge)` — суд (отдельно)
+- `td.plaintiff .js-rollover` / `td.respondent .js-rollover` — стороны (внутри есть скрытый `.js-rolloverHtml`-tooltip → берём только `firstChild.textContent` через JS)
+
+Карточка дела:
+- `#caseName` (hidden input) — case_number (надёжнее `<title>`)
+- `#caseId` (hidden input) — case_id
+- `.b-case-header-desc` — статус
+- `.b-chrono-item-header` — инстанции (13+ штук, со всеми реквизитами в `.l-col strong` / `.b-case-instance-number` / `.instantion-name`)
+- Раскрытие инстанции: клик по `.b-collapse .b-sicon` (через `execute_script` — обходит overlap)
+- События: `.b-chrono-item.js-chrono-item` (БЕЗ `-header`) — внутри `.case-date`, `.case-type`, `.case-subject`, `.additional-info`, `.b-case-result-text`. `data-instance_id` связывает событие с инстанцией.
+
+### Идемпотентность событий
+
+У kad `data-id` на событии **всегда пуст** — поэтому `kad_event_id` генерируем как `sha1(instance_id|event_date|kind|title|description)[:24]`. UNIQUE-индекс `(case, kad_event_id)` в `ArbitrEvent.Meta.constraints` защищает от дублей при повторном парсинге.
+
+### Восстановление судьи
+
+kad на уровне шапки инстанции имя судьи не пишет — но в каждом событии `kind == "Событие"` ФИО судьи лежит в `case-subject`. `_fill_instance_judges` берёт самое частое ФИО (regex `^[А-Я][а-я]+(\s+[А-Я]\.\s*[А-Я]\.?)?$`) в рамках инстанции.
+
+### Окно работы + ручной запуск
+
+- Автотаски `arbitr.kad_monitor_pending` / `kad_monitor_case` работают **только 18:00–08:00 МСК** (см. `WORK_WINDOW_*` в `tasks.py`).
+- **Ручной запуск** через UI кнопку «Парсить сейчас» → таск `arbitr.kad_monitor_one_case(case_id)` → **work-window игнорируется**. Используется для отладки и срочного «парсить сейчас». В зависимости от status: `_search_one` (SEARCHING) или `_parse_one` (MONITORING).
+
+### MAX-уведомления о капче
+
+`apps/arbitr/notifications.py:send_captcha_alert(case)` шлёт сообщение в MAX через `apps.maxchat.sender.send_max_message` с `ARBITR_CAPTCHA_NOTIFY_MAX_CHAT_ID` (env, пока один на всех получатель — `chat_id` админа; позже разнесём на `Employee.max_chat_id`). Текст: дело, ФИО клиента, сотрудник запустивший мониторинг, ссылка на kad.
+
+### Сервисная UI `/arbitr/`
+
+- `views.dashboard` — три секции: 🔍 Этап 1 (status=searching, поиск по ФИО), 📋 Этап 2 (monitoring), ⏸ Приостановленные/завершённые. Доступ — `is_admin`. Карточка дела: клиент, статус последнего лога (✓/⚠/✗), `last_check_at` через `naturaltime`, `next_check_at ≈` (расчёт `last + 1 час`, если попадает в work-window, иначе следующее 18:00), счётчики `events_count` / `attachments_count` (annotate Count + Q).
+- `views.case_detail` — шапка дела + ссылка на kad + список инстанций + хронология `ArbitrEvent` (последние 200) с документами + лог `ArbitrCheckLog` (50).
+- **Ручной запуск** — POST на `/arbitr/case/<uuid>/run/` → `kad_monitor_one_case.delay()` → возврат свежей карточки (HTMX `hx-swap="outerHTML"`).
+- **HTMX-поллинг лога** раз в 4с пока последний `ArbitrCheckLog.ts` моложе 60с. **Решение «поллить или нет» — на сервере**: view возвращает партиал с `hx-trigger` атрибутом ИЛИ без него (см. `poll_active` в `views._log_is_fresh`). Так поллинг сам останавливается без JS-фильтров.
+- Меню — `MenuItem(section='Арбитраж', name='Мониторинг дел', url='/arbitr/')`, миграция `core.0016_arbitr_menu_item` + `0017_arbitr_menu_attach_to_configs` (см. ловушку ниже).
+
+> ⚠ **Ловушка для новых пунктов sidebar**: `context_processors.sidebar_menu` рендерит **не все** `MenuItem`, а только привязанные к `DashboardConfig.menu_items` (M2M) у конфига сотрудника. Создания `MenuItem.objects.create(...)` **недостаточно** — нужно ещё пройтись по `DashboardConfig.objects.all()` и сделать `.menu_items.add(item)`. См. `0017_arbitr_menu_attach_to_configs` как образец.
+
+### Команды отладки
+
+```bash
+# открыть главную (быстрый чек что Chrome+Xvfb+stealth поднимаются)
+docker exec siricrm-arbitr-runner-1 python manage.py kad_probe open
+# поиск через UI (с прогревом)
+docker exec siricrm-arbitr-runner-1 python manage.py kad_probe search "А12-33291/2024"
+docker exec siricrm-arbitr-runner-1 python manage.py kad_probe search "Иванов Иван Иванович" --court А12
+# парсинг карточки
+docker exec siricrm-arbitr-runner-1 python manage.py kad_probe case https://kad.arbitr.ru/Card/<uuid>
+```
+
+### Env-vars
+
+- `ARBITR_CAPTCHA_NOTIFY_MAX_CHAT_ID` — куда слать алёрт о капче (один на всех).
+- `ARBITR_HEADLESS=true|false` — для локальной отладки парсера без Xvfb (по умолчанию `true` — но Chrome в нашем контейнере фактически headed через Xvfb, флаг управляет только `--headless=new` arg).
+
+### Известные ограничения
+
+- **Скачивание PDF в S3 ещё не реализовано** — `ArbitrAttachment.kad_url` есть, `stored_file=None`. UI показывает только ссылки на kad. Следующая итерация: качать через тот же Chrome-сессию (PDF за auth) → S3.
+- **Подтверждение найденного дела** — после `_search_one` нашёл совпадения, статус НЕ меняется на `monitoring` автоматически; нужен ручной шаг (есть `views.confirm_case`, но без выбора из списка). Список найденных `KadSearchHit` пока в `ArbitrCheckLog.notes` строкой.
 
 ## Инфраструктурные особенности
 
