@@ -1,21 +1,22 @@
 """Celery-таски мониторинга арбитражных дел.
 
 Все таски этого модуля идут в очередь `arbitr` (см. CELERY_TASK_ROUTES) —
-её обслуживает контейнер arbitr-runner с Playwright + Chromium.
+её обслуживает контейнер arbitr-runner с Selenium + Chrome + Xvfb.
 """
 from __future__ import annotations
 
 import logging
 import time
-from datetime import time as dtime
+from datetime import datetime, time as dtime
 
 from celery import shared_task
 from django.utils import timezone
 
-from .models import ArbitrCase, ArbitrCheckLog
+from .models import ArbitrAttachment, ArbitrCase, ArbitrCheckLog, ArbitrEvent
 from .notifications import send_captcha_alert
 from .parsers.kad import (
     KadCaptchaRequired,
+    KadCaseInfo,
     KadParserError,
     KadSession,
 )
@@ -41,6 +42,83 @@ def _log_check(
     ArbitrCheckLog.objects.create(
         case=case, state=state, duration_ms=duration_ms, notes=notes,
     )
+
+
+def _parse_kad_date(s: str):
+    """kad даёт даты как 'DD.MM.YYYY' — превращаем в date|None."""
+    if not s:
+        return None
+    try:
+        return datetime.strptime(s.strip(), "%d.%m.%Y").date()
+    except ValueError:
+        return None
+
+
+def _persist_case_info(case: ArbitrCase, info: KadCaseInfo) -> dict:
+    """Сохраняет ArbitrEvent/Attachment из result'а парсера.
+
+    Идемпотентно: UNIQUE по (case, kad_event_id) в модели + ignore_conflicts
+    на bulk_create. Возвращает {'new_events', 'new_attachments'}.
+    """
+    existing = set(case.events.values_list("kad_event_id", flat=True))
+    new_events_data: list[tuple[ArbitrEvent, list[dict]]] = []
+    for ev in info.events:
+        if not ev.kad_event_id:
+            continue  # без id не сможем держать идемпотентность
+        if ev.kad_event_id in existing:
+            continue
+        new_events_data.append((
+            ArbitrEvent(
+                case=case,
+                kad_event_id=ev.kad_event_id,
+                event_date=_parse_kad_date(ev.event_date),
+                kind=ev.kind[:128],
+                title=(ev.title or "")[:500],
+                description=ev.description or "",
+                raw={
+                    "instance_id": ev.instance_id,
+                    "kad_event_id": ev.kad_event_id,
+                },
+            ),
+            ev.attachments or [],
+        ))
+
+    if not new_events_data:
+        return {"new_events": 0, "new_attachments": 0}
+
+    # bulk_create + перечитать чтобы получить id
+    ArbitrEvent.objects.bulk_create(
+        [e for e, _ in new_events_data], ignore_conflicts=True,
+    )
+    # Перечитать только что созданные — по kad_event_id
+    created_ids = [e.kad_event_id for e, _ in new_events_data]
+    fresh = {
+        e.kad_event_id: e
+        for e in case.events.filter(kad_event_id__in=created_ids)
+    }
+
+    new_atts: list[ArbitrAttachment] = []
+    for ev_obj, atts in new_events_data:
+        db_event = fresh.get(ev_obj.kad_event_id)
+        if db_event is None:
+            continue
+        for att in atts:
+            kad_url = (att.get("kad_url") or "").strip()
+            if not kad_url:
+                continue
+            new_atts.append(ArbitrAttachment(
+                event=db_event,
+                name=(att.get("name") or "")[:500],
+                kad_url=kad_url,
+                is_locked=bool(att.get("is_locked")),
+            ))
+    if new_atts:
+        ArbitrAttachment.objects.bulk_create(new_atts)
+
+    return {
+        "new_events": len(new_events_data),
+        "new_attachments": len(new_atts),
+    }
 
 
 @shared_task(name="arbitr.kad_monitor_pending")
@@ -154,48 +232,7 @@ def kad_monitor_case():
     try:
         with KadSession() as kad:
             for case in cases:
-                if not case.kad_url:
-                    _log_check(case, ArbitrCheckLog.STATE_ERROR, notes="kad_url пуст")
-                    stats["error"] += 1
-                    continue
-                started = time.monotonic()
-                try:
-                    info = kad.parse_case(case.kad_url)
-                except KadCaptchaRequired as exc:
-                    _log_check(case, ArbitrCheckLog.STATE_CAPTCHA, notes=exc.page_url)
-                    send_captcha_alert(case, page_url=exc.page_url)
-                    stats["captcha"] += 1
-                    continue
-                except NotImplementedError:
-                    _log_check(
-                        case, ArbitrCheckLog.STATE_ERROR,
-                        notes="Парсер parse_case ещё не реализован",
-                    )
-                    stats["error"] += 1
-                    continue
-                except Exception as exc:  # noqa: BLE001
-                    logger.exception("kad: ошибка парсинга дела %s", case.id)
-                    _log_check(case, ArbitrCheckLog.STATE_ERROR, notes=str(exc)[:1000])
-                    stats["error"] += 1
-                    continue
-
-                duration_ms = int((time.monotonic() - started) * 1000)
-                # TODO: смёрджить info.events в ArbitrEvent (idempotent по kad_event_id).
-                _log_check(
-                    case, ArbitrCheckLog.STATE_OK, duration_ms=duration_ms,
-                    notes=f"events={len(info.events)}",
-                )
-                case.court_name = info.court_name or case.court_name
-                case.judge = info.judge or case.judge
-                if info.instances:
-                    case.instances = info.instances
-                case.last_check_at = timezone.now()
-                case.last_check_ok = True
-                case.save(update_fields=[
-                    "court_name", "judge", "instances",
-                    "last_check_at", "last_check_ok",
-                ])
-                stats["ok"] += 1
+                stats[_parse_one(kad, case)] += 1
     except KadCaptchaRequired as exc:
         logger.warning("kad_monitor_case: captcha — aborting batch")
         for case in cases:
@@ -204,3 +241,95 @@ def kad_monitor_case():
             stats["captcha"] += 1
 
     return {"monitoring_cases": total, **stats}
+
+
+def _parse_one(kad: KadSession, case: ArbitrCase) -> str:
+    """Парсит карточку одного дела. Возвращает ключ для статистики."""
+    if not case.kad_url:
+        _log_check(case, ArbitrCheckLog.STATE_ERROR, notes="kad_url пуст")
+        return "error"
+
+    started = time.monotonic()
+    try:
+        info = kad.parse_case(case.kad_url)
+    except KadCaptchaRequired as exc:
+        _log_check(case, ArbitrCheckLog.STATE_CAPTCHA, notes=exc.page_url)
+        send_captcha_alert(case, page_url=exc.page_url)
+        return "captcha"
+    except NotImplementedError:
+        _log_check(
+            case, ArbitrCheckLog.STATE_ERROR,
+            notes="Парсер parse_case ещё не реализован",
+        )
+        return "error"
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("kad: ошибка парсинга дела %s", case.id)
+        _log_check(case, ArbitrCheckLog.STATE_ERROR, notes=str(exc)[:1000])
+        case.last_error = str(exc)[:2000]
+        case.last_check_at = timezone.now()
+        case.last_check_ok = False
+        case.save(update_fields=["last_error", "last_check_at", "last_check_ok"])
+        return "error"
+
+    duration_ms = int((time.monotonic() - started) * 1000)
+    persisted = _persist_case_info(case, info)
+    _log_check(
+        case, ArbitrCheckLog.STATE_OK, duration_ms=duration_ms,
+        notes=(
+            f"events={len(info.events)} "
+            f"new={persisted['new_events']} "
+            f"docs+={persisted['new_attachments']}"
+        ),
+    )
+    case.court_name = info.court_name or case.court_name
+    case.judge = info.judge or case.judge
+    if info.instances:
+        case.instances = info.instances
+    case.last_check_at = timezone.now()
+    case.last_check_ok = True
+    case.save(update_fields=[
+        "court_name", "judge", "instances",
+        "last_check_at", "last_check_ok",
+    ])
+    return "ok"
+
+
+@shared_task(name="arbitr.kad_monitor_one_case")
+def kad_monitor_one_case(case_id: str):
+    """Ручной запуск парсинга ОДНОГО дела (минуя work-window).
+
+    Из UI: кнопка «Парсить сейчас» в карточке дела. Не зависит от
+    окна 18-08 — сотрудник видит результат сразу. В зависимости от
+    status — search_by_party (SEARCHING) или parse_case (MONITORING).
+    """
+    try:
+        case = ArbitrCase.objects.select_related(
+            "service__client", "started_by__user",
+        ).get(pk=case_id)
+    except ArbitrCase.DoesNotExist:
+        logger.warning("kad_monitor_one_case: case %s не найден", case_id)
+        return {"error": "case_not_found"}
+
+    logger.info(
+        "kad_monitor_one_case: case=%s status=%s (ручной запуск)",
+        case.id, case.status,
+    )
+
+    try:
+        with KadSession() as kad:
+            if case.status == ArbitrCase.STATUS_SEARCHING:
+                result = _search_one(kad, case)
+            elif case.status == ArbitrCase.STATUS_MONITORING:
+                result = _parse_one(kad, case)
+            else:
+                _log_check(
+                    case, ArbitrCheckLog.STATE_ERROR,
+                    notes=f"Ручной запуск недоступен для статуса {case.status}",
+                )
+                return {"error": "wrong_status", "status": case.status}
+    except KadCaptchaRequired as exc:
+        _log_check(case, ArbitrCheckLog.STATE_CAPTCHA, notes=exc.page_url)
+        send_captcha_alert(case, page_url=exc.page_url)
+        result = "captcha"
+
+    return {"case_id": str(case.id), "result": result}

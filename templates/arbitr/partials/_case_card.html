@@ -1,0 +1,87 @@
+{% load humanize %}
+{# Карточка одного дела в дашборде (id="case-<uuid>" — для HTMX swap). #}
+<div id="case-{{ case.id }}" class="card bg-base-100 shadow-sm border border-base-300">
+  <div class="card-body p-4 gap-3">
+    <div class="flex flex-wrap items-start justify-between gap-2">
+      <div class="min-w-0">
+        <div class="text-xs opacity-60">
+          {% if case.service.client_id %}
+            <a href="/clients/{{ case.service.client_id }}/" class="link link-hover">
+              {{ case.service.client.last_name }} {{ case.service.client.first_name }} {{ case.service.client.patronymic }}
+            </a>
+          {% else %}—{% endif %}
+        </div>
+        <div class="font-mono text-base font-semibold">
+          {% if case.case_number %}{{ case.case_number }}{% else %}<span class="opacity-50">(номер дела не назначен)</span>{% endif %}
+        </div>
+        {% if case.court_name or case.judge %}
+        <div class="text-xs opacity-70 mt-0.5">
+          {% if case.court_name %}{{ case.court_name }}{% endif %}
+          {% if case.court_name and case.judge %} · {% endif %}
+          {% if case.judge %}судья {{ case.judge }}{% endif %}
+        </div>
+        {% endif %}
+      </div>
+
+      <div class="flex items-center gap-2 shrink-0">
+        {# Бейдж последнего состояния #}
+        {% if case.last_log_state == 'ok' %}
+          <span class="badge badge-success badge-sm">✓ OK</span>
+        {% elif case.last_log_state == 'nothing' %}
+          <span class="badge badge-ghost badge-sm">— ничего</span>
+        {% elif case.last_log_state == 'captcha' %}
+          <span class="badge badge-warning badge-sm">⚠ капча</span>
+        {% elif case.last_log_state == 'error' %}
+          <span class="badge badge-error badge-sm">✗ ошибка</span>
+        {% else %}
+          <span class="badge badge-ghost badge-sm">— нет данных</span>
+        {% endif %}
+      </div>
+    </div>
+
+    {# Сетка показателей #}
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
+      <div>
+        <div class="text-xs opacity-50">Последняя проверка</div>
+        <div>{% if case.last_check_at %}{{ case.last_check_at|naturaltime }}{% else %}<span class="opacity-40">—</span>{% endif %}</div>
+      </div>
+      <div>
+        <div class="text-xs opacity-50">Следующая ≈</div>
+        <div>{% if case.next_check_at %}{{ case.next_check_at|naturaltime }}{% else %}<span class="opacity-40">—</span>{% endif %}</div>
+      </div>
+      <div>
+        <div class="text-xs opacity-50">Событий в БД</div>
+        <div>{{ case.events_count|default:0 }}</div>
+      </div>
+      <div>
+        <div class="text-xs opacity-50">Файлов</div>
+        <div>{{ case.attachments_downloaded|default:0 }} / {{ case.attachments_count|default:0 }}</div>
+      </div>
+    </div>
+
+    {% if case.last_error %}
+      <div class="alert alert-error text-xs py-2 px-3">
+        <span class="truncate">{{ case.last_error|truncatechars:200 }}</span>
+      </div>
+    {% endif %}
+
+    <div class="flex items-center justify-between gap-2 pt-1">
+      <div class="text-xs opacity-60">
+        Запустил мониторинг: {{ case.started_by|default:"—" }}
+      </div>
+      <div class="flex items-center gap-2">
+        <a href="{% url 'arbitr:case_detail' case.id %}" class="btn btn-ghost btn-sm">Подробно</a>
+        <button
+          class="btn btn-primary btn-sm"
+          hx-post="{% url 'arbitr:case_run' case.id %}"
+          hx-target="#case-{{ case.id }}"
+          hx-swap="outerHTML"
+          hx-indicator="#run-spin-{{ case.id }}"
+        >
+          <span class="loading loading-spinner loading-xs htmx-indicator" id="run-spin-{{ case.id }}"></span>
+          Парсить сейчас
+        </button>
+      </div>
+    </div>
+  </div>
+</div>

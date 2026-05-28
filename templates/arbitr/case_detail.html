@@ -1,0 +1,116 @@
+{% extends "arbitr/_layout.html" %}
+{% load humanize %}
+{% block title %}{{ case.case_number|default:"Дело" }} · Арбитраж{% endblock %}
+
+{% block content %}
+<div class="container mx-auto p-4 md:p-6 max-w-6xl space-y-6">
+
+  <div class="text-sm">
+    <a href="{% url 'arbitr:dashboard' %}" class="link link-hover">← Все дела</a>
+  </div>
+
+  {# ═══════════════ Карточка дела (HTMX-swap при ручном запуске) ═══════════════ #}
+  {% include "arbitr/partials/_case_card.html" with case=case %}
+
+  {# ═══════════════ Шапка дела на kad ═══════════════ #}
+  {% if case.kad_url %}
+  <section class="card bg-base-100 shadow-sm">
+    <div class="card-body p-4 gap-2">
+      <h2 class="card-title text-base">📂 Информация с kad.arbitr.ru</h2>
+      <div class="grid md:grid-cols-2 gap-2 text-sm">
+        <div>
+          <span class="opacity-60">Ссылка на kad:</span>
+          <a href="{{ case.kad_url }}" target="_blank" rel="noopener"
+             class="link link-primary break-all">{{ case.kad_url }}</a>
+        </div>
+        {% if case.court_name %}
+        <div><span class="opacity-60">Суд первой инстанции:</span> {{ case.court_name }}</div>
+        {% endif %}
+        {% if case.judge %}
+        <div><span class="opacity-60">Судья:</span> {{ case.judge }}</div>
+        {% endif %}
+      </div>
+
+      {# Инстанции — массив dict'ов из парсера (см. KadCaseInfo.instances). #}
+      {% if case.instances %}
+      <div class="mt-2">
+        <div class="text-xs opacity-60 mb-1">Инстанции ({{ case.instances|length }})</div>
+        <div class="overflow-x-auto">
+          <table class="table table-zebra table-xs">
+            <thead><tr>
+              <th>Тип</th><th>№</th><th>Суд</th><th>Судья</th>
+            </tr></thead>
+            <tbody>
+              {% for inst in case.instances %}
+              <tr>
+                <td>{{ inst.type }}</td>
+                <td class="font-mono">{{ inst.number }}</td>
+                <td>{{ inst.court }}</td>
+                <td>{{ inst.judge }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      {% endif %}
+    </div>
+  </section>
+  {% endif %}
+
+  {# ═══════════════ Хронология событий ═══════════════ #}
+  <section class="card bg-base-100 shadow-sm">
+    <div class="card-body p-4 gap-3">
+      <div class="flex items-center justify-between">
+        <h2 class="card-title text-base">🗂 Хронология дела</h2>
+        <div class="text-sm opacity-60">в базе: {{ case.events_count|default:0 }}</div>
+      </div>
+      {% if not events %}
+        <div class="text-sm opacity-50">Событий пока нет.</div>
+      {% else %}
+        <ul class="divide-y divide-base-200">
+          {% for ev in events %}
+          <li class="py-2 grid grid-cols-[8rem_1fr] gap-3 text-sm">
+            <div class="font-mono text-xs opacity-70">
+              {% if ev.event_date %}{{ ev.event_date|date:"d.m.Y" }}{% else %}—{% endif %}<br>
+              <span class="opacity-50">{{ ev.kind }}</span>
+            </div>
+            <div>
+              <div class="font-medium">{{ ev.title }}</div>
+              {% if ev.description %}
+                <div class="text-xs opacity-70 mt-0.5 whitespace-pre-line">{{ ev.description }}</div>
+              {% endif %}
+              {% with atts=ev.attachments.all %}
+                {% if atts %}
+                <div class="mt-1 flex flex-wrap gap-1">
+                  {% for a in atts %}
+                    <a href="{{ a.kad_url }}" target="_blank" rel="noopener"
+                       class="badge badge-outline badge-sm {% if a.is_locked %}badge-warning{% endif %}"
+                       title="{% if a.is_locked %}Закрытый документ (доступ по ЭЦП){% else %}{{ a.name }}{% endif %}">
+                      📎 {{ a.name|default:"документ"|truncatechars:60 }}
+                    </a>
+                  {% endfor %}
+                </div>
+                {% endif %}
+              {% endwith %}
+            </div>
+          </li>
+          {% endfor %}
+        </ul>
+        {% if events|length >= 200 %}
+          <div class="text-xs opacity-50">…показаны первые 200 событий.</div>
+        {% endif %}
+      {% endif %}
+    </div>
+  </section>
+
+  {# ═══════════════ Лог проверок (HTMX-партиал) ═══════════════ #}
+  <section class="card bg-base-100 shadow-sm">
+    <div class="card-body p-4 gap-3">
+      <h2 class="card-title text-base">📜 Лог проверок (последние 50)</h2>
+      {% include "arbitr/partials/_case_log.html" with case=case logs=logs poll_active=poll_active %}
+    </div>
+  </section>
+
+</div>
+{% endblock %}

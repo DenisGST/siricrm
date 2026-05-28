@@ -1,0 +1,39 @@
+{% load humanize %}
+{# Лог проверок (последние 50). HTMX поллит этот блок раз в 4с пока последняя  #}
+{# запись лога свежая (<60с) — значит парсер ещё работает. Если устарела —     #}
+{# атрибут hx-trigger вообще не рендерится → поллинг останавливается сам.       #}
+<div id="case-log"
+     {% if poll_active %}
+       hx-get="{% url 'arbitr:case_log' case.id %}"
+       hx-trigger="every 4s"
+       hx-target="#case-log"
+       hx-swap="outerHTML"
+     {% endif %}>
+  {% if not logs %}
+    <div class="text-sm opacity-50">Лог пустой — парсер ещё не запускался.</div>
+  {% else %}
+    <ul class="text-sm divide-y divide-base-200">
+      {% for log in logs %}
+      <li class="py-1.5 flex items-start gap-2">
+        <span class="font-mono text-xs opacity-60 w-32 shrink-0"
+              title="{{ log.ts|date:'Y-m-d H:i:s' }}">
+          {{ log.ts|naturaltime }}
+        </span>
+        {% if log.state == 'ok' %}
+          <span class="badge badge-success badge-sm shrink-0">OK</span>
+        {% elif log.state == 'nothing' %}
+          <span class="badge badge-ghost badge-sm shrink-0">—</span>
+        {% elif log.state == 'captcha' %}
+          <span class="badge badge-warning badge-sm shrink-0">CAPTCHA</span>
+        {% elif log.state == 'error' %}
+          <span class="badge badge-error badge-sm shrink-0">ERR</span>
+        {% endif %}
+        <span class="break-all">{{ log.notes }}</span>
+        {% if log.duration_ms %}
+          <span class="ml-auto text-xs opacity-50 shrink-0">{{ log.duration_ms }}мс</span>
+        {% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+</div>
