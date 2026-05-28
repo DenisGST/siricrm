@@ -26,6 +26,8 @@ DEFAULT_ENTITIES = [
     "Organization",  # юрлица перед Kreditors (organization → LegalEntity)
     "Kreditors",
     "PropetyAnketa",  # имущество в анкете (ссылается на ProjectBFL)
+    "Events",
+    "Сorrespondence",  # кириллическая «с» в начале — особенность Bubble
     "Money", "MessageWSP", "Files",
 ]
 

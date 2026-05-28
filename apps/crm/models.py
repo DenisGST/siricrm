@@ -514,6 +514,11 @@ class ClientEvent(models.Model):
         # --- Корреспонденция ---
         ("letter_outgoing",  "Направлено исходящее письмо"),
         ("letter_incoming",  "Получено входящее письмо"),
+        # --- Заметки / коммуникации ---
+        ("reminder",          "Напоминание"),
+        ("note_to_colleague", "Сообщение коллеге"),
+        ("call_outgoing",     "Исходящий звонок"),
+        ("call_result",       "Результат звонка"),
         # --- Услуги ---
         ("service_created",  "Услуга добавлена"),
         ("service_deleted",  "Услуга удалена"),
@@ -547,6 +552,9 @@ class ClientEvent(models.Model):
     ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    bubble_id = models.CharField(
+        "Bubble ID", max_length=64, blank=True, null=True, unique=True,
+    )
     client = models.ForeignKey(
         "Client",
         on_delete=models.CASCADE,
@@ -1514,4 +1522,84 @@ class KreditorStatusEvent(models.Model):
                 current_status=self.status,
                 current_status_date=self.date,
             )
+
+
+# ============================================================================
+# Корреспонденция (исходящие/входящие письма по услугам БФЛ)
+# ============================================================================
+
+class Correspondence(TimeStampedModel):
+    """Лог переписки по услуге: запросы в госорганы (Росреестр, ИФНС, МРЭО,
+    ПФР), информационные письма в банки/приставам, ходатайства, исковые,
+    договоры. С контролем ответа.
+
+    Импортируется из Bubble Correspondence; новые записи юристы создают
+    через UI (UI добавим отдельно — пока работа только через админку).
+    """
+    DIRECTION_CHOICES = [
+        ('outgoing', 'Исходящее'),
+        ('incoming', 'Входящее'),
+    ]
+    DELIVERY_CHOICES = [
+        ('', '—'),
+        ('post', 'Почта РФ'),
+        ('email', 'Электронная почта'),
+        ('site', 'Сайт организации'),
+        ('telegram', 'Телеграмма'),
+        ('courier', 'Нарочно / курьером'),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    bubble_id = models.CharField(
+        "Bubble ID", max_length=64, blank=True, null=True, unique=True,
+    )
+    service = models.ForeignKey(
+        Service, on_delete=models.CASCADE, related_name='correspondences',
+        verbose_name='Услуга',
+    )
+    counterparty = models.ForeignKey(
+        LegalEntity, on_delete=models.PROTECT,
+        null=True, blank=True, related_name='correspondences',
+        verbose_name='Контрагент',
+    )
+
+    direction = models.CharField(
+        'Направление', max_length=10, choices=DIRECTION_CHOICES, default='outgoing',
+    )
+    subject_type = models.CharField(
+        'Тип письма', max_length=255, blank=True,
+        help_text='Например, «Запрос в Росреестр», «Исковое заявление».',
+    )
+
+    outgoing_number = models.CharField('Исходящий номер', max_length=100, blank=True)
+    sent_at = models.DateField('Дата отправки', null=True, blank=True)
+    delivery_method = models.CharField(
+        'Способ отправки', max_length=20, choices=DELIVERY_CHOICES,
+        blank=True, default='',
+    )
+    file_link = models.TextField(
+        'Ссылка на файл письма', blank=True,
+        help_text='URL Google Drive (исторический) или S3.',
+    )
+
+    track_response = models.BooleanField('Отслеживать ответ', default=False)
+    control_date = models.DateField('Контрольная дата', null=True, blank=True)
+    response_received = models.BooleanField('Получен ответ', default=False)
+    response_date = models.DateField('Дата ответа', null=True, blank=True)
+    response_text = models.TextField('Текст ответа', blank=True)
+    response_number = models.CharField('Номер ответа', max_length=100, blank=True)
+
+    comments = models.TextField('Комментарии', blank=True)
+
+    class Meta:
+        verbose_name = 'Корреспонденция'
+        verbose_name_plural = 'Корреспонденция'
+        ordering = ['-sent_at', '-created_at']
+        indexes = [
+            models.Index(fields=['service', 'sent_at']),
+            models.Index(fields=['direction']),
+        ]
+
+    def __str__(self):
+        return f'{self.get_direction_display()}: {self.subject_type or self.outgoing_number or "—"} ({self.sent_at})'
 

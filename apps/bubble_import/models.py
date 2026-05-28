@@ -27,6 +27,10 @@ ENTITY_CHOICES = [
     ("Organization", "Юрлица (Organization → LegalEntity)"),
     ("Kreditors", "Кредиторы клиента (Kreditors → Kreditor)"),
     ("PropetyAnketa", "Имущество по анкете (PropetyAnketa → Answer.property_assets)"),
+    ("Events", "События по услуге (Events → ClientEvent)"),
+    # Внимание: первая буква — кириллическая «с» (U+0421/U+0441), это
+    # особенность Bubble-схемы. Имя сущности должно совпадать с meta.
+    ("Сorrespondence", "Корреспонденция (Сorrespondence → Correspondence)"),
 ]
 
 STATUS_CHOICES = [

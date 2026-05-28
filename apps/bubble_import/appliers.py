@@ -1309,6 +1309,221 @@ def apply_propety_anketa(rec: BubbleRecord) -> str:
     return rec.status
 
 
+# ─── Events → ClientEvent ──────────────────────────────────────
+
+# Bubble TypeEvent (UUID справочника) → наш event_type в ClientEvent.
+# WhatsApp-сообщение мапится на "skip" — оно уже импортировано через MessageWSP,
+# дублировать как ClientEvent нет смысла.
+_TYPEEVENT_MAP = {
+    "1629217337175x798901324255489200": "note",              # Комментарий
+    "1629217366806x915128348624869100": "reminder",          # Напоминание
+    "1629217413435x358560963490775360": "_skip_wa",          # Сообщение Клиенту WhatsApp
+    "1629217435916x301040791030067400": "note_to_colleague", # Сообщение Коллеге
+    "1652254324554x268463132310202020": "call_outgoing",     # Исходящий звонок
+    "1652258108789x169488642487577440": "call_result",       # Результат звонка
+}
+
+
+def apply_events(rec: BubbleRecord) -> str:
+    """Bubble Events → ClientEvent.
+
+    Сценарий:
+    - ProjectBFL → Service → Client (34% записей без ProjectBFL — skipped);
+    - TypeEvent → event_type (WhatsApp-сообщения skipped — дубль с MessageWSP);
+    - user (Bubble User) → Employee (через User.bubble_id);
+    - Text → description;
+    - Created Date → ClientEvent.created_at (через update() ибо auto_now_add).
+    """
+    from apps.crm.models import ClientEvent, Service
+    from apps.core.models import Employee
+
+    v = rec.value
+    bid = rec.bubble_id
+
+    project_bid = v("ProjectBFL")
+    if not project_bid:
+        rec.status = "skipped"
+        rec.error = "Событие без ProjectBFL — не привязано к услуге/клиенту"
+        rec.imported_at = None
+        rec.save(update_fields=["status", "error", "imported_at"])
+        return rec.status
+
+    service = Service.objects.filter(bubble_id=project_bid).first()
+    if service is None:
+        pf = BubbleRecord.objects.filter(
+            entity="ProjectBFL", bubble_id=project_bid, status="imported",
+        ).first()
+        if pf and pf.target_id:
+            service = Service.objects.filter(pk=pf.target_id).first()
+    if service is None:
+        rec.status = "error"
+        rec.error = "Услуга (ProjectBFL) не импортирована"
+        rec.imported_at = None
+        rec.save(update_fields=["status", "error", "imported_at"])
+        return rec.status
+
+    type_uuid = v("TypeEvent")
+    event_type = _TYPEEVENT_MAP.get(type_uuid, "note")
+    if event_type == "_skip_wa":
+        rec.status = "skipped"
+        rec.error = "Сообщение Клиенту WhatsApp (уже импортировано через MessageWSP)"
+        rec.imported_at = None
+        rec.save(update_fields=["status", "error", "imported_at"])
+        return rec.status
+
+    user_bid = v("user")
+    employee = None
+    if user_bid:
+        user = Employee.objects.filter(bubble_id=user_bid).select_related("user").first()
+        if user:
+            employee = user
+
+    description = strip_bbcode(v("Text"))
+    bubble_created = parse_bubble_dt(v("Created Date")) or timezone.now()
+
+    # Идемпотентность: повторный apply обновляет существующую запись по bubble_id.
+    obj = ClientEvent.objects.filter(bubble_id=bid).first()
+    if obj is None:
+        obj = ClientEvent.objects.create(
+            bubble_id=bid,
+            client=service.client,
+            event_type=event_type,
+            description=description,
+            employee=employee,
+        )
+        # auto_now_add не перезаписывается через save() — патчим через update()
+        ClientEvent.objects.filter(pk=obj.pk).update(created_at=bubble_created)
+    else:
+        obj.client = service.client
+        obj.event_type = event_type
+        obj.description = description
+        obj.employee = employee
+        obj.save(update_fields=["client", "event_type", "description", "employee"])
+        ClientEvent.objects.filter(pk=obj.pk).update(created_at=bubble_created)
+
+    rec.status = "imported"
+    rec.target_type = "ClientEvent"
+    rec.target_id = str(obj.id)
+    rec.error = ""
+    rec.imported_at = timezone.now()
+    rec.save(update_fields=["status", "target_type", "target_id", "error", "imported_at"])
+    return rec.status
+
+
+# ─── Correspondence → Correspondence ───────────────────────────
+
+# typeOut поле Bubble → наш delivery_method
+_DELIVERY_MAP = {
+    "1594321992343x852569493544664300": "telegram",  # Телеграмма
+    "1594322018052x693109484436059900": "post",      # Почта РФ
+    "1594325344446x759457260371181600": "site",      # С сайта организации
+    "1594325495522x992871103337332700": "email",     # На электронную почту
+    "1594327225617x244581667327442940": "courier",   # Нарочно
+}
+
+
+def apply_correspondence(rec: BubbleRecord) -> str:
+    """Bubble Сorrespondence → Correspondence.
+
+    Связи:
+    - ProjectBfl → Service (с fallback target_id);
+    - Kontragent → LegalEntity (по bubble_id);
+    - type (UUID TypeCorrespondence) → subject_type (название из ранее
+      кешированного справочника TypeCorrespondence в BubbleRecord) +
+      direction (inOutType);
+    - typeOut → delivery_method.
+    """
+    from apps.crm.models import Service, LegalEntity, Correspondence
+
+    v = rec.value
+    bid = rec.bubble_id
+
+    project_bid = v("ProjectBfl")  # lowercase 'fl' — особенность Bubble Correspondence
+    if not project_bid:
+        rec.status = "skipped"
+        rec.error = "Запись без ProjectBfl — не привязана к услуге"
+        rec.imported_at = None
+        rec.save(update_fields=["status", "error", "imported_at"])
+        return rec.status
+
+    service = Service.objects.filter(bubble_id=project_bid).first()
+    if service is None:
+        pf = BubbleRecord.objects.filter(
+            entity="ProjectBFL", bubble_id=project_bid, status="imported",
+        ).first()
+        if pf and pf.target_id:
+            service = Service.objects.filter(pk=pf.target_id).first()
+    if service is None:
+        rec.status = "error"
+        rec.error = "Услуга (ProjectBfl) не импортирована"
+        rec.imported_at = None
+        rec.save(update_fields=["status", "error", "imported_at"])
+        return rec.status
+
+    counterparty = None
+    kontragent_bid = v("Kontragent")
+    if kontragent_bid:
+        counterparty = LegalEntity.objects.filter(bubble_id=kontragent_bid).first()
+        if counterparty is None:
+            or_rec = BubbleRecord.objects.filter(
+                entity="Organization", bubble_id=kontragent_bid, status="imported",
+            ).first()
+            if or_rec and or_rec.target_id:
+                counterparty = LegalEntity.objects.filter(pk=or_rec.target_id).first()
+
+    # subject_type — название из справочника TypeCorrespondence ("Запрос
+    # в Росреестр", "Исковое заявление" и т.п.). Справочник кэшируется
+    # глобально (resolvers._load).
+    type_uuid = v("type")
+    subject_type = resolvers.lookup(
+        "TypeCorrespondence", type_uuid, "nameTypeCorrespondence",
+    ) if type_uuid else ""
+
+    # direction. В Bubble TypeCorrespondence есть поле inOutType (bool):
+    # false = исходящее, true = входящее. Все 25 типов в выгрузке имеют
+    # inOutType=false, но на всякий — проверим.
+    direction = "outgoing"
+    if type_uuid:
+        in_out = resolvers.lookup("TypeCorrespondence", type_uuid, "inOutType")
+        if str(in_out).lower() == "true":
+            direction = "incoming"
+
+    delivery_method = _DELIVERY_MAP.get(v("typeOut"), "")
+    sent_at = parse_bubble_date(v("DateOut"))
+    control_date = parse_bubble_date(v("dateKontrol"))
+    response_date = parse_bubble_date(v("dateresponce"))
+
+    defaults = {
+        "service": service,
+        "counterparty": counterparty,
+        "direction": direction,
+        "subject_type": subject_type[:255],
+        "outgoing_number": clean_str(v("numbIsx"))[:100],
+        "sent_at": sent_at,
+        "delivery_method": delivery_method,
+        "file_link": clean_str(v("gDiskLink"))[:5000],
+        "track_response": bool(v("trackResponse")),
+        "control_date": control_date,
+        "response_received": bool(v("responceOK")),
+        "response_date": response_date,
+        "response_text": strip_bbcode(v("textResponce")),
+        "response_number": clean_str(v("numbResponse"))[:100],
+        "comments": strip_bbcode(v("comments")),
+    }
+
+    corr, _ = Correspondence.objects.update_or_create(
+        bubble_id=bid, defaults=defaults,
+    )
+
+    rec.status = "imported"
+    rec.target_type = "Correspondence"
+    rec.target_id = str(corr.id)
+    rec.error = ""
+    rec.imported_at = timezone.now()
+    rec.save(update_fields=["status", "target_type", "target_id", "error", "imported_at"])
+    return rec.status
+
+
 # Реестр applier'ов по типу сущности.
 APPLIERS = {
     "Man": apply_man,
@@ -1320,6 +1535,8 @@ APPLIERS = {
     "Organization": apply_organization,
     "Kreditors": apply_kreditor,
     "PropetyAnketa": apply_propety_anketa,
+    "Events": apply_events,
+    "Сorrespondence": apply_correspondence,
 }
 
 

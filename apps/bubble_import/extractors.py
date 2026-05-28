@@ -335,6 +335,28 @@ DISPLAY_EXTRACTORS = {
         ]))[:300],
         "bubble_created": parse_bubble_dt(raw.get("Created Date")),
     },
+    "Events": lambda raw: {
+        "display_title": strip_bbcode(raw.get("Text"))[:300] or "(пусто)",
+        "display_subtitle": " · ".join(filter(None, [
+            "WhatsApp" if raw.get("TypeEvent") == "1629217413435x358560963490775360" else "",
+            "звонок" if raw.get("TypeEvent") in (
+                "1652254324554x268463132310202020",
+                "1652258108789x169488642487577440",
+            ) else "",
+        ]))[:300],
+        "bubble_created": parse_bubble_dt(raw.get("Created Date")),
+    },
+    "Сorrespondence": lambda raw: {
+        "display_title": (clean_str(raw.get("numbIsx")) or "(без номера)")[:300],
+        "display_subtitle": " · ".join(filter(None, [
+            parse_bubble_dt(raw.get("DateOut")).strftime("%d.%m.%Y")
+                if parse_bubble_dt(raw.get("DateOut")) else "",
+            "ответ получен" if raw.get("responceOK") else (
+                "ждём ответ" if raw.get("trackResponse") else ""
+            ),
+        ]))[:300],
+        "bubble_created": parse_bubble_dt(raw.get("Created Date")),
+    },
 }
 
 
