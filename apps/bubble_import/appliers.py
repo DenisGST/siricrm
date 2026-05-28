@@ -489,7 +489,17 @@ def apply_projectbfl(rec: BubbleRecord) -> str:
     v = rec.value
     bid = rec.bubble_id
 
-    client = Client.objects.filter(bubble_id=v("dolgnik")).first()
+    dolgnik_bid = v("dolgnik")
+    client = Client.objects.filter(bubble_id=dolgnik_bid).first()
+    if client is None and dolgnik_bid:
+        # Fallback: Man мог быть merge'нут с существующим клиентом — тогда
+        # Client.bubble_id остался от первого исторического Man'а, а
+        # BubbleRecord(Man).target_id указывает на нужный pk клиента.
+        man_rec = BubbleRecord.objects.filter(
+            entity="Man", bubble_id=dolgnik_bid, status="imported",
+        ).first()
+        if man_rec and man_rec.target_id:
+            client = Client.objects.filter(pk=man_rec.target_id).first()
     if client is None:
         rec.status = "error"
         rec.error = (
