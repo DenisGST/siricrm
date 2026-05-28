@@ -1129,6 +1129,186 @@ def apply_kreditor(rec: BubbleRecord) -> str:
     return rec.status
 
 
+# ─── PropetyAnketa → Answer (property_assets в анкете БФЛ) ──────────────
+
+# Паттерны «нет имущества» — клиент написал в анкете «нет / только прописка»
+# и т.п. Такие записи не превращаем в entry, а пропускаем со skipped.
+_NO_ASSET_PATTERNS = [
+    r"^нет$", r"^—$", r"^-$", r"^нет ничего$",
+    r"^123$", r"^321$", r"^ничего$",
+    r"только\s+прописка",
+    r"ничего\s+нет",
+    r"нет\s+ничего",
+]
+_NO_ASSET_RE = re.compile("|".join(_NO_ASSET_PATTERNS), re.IGNORECASE)
+
+# Классификация name → asset_type. Порядок проверки: realestate, vehicle, other.
+_REALESTATE_RE = re.compile(
+    r"квартир|дом\b|дома\b|дому|комнат|дач|гараж|земельн|земля|"
+    r"недвиж|недвижим|участ|дду|помещен|здан|нежил|жилое|жилого|"
+    r"долю?\s+в|часть\s+в|часть\s+дом|часть\s+квартир|долев",
+    re.IGNORECASE,
+)
+_VEHICLE_RE = re.compile(
+    r"авто|машин|ваз|лад[ау]|kia|hyundai|toyota|bmw|mercedes|renault|"
+    r"прицеп|мотоцикл|пежо|peugeot|datsun|датсун|нива|лодк|катер|"
+    r"яхт|тягач|трактор|скутер|мопед|kamaz|камаз|газ\s|уаз|"
+    r"sportage|forester|focus|priora|granta",
+    re.IGNORECASE,
+)
+
+
+def _classify_asset_type(name: str) -> str:
+    n = (name or "").strip().lower()
+    if _REALESTATE_RE.search(n):
+        return "Недвижимость"
+    if _VEHICLE_RE.search(n):
+        return "Транспорт"
+    return "Иное"
+
+
+def _yesno(v) -> str:
+    """Bubble bool → «Да» / «Нет»; пустое значение → «»."""
+    if v is True:
+        return "Да"
+    if v is False:
+        return "Нет"
+    return ""
+
+
+def apply_propety_anketa(rec: BubbleRecord) -> str:
+    """Bubble PropetyAnketa → запись в Answer(question_type='property_assets').
+
+    Каждая Bubble-запись → entry в JSON-массиве `value.entries`. Внутри
+    entry храним `_bubble_id` для идемпотентности (повторный apply
+    обновит существующий entry, а не задублирует).
+    """
+    from apps.crm.models import Service
+    from apps.questionnaire.models import (
+        QuestionnaireTemplate, QuestionnaireResponse, Question, Answer,
+    )
+
+    v = rec.value
+    bid = rec.bubble_id
+    name = clean_str(v("NameProperty"))
+
+    # Пропускаем «нет / только прописка» — это не имущество, а ответ
+    # клиента что имущества у него нет.
+    if not name or _NO_ASSET_RE.search(name):
+        rec.status = "skipped"
+        rec.error = f"NameProperty={name!r} — не имущество, а ответ «нет»"
+        rec.imported_at = None
+        rec.save(update_fields=["status", "error", "imported_at"])
+        return rec.status
+
+    project_bid = v("ProjectBFL")
+    if not project_bid:
+        rec.status = "skipped"
+        rec.error = "Запись без ProjectBFL — невозможно привязать к услуге"
+        rec.imported_at = None
+        rec.save(update_fields=["status", "error", "imported_at"])
+        return rec.status
+
+    service = Service.objects.filter(bubble_id=project_bid).first()
+    if service is None:
+        # Fallback: ProjectBFL мог импортироваться, но Service.bubble_id
+        # быть не равен (хотя для services такого не бывает — service.bubble_id
+        # всегда ставится в apply_projectbfl). На всякий — проверим target_id.
+        pf = BubbleRecord.objects.filter(
+            entity="ProjectBFL", bubble_id=project_bid, status="imported",
+        ).first()
+        if pf and pf.target_id:
+            service = Service.objects.filter(pk=pf.target_id).first()
+    if service is None:
+        rec.status = "error"
+        rec.error = "Услуга (ProjectBFL) не импортирована"
+        rec.imported_at = None
+        rec.save(update_fields=["status", "error", "imported_at"])
+        return rec.status
+
+    template = QuestionnaireTemplate.objects.filter(
+        service_name=service.name,
+    ).first()
+    if template is None:
+        rec.status = "error"
+        rec.error = (
+            f"Нет QuestionnaireTemplate для услуги {service.name} "
+            "(анкета не создана)"
+        )
+        rec.imported_at = None
+        rec.save(update_fields=["status", "error", "imported_at"])
+        return rec.status
+
+    q = Question.objects.filter(
+        page__template=template, question_type="property_assets",
+    ).first()
+    if q is None:
+        rec.status = "error"
+        rec.error = "В шаблоне анкеты нет вопроса property_assets"
+        rec.imported_at = None
+        rec.save(update_fields=["status", "error", "imported_at"])
+        return rec.status
+
+    response, _ = QuestionnaireResponse.objects.get_or_create(
+        service=service, template=template,
+        defaults={"is_complete": False, "current_page": 0, "filled_by": None},
+    )
+
+    # In_marriage — «Да» если приобретено в браке ИЛИ оформлено на супруга
+    in_marriage = "Да" if (v("FromBrak") or v("InSuprug")) else ""
+
+    summa = v("Summa")
+    if summa is not None and summa != "":
+        try:
+            summa_str = str(int(summa)) if float(summa) == int(float(summa)) else str(summa)
+        except (TypeError, ValueError):
+            summa_str = str(summa)
+    else:
+        summa_str = ""
+
+    entry = {
+        "_bubble_id":   bid,
+        "asset_type":   _classify_asset_type(name),
+        "name":         name[:500],
+        "acquisition":  clean_str(v("Base"))[:500],
+        "value":        summa_str,
+        "pledged":      "",  # в PropetyAnketa нет поля «в залоге»
+        "in_marriage":  in_marriage,
+        "auction":      _yesno(v("Realizacia")),
+        "comment":      strip_bbcode(v("comments"))[:1000],
+    }
+
+    answer, _ = Answer.objects.get_or_create(
+        response=response, question=q, group_index=0,
+        defaults={"value": {"has_assets": "yes", "entries": [entry]}},
+    )
+    value = answer.value or {"has_assets": "yes", "entries": []}
+    value["has_assets"] = "yes"
+    entries = value.get("entries", [])
+
+    # Идемпотентность: если entry с этим _bubble_id уже есть — обновляем
+    replaced = False
+    for i, e in enumerate(entries):
+        if e.get("_bubble_id") == bid:
+            entries[i] = entry
+            replaced = True
+            break
+    if not replaced:
+        entries.append(entry)
+
+    value["entries"] = entries
+    answer.value = value
+    answer.save(update_fields=["value"])
+
+    rec.status = "imported"
+    rec.target_type = "Answer"
+    rec.target_id = str(answer.id)
+    rec.error = ""
+    rec.imported_at = timezone.now()
+    rec.save(update_fields=["status", "target_type", "target_id", "error", "imported_at"])
+    return rec.status
+
+
 # Реестр applier'ов по типу сущности.
 APPLIERS = {
     "Man": apply_man,
@@ -1139,6 +1319,7 @@ APPLIERS = {
     "User": apply_user,
     "Organization": apply_organization,
     "Kreditors": apply_kreditor,
+    "PropetyAnketa": apply_propety_anketa,
 }
 
 

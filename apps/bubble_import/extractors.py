@@ -324,6 +324,17 @@ DISPLAY_EXTRACTORS = {
     "User": user_display,
     "Organization": organization_display,
     "Kreditors": kreditor_display,
+    "PropetyAnketa": lambda raw: {
+        "display_title": (clean_str(raw.get("NameProperty")) or "(пусто)")[:300],
+        "display_subtitle": " · ".join(filter(None, [
+            f"{raw.get('Summa')} ₽" if raw.get("Summa") else "",
+            clean_str(raw.get("Base")),
+            "в браке" if raw.get("FromBrak") else "",
+            "оформлено на супруга" if raw.get("InSuprug") else "",
+            "→ реализация" if raw.get("Realizacia") else "",
+        ]))[:300],
+        "bubble_created": parse_bubble_dt(raw.get("Created Date")),
+    },
 }
 
 

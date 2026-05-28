@@ -25,6 +25,7 @@ DEFAULT_ENTITIES = [
     "User", "Man", "ProjectBFL",
     "Organization",  # юрлица перед Kreditors (organization → LegalEntity)
     "Kreditors",
+    "PropetyAnketa",  # имущество в анкете (ссылается на ProjectBFL)
     "Money", "MessageWSP", "Files",
 ]
 

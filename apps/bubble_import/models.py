@@ -26,6 +26,7 @@ ENTITY_CHOICES = [
     ("Files", "Файлы (Files)"),
     ("Organization", "Юрлица (Organization → LegalEntity)"),
     ("Kreditors", "Кредиторы клиента (Kreditors → Kreditor)"),
+    ("PropetyAnketa", "Имущество по анкете (PropetyAnketa → Answer.property_assets)"),
 ]
 
 STATUS_CHOICES = [
