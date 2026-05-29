@@ -1,6 +1,7 @@
 {% load icons file_tags %}
-{# HTMX-партиал для tree-кликов: oob-swap'ает левую панель и правую (#files-main).
-   Первичный рендер manager.html использует contents_inner.html напрямую. #}
+{% comment %}HTMX-партиал для tree-кликов: oob-swap'ает левую панель и
+   правую (#files-main). Первичный рендер manager.html использует
+   contents_inner.html напрямую.{% endcomment %}
 
 <!-- Левая панель: дерево папок (OOB) -->
 <div id="files-tree-panel" hx-swap-oob="true">
