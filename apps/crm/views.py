@@ -15,8 +15,9 @@ from .models import (
     Client, Message, Address, LegalEntity, ClientEmployee,
     Service, ServiceName, PaymentProcedure, ServiceCommonStatus,
     ServiceEmployeeStatus, ServiceTag, ServiceEmployeeState,
-    ServiceTagAssignment, ServiceLog, ClientEvent,
+    ServiceTagAssignment, ServiceLog, ClientLogEntry,
 )
+from . import client_log
 from .forms import ClientForm, LegalEntityForm, ServiceForm
 from apps.core.models import Employee, EmployeeLog, Department
 from apps.core.permissions import is_management, is_references_access
@@ -1617,19 +1618,18 @@ def service_edit(request, pk=None):
                 # Лог клиента
                 if svc_new.client_id:
                     svc_label = svc_new.numb_dogovor or svc_new.name.short_name
-                    ClientEvent.objects.create(
-                        client_id=svc_new.client_id,
-                        event_type="service_created",
-                        description=f"Добавлена услуга: {svc_label}",
+                    # action 'service_create' автоматически породит event 'service_created'.
+                    client_log.record_action(
+                        svc_new.client, "service_create",
+                        comment=f"Добавлена услуга: {svc_label}",
                         new_value=svc_new.name.short_name,
                         employee=emp,
                     )
                     if assigned:
                         names = ", ".join(a.user.get_full_name() or a.user.username for a in assigned)
-                        ClientEvent.objects.create(
-                            client_id=svc_new.client_id,
-                            event_type="employee_assigned",
-                            description=f"Услуга {svc_label}: назначены исполнители — {names}",
+                        client_log.record_event(
+                            svc_new.client, "employee_assigned",
+                            comment=f"Услуга {svc_label}: назначены исполнители — {names}",
                             employee=emp,
                         )
 
@@ -1674,13 +1674,15 @@ def service_delete(request, pk):
     svc_name   = svc.name.short_name
     svc.delete()
     if client_id:
-        ClientEvent.objects.create(
-            client_id=client_id,
-            event_type="service_deleted",
-            description=f"Удалена услуга: {svc_label}",
-            old_value=svc_name,
-            employee=emp,
-        )
+        client_for_log = Client.objects.filter(pk=client_id).first()
+        if client_for_log is not None:
+            # action 'service_delete' автоматически породит event 'service_deleted'.
+            client_log.record_action(
+                client_for_log, "service_delete",
+                comment=f"Удалена услуга: {svc_label}",
+                old_value=svc_name,
+                employee=emp,
+            )
     return HttpResponse("", headers={"HX-Trigger": '{"serviceChanged": "", "kanbanRefresh": ""}'})
 
 
@@ -1788,12 +1790,10 @@ def service_move(request, pk):
     )
 
     if service.client_id:
-        svc_label  = service.numb_dogovor or service.name.short_name
-        actor_name = actor.user.get_full_name() if actor else "система"
-        ClientEvent.objects.create(
-            client_id=service.client_id,
-            event_type="status_change",
-            description=(
+        svc_label = service.numb_dogovor or service.name.short_name
+        client_log.record_event(
+            service.client, "status_change",
+            comment=(
                 f"Услуга {svc_label}: статус изменён "
                 f"«{old_status.name}» → «{new_status.name}»"
             ),
@@ -1948,10 +1948,9 @@ def service_my_move(request, pk):
 
     if service.client_id:
         svc_label = service.numb_dogovor or service.name.short_name
-        ClientEvent.objects.create(
-            client_id=service.client_id,
-            event_type="status_change",
-            description=(
+        client_log.record_event(
+            service.client, "status_change",
+            comment=(
                 f"Услуга {svc_label}: мой статус изменён "
                 f"«{old_status.name if old_status else '—'}» → «{new_status.name}»"
             ),
@@ -1965,8 +1964,8 @@ def service_my_move(request, pk):
 @login_required
 def client_events_modal(request, client_id):
     client = get_object_or_404(Client.objects.prefetch_related("employees__user"), pk=client_id)
-    events = ClientEvent.objects.filter(client=client).select_related(
-        "employee__user"
+    events = ClientLogEntry.objects.filter(client=client).select_related(
+        "employee__user", "event_type", "action_type"
     ).order_by("-created_at")
     return render(request, "crm/partials/client_events_modal.html", {
         "client": client,
@@ -2024,12 +2023,11 @@ def client_identify_modal(request, client_id):
                 f"{last_name} {first_name} {patronymic}".strip()
                 + (f", тел. {phone}" if phone else "")
             )
-            ClientEvent.objects.create(
-                client=client,
-                event_type="client_identified",
-                description=f"Идентифицирован. Было: «{old_repr}» → стало: «{new_repr}».",
-                old_value=old_repr[:255],
-                new_value=new_repr[:255],
+            client_log.record_action(
+                client, "client_identified",
+                comment=f"Идентифицирован. Было: «{old_repr}» → стало: «{new_repr}».",
+                old_value=old_repr,
+                new_value=new_repr,
                 employee=actor,
             )
 
@@ -2091,7 +2089,6 @@ def client_assign_employee(request, client_id):
 
     # Лог события только если назначение реально изменилось
     if created or (prev_employee and prev_employee != new_employee):
-        from apps.crm.models import ClientEvent
         try:
             actor = Employee.objects.get(user=request.user)
         except Employee.DoesNotExist:
@@ -2105,11 +2102,8 @@ def client_assign_employee(request, client_id):
         else:
             desc = f"Назначен ответственный: {new_employee.user.get_full_name()}"
 
-        ClientEvent.objects.create(
-            client=client,
-            event_type="employee_assigned",
-            description=desc,
-            employee=actor,
+        client_log.record_event(
+            client, "employee_assigned", comment=desc, employee=actor,
         )
 
     # Возвращаем обновлённый бэйдж
@@ -2142,11 +2136,9 @@ def client_move(request, client_id):
     except Employee.DoesNotExist:
         actor = None
 
-    from apps.crm.models import ClientEvent
-    ClientEvent.objects.create(
-        client=client,
-        event_type="status_change",
-        description=(
+    client_log.record_event(
+        client, "status_change",
+        comment=(
             f"Статус изменён: {STATUS_LABELS.get(old_status, old_status)} "
             f"→ {STATUS_LABELS.get(new_status, new_status)}"
         ),
@@ -2224,13 +2216,12 @@ def service_employee_toggle(request, pk):
         svc_label = service.numb_dogovor or service.name.short_name
         if action == "assigned":
             desc = f"Услуга {svc_label}: назначен исполнитель — {emp_name}"
+            event_code = "employee_assigned"
         else:
             desc = f"Услуга {svc_label}: снят исполнитель — {emp_name}"
-        ClientEvent.objects.create(
-            client_id=service.client_id,
-            event_type="employee_assigned",
-            description=desc,
-            employee=actor,
+            event_code = "employee_removed"
+        client_log.record_event(
+            service.client, event_code, comment=desc, employee=actor,
         )
 
     assigned_ids = list(

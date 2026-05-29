@@ -13,8 +13,9 @@ import logging
 from django.db import transaction
 
 from apps.core.models import Employee
+from . import client_log
 from .models import (
-    Client, ClientEmployee, ClientEvent, Service, ServiceName,
+    Client, ClientEmployee, Service, ServiceName,
     ServiceCommonStatus, ServiceEmployeeStatus, ServiceEmployeeState,
 )
 
@@ -92,11 +93,11 @@ def route_new_lead(
     recipients = lead_recipients()
     if not recipients:
         logger.error("route_new_lead: нет получателей (ни галок, ни Власова)")
-        ClientEvent.objects.create(
-            client=client, event_type="lead_received", employee=actor,
-            description=(event_description
-                         or f"Новый лид ({source_label}). "
-                         "Получателей не найдено — назначьте вручную."),
+        client_log.record_event(
+            client, "lead_received", employee=actor,
+            comment=(event_description
+                     or f"Новый лид ({source_label}). "
+                     "Получателей не найдено — назначьте вручную."),
         )
         return []
 
@@ -118,8 +119,7 @@ def route_new_lead(
 
     names = ", ".join(e.user.get_full_name() or e.user.username for e in recipients)
     desc = event_description or f"Новый лид ({source_label}). Распределён: {names}"
-    ClientEvent.objects.create(
-        client=client, event_type="lead_received", employee=actor,
-        description=desc,
+    client_log.record_event(
+        client, "lead_received", employee=actor, comment=desc,
     )
     return recipients

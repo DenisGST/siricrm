@@ -1,11 +1,18 @@
 """
-Утилиты для записи событий в лог клиента (ClientEvent).
+Утилиты для записи событий мессенджера в лог клиента.
 
-Правила для сообщений из мессенджера:
+Используется ClientLogEntry (новая модель, см. client_log.py). Старая
+ClientEvent дропнута в миграции 0072.
+
+Правила:
 - Текст:       одна запись «Начат диалог» в сутки на клиента + канал.
-- Файл/медиа:  отдельное событие «Получен файл» / «Отправлен файл» при каждом сообщении.
+- Файл/медиа:  отдельное событие «Получен файл» / «Отправлен файл»
+               (event) или действие «Отправка файла» (action) при каждом
+               сообщении.
 """
 from django.utils import timezone
+
+from apps.crm import client_log
 
 
 TEXT_TYPES = {"text"}
@@ -19,7 +26,7 @@ def log_messenger_message(client, message_obj, employee=None):
     :param message_obj: экземпляр Message
     :param employee:    экземпляр Employee (или None для входящих)
     """
-    from apps.crm.models import ClientEvent
+    from apps.crm.models import ClientLogEntry, EventType
 
     direction = message_obj.direction   # "incoming" | "outgoing"
     channel   = message_obj.channel or "messenger"
@@ -30,10 +37,11 @@ def log_messenger_message(client, message_obj, employee=None):
     if is_text:
         # Одна запись «Начат диалог» в сутки на клиента + канал
         today = timezone.localdate()
-        already = ClientEvent.objects.filter(
+        already = ClientLogEntry.objects.filter(
             client=client,
-            event_type="dialog_started",
-            description__startswith=label,
+            kind="event",
+            event_type__code="dialog_started",
+            comment__startswith=label,
             created_at__date=today,
         ).exists()
         if already:
@@ -45,39 +53,34 @@ def log_messenger_message(client, message_obj, employee=None):
             if direction == "outgoing"
             else f"{label}: получено — «{preview}»"
         )
-        ClientEvent.objects.create(
-            client=client,
-            event_type="dialog_started",
-            description=desc,
+        client_log.record_event(
+            client, "dialog_started",
+            comment=desc,
             employee=employee if direction == "outgoing" else None,
         )
 
     else:
-        # Файл / медиа — отдельный тип события, каждый раз
+        # Файл / медиа — отдельно. Входящий = event, исходящий = action.
         filename = getattr(message_obj, "file_name", "") or msg_type
         if direction == "outgoing":
-            event_type = "file_sent"
-            desc = f"{label}: отправлен файл — {filename}"
+            client_log.record_action(
+                client, "file_sent",
+                comment=f"{label}: отправлен файл — {filename}",
+                employee=employee,
+            )
         else:
-            event_type = "file_received"
-            desc = f"{label}: получен файл — {filename}"
-
-        ClientEvent.objects.create(
-            client=client,
-            event_type=event_type,
-            description=desc,
-            employee=employee if direction == "outgoing" else None,
-        )
+            client_log.record_event(
+                client, "file_received",
+                comment=f"{label}: получен файл — {filename}",
+                employee=None,
+            )
 
 
 def log_dialog_ended(client, employee=None, channel="мессенджер"):
     """Запись события «Окончен диалог»."""
-    from apps.crm.models import ClientEvent
-
-    ClientEvent.objects.create(
-        client=client,
-        event_type="dialog_ended",
-        description=f"{_channel_label(channel)}: диалог закрыт",
+    client_log.record_event(
+        client, "dialog_ended",
+        comment=f"{_channel_label(channel)}: диалог закрыт",
         employee=employee,
     )
 

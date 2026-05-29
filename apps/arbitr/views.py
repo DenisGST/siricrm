@@ -10,7 +10,8 @@ from django.views.decorators.http import require_POST
 
 from apps.core.models import Employee
 from apps.core.permissions import is_admin
-from apps.crm.models import Service, ClientEvent
+from apps.crm.models import Service
+from apps.crm import client_log
 
 from .models import ArbitrCase, ArbitrCheckLog
 from .tasks import kad_monitor_one_case
@@ -51,10 +52,10 @@ def mark_iskotpravlen(request, service_id):
         service=service, started_by=emp,
         status=ArbitrCase.STATUS_SEARCHING,
     )
-    ClientEvent.objects.create(
-        client=service.client, event_type="iskotpravlen",
+    client_log.record_action(
+        service.client, "claim_filed",
         employee=emp,
-        description=(
+        comment=(
             f"Иск отправлен в суд. Запущен мониторинг дела на kad.arbitr.ru "
             f"(услуга {service.name.short_name if service.name else '—'})"
         ),
@@ -83,10 +84,10 @@ def confirm_case(request, case_id):
     case.kad_url = kad_url
     case.status = ArbitrCase.STATUS_MONITORING
     case.save(update_fields=["case_number", "kad_url", "status", "updated_at"])
-    ClientEvent.objects.create(
-        client=case.service.client, event_type="iskotpravlen",
+    client_log.record_action(
+        case.service.client, "claim_filed",
         employee=Employee.objects.filter(user=request.user).first(),
-        description=f"Подтверждено арбитражное дело №{case_number} — {kad_url}",
+        comment=f"Подтверждено арбитражное дело №{case_number} — {kad_url}",
     )
     return render(request, "arbitr/_case_block.html", {
         "case": case, "service": case.service,
@@ -291,11 +292,10 @@ def case_confirm_hit(request, case_id, hit_index):
     ])
 
     emp = Employee.objects.filter(user=request.user).first()
-    ClientEvent.objects.create(
-        client=case.service.client,
-        event_type="iskotpravlen",
+    client_log.record_action(
+        case.service.client, "claim_filed",
         employee=emp,
-        description=(
+        comment=(
             f"Подтверждено арбитражное дело №{case_number} (из найденных "
             f"парсером). Перевод в мониторинг карточки."
         ),

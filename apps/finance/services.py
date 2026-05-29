@@ -3,18 +3,20 @@ import datetime
 
 from django.db.models import Sum
 
-from apps.crm.models import ClientEvent
+from apps.crm import client_log
+from apps.crm.models import Client
 
 
 def _log_charge_overdue(charge):
-    """Создаёт ClientEvent типа charge_overdue. Employee=None (системное)."""
+    """Запись события charge_overdue (system). Employee=None."""
     if not charge.client_id:
         return
-    ClientEvent.objects.create(
-        client_id=charge.client_id,
-        event_type="charge_overdue",
-        employee=None,
-        description=(
+    client = Client.objects.filter(pk=charge.client_id).first()
+    if client is None:
+        return
+    client_log.record_event(
+        client, "charge_overdue", employee=None,
+        comment=(
             f"Просрочено начисление «{charge.title}» от "
             f"{charge.due_date.strftime('%d.%m.%Y')} на {charge.amount} руб."
         ),

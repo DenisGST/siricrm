@@ -45,21 +45,18 @@
             <td class="text-center text-base-content/50 text-xs">{{ forloop.counter }}</td>
             <td class="text-xs whitespace-nowrap">{{ ev.created_at|date:"d.m.Y H:i" }}</td>
             <td>
-              <span class="badge badge-xs
-                {% if ev.event_type == 'status_change' %}badge-warning
-                {% elif ev.event_type == 'contract_created' %}badge-success
-                {% elif ev.event_type == 'contract_terminated' %}badge-error
-                {% elif ev.event_type == 'first_contact' %}badge-primary
-                {% elif ev.event_type == 'claim_filed' or ev.event_type == 'hearing_scheduled' %}badge-info
-                {% elif ev.event_type == 'procedure_started' or ev.event_type == 'procedure_ended' %}badge-accent
-                {% elif ev.event_type == 'file_received' or ev.event_type == 'file_sent' %}badge-neutral
-                {% else %}badge-ghost
-                {% endif %}">
-                {{ ev.get_event_type_display }}
-              </span>
+              {% if ev.kind == 'event' %}
+                <span class="badge badge-xs badge-ghost" title="Событие ({{ ev.event_type.get_source_display }})">
+                  {{ ev.event_type.name|default:"—" }}
+                </span>
+              {% else %}
+                <span class="badge badge-xs badge-primary" title="Действие сотрудника">
+                  {{ ev.action_type.name|default:"—" }}
+                </span>
+              {% endif %}
             </td>
             <td>
-              <span class="text-sm">{{ ev.description|default:"—" }}</span>
+              <span class="text-sm">{{ ev.comment|default:"—" }}</span>
               {% if ev.old_value or ev.new_value %}
                 <span class="text-xs text-base-content/50 ml-1">
                   {% if ev.old_value %}<span class="line-through">{{ ev.old_value }}</span> → {% endif %}

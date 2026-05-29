@@ -482,110 +482,182 @@ class LegalEntity(TimeStampedModel):
         ordering = ["name"]
 
 
-class ClientEvent(models.Model):
-    """Лог событий по клиенту.
 
-    Все значимые действия фиксируются здесь. Набор event_type расширяется
-    по мере доработки CRM — добавляем новые choices, не меняя схему.
+# ─── Унифицированный лог клиента (новая архитектура) ───────────────────────
+# EventType / ActionType — редактируемые справочники.
+# ClientLogEntry — единая запись (kind=event|action) с FK на нужный справочник.
+# См. CLAUDE.md секцию «Лог клиента».
+
+class EventType(TimeStampedModel):
+    """Справочник типов событий. Событие = что произошло.
+
+    Источник (source) — кто сгенерировал событие: система, суд, клиент,
+    юр.лицо или сотрудник. На сотрудника-актора пишем в ClientLogEntry.employee.
     """
-    EVENT_CHOICES = [
-        # --- Общие ---
-        ("first_contact",    "Первое обращение"),
-        ("status_change",    "Смена статуса"),
-        ("client_identified","Клиент идентифицирован"),
-        ("note",             "Заметка"),
-        # --- Договор ---
-        ("contract_created", "Заключение договора"),
-        ("contract_terminated", "Расторжение договора"),
-        # --- Сотрудники ---
-        ("employee_assigned",  "Назначен сотрудник"),
-        ("employee_removed",   "Сотрудник снят"),
-        # --- Производство ---
-        ("dept_assigned",    "Передан в работу отдела"),
-        ("claim_filed",      "Подан иск в суд"),
-        ("hearing_scheduled","Назначено судебное заседание"),
-        ("procedure_started","Введена процедура"),
-        ("procedure_ended",  "Окончена процедура"),
-        # --- Мессенджер ---
-        ("dialog_started",   "Начат диалог"),
-        ("dialog_ended",     "Окончен диалог"),
-        ("file_received",    "Получен файл"),
-        ("file_sent",        "Отправлен файл"),
-        # --- Корреспонденция ---
-        ("letter_outgoing",  "Направлено исходящее письмо"),
-        ("letter_incoming",  "Получено входящее письмо"),
-        # --- Заметки / коммуникации ---
-        ("reminder",          "Напоминание"),
-        ("note_to_colleague", "Сообщение коллеге"),
-        ("call_outgoing",     "Исходящий звонок"),
-        ("call_result",       "Результат звонка"),
-        # --- Услуги ---
-        ("service_created",  "Услуга добавлена"),
-        ("service_deleted",  "Услуга удалена"),
-        # --- Консультации ---
-        ("consultation_booked",      "Записан на консультацию"),
-        ("consultation_result",      "Результат консультации"),
-        ("consultation_transferred", "Консультация перенесена"),
-        ("consultation_edited",      "Консультация изменена"),
-        # --- Анкеты ---
-        ("questionnaire_created", "Анкета создана"),
-        ("questionnaire_edited",  "Анкета отредактирована"),
-        ("questionnaire_deleted", "Анкета удалена"),
-        # --- Финансы ---
-        ("schedule_created",   "Составлен график платежей"),
-        ("schedule_updated",   "Изменён график платежей"),
-        ("payment_in_created", "Внесён входящий платёж"),
-        ("payment_in_edited",  "Входящий платёж отредактирован"),
-        ("payment_in_deleted", "Входящий платёж удалён"),
-        ("payment_out_created","Внесён исходящий платёж"),
-        ("payment_out_edited", "Исходящий платёж отредактирован"),
-        ("payment_out_deleted","Исходящий платёж удалён"),
-        ("charge_overdue",     "Начисление просрочено"),
-        # --- Импорт ---
-        ("bubble_imported",  "Импортирован из Bubble"),
-        ("bubble_enriched",  "Данные дополнены из Bubble"),
-        ("lead_received",    "Получен лид с лендинга"),
-        ("iskotpravlen",     "Иск отправлен в суд"),
-        ("arbitr_event",     "Событие арбитражного дела"),
-        # --- Система ---
-        ("system",           "Системное событие"),
+    SOURCE_CHOICES = [
+        ("system",       "Система"),
+        ("court",        "Суд"),
+        ("client",       "Клиент"),
+        ("legal_entity", "Юр. лицо"),
+        ("employee",     "Сотрудник"),
+    ]
+    code = models.CharField("Код", max_length=40, unique=True)
+    name = models.CharField("Название", max_length=120)
+    source = models.CharField(
+        "Источник", max_length=20, choices=SOURCE_CHOICES, default="system",
+    )
+    description = models.TextField("Описание", blank=True)
+    is_system = models.BooleanField(
+        "Системный", default=False,
+        help_text="Системные типы нельзя удалять из UI.",
+    )
+    is_active = models.BooleanField("Активен", default=True)
+    order = models.PositiveIntegerField("Порядок", default=0)
+
+    class Meta:
+        verbose_name = "Тип события"
+        verbose_name_plural = "Типы событий"
+        ordering = ["order", "name"]
+
+    def __str__(self):
+        return self.name
+
+
+class ActionType(TimeStampedModel):
+    """Справочник типов действий. Действие = что сотрудник сделал.
+
+    spawns_event — если задан, при записи действия автоматически создаётся
+    событие указанного типа с parent=созданное действие. Так моделируем
+    «действие порождает событие» (например ActionType `service_create`
+    порождает EventType `service_created`).
+    """
+    code = models.CharField("Код", max_length=40, unique=True)
+    name = models.CharField("Название", max_length=120)
+    description = models.TextField("Описание", blank=True)
+    spawns_event = models.ForeignKey(
+        EventType,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name="spawned_by_actions",
+        verbose_name="Порождает событие",
+        help_text="При записи действия автоматически создаётся событие этого типа.",
+    )
+    is_system = models.BooleanField(
+        "Системный", default=False,
+        help_text="Системные типы нельзя удалять из UI.",
+    )
+    is_active = models.BooleanField("Активен", default=True)
+    order = models.PositiveIntegerField("Порядок", default=0)
+
+    class Meta:
+        verbose_name = "Тип действия"
+        verbose_name_plural = "Типы действий"
+        ordering = ["order", "name"]
+
+    def __str__(self):
+        return self.name
+
+
+# Стандартный порядок действий по событию: M2M «событие → действия».
+# Определяется после ActionType, поэтому через add_to_class.
+EventType.add_to_class(
+    "standard_actions",
+    models.ManyToManyField(
+        ActionType,
+        blank=True,
+        related_name="standard_for_events",
+        verbose_name="Стандартные действия",
+        help_text=(
+            "Действия, которые сотрудник должен выполнить при наступлении "
+            "этого события. Используются как подсказки в UI."
+        ),
+    ),
+)
+
+
+class ClientLogEntry(models.Model):
+    """Единый лог клиента: события и действия в одной таблице.
+
+    Замена устаревшей `ClientEvent` (миграция 0071). Subject события/действия —
+    Client, либо «наша компания» (subject_kind='company'), либо Employee
+    (subject_kind='employee'). В этой итерации заполняется только Client.
+
+    parent — связь между записями: action, порождённое стандартной процедурой
+    по event'у, указывает на event как parent. Spawned-event от action указывает
+    на action как parent (см. helper apps/crm/client_log.py).
+    """
+    KIND_CHOICES = [("event", "Событие"), ("action", "Действие")]
+    SUBJECT_KIND_CHOICES = [
+        ("client",   "Клиент"),
+        ("company",  "Наша компания"),
+        ("employee", "Сотрудник"),
     ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     bubble_id = models.CharField(
         "Bubble ID", max_length=64, blank=True, null=True, unique=True,
     )
+
+    subject_kind = models.CharField(
+        "Subject", max_length=10, choices=SUBJECT_KIND_CHOICES, default="client",
+    )
     client = models.ForeignKey(
-        "Client",
-        on_delete=models.CASCADE,
-        related_name="events",
-        verbose_name="Клиент",
+        "Client", on_delete=models.CASCADE, null=True, blank=True,
+        related_name="log_entries", verbose_name="Клиент",
     )
-    event_type = models.CharField(
-        "Тип события", max_length=30, choices=EVENT_CHOICES, default="note",
+    subject_employee = models.ForeignKey(
+        Employee, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="log_as_subject", verbose_name="Сотрудник (subject)",
     )
-    description = models.TextField("Описание", blank=True)
+
+    kind = models.CharField("Тип записи", max_length=10, choices=KIND_CHOICES)
+    event_type = models.ForeignKey(
+        EventType, on_delete=models.PROTECT, null=True, blank=True,
+        related_name="entries", verbose_name="Тип события",
+    )
+    action_type = models.ForeignKey(
+        ActionType, on_delete=models.PROTECT, null=True, blank=True,
+        related_name="entries", verbose_name="Тип действия",
+    )
+
+    comment = models.TextField("Комментарий", blank=True)
     old_value = models.CharField("Старое значение", max_length=255, blank=True)
     new_value = models.CharField("Новое значение", max_length=255, blank=True)
+
     employee = models.ForeignKey(
-        Employee,
-        on_delete=models.SET_NULL,
-        null=True, blank=True,
-        related_name="client_events",
-        verbose_name="Сотрудник",
+        Employee, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="log_entries", verbose_name="Сотрудник-актор",
+    )
+    parent = models.ForeignKey(
+        "self", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="children", verbose_name="Родительская запись",
     )
     created_at = models.DateTimeField("Дата и время", auto_now_add=True)
 
     class Meta:
-        verbose_name = "Событие клиента"
-        verbose_name_plural = "События клиентов"
+        verbose_name = "Запись лога клиента"
+        verbose_name_plural = "Лог клиента"
         ordering = ["-created_at"]
         indexes = [
             models.Index(fields=["client", "created_at"]),
+            models.Index(fields=["subject_kind", "kind"]),
+            models.Index(fields=["kind", "event_type"]),
+            models.Index(fields=["kind", "action_type"]),
+        ]
+        constraints = [
+            models.CheckConstraint(
+                check=(
+                    models.Q(kind="event", event_type__isnull=False, action_type__isnull=True)
+                    | models.Q(kind="action", action_type__isnull=False, event_type__isnull=True)
+                ),
+                name="log_entry_kind_matches_type_fk",
+            ),
         ]
 
     def __str__(self):
-        return f"{self.client} — {self.get_event_type_display()} ({self.created_at:%d.%m.%Y %H:%M})"
+        subj = self.client or self.subject_employee or self.get_subject_kind_display()
+        type_obj = self.event_type or self.action_type
+        return f"{subj} — {type_obj} ({self.created_at:%d.%m.%Y %H:%M})"
 
 
 class Message(TimeStampedModel):

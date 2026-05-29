@@ -19,7 +19,7 @@ from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 
 from apps.crm.lead_routing import route_new_lead
-from apps.crm.models import Client, ClientEvent
+from apps.crm.models import Client
 from apps.crm.phone_utils import add_client_phone, find_client_by_phone
 
 logger = logging.getLogger("telegram_leads")
@@ -147,10 +147,11 @@ def create_lead_from_parsed(data: dict) -> Client:
         desc = f"Повторный лид с лендинга (заявка №{number}, форма «{form}»)"
         if answers_text:
             desc += "\n\nОтветы из формы:\n" + answers_text
-        ClientEvent.objects.create(
-            client=existing, event_type="lead_received",
+        from apps.crm import client_log
+        client_log.record_event(
+            existing, "lead_received",
             employee=_system_bot_employee(),
-            description=desc,
+            comment=desc,
         )
         logger.info("lead %s: дубль по телефону, клиент %s", number, existing.id)
         return existing

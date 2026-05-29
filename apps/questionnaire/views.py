@@ -21,12 +21,12 @@ def _current_employee(request):
 
 
 def _log_questionnaire_event(event_type, response, employee):
-    from apps.crm.models import ClientEvent
+    """event_type — legacy-код (questionnaire_created/edited/deleted)."""
+    from apps.crm import client_log
     label = response.template.title
     svc   = response.service
-    ClientEvent.objects.create(
-        client=svc.client,
-        event_type=event_type,
+    client_log.record_legacy(
+        svc.client, event_type,
         description=f"{label} · {svc.name.short_name}" + (f" № {svc.numb_dogovor}" if svc.numb_dogovor else ""),
         employee=employee,
     )

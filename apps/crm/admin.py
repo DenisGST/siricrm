@@ -1,7 +1,8 @@
 from django.contrib import admin
 from .models import (
     Client, ClientEmployee, ClientPhone, Message, Service, Region,
-    LegalEntityKind, ClientEvent, ServiceName, PaymentProcedure,
+    LegalEntityKind, ClientLogEntry, EventType, ActionType,
+    ServiceName, PaymentProcedure,
     ServiceCommonStatus, ServiceEmployeeStatus, ServiceTag,
     ServiceEmployeeState, ServiceTagAssignment, ServiceLog,
 )
@@ -159,10 +160,27 @@ class RegionAdmin(admin.ModelAdmin):
     ordering = ('number',)
 
 
-@admin.register(ClientEvent)
-class ClientEventAdmin(admin.ModelAdmin):
-    list_display = ("created_at", "client", "event_type", "employee", "description")
-    list_filter = ("event_type",)
-    search_fields = ("client__last_name", "client__first_name", "description")
+@admin.register(EventType)
+class EventTypeAdmin(admin.ModelAdmin):
+    list_display = ("order", "code", "name", "source", "is_system", "is_active")
+    list_filter = ("source", "is_system", "is_active")
+    search_fields = ("code", "name")
+    ordering = ("order", "name")
+
+
+@admin.register(ActionType)
+class ActionTypeAdmin(admin.ModelAdmin):
+    list_display = ("order", "code", "name", "spawns_event", "is_system", "is_active")
+    list_filter = ("is_system", "is_active")
+    search_fields = ("code", "name")
+    ordering = ("order", "name")
+
+
+@admin.register(ClientLogEntry)
+class ClientLogEntryAdmin(admin.ModelAdmin):
+    list_display = ("created_at", "client", "kind", "event_type", "action_type", "employee")
+    list_filter = ("kind", "event_type", "action_type")
+    search_fields = ("client__last_name", "client__first_name", "comment")
     date_hierarchy = "created_at"
     ordering = ("-created_at",)
+    raw_id_fields = ("client", "employee", "subject_employee", "parent")

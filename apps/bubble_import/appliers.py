@@ -14,7 +14,8 @@ import requests
 from django.db.models import Q
 from django.utils import timezone
 
-from apps.crm.models import Client, ClientNameHistory, ClientEvent
+from apps.crm.models import Client, ClientNameHistory
+from apps.crm import client_log
 
 from .extractors import (
     clean_str, first_nonempty, normalize_phone,
@@ -410,14 +411,14 @@ def apply_man(rec: BubbleRecord) -> str:
     # повторный apply той же записи событие не дублирует.
     if not existed_by_bubble:
         if merged_existing:
-            ClientEvent.objects.create(
-                client=client, event_type="bubble_enriched", employee=None,
-                description="Данные клиента дополнены при импорте из CRM на bubble.io",
+            client_log.record_event(
+                client, "bubble_enriched",
+                comment="Данные клиента дополнены при импорте из CRM на bubble.io",
             )
         else:
-            ClientEvent.objects.create(
-                client=client, event_type="bubble_imported", employee=None,
-                description="Клиент импортирован из CRM на bubble.io",
+            client_log.record_event(
+                client, "bubble_imported",
+                comment="Клиент импортирован из CRM на bubble.io",
             )
 
     rec.status = "imported"
@@ -1325,17 +1326,18 @@ _TYPEEVENT_MAP = {
 
 
 def apply_events(rec: BubbleRecord) -> str:
-    """Bubble Events → ClientEvent.
+    """Bubble Events → ClientLogEntry.
 
     Сценарий:
     - ProjectBFL → Service → Client (34% записей без ProjectBFL — skipped);
     - TypeEvent → event_type (WhatsApp-сообщения skipped — дубль с MessageWSP);
     - user (Bubble User) → Employee (через User.bubble_id);
-    - Text → description;
-    - Created Date → ClientEvent.created_at (через update() ибо auto_now_add).
+    - Text → comment;
+    - Created Date → ClientLogEntry.created_at (через update() ибо auto_now_add).
     """
-    from apps.crm.models import ClientEvent, Service
+    from apps.crm.models import ClientLogEntry, Service
     from apps.core.models import Employee
+    from apps.crm.client_log import _LEGACY_MAP, _et, _at
 
     v = rec.value
     bid = rec.bubble_id
@@ -1363,13 +1365,22 @@ def apply_events(rec: BubbleRecord) -> str:
         return rec.status
 
     type_uuid = v("TypeEvent")
-    event_type = _TYPEEVENT_MAP.get(type_uuid, "note")
-    if event_type == "_skip_wa":
+    legacy_event_type = _TYPEEVENT_MAP.get(type_uuid, "note")
+    if legacy_event_type == "_skip_wa":
         rec.status = "skipped"
         rec.error = "Сообщение Клиенту WhatsApp (уже импортировано через MessageWSP)"
         rec.imported_at = None
         rec.save(update_fields=["status", "error", "imported_at"])
         return rec.status
+
+    # Резолвим legacy event_type → kind + FK на справочник
+    kind, code = _LEGACY_MAP.get(legacy_event_type, ("action", "note"))
+    if kind == "event":
+        event_type_obj = _et(code)
+        action_type_obj = None
+    else:
+        action_type_obj = _at(code)
+        event_type_obj = None
 
     user_bid = v("user")
     employee = None
@@ -1382,27 +1393,32 @@ def apply_events(rec: BubbleRecord) -> str:
     bubble_created = parse_bubble_dt(v("Created Date")) or timezone.now()
 
     # Идемпотентность: повторный apply обновляет существующую запись по bubble_id.
-    obj = ClientEvent.objects.filter(bubble_id=bid).first()
+    obj = ClientLogEntry.objects.filter(bubble_id=bid).first()
     if obj is None:
-        obj = ClientEvent.objects.create(
+        obj = ClientLogEntry.objects.create(
             bubble_id=bid,
+            subject_kind="client",
             client=service.client,
-            event_type=event_type,
-            description=description,
+            kind=kind,
+            event_type=event_type_obj,
+            action_type=action_type_obj,
+            comment=description or "",
             employee=employee,
         )
         # auto_now_add не перезаписывается через save() — патчим через update()
-        ClientEvent.objects.filter(pk=obj.pk).update(created_at=bubble_created)
+        ClientLogEntry.objects.filter(pk=obj.pk).update(created_at=bubble_created)
     else:
         obj.client = service.client
-        obj.event_type = event_type
-        obj.description = description
+        obj.kind = kind
+        obj.event_type = event_type_obj
+        obj.action_type = action_type_obj
+        obj.comment = description or ""
         obj.employee = employee
-        obj.save(update_fields=["client", "event_type", "description", "employee"])
-        ClientEvent.objects.filter(pk=obj.pk).update(created_at=bubble_created)
+        obj.save(update_fields=["client", "kind", "event_type", "action_type", "comment", "employee"])
+        ClientLogEntry.objects.filter(pk=obj.pk).update(created_at=bubble_created)
 
     rec.status = "imported"
-    rec.target_type = "ClientEvent"
+    rec.target_type = "ClientLogEntry"
     rec.target_id = str(obj.id)
     rec.error = ""
     rec.imported_at = timezone.now()

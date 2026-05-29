@@ -19,7 +19,7 @@ from django.utils import timezone
 from django.views.decorators.http import require_POST
 
 from apps.core.views import is_references_access
-from apps.crm.models import Client, ClientEvent, Service
+from apps.crm.models import Client, Service
 
 from . import forms, models
 from .permissions import (
@@ -385,16 +385,14 @@ def payment_form_view(request, client_id, direction=None, payment_id=None):
 
 # Поля Service, которые редактируем через модалку графика.
 def _log_event(client, event_type, employee, description="", old_value="", new_value=""):
-    """Создаёт запись в логе ClientEvent. Тихо игнорирует если клиента нет."""
+    """Запись в лог клиента. event_type — legacy-код (см. client_log._LEGACY_MAP)."""
     if not client:
         return
-    ClientEvent.objects.create(
-        client=client,
-        event_type=event_type,
-        employee=employee,
-        description=description,
-        old_value=str(old_value)[:255],
-        new_value=str(new_value)[:255],
+    from apps.crm import client_log
+    client_log.record_legacy(
+        client, event_type,
+        description=description, employee=employee,
+        old_value=old_value, new_value=new_value,
     )
 
 

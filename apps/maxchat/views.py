@@ -80,7 +80,8 @@ def max_webhook(request):
     )
     if created:
         logger.info("✨ Created MAX client %s (max_chat_id=%s)", client.id, user_id)
-        from apps.crm.models import ClientEmployee, ClientEvent
+        from apps.crm.models import ClientEmployee
+        from apps.crm import client_log
         from apps.core.models import Employee
         from django.contrib.auth.models import User
         bot_user, _ = User.objects.get_or_create(
@@ -89,11 +90,9 @@ def max_webhook(request):
         )
         bot_emp, _ = Employee.objects.get_or_create(user=bot_user)
         ClientEmployee.objects.get_or_create(client=client, employee=bot_emp)
-        ClientEvent.objects.create(
-            client=client,
-            event_type="first_contact",
-            description="Первое обращение через MAX",
-            employee=bot_emp,
+        client_log.record_event(
+            client, "first_contact",
+            comment="Первое обращение через MAX", employee=bot_emp,
         )
         logger.info("🤖 Assigned Sirius Bot to new MAX client %s", client.id)
     else:
