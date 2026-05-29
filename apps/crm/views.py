@@ -277,18 +277,42 @@ def telegram_clients_list(request):
     paginator = Paginator(qs, CLIENTS_PER_PAGE)
     page_obj = paginator.get_page(page_number)
 
+    # «Pin» клиент: если в запросе есть pin_client_id и этот клиент НЕ попал
+    # в текущий scope/search — допольним его в начало списка (только page=1).
+    # Используется при открытии чата конкретного клиента, чтобы в левой
+    # колонке гарантированно был виден активный (подсвеченный) клиент.
+    pinned_client = None
+    pin_client_id = (request.GET.get("pin_client_id") or "").strip()
+    if pin_client_id and page_obj.number == 1:
+        page_ids = {str(c.pk) for c in page_obj.object_list}
+        if pin_client_id not in page_ids:
+            try:
+                pinned_client = (
+                    Client.objects.visible_to(request.user)
+                    .filter(pk=pin_client_id)
+                    .first()
+                )
+            except (ValueError, TypeError):
+                pinned_client = None
+
     # Статусы мессенджера для текущего сотрудника
+    clients_for_status = list(page_obj.object_list)
+    if pinned_client is not None:
+        clients_for_status.append(pinned_client)
     if emp:
         statuses = dict(
             ClientEmployee.objects.filter(
-                employee=emp, client__in=page_obj.object_list,
+                employee=emp, client__in=clients_for_status,
             ).values_list("client_id", "messenger_status")
         )
-        for c in page_obj.object_list:
+        for c in clients_for_status:
             c.ms_status = statuses.get(c.pk, "")
     else:
-        for c in page_obj.object_list:
+        for c in clients_for_status:
             c.ms_status = ""
+
+    if pinned_client is not None:
+        page_obj.object_list = [pinned_client] + list(page_obj.object_list)
 
     # Счётчики для кнопок-фильтров. Учитывают текущий search, чтобы цифры
     # синхронно менялись при наборе в поиске. Считаются только для page=1 —
