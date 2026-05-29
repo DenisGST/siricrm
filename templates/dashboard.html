@@ -2468,7 +2468,10 @@ function initMsSearch() {
     if (countdown) countdown.textContent = left;
     if (left <= 0) {
       hideWarning();
-      // Не вызываем logout — следующий poll сам определит что сессия истекла.
+      // Истёк отсчёт warning → сразу дёрнем poll, чтобы middleware успел
+      // дропнуть сессию и мы показали locked-overlay БЕЗ ожидания
+      // 15-секундного интервала.
+      poll();
     }
   }
   function hideWarning() {
@@ -2585,6 +2588,58 @@ function initMsSearch() {
   // прогрузиться остальные скрипты.
   setTimeout(poll, 2000);
   setInterval(poll, POLL_INTERVAL_MS);
+
+  // Возврат во вкладку (visibilitychange/focus) → poll сразу.
+  // Браузер throttle'ит setInterval в неактивных вкладках (часто до 1/мин),
+  // поэтому без этих хуков пользователь, открывший вкладку после долгого
+  // перерыва, мог кликнуть в интерфейс ДО появления locked-overlay.
+  document.addEventListener('visibilitychange', function() {
+    if (document.visibilityState === 'visible') poll();
+  });
+  window.addEventListener('focus', poll);
+
+  // Перехват HTMX-ответов с HX-Redirect на /login/ или статусом 401.
+  // Без этого: пользователь кликает после auto-logout → HTMX-запрос →
+  // middleware заворачивает 302 на /login/ в `HX-Redirect: /accounts/login/`
+  // → браузер уходит со SPA-страницы → после логина пытается открыть
+  // кликнутый URL как голый partial без CSS/sidebar.
+  // С этим: вместо ухода — показываем locked-overlay, пользователь
+  // вводит пароль и продолжает работу на той же странице.
+  document.body.addEventListener('htmx:beforeOnLoad', function(evt) {
+    var xhr = evt.detail && evt.detail.xhr;
+    if (!xhr) return;
+    var redirect = xhr.getResponseHeader('HX-Redirect') || '';
+    if (redirect.indexOf('/accounts/login/') >= 0 || xhr.status === 401) {
+      evt.preventDefault();
+      showLocked('Сессия истекла.');
+    }
+  });
+
+  // Capture-phase trap: пока locked-overlay показан, не пропускаем
+  // клики/нажатия мимо формы логина. Защита если что-то в DOM имеет
+  // z-index >= 9999 и оверлей не закрывает элемент визуально, а также
+  // от <a href> навигации, которая идёт мимо HTMX.
+  document.addEventListener('click', function(e) {
+    if (!_showLocked) return;
+    if (lockedEl.contains(e.target)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation();
+  }, true);
+  document.addEventListener('keydown', function(e) {
+    if (!_showLocked) return;
+    if (lockedEl.contains(e.target)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation();
+  }, true);
+  document.addEventListener('submit', function(e) {
+    if (!_showLocked) return;
+    if (lockedEl.contains(e.target)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation();
+  }, true);
 })();
 </script>
 
