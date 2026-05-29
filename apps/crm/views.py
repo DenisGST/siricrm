@@ -16,6 +16,7 @@ from .models import (
     Service, ServiceName, PaymentProcedure, ServiceCommonStatus,
     ServiceEmployeeStatus, ServiceTag, ServiceEmployeeState,
     ServiceTagAssignment, ServiceLog, ClientLogEntry,
+    EventType, ActionType,
 )
 from . import client_log
 from .forms import ClientForm, LegalEntityForm, ServiceForm
@@ -1963,14 +1964,110 @@ def service_my_move(request, pk):
 
 @login_required
 def client_events_modal(request, client_id):
-    client = get_object_or_404(Client.objects.prefetch_related("employees__user"), pk=client_id)
-    events = ClientLogEntry.objects.filter(client=client).select_related(
-        "employee__user", "event_type", "action_type"
-    ).order_by("-created_at")
+    """Модалка лога клиента: события + действия в одной хронологии.
+
+    Фильтры (GET):
+      ?kind=event|action|''  (пусто = все)
+      ?source=system|court|client|legal_entity|employee  (только для events)
+      ?type=<code>           (код EventType ИЛИ ActionType, в зависимости от kind)
+      ?q=<строка>            (поиск в comment)
+    """
+    client = get_object_or_404(
+        Client.objects.prefetch_related("employees__user"), pk=client_id,
+    )
+
+    f_kind   = (request.GET.get("kind") or "").strip()
+    f_source = (request.GET.get("source") or "").strip()
+    f_type   = (request.GET.get("type") or "").strip()
+    f_q      = (request.GET.get("q") or "").strip()
+
+    qs = ClientLogEntry.objects.filter(client=client).select_related(
+        "employee__user", "event_type", "action_type",
+    ).prefetch_related("event_type__standard_actions")
+
+    if f_kind in ("event", "action"):
+        qs = qs.filter(kind=f_kind)
+    if f_source:
+        # Источник имеет смысл только для events
+        qs = qs.filter(kind="event", event_type__source=f_source)
+    if f_type:
+        if f_kind == "action":
+            qs = qs.filter(action_type__code=f_type)
+        elif f_kind == "event":
+            qs = qs.filter(event_type__code=f_type)
+        else:
+            qs = qs.filter(
+                Q(event_type__code=f_type) | Q(action_type__code=f_type)
+            )
+    if f_q:
+        qs = qs.filter(comment__icontains=f_q)
+
+    qs = qs.order_by("created_at")  # хронологически, как в чатах: новое снизу
+
+    event_types = EventType.objects.filter(is_active=True).order_by(
+        "source", "order", "name",
+    )
+    action_types = ActionType.objects.filter(is_active=True).order_by(
+        "order", "name",
+    )
+
     return render(request, "crm/partials/client_events_modal.html", {
         "client": client,
-        "events": events,
+        "events": qs,
+        "event_types": event_types,
+        "action_types": action_types,
+        "source_choices": EventType.SOURCE_CHOICES,
+        "filter_kind": f_kind,
+        "filter_source": f_source,
+        "filter_type": f_type,
+        "filter_q": f_q,
     })
+
+
+@login_required
+@require_POST
+def client_log_add(request, client_id):
+    """POST из формы добавления в модалке лога. Создаёт ClientLogEntry
+    и возвращает обновлённую модалку (re-render с теми же фильтрами).
+
+    Поля формы:
+      entry_kind  — 'event' | 'action' (что создаём)
+      type_code   — code EventType/ActionType
+      comment     — текст
+      parent_id   — uuid родительской записи (опц.)
+      kind, source, type, q — эхо фильтров модалки (для re-render)
+    """
+    client = get_object_or_404(Client, pk=client_id)
+    entry_kind = (request.POST.get("entry_kind") or "").strip()
+    type_code  = (request.POST.get("type_code") or "").strip()
+    comment    = (request.POST.get("comment") or "").strip()
+    parent_id  = (request.POST.get("parent_id") or "").strip() or None
+
+    if entry_kind not in ("event", "action") or not type_code:
+        return HttpResponseBadRequest("entry_kind и type_code обязательны")
+
+    try:
+        emp = Employee.objects.get(user=request.user)
+    except Employee.DoesNotExist:
+        emp = None
+
+    parent = None
+    if parent_id:
+        parent = ClientLogEntry.objects.filter(pk=parent_id, client=client).first()
+
+    if entry_kind == "event":
+        client_log.record_event(client, type_code, comment=comment, employee=emp, parent=parent)
+    else:
+        client_log.record_action(client, type_code, comment=comment, employee=emp, parent=parent)
+
+    # Re-render модалки с теми же фильтрами (POST → GET)
+    from django.http import QueryDict
+    request.GET = QueryDict(mutable=True)
+    for k in ("kind", "source", "type", "q"):
+        v = request.POST.get(k, "")
+        if v:
+            request.GET[k] = v
+    return client_events_modal(request, client_id)
 
 
 @login_required

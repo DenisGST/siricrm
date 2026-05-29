@@ -1,9 +1,14 @@
 {% load icons rules %}
 {% has_perm 'crm.edit_client' user client as can_edit_client %}
 <dialog id="client-events-modal" class="modal modal-middle modal-open">
-  <div class="modal-box w-11/12 max-w-4xl">
+  {% comment %}Размер модалки фиксированный — 95vw / 90vh, не зависит от
+     содержимого. Внутри flex-column: шапка/фильтр/форма — auto; таблица —
+     flex-1 + overflow-y-auto (растягивается и скроллится внутри).{% endcomment %}
+  <div class="modal-box flex flex-col p-4"
+       style="width:95vw;max-width:1600px;height:90vh;max-height:90vh">
 
-    <div class="flex items-center justify-between mb-4">
+    {# ─── Шапка ─── #}
+    <div class="flex items-center justify-between mb-3">
       <div>
         <h3 class="font-bold text-lg">
           {{ client.last_name }} {{ client.first_name }}{% if client.patronymic %} {{ client.patronymic }}{% endif %}
@@ -27,63 +32,251 @@
       </div>
     </div>
 
-    <div class="overflow-x-auto max-h-[60vh] overflow-y-auto">
+    {# ─── Фильтры (HTMX-перерисовка таблицы) ─── #}
+    <form id="log-filter"
+          hx-get="{% url 'client_events_modal' client.id %}"
+          hx-trigger="change from:select, input from:input[type=search] delay:300ms"
+          hx-target="#client-events-modal" hx-swap="outerHTML"
+          class="flex flex-wrap gap-2 items-center mb-3 pb-3 border-b"
+          style="border-color:var(--ms-border-light)">
+      <div class="join">
+        <button type="button"
+                onclick="setLogKind('')"
+                class="join-item btn btn-xs {% if not filter_kind %}btn-primary{% endif %}">Все</button>
+        <button type="button"
+                onclick="setLogKind('event')"
+                class="join-item btn btn-xs {% if filter_kind == 'event' %}btn-primary{% endif %}">События</button>
+        <button type="button"
+                onclick="setLogKind('action')"
+                class="join-item btn btn-xs {% if filter_kind == 'action' %}btn-primary{% endif %}">Действия</button>
+      </div>
+      <input type="hidden" name="kind" value="{{ filter_kind }}">
+
+      <select name="source" class="select select-bordered select-xs" {% if filter_kind == 'action' %}disabled{% endif %}>
+        <option value="">— источник —</option>
+        {% for code, label in source_choices %}
+          <option value="{{ code }}" {% if filter_source == code %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+
+      <select name="type" class="select select-bordered select-xs">
+        <option value="">— тип —</option>
+        {% if filter_kind != 'action' %}
+          <optgroup label="События">
+            {% for et in event_types %}
+              <option value="{{ et.code }}" data-kind="event"
+                      {% if filter_type == et.code and filter_kind != 'action' %}selected{% endif %}>
+                {{ et.name }}
+              </option>
+            {% endfor %}
+          </optgroup>
+        {% endif %}
+        {% if filter_kind != 'event' %}
+          <optgroup label="Действия">
+            {% for at in action_types %}
+              <option value="{{ at.code }}" data-kind="action"
+                      {% if filter_type == at.code and filter_kind != 'event' %}selected{% endif %}>
+                {{ at.name }}
+              </option>
+            {% endfor %}
+          </optgroup>
+        {% endif %}
+      </select>
+
+      <input type="search" name="q" value="{{ filter_q }}" placeholder="🔎 поиск в комментарии"
+             class="input input-bordered input-xs flex-1 min-w-[150px]">
+
+      {% if filter_kind or filter_source or filter_type or filter_q %}
+        <button type="button" class="btn btn-ghost btn-xs"
+                onclick="resetLogFilter()">Сбросить</button>
+      {% endif %}
+    </form>
+
+    {% comment %}Лента записей — стиль чата: хронология (новое снизу),
+       без заголовков столбцов и порядковых номеров. Авто-скролл вниз
+       при открытии модалки.{% endcomment %}
+    <div id="log-feed" class="flex-1 min-h-0 overflow-y-auto pr-1 space-y-2">
       {% if events %}
-      <table class="table table-sm table-zebra w-full">
-        <thead class="sticky top-0 bg-base-100 z-10">
-          <tr>
-            <th class="w-10 text-center">№</th>
-            <th class="w-36">Дата</th>
-            <th class="w-44">Тип</th>
-            <th>Наименование</th>
-            <th class="w-36">Сотрудник</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for ev in events %}
-          <tr>
-            <td class="text-center text-base-content/50 text-xs">{{ forloop.counter }}</td>
-            <td class="text-xs whitespace-nowrap">{{ ev.created_at|date:"d.m.Y H:i" }}</td>
-            <td>
+      {% for ev in events %}
+        <div class="log-row rounded border border-base-300 bg-base-100 px-3 py-2
+             {% if ev.parent_id %}ml-6 border-l-4 border-l-info/40{% endif %}"
+             id="log-{{ ev.id }}">
+          <div class="flex items-start justify-between gap-3">
+            <div class="min-w-0 flex-1">
+              <div class="text-[11px] text-base-content/55 leading-tight">
+                {{ ev.created_at|date:"d.m.Y H:i" }} ·
+                {% if ev.kind == 'event' %}
+                  <span class="font-semibold" style="color:#1e3a8a">{{ ev.event_type.name|default:"—" }}</span>
+                  <span class="opacity-70">({{ ev.event_type.get_source_display }})</span>
+                {% else %}
+                  <span class="font-semibold" style="color:#166534">{{ ev.action_type.name|default:"—" }}</span>
+                {% endif %}
+                {% if ev.parent_id %}<span class="ml-1 opacity-60">↳ в ответ на запись выше</span>{% endif %}
+              </div>
+              <div class="text-sm mt-1 whitespace-pre-line break-words">
+                {{ ev.comment|default:"—" }}
+                {% if ev.old_value or ev.new_value %}
+                  <span class="text-xs text-base-content/50 ml-1">
+                    {% if ev.old_value %}<span class="line-through">{{ ev.old_value }}</span> → {% endif %}
+                    {{ ev.new_value }}
+                  </span>
+                {% endif %}
+              </div>
+              {% if ev.kind == 'event' and ev.event_type.standard_actions.all %}
+                <div class="flex flex-wrap gap-1 mt-1">
+                  {% for sa in ev.event_type.standard_actions.all %}
+                    <button type="button" class="btn btn-xs btn-ghost"
+                            onclick="prefillLogAdd('action','{{ sa.code }}','{{ ev.id }}','{{ sa.name|escapejs }}')"
+                            title="{{ sa.description|default:'' }}">
+                      → {{ sa.name }}
+                    </button>
+                  {% endfor %}
+                </div>
+              {% endif %}
+            </div>
+            <div class="flex flex-col items-end gap-1 flex-shrink-0">
+              <span class="text-[11px] text-base-content/55 whitespace-nowrap">
+                {{ ev.employee.user.get_full_name|default:"—" }}
+              </span>
               {% if ev.kind == 'event' %}
-                <span class="badge badge-xs badge-ghost" title="Событие ({{ ev.event_type.get_source_display }})">
-                  {{ ev.event_type.name|default:"—" }}
-                </span>
-              {% else %}
-                <span class="badge badge-xs badge-primary" title="Действие сотрудника">
-                  {{ ev.action_type.name|default:"—" }}
-                </span>
+              <button type="button" class="btn btn-xs btn-ghost btn-square"
+                      onclick="prefillLogAdd('','','{{ ev.id }}','')"
+                      title="Добавить действие в ответ на это событие">+</button>
               {% endif %}
-            </td>
-            <td>
-              <span class="text-sm">{{ ev.comment|default:"—" }}</span>
-              {% if ev.old_value or ev.new_value %}
-                <span class="text-xs text-base-content/50 ml-1">
-                  {% if ev.old_value %}<span class="line-through">{{ ev.old_value }}</span> → {% endif %}
-                  {{ ev.new_value }}
-                </span>
-              {% endif %}
-            </td>
-            <td class="text-xs text-base-content/60">
-              {{ ev.employee.user.get_full_name|default:"—" }}
-            </td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+            </div>
+          </div>
+        </div>
+      {% endfor %}
       {% else %}
         <div class="text-center text-base-content/50 py-10">
           {% icon "history" size=32 %}
-          <p class="mt-2 text-sm">Событий пока нет</p>
+          <p class="mt-2 text-sm">Записей не найдено</p>
+          {% if filter_kind or filter_source or filter_type or filter_q %}
+            <button type="button" class="btn btn-xs btn-ghost mt-2"
+                    onclick="resetLogFilter()">Сбросить фильтр</button>
+          {% endif %}
         </div>
       {% endif %}
     </div>
 
-    <div class="modal-action mt-3">
-      <button type="button" class="btn btn-sm" onclick="this.closest('dialog').remove()">Закрыть</button>
-    </div>
+    {# ─── Форма добавления ─── #}
+    <form id="log-add-form" method="post"
+          hx-post="{% url 'client_log_add' client.id %}"
+          hx-target="#client-events-modal" hx-swap="outerHTML"
+          class="mt-3 pt-3 border-t flex flex-col gap-2"
+          style="border-color:var(--ms-border-light)">
+      {% csrf_token %}
+      {% comment %}Эхо текущих фильтров — чтобы после ответа модалка
+         перерисовалась с теми же активными фильтрами.{% endcomment %}
+      <input type="hidden" name="kind" value="{{ filter_kind }}">
+      <input type="hidden" name="source" value="{{ filter_source }}">
+      <input type="hidden" name="type" value="{{ filter_type }}">
+      <input type="hidden" name="q" value="{{ filter_q }}">
+
+      <input type="hidden" name="parent_id" id="log-add-parent">
+
+      <div id="log-add-parent-hint" class="hidden text-xs text-info">
+        ⤷ В ответ на запись: <span id="log-add-parent-label"></span>
+        <button type="button" class="link link-error ml-2" onclick="clearLogAddParent()">отвязать</button>
+      </div>
+
+      <div class="flex flex-wrap gap-2 items-center">
+        <div class="join">
+          <button type="button" id="log-add-kind-event"
+                  class="join-item btn btn-xs btn-primary"
+                  onclick="setLogAddKind('event')">Событие</button>
+          <button type="button" id="log-add-kind-action"
+                  class="join-item btn btn-xs"
+                  onclick="setLogAddKind('action')">Действие</button>
+        </div>
+        <input type="hidden" name="entry_kind" id="log-add-kind" value="event">
+
+        <select name="type_code" id="log-add-type" class="select select-bordered select-xs flex-1 min-w-[200px]" required>
+          <option value="">— выберите тип —</option>
+          <optgroup label="События" data-kind="event">
+            {% for et in event_types %}
+              <option value="{{ et.code }}" data-kind="event">{{ et.name }} ({{ et.get_source_display }})</option>
+            {% endfor %}
+          </optgroup>
+          <optgroup label="Действия" data-kind="action" class="hidden">
+            {% for at in action_types %}
+              <option value="{{ at.code }}" data-kind="action">{{ at.name }}</option>
+            {% endfor %}
+          </optgroup>
+        </select>
+      </div>
+
+      <textarea name="comment" rows="2"
+                class="textarea textarea-bordered text-sm"
+                placeholder="Комментарий (суть звонка, результат действия, текст письма…)"></textarea>
+
+      <div class="flex justify-end gap-2">
+        <button type="submit" class="btn btn-primary btn-sm">Сохранить запись</button>
+      </div>
+    </form>
   </div>
+
   <form method="dialog" class="modal-backdrop">
     <button onclick="this.closest('dialog').remove()">close</button>
   </form>
+
+  <script>
+    // ── Фильтры ──
+    function setLogKind(kind) {
+      const form = document.getElementById('log-filter');
+      form.querySelector('[name=kind]').value = kind;
+      // тип фильтра сбрасываем — иначе селект может выбрать тип не той категории
+      form.querySelector('[name=type]').value = '';
+      if (kind === 'action') form.querySelector('[name=source]').value = '';
+      htmx.trigger(form, 'change');
+    }
+    function resetLogFilter() {
+      const form = document.getElementById('log-filter');
+      form.querySelector('[name=kind]').value = '';
+      form.querySelector('[name=source]').value = '';
+      form.querySelector('[name=type]').value = '';
+      form.querySelector('[name=q]').value = '';
+      htmx.trigger(form, 'change');
+    }
+
+    // ── Форма добавления ──
+    function setLogAddKind(kind) {
+      document.getElementById('log-add-kind').value = kind;
+      document.getElementById('log-add-kind-event').classList.toggle('btn-primary', kind==='event');
+      document.getElementById('log-add-kind-action').classList.toggle('btn-primary', kind==='action');
+      // Переключаем видимость optgroup'ов
+      const sel = document.getElementById('log-add-type');
+      sel.querySelectorAll('optgroup').forEach(g => {
+        g.classList.toggle('hidden', g.dataset.kind !== kind);
+        g.querySelectorAll('option').forEach(o => o.disabled = (g.dataset.kind !== kind));
+      });
+      sel.value = '';
+    }
+    function prefillLogAdd(kind, typeCode, parentId, parentLabel) {
+      if (kind) setLogAddKind(kind);
+      if (typeCode) document.getElementById('log-add-type').value = typeCode;
+      if (parentId) {
+        document.getElementById('log-add-parent').value = parentId;
+        const hint = document.getElementById('log-add-parent-hint');
+        if (parentLabel) document.getElementById('log-add-parent-label').textContent = parentLabel;
+        else document.getElementById('log-add-parent-label').textContent = '(запись выбрана)';
+        hint.classList.remove('hidden');
+      }
+      document.getElementById('log-add-form').scrollIntoView({block:'end'});
+      document.querySelector('#log-add-form textarea').focus();
+    }
+    function clearLogAddParent() {
+      document.getElementById('log-add-parent').value = '';
+      document.getElementById('log-add-parent-hint').classList.add('hidden');
+    }
+
+    // Установить initial kind=event
+    setLogAddKind('event');
+
+    // Авто-скролл ленты вниз (как в чате — новое снизу)
+    (function() {
+      const feed = document.getElementById('log-feed');
+      if (feed) feed.scrollTop = feed.scrollHeight;
+    })();
+  </script>
 </dialog>
