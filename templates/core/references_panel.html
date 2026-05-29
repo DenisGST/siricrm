@@ -64,4 +64,42 @@ function setRefTab(el) {
   el.closest('.tabs').querySelectorAll('.tab').forEach(t => t.classList.remove('tab-active'));
   el.classList.add('tab-active');
 }
+
+// Сортировка таблицы справочника по клику на заголовок столбца.
+// type: 'num' — числовое сравнение; 'str' — лексикографическое (case-insensitive, locale-aware).
+window.sortRefTable = function(th, type) {
+  const table = th.closest('table');
+  if (!table) return;
+  const tbody = table.querySelector('tbody');
+  if (!tbody) return;
+  const idx = Array.from(th.parentElement.children).indexOf(th);
+  const dir = th.dataset.sortDir === 'asc' ? 'desc' : 'asc';
+  // Сбросить индикаторы у других заголовков
+  table.querySelectorAll('thead th').forEach(o => {
+    if (o !== th) { o.dataset.sortDir = ''; const ind = o.querySelector('.sort-ind'); if (ind) ind.remove(); }
+  });
+  th.dataset.sortDir = dir;
+  // Обновить индикатор
+  let span = th.querySelector('.sort-ind');
+  if (!span) {
+    span = document.createElement('span');
+    span.className = 'sort-ind ml-1';
+    th.appendChild(span);
+  }
+  span.textContent = dir === 'asc' ? '▲' : '▼';
+  // Сортируем строки
+  const rows = Array.from(tbody.querySelectorAll('tr'));
+  rows.sort((a, b) => {
+    const va = (a.children[idx] && a.children[idx].innerText || '').trim();
+    const vb = (b.children[idx] && b.children[idx].innerText || '').trim();
+    let cmp;
+    if (type === 'num') {
+      cmp = (parseFloat(va) || 0) - (parseFloat(vb) || 0);
+    } else {
+      cmp = va.localeCompare(vb, 'ru', { sensitivity: 'base', numeric: true });
+    }
+    return dir === 'asc' ? cmp : -cmp;
+  });
+  rows.forEach(r => tbody.appendChild(r));
+};
 </script>

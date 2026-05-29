@@ -14,19 +14,19 @@
 
   <p class="text-xs text-base-content/60 mb-3">
     Действие = что сделал сотрудник. <b>Порождает событие</b> — если задано,
-    при записи действия автоматически создаётся связанное событие (на которое
-    могут реагировать другие сотрудники). Системные типы помечены 🔒.
+    при записи действия автоматически создаётся связанное событие.
+    Системные типы помечены 🔒. Клик по заголовку — сортировка.
   </p>
 
   <div class="overflow-x-auto">
-    <table class="table table-sm table-zebra">
+    <table class="table table-sm table-zebra ref-sortable">
       <thead>
         <tr>
-          <th class="w-12">№</th>
-          <th>Код</th>
-          <th>Название</th>
-          <th>Порождает событие</th>
-          <th class="w-20 text-center">Статус</th>
+          <th class="w-12 cursor-pointer select-none" onclick="sortRefTable(this,'num')">№<span class="ml-1 opacity-40">↕</span></th>
+          <th class="cursor-pointer select-none" onclick="sortRefTable(this,'str')">Код<span class="ml-1 opacity-40">↕</span></th>
+          <th class="cursor-pointer select-none" onclick="sortRefTable(this,'str')">Название<span class="ml-1 opacity-40">↕</span></th>
+          <th class="cursor-pointer select-none" onclick="sortRefTable(this,'str')">Порождает событие<span class="ml-1 opacity-40">↕</span></th>
+          <th class="w-20 text-center cursor-pointer select-none" onclick="sortRefTable(this,'str')">Статус<span class="ml-1 opacity-40">↕</span></th>
           <th class="w-32 text-right"></th>
         </tr>
       </thead>

@@ -5,69 +5,79 @@
 
   <div class="flex flex-wrap justify-between items-center mb-3 gap-2">
     <h3 class="font-semibold">Типы событий ({{ items|length }})</h3>
-    <button class="btn btn-primary btn-sm"
-            hx-get="{% url 'core:reference_event_type_add' %}"
-            hx-target="body" hx-swap="beforeend">
-      + Добавить тип события
-    </button>
+    <div class="flex gap-2">
+      <button class="btn btn-ghost btn-xs" onclick="document.querySelectorAll('#event-types-list details.evt-group').forEach(d=>d.open=true)">Развернуть все</button>
+      <button class="btn btn-ghost btn-xs" onclick="document.querySelectorAll('#event-types-list details.evt-group').forEach(d=>d.open=false)">Свернуть все</button>
+      <button class="btn btn-primary btn-sm"
+              hx-get="{% url 'core:reference_event_type_add' %}"
+              hx-target="body" hx-swap="beforeend">
+        + Добавить тип события
+      </button>
+    </div>
   </div>
 
   <p class="text-xs text-base-content/60 mb-3">
-    Событие = что произошло. <b>Источник</b> определяет кто его сгенерировал.
-    Системные типы помечены 🔒 — их нельзя удалять, но можно скрыть (флаг «Активен»).
+    События сгруппированы по <b>источнику</b> (кто их генерирует). Системные
+    типы помечены 🔒 — их нельзя удалять, но можно скрыть (флаг «Активен»).
+    Клик по заголовку столбца — сортировка.
   </p>
 
-  <div class="overflow-x-auto">
-    <table class="table table-sm table-zebra">
-      <thead>
-        <tr>
-          <th class="w-12">№</th>
-          <th>Код</th>
-          <th>Название</th>
-          <th class="w-32">Источник</th>
-          <th class="w-32">Стандартные действия</th>
-          <th class="w-20 text-center">Статус</th>
-          <th class="w-32 text-right"></th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for it in items %}
-        <tr>
-          <td class="text-xs text-base-content/50">{{ it.order }}</td>
-          <td class="text-xs font-mono">
-            {% if it.is_system %}<span title="Системный">🔒</span> {% endif %}{{ it.code }}
-          </td>
-          <td>{{ it.name }}</td>
-          <td>
-            <span class="badge badge-ghost badge-xs">{{ it.get_source_display }}</span>
-          </td>
-          <td class="text-xs">
-            {% for a in it.standard_actions.all %}
-              <span class="badge badge-outline badge-xs">{{ a.name }}</span>
-            {% empty %}<span class="text-base-content/40">—</span>{% endfor %}
-          </td>
-          <td class="text-center">
-            {% if it.is_active %}
-              <span class="badge badge-success badge-xs">активен</span>
-            {% else %}
-              <span class="badge badge-ghost badge-xs">скрыт</span>
-            {% endif %}
-          </td>
-          <td class="text-right whitespace-nowrap">
-            <button class="btn btn-xs btn-outline"
-                    hx-get="{% url 'core:reference_event_type_edit' it.pk %}"
-                    hx-target="body" hx-swap="beforeend">Изменить</button>
-            {% if not it.is_system %}
-            <button class="btn btn-xs btn-error btn-outline"
-                    hx-post="{% url 'core:reference_event_type_delete' it.pk %}"
-                    hx-confirm="Удалить тип «{{ it.name }}»?">Удалить</button>
-            {% endif %}
-          </td>
-        </tr>
-        {% empty %}
-        <tr><td colspan="7" class="text-center text-base-content/60">Типов событий нет</td></tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
+  {% regroup items by source as items_by_source %}
+  {% for group in items_by_source %}
+    <details class="evt-group mb-2 border rounded" style="border-color:var(--ms-border-light)" open>
+      <summary class="px-3 py-2 cursor-pointer font-semibold text-sm bg-base-200 select-none">
+        <span class="badge badge-ghost badge-sm mr-2">{{ group.list|length }}</span>
+        {{ group.list.0.get_source_display }}
+      </summary>
+      <div class="overflow-x-auto p-2">
+        <table class="table table-sm table-zebra ref-sortable">
+          <thead>
+            <tr>
+              <th class="w-12 cursor-pointer select-none" onclick="sortRefTable(this,'num')">№<span class="ml-1 opacity-40">↕</span></th>
+              <th class="cursor-pointer select-none" onclick="sortRefTable(this,'str')">Код<span class="ml-1 opacity-40">↕</span></th>
+              <th class="cursor-pointer select-none" onclick="sortRefTable(this,'str')">Название<span class="ml-1 opacity-40">↕</span></th>
+              <th>Стандартные действия</th>
+              <th class="w-20 text-center cursor-pointer select-none" onclick="sortRefTable(this,'str')">Статус<span class="ml-1 opacity-40">↕</span></th>
+              <th class="w-32 text-right"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for it in group.list %}
+            <tr>
+              <td class="text-xs text-base-content/50">{{ it.order }}</td>
+              <td class="text-xs font-mono">
+                {% if it.is_system %}<span title="Системный">🔒</span> {% endif %}{{ it.code }}
+              </td>
+              <td>{{ it.name }}</td>
+              <td class="text-xs">
+                {% for a in it.standard_actions.all %}
+                  <span class="badge badge-outline badge-xs">{{ a.name }}</span>
+                {% empty %}<span class="text-base-content/40">—</span>{% endfor %}
+              </td>
+              <td class="text-center">
+                {% if it.is_active %}
+                  <span class="badge badge-success badge-xs">активен</span>
+                {% else %}
+                  <span class="badge badge-ghost badge-xs">скрыт</span>
+                {% endif %}
+              </td>
+              <td class="text-right whitespace-nowrap">
+                <button class="btn btn-xs btn-outline"
+                        hx-get="{% url 'core:reference_event_type_edit' it.pk %}"
+                        hx-target="body" hx-swap="beforeend">Изменить</button>
+                {% if not it.is_system %}
+                <button class="btn btn-xs btn-error btn-outline"
+                        hx-post="{% url 'core:reference_event_type_delete' it.pk %}"
+                        hx-confirm="Удалить тип «{{ it.name }}»?">Удалить</button>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </details>
+  {% empty %}
+    <div class="text-center text-base-content/60 py-6">Типов событий нет</div>
+  {% endfor %}
 </div>
