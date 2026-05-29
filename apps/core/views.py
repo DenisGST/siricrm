@@ -781,6 +781,88 @@ def reference_message_template_delete(request, pk):
     return HttpResponse(headers={"HX-Trigger": "reloadMessageTemplates"})
 
 
+# ─── Справочник: Типы событий клиента (EventType) ────────────────────────
+@user_passes_test(is_references_access)
+def references_event_types(request):
+    from apps.crm.models import EventType
+    items = EventType.objects.prefetch_related("standard_actions").order_by(
+        "source", "order", "name"
+    )
+    return render(request, "core/partials/references_event_types.html", {"items": items})
+
+
+@user_passes_test(is_references_access)
+def reference_event_type_edit(request, pk=None):
+    from apps.crm.models import EventType
+    from apps.core.forms import EventTypeForm
+    obj = get_object_or_404(EventType, pk=pk) if pk else None
+    if request.method == "POST":
+        form = EventTypeForm(request.POST, instance=obj)
+        if form.is_valid():
+            form.save()
+            from apps.crm.client_log import invalidate_cache
+            invalidate_cache()
+            return HttpResponse(headers={"HX-Trigger": "reloadEventTypes"})
+    else:
+        form = EventTypeForm(instance=obj)
+    return render(request, "core/partials/event_type_form_modal.html", {
+        "form": form, "obj": obj,
+    })
+
+
+@user_passes_test(is_references_access)
+@require_POST
+def reference_event_type_delete(request, pk):
+    from apps.crm.models import EventType
+    obj = get_object_or_404(EventType, pk=pk)
+    if obj.is_system:
+        return HttpResponse("Системный тип нельзя удалить", status=400)
+    obj.delete()
+    from apps.crm.client_log import invalidate_cache
+    invalidate_cache()
+    return HttpResponse(headers={"HX-Trigger": "reloadEventTypes"})
+
+
+# ─── Справочник: Типы действий сотрудника (ActionType) ───────────────────
+@user_passes_test(is_references_access)
+def references_action_types(request):
+    from apps.crm.models import ActionType
+    items = ActionType.objects.select_related("spawns_event").order_by("order", "name")
+    return render(request, "core/partials/references_action_types.html", {"items": items})
+
+
+@user_passes_test(is_references_access)
+def reference_action_type_edit(request, pk=None):
+    from apps.crm.models import ActionType
+    from apps.core.forms import ActionTypeForm
+    obj = get_object_or_404(ActionType, pk=pk) if pk else None
+    if request.method == "POST":
+        form = ActionTypeForm(request.POST, instance=obj)
+        if form.is_valid():
+            form.save()
+            from apps.crm.client_log import invalidate_cache
+            invalidate_cache()
+            return HttpResponse(headers={"HX-Trigger": "reloadActionTypes"})
+    else:
+        form = ActionTypeForm(instance=obj)
+    return render(request, "core/partials/action_type_form_modal.html", {
+        "form": form, "obj": obj,
+    })
+
+
+@user_passes_test(is_references_access)
+@require_POST
+def reference_action_type_delete(request, pk):
+    from apps.crm.models import ActionType
+    obj = get_object_or_404(ActionType, pk=pk)
+    if obj.is_system:
+        return HttpResponse("Системный тип нельзя удалить", status=400)
+    obj.delete()
+    from apps.crm.client_log import invalidate_cache
+    invalidate_cache()
+    return HttpResponse(headers={"HX-Trigger": "reloadActionTypes"})
+
+
 # ─── Idle-sessions API ──────────────────────────────────────────────────
 # Используется фронтендом для предупреждения о близком авто-логауте и
 # для locked-overlay при истечении сессии. Все три endpoint'а в

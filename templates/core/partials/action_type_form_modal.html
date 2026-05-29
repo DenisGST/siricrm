@@ -1,0 +1,84 @@
+<dialog id="action-type-modal" class="modal modal-middle modal-open">
+  <div class="modal-box w-full max-w-2xl">
+    <h3 class="font-bold text-lg mb-4">
+      {% if obj %}Редактирование типа действия{% else %}Новый тип действия{% endif %}
+      {% if obj.is_system %}<span class="badge badge-warning badge-xs ml-2">🔒 системный</span>{% endif %}
+    </h3>
+    <form hx-post="{% if obj %}{% url 'core:reference_action_type_edit' obj.pk %}{% else %}{% url 'core:reference_action_type_add' %}{% endif %}"
+          hx-target="#action-type-modal" hx-swap="outerHTML"
+          class="space-y-3">
+      {% csrf_token %}
+
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="label py-1"><span class="label-text">Код</span></label>
+          <input type="text" name="code" value="{{ form.code.value|default:'' }}"
+                 class="input input-bordered w-full input-sm font-mono"
+                 required {% if obj.is_system %}readonly{% endif %}
+                 placeholder="call_client">
+          <p class="text-xs text-base-content/60 mt-1">
+            Латиница, нижнее подчёркивание. Используется в коде.
+            {% if obj.is_system %}<br><b>Системный код менять нельзя.</b>{% endif %}
+          </p>
+        </div>
+        <div>
+          <label class="label py-1"><span class="label-text">Порядок</span></label>
+          <input type="number" name="order" value="{{ form.order.value|default:0 }}"
+                 class="input input-bordered w-full input-sm" min="0">
+        </div>
+      </div>
+
+      <div>
+        <label class="label py-1"><span class="label-text">Название</span></label>
+        <input type="text" name="name" value="{{ form.name.value|default:'' }}"
+               class="input input-bordered w-full input-sm" required
+               placeholder="Звонок клиенту">
+      </div>
+
+      <div>
+        <label class="label py-1"><span class="label-text">Описание</span></label>
+        <textarea name="description" rows="2"
+                  class="textarea textarea-bordered w-full text-sm"
+                  placeholder="Когда и зачем сотрудник совершает действие.">{{ form.description.value|default:'' }}</textarea>
+      </div>
+
+      <div>
+        <label class="label py-1"><span class="label-text">Порождает событие (необязательно)</span></label>
+        <select name="spawns_event" class="select select-bordered select-sm w-full">
+          <option value="">— нет —</option>
+          {% for choice in form.spawns_event.field.queryset %}
+            <option value="{{ choice.pk }}"
+                    {% if form.spawns_event.value|stringformat:"s" == choice.pk|stringformat:"s" %}selected{% endif %}>
+              {{ choice.name }} ({{ choice.get_source_display }})
+            </option>
+          {% endfor %}
+        </select>
+        <p class="text-xs text-base-content/60 mt-1">
+          Если выбрано — при записи действия автоматически создаётся событие
+          этого типа (с parent = действием). Используется например для
+          «Создание услуги» → событие «Услуга добавлена».
+        </p>
+      </div>
+
+      <div>
+        <label class="label cursor-pointer justify-start gap-2">
+          <input type="checkbox" name="is_active" class="checkbox checkbox-sm"
+                 {% if form.is_active.value %}checked{% endif %}>
+          <span class="label-text">Активен (виден в UI)</span>
+        </label>
+      </div>
+
+      {% if form.non_field_errors %}
+        <div class="alert alert-error text-sm">{{ form.non_field_errors }}</div>
+      {% endif %}
+
+      <div class="modal-action">
+        <button type="submit" class="btn btn-primary btn-sm">Сохранить</button>
+        <button type="button" class="btn btn-sm" onclick="this.closest('dialog').remove()">Отмена</button>
+      </div>
+    </form>
+  </div>
+  <form method="dialog" class="modal-backdrop">
+    <button onclick="this.closest('dialog').remove()">close</button>
+  </form>
+</dialog>

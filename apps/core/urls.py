@@ -74,6 +74,17 @@ urlpatterns = [
     path('references/message-template/<uuid:pk>/', views.reference_message_template_edit, name='reference_message_template_edit'),
     path('references/message-template/<uuid:pk>/delete/', views.reference_message_template_delete, name='reference_message_template_delete'),
 
+    # Типы событий и действий (лог клиента)
+    path('references/event-types/', views.references_event_types, name='references_event_types'),
+    path('references/event-type/add/', views.reference_event_type_edit, name='reference_event_type_add'),
+    path('references/event-type/<int:pk>/', views.reference_event_type_edit, name='reference_event_type_edit'),
+    path('references/event-type/<int:pk>/delete/', views.reference_event_type_delete, name='reference_event_type_delete'),
+
+    path('references/action-types/', views.references_action_types, name='references_action_types'),
+    path('references/action-type/add/', views.reference_action_type_edit, name='reference_action_type_add'),
+    path('references/action-type/<int:pk>/', views.reference_action_type_edit, name='reference_action_type_edit'),
+    path('references/action-type/<int:pk>/delete/', views.reference_action_type_delete, name='reference_action_type_delete'),
+
     # ─── Session idle / inline-login ───
     # Префикс /api/session/ должен быть в IDLE_IGNORE_PREFIXES (middleware.py),
     # чтобы поллер не считался активностью и не дёргал auto-logout сам.

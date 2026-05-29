@@ -1,0 +1,73 @@
+<div id="event-types-list"
+     hx-trigger="reloadEventTypes from:body"
+     hx-get="{% url 'core:references_event_types' %}"
+     hx-swap="outerHTML">
+
+  <div class="flex flex-wrap justify-between items-center mb-3 gap-2">
+    <h3 class="font-semibold">Типы событий ({{ items|length }})</h3>
+    <button class="btn btn-primary btn-sm"
+            hx-get="{% url 'core:reference_event_type_add' %}"
+            hx-target="body" hx-swap="beforeend">
+      + Добавить тип события
+    </button>
+  </div>
+
+  <p class="text-xs text-base-content/60 mb-3">
+    Событие = что произошло. <b>Источник</b> определяет кто его сгенерировал.
+    Системные типы помечены 🔒 — их нельзя удалять, но можно скрыть (флаг «Активен»).
+  </p>
+
+  <div class="overflow-x-auto">
+    <table class="table table-sm table-zebra">
+      <thead>
+        <tr>
+          <th class="w-12">№</th>
+          <th>Код</th>
+          <th>Название</th>
+          <th class="w-32">Источник</th>
+          <th class="w-32">Стандартные действия</th>
+          <th class="w-20 text-center">Статус</th>
+          <th class="w-32 text-right"></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for it in items %}
+        <tr>
+          <td class="text-xs text-base-content/50">{{ it.order }}</td>
+          <td class="text-xs font-mono">
+            {% if it.is_system %}<span title="Системный">🔒</span> {% endif %}{{ it.code }}
+          </td>
+          <td>{{ it.name }}</td>
+          <td>
+            <span class="badge badge-ghost badge-xs">{{ it.get_source_display }}</span>
+          </td>
+          <td class="text-xs">
+            {% for a in it.standard_actions.all %}
+              <span class="badge badge-outline badge-xs">{{ a.name }}</span>
+            {% empty %}<span class="text-base-content/40">—</span>{% endfor %}
+          </td>
+          <td class="text-center">
+            {% if it.is_active %}
+              <span class="badge badge-success badge-xs">активен</span>
+            {% else %}
+              <span class="badge badge-ghost badge-xs">скрыт</span>
+            {% endif %}
+          </td>
+          <td class="text-right whitespace-nowrap">
+            <button class="btn btn-xs btn-outline"
+                    hx-get="{% url 'core:reference_event_type_edit' it.pk %}"
+                    hx-target="body" hx-swap="beforeend">Изменить</button>
+            {% if not it.is_system %}
+            <button class="btn btn-xs btn-error btn-outline"
+                    hx-post="{% url 'core:reference_event_type_delete' it.pk %}"
+                    hx-confirm="Удалить тип «{{ it.name }}»?">Удалить</button>
+            {% endif %}
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="7" class="text-center text-base-content/60">Типов событий нет</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>

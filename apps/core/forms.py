@@ -6,6 +6,7 @@ from apps.crm.models import (
     Region, LegalEntityKind,
     ServiceName, PaymentProcedure, ServiceCommonStatus,
     ServiceEmployeeStatus, ServiceTag, MessageTemplate,
+    EventType, ActionType,
 )
 
 
@@ -318,6 +319,36 @@ class DashboardConfigForm(forms.ModelForm):
     class Meta:
         model = DashboardConfig
         fields = ["name", "description", "menu_items", "widgets", "is_default", "is_active"]
+        widgets = {
+            "description": forms.Textarea(attrs={"rows": 2}),
+        }
+
+
+class EventTypeForm(forms.ModelForm):
+    """Форма EventType. standard_actions — M2M-подсказки «какие действия
+    обычно совершают при этом событии» (используется в модалке лога)."""
+    standard_actions = forms.ModelMultipleChoiceField(
+        queryset=ActionType.objects.filter(is_active=True).order_by("order", "name"),
+        widget=forms.CheckboxSelectMultiple,
+        required=False,
+        label="Стандартные действия",
+    )
+
+    class Meta:
+        model = EventType
+        fields = ["code", "name", "source", "order",
+                  "description", "is_active", "standard_actions"]
+        widgets = {
+            "description": forms.Textarea(attrs={"rows": 2}),
+        }
+
+
+class ActionTypeForm(forms.ModelForm):
+    """Форма ActionType. spawns_event — опционально порождаемое событие."""
+    class Meta:
+        model = ActionType
+        fields = ["code", "name", "order", "description",
+                  "spawns_event", "is_active"]
         widgets = {
             "description": forms.Textarea(attrs={"rows": 2}),
         }
