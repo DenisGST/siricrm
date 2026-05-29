@@ -8,7 +8,7 @@
   <link rel="icon" href="{% static 'img/favicon.ico' %}">
   <link rel="stylesheet" href="{% static 'css/tailwind.css' %}">
   <link rel="stylesheet" href="{% static 'css/style.css' %}">
-  <script src="https://unpkg.com/htmx.org@1.9.8"></script>
+  <script src="{% static 'js/htmx-1.9.8.min.js' %}"></script>
   {# multi-tab-logout: обязателен на каждом layout'е — иначе beforeunload  #}
   {# на этой странице не зарегистрирует свою вкладку и попытается разлогинить.#}
   <script src="{% static 'js/multi-tab-logout.js' %}" defer></script>

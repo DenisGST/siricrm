@@ -14,11 +14,11 @@
   <link rel="stylesheet" href="{% static 'css/style.css' %}">
   <script src="{% static 'js/app.js' %}"></script>
 
-  <!-- HTMX -->
-  <script src="https://unpkg.com/htmx.org@1.9.8"></script>
-  <script src="https://unpkg.com/htmx.org/dist/ext/ws.js"></script>
-  <!-- Twemoji — кроссплатформенные SVG-эмодзи без окантовки -->
-  <script src="https://cdn.jsdelivr.net/npm/@twemoji/api@latest/dist/twemoji.min.js" crossorigin="anonymous"></script>
+  <!-- HTMX (локально — убираем внешний RTT к unpkg, защита от CDN-блокировок) -->
+  <script src="{% static 'js/htmx-1.9.8.min.js' %}"></script>
+  <script src="{% static 'js/htmx-ext-ws.min.js' %}"></script>
+  <!-- Twemoji — кроссплатформенные SVG-эмодзи (локально, без jsdelivr CDN) -->
+  <script src="{% static 'js/twemoji.min.js' %}"></script>
   <!-- CSRF для HTMX -->
   <script>
     const csrftoken =
@@ -455,9 +455,11 @@
             </button>
           </div>
         </div>
-        <div id="telegram-clients-list" class="flex-1 min-h-0 overflow-y-auto px-3"
-             hx-get="{% url 'telegram_clients_list' %}?scope=mine" hx-trigger="load" hx-swap="innerHTML">
-        </div>
+        {# Список клиентов — ленивая загрузка при первом открытии модалки.
+           Раньше был hx-trigger="load" — список грузился всегда, даже если
+           пользователь так и не открывал чат. Теперь грузим из JS в
+           openTelegramChatModal()/openTelegramChatModalForClient(). #}
+        <div id="telegram-clients-list" class="flex-1 min-h-0 overflow-y-auto px-3"></div>
       </aside>
       <section id="telegram-chat-panel" class="flex-1 flex flex-col min-h-0"></section>
     </div>
@@ -738,6 +740,14 @@ document.addEventListener('htmx:afterRequest', (event) => {
   function openTelegramChatModal() {
     const el = document.getElementById('telegram_chat_modal');
     if (el) el.style.display = 'flex';
+    // Ленивая загрузка списка клиентов — экономим ~309мс CPU и ~23КБ HTML
+    // на каждом визите дашборда, если пользователь так и не открывает чат.
+    const list = document.getElementById('telegram-clients-list');
+    if (list && !list.dataset.loaded && window.htmx) {
+      list.dataset.loaded = '1';
+      htmx.ajax('GET', '/telegram/clients/?scope=mine',
+                { target: '#telegram-clients-list', swap: 'innerHTML' });
+    }
   }
   function closeTelegramChatModal() {
     const el = document.getElementById('telegram_chat_modal');
@@ -837,6 +847,11 @@ document.addEventListener('htmx:afterRequest', (event) => {
     // Запоминаем целевого клиента ДО открытия модалки — чтобы htmx:afterSwap
     // на загрузке списка не подменил подсветку и чат на первого в списке.
     window._activeTelegramClientId = String(clientId);
+    // Помечаем список как «уже грузим» ДО openTelegramChatModal, иначе
+    // он сделает лишний запрос без pin_client_id (мы сами сейчас запросим
+    // ниже с правильным pin_client_id).
+    const _list = document.getElementById('telegram-clients-list');
+    if (_list) _list.dataset.loaded = '1';
     openTelegramChatModal();
     // Сбросить любую старую подсветку немедленно — даже если целевой клиент
     // окажется не в текущем scope, не должно остаться фокуса на чужом клиенте.
@@ -853,6 +868,8 @@ document.addEventListener('htmx:afterRequest', (event) => {
     // встанет первым. htmx:afterSwap → _applyActiveTelegramClient() подсветит
     // его и прокрутит в видимую область.
     if (window.htmx) {
+      const list = document.getElementById('telegram-clients-list');
+      if (list) list.dataset.loaded = '1';  // пометили, чтобы openTelegramChatModal() не дернул второй раз
       const scope = document.getElementById('telegram-scope')?.value || 'mine';
       const sort  = document.getElementById('telegram-sort')?.value  || '-last_message_at';
       const q     = document.getElementById('telegram-search')?.value || '';
