@@ -63,6 +63,16 @@
 
     document.addEventListener("submit", function () { markInternalNav(); }, true);
 
+    // F5 / Ctrl+R / Cmd+R — это reload, а не закрытие вкладки. beforeunload
+    // не отличает одно от другого, поэтому ловим хоткей сами и ставим
+    // маркер — иначе sendBeacon logout успевает дропнуть сессию между
+    // unload и re-GET, и Django выдаёт 400 SessionInterrupted на reload.
+    document.addEventListener("keydown", function (e) {
+        if (e.key === "F5" || ((e.ctrlKey || e.metaKey) && (e.key === "r" || e.key === "R"))) {
+            markInternalNav();
+        }
+    }, true);
+
     window.addEventListener("beforeunload", function () {
         const tabs = readTabs();
         delete tabs[tabId];
