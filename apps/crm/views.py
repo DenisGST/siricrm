@@ -404,6 +404,20 @@ def telegram_clients_list(request):
         for c in clients_for_status:
             c.ms_status = ""
 
+    # Каналы, по которым у клиента есть сообщения — для значков Т/М/W в списке
+    # (серый = сообщений из канала не было). Один запрос на всю страницу.
+    channel_map = {}
+    for cid_, ch in (
+        Message.objects.filter(client__in=clients_for_status)
+        .values_list("client_id", "channel").distinct()
+    ):
+        channel_map.setdefault(cid_, set()).add(ch)
+    for c in clients_for_status:
+        chans = channel_map.get(c.pk, set())
+        c.has_telegram = "telegram" in chans
+        c.has_max = "max" in chans
+        c.has_whatsapp = "whatsapp" in chans
+
     if pinned_client is not None:
         page_obj.object_list = [pinned_client] + list(page_obj.object_list)
 
