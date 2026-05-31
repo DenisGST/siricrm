@@ -545,7 +545,7 @@ def kanban(request):
         except Employee.DoesNotExist:
             base_qs = base_qs.none()
 
-    _pfetch = ["employees", "services__name"]
+    _pfetch = ["employees", "services__name", "services__common_status"]
     unknowns = list(base_qs.filter(status="unknown").prefetch_related(*_pfetch))
     leads = list(base_qs.filter(status="lead").prefetch_related(*_pfetch))
     actives = list(base_qs.filter(status="active").prefetch_related(*_pfetch))
@@ -622,7 +622,7 @@ def kanban_column(request, status):
     from django.db.models import OuterRef, Subquery
     from apps.crm.models import Message
     last_msg = Message.objects.filter(client=OuterRef("pk")).order_by("-created_at")
-    qs = qs.prefetch_related("employees", "services__name").annotate(
+    qs = qs.prefetch_related("employees", "services__name", "services__common_status").annotate(
         last_message_content=Subquery(last_msg.values("content")[:1]),
     ).order_by(
         F("last_message_at").desc(nulls_last=True), "-created_at",

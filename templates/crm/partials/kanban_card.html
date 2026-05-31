@@ -64,16 +64,21 @@
     <!-- Услуги -->
     {% with svcs=client.services.all %}
       {% if svcs %}
-        <div class="flex flex-wrap gap-1 mt-1">
+        <div class="flex flex-col gap-1 mt-1">
           {% for svc in svcs %}
-            <span class="badge badge-ghost cursor-pointer hover:badge-primary transition-colors font-medium"
-                  style="font-size:0.8rem;padding:0.35rem 0.65rem;"
-                  hx-get="{% url 'service_edit' svc.pk %}"
-                  hx-target="body"
-                  hx-swap="beforeend"
-                  hx-on::after-request="document.getElementById('service-modal')?.showModal()"
-                  onclick="event.stopPropagation()"
-                  title="{{ svc.name.name }}">{{ svc.name.short_name }}</span>
+            <span class="inline-flex items-center gap-1 flex-wrap">
+              <span class="badge badge-ghost cursor-pointer hover:badge-primary transition-colors font-medium"
+                    style="font-size:0.8rem;padding:0.35rem 0.65rem;"
+                    hx-get="{% url 'service_edit' svc.pk %}"
+                    hx-target="body"
+                    hx-swap="beforeend"
+                    hx-on::after-request="document.getElementById('service-modal')?.showModal()"
+                    onclick="event.stopPropagation()"
+                    title="{{ svc.name.name }}">{{ svc.name.short_name }}</span>
+              {% if svc.common_status %}
+                <span class="text-xs text-base-content/60 whitespace-nowrap">— {{ svc.common_status.name }}</span>
+              {% endif %}
+            </span>
           {% endfor %}
         </div>
       {% else %}
