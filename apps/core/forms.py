@@ -36,7 +36,7 @@ class DepartmentForm(forms.ModelForm):
 
     class Meta:
         model = Department
-        fields = ["name", "description", "manager", "is_active", "sees_all_clients"]
+        fields = ["name", "description", "manager", "is_active", "sees_all_clients", "can_edit_payment_schedule"]
         widgets = {
             "description": forms.Textarea(attrs={"rows": 2}),
         }

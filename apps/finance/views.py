@@ -13,7 +13,7 @@ from dateutil.relativedelta import relativedelta
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.db import transaction
 from django.db.models import Sum
-from django.http import HttpResponse
+from django.http import HttpResponse, HttpResponseForbidden
 from django.shortcuts import get_object_or_404, render
 from django.utils import timezone
 from django.views.decorators.http import require_POST
@@ -23,8 +23,8 @@ from apps.crm.models import Client, Service
 
 from . import forms, models
 from .permissions import (
-    can_delete_charge, can_delete_finance, can_edit_finance,
-    require_delete, require_edit,
+    can_delete_charge, can_delete_finance, can_edit_finance, can_edit_schedule,
+    require_delete, require_edit, require_schedule_edit,
 )
 
 
@@ -487,7 +487,7 @@ def _generate_charges(service):
     return len(new_charges)
 
 
-def _schedule_modal_ctx(service, *, error=None, success=None):
+def _schedule_modal_ctx(service, *, error=None, success=None, can_edit=False):
     charges = list(service.charges.order_by("due_date"))
     total = sum((c.amount for c in charges), Decimal("0"))
     return {
@@ -500,21 +500,26 @@ def _schedule_modal_ctx(service, *, error=None, success=None):
         "date_start_value": service.date_start or timezone.localdate(),
         "error": error,
         "success": success,
+        "can_edit": can_edit,
     }
 
 
 @login_required
-@require_edit
 def payment_schedule_modal(request, service_id):
     """Модалка «График платежей» в форме услуги.
 
-    GET — рендерит форму + таблицу существующих Charge.
+    GET — рендерит форму + таблицу существующих Charge. Просмотр доступен
+    всем. Редактирование (POST / кнопки) — только can_edit_schedule
+    (коммерческий отдел, бухгалтерия, admin, суперюзер).
     POST — сохраняет параметры, при replace/append перегенерирует и
     возвращает ту же модалку с обновлённой таблицей (не закрывает её).
     """
     service = get_object_or_404(Service, pk=service_id)
+    can_edit = can_edit_schedule(request.user)
 
     if request.method == "POST":
+        if not can_edit:
+            return HttpResponseForbidden("Нет прав на редактирование графика платежей")
         try:
             for field in SCHEDULE_FIELDS:
                 raw = request.POST.get(field, "").strip().replace(",", ".")
@@ -535,7 +540,7 @@ def payment_schedule_modal(request, service_id):
         if not service.date_start:
             return render(
                 request, "finance/partials/payment_schedule_modal.html",
-                _schedule_modal_ctx(service, error="Не указана дата начала оказания услуг — без неё нельзя построить график."),
+                _schedule_modal_ctx(service, error="Не указана дата начала оказания услуг — без неё нельзя построить график.", can_edit=can_edit),
             )
 
         strategy = request.POST.get("strategy", "save_only")
@@ -571,19 +576,19 @@ def payment_schedule_modal(request, service_id):
                 )
             success = f"Создано {created} начислени{'е' if created == 1 else ('я' if 1 < created < 5 else 'й')}. Цена договора: {total} руб."
 
-        ctx = _schedule_modal_ctx(service, success=success)
+        ctx = _schedule_modal_ctx(service, success=success, can_edit=can_edit)
         resp = render(request, "finance/partials/payment_schedule_modal.html", ctx)
         resp["HX-Trigger"] = "reloadFinance"
         return resp
 
     return render(
         request, "finance/partials/payment_schedule_modal.html",
-        _schedule_modal_ctx(service),
+        _schedule_modal_ctx(service, can_edit=can_edit),
     )
 
 
 @login_required
-@require_edit
+@require_schedule_edit
 def charge_edit(request, service_id, charge_id=None):
     """Создание / редактирование одного начисления.
 

@@ -43,6 +43,35 @@ def can_edit_finance(user) -> bool:
     return bool(emp and emp.role in EDIT_ROLES)
 
 
+def can_edit_schedule(user) -> bool:
+    """Право составлять/редактировать график платежей и начисления.
+
+    Просмотр графика — у всех (см. payment_schedule_modal GET). Редактируют:
+    суперюзер, роль admin, и сотрудники отделов с флагом
+    Department.can_edit_payment_schedule (коммерческий отдел, бухгалтерия).
+    """
+    if not user.is_authenticated:
+        return False
+    if user.is_superuser:
+        return True
+    emp = getattr(user, "employee", None)
+    if not emp:
+        return False
+    if emp.role == "admin":
+        return True
+    dept = getattr(emp, "department", None)
+    return bool(dept and dept.can_edit_payment_schedule)
+
+
+def require_schedule_edit(view_func):
+    @wraps(view_func)
+    def _wrapped(request, *args, **kwargs):
+        if not can_edit_schedule(request.user):
+            return HttpResponseForbidden("Нет прав на редактирование графика платежей")
+        return view_func(request, *args, **kwargs)
+    return _wrapped
+
+
 def can_delete_finance(user) -> bool:
     if not user.is_authenticated:
         return False

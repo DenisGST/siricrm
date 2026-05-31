@@ -22,6 +22,17 @@
       {% csrf_token %}
       <input type="hidden" name="strategy" id="schedule-strategy" value="save_only">
 
+      {% if not can_edit %}
+        <div class="alert alert-info text-sm mb-1 py-2">
+          👁 Только просмотр — редактирование графика платежей доступно
+          коммерческому отделу и бухгалтерии.
+        </div>
+      {% endif %}
+
+      {% comment %}Параметры графика: для не-редакторов fieldset disabled —
+         поля видны, но недоступны для ввода.{% endcomment %}
+      <fieldset {% if not can_edit %}disabled{% endif %} style="border:none;padding:0;margin:0;min-width:0;">
+
       <!-- Дата начала оказания услуг + предупреждение в общей рамке -->
       <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));
                   gap:0.75rem;align-items:center;
@@ -126,6 +137,8 @@
         </div>
       </div>
 
+      </fieldset>
+
       {% if charges or service.date_start %}
         <div class="border-t border-base-300 pt-3">
           <div class="flex justify-between items-baseline mb-2">
@@ -138,11 +151,13 @@
                   Итого: <b class="font-mono">{{ charges_total|default:"" }}</b>
                 </div>
               {% endif %}
+              {% if can_edit %}
               <button type="button" class="btn btn-primary btn-xs"
                       hx-get="{% url 'finance:charge_add' service.id %}"
                       hx-target="body" hx-swap="beforeend">
                 + Начисление
               </button>
+              {% endif %}
             </div>
           </div>
           {% if charges %}
@@ -159,10 +174,10 @@
               </thead>
               <tbody>
                 {% for ch in charges %}
-                <tr class="cursor-pointer hover:bg-base-200"
+                <tr {% if can_edit %}class="cursor-pointer hover:bg-base-200"
                     hx-get="{% url 'finance:charge_edit' service.id ch.id %}"
                     hx-target="body" hx-swap="beforeend"
-                    title="Редактировать">
+                    title="Редактировать"{% endif %}>
                   <td class="whitespace-nowrap">{{ ch.due_date|date:"d.m.Y" }}</td>
                   <td>{{ ch.title }}</td>
                   <td class="text-right font-mono">{{ ch.amount|floatformat:2 }}</td>
@@ -187,7 +202,7 @@
         </div>
       {% endif %}
 
-      {% if existing_count > 0 %}
+      {% if existing_count > 0 and can_edit %}
         <div class="text-sm rounded-md px-3 py-2"
              style="color:#7f1d1d;border:1px solid #7f1d1d;">
           При нажатии «Заполнить график» выберите стратегию: добавить поверх или удалить старые.
@@ -197,9 +212,10 @@
       <div class="modal-action items-center flex-wrap gap-2">
         <button type="button" class="btn btn-ghost btn-sm"
                 onclick="document.getElementById('payment-schedule-modal').remove()">
-          Отмена
+          {% if can_edit %}Отмена{% else %}Закрыть{% endif %}
         </button>
 
+        {% if can_edit %}
         {% if existing_count > 0 %}
           <button type="submit" class="btn btn-warning btn-sm"
                   onclick="document.getElementById('schedule-strategy').value='append'">
@@ -215,6 +231,7 @@
                   onclick="document.getElementById('schedule-strategy').value='replace'">
             {% icon "check" size=16 %} Заполнить график
           </button>
+        {% endif %}
         {% endif %}
       </div>
     </form>
