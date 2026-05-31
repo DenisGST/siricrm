@@ -95,24 +95,21 @@ def transfer_service(service, *, target_department=None, target_employee=None,
         )
         service.employees.add(emp)
 
-    # Лог СОБЫТИЙКИ: действие + событие. Комментарий «что делать дальше» и
-    # пометку «оставил у себя» подмешиваем в текст.
+    # Лог СОБЫТИЙКИ: действие + событие.
     sn = service.name.short_name
-    note = f" — {comment}" if comment else ""
-    self_note = " (исполнитель оставил услугу у себя)" if keep_emp_id else ""
     if target_employee is not None:
-        action_comment = f"Услуга «{sn}» передана в работу сотруднику: {target_employee}{self_note}{note}"
+        action_comment = f"Услуга «{sn}» передана в работу сотруднику: {target_employee}"
         event_code = "employee_assigned"
         event_comment = (
             f"Услуга «{sn}» передана в работу — {target_employee} "
-            f"(отдел «{department.name}», статус «{entry.name}»){note}"
+            f"(отдел «{department.name}», статус «{entry.name}»)"
         )
     else:
-        action_comment = f"Услуга «{sn}» передана в работу отдела «{department.name}»{self_note}{note}"
+        action_comment = f"Услуга «{sn}» передана в работу отдела «{department.name}»"
         event_code = "dept_assigned"
         event_comment = (
             f"Услуга «{sn}» передана в работу отдела «{department.name}» "
-            f"(статус «{entry.name}»), получателей: {len(recipients)}{note}"
+            f"(статус «{entry.name}»), получателей: {len(recipients)}"
         )
 
     action = client_log.record_action(
