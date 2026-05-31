@@ -48,7 +48,7 @@
               <td class="text-xs font-mono">
                 {% if it.is_system %}<span title="Системный">🔒</span> {% endif %}{{ it.code }}
               </td>
-              <td>{{ it.name }}</td>
+              <td>{{ it.name }}{% if it.is_manual %} <span class="badge badge-outline badge-xs" title="Доступно для ручного добавления в логе">✋ ручное</span>{% endif %}</td>
               <td class="text-xs">
                 {% for a in it.standard_actions.all %}
                   <span class="badge badge-outline badge-xs">{{ a.name }}</span>

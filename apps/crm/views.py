@@ -2101,12 +2101,19 @@ def client_events_modal(request, client_id):
     action_types = ActionType.objects.filter(is_active=True).order_by(
         "order", "name",
     )
+    # Для формы ручного добавления — только типы с is_manual (авто-генерируемые
+    # скрыты). Фильтр сверху по-прежнему работает по всем типам (event_types/
+    # action_types) — чтобы можно было отфильтровать уже записанные авто-события.
+    manual_event_types = event_types.filter(is_manual=True)
+    manual_action_types = action_types.filter(is_manual=True)
 
     return render(request, "crm/partials/client_events_modal.html", {
         "client": client,
         "events": qs,
         "event_types": event_types,
         "action_types": action_types,
+        "manual_event_types": manual_event_types,
+        "manual_action_types": manual_action_types,
         "source_choices": EventType.SOURCE_CHOICES,
         "filter_kind": f_kind,
         "filter_source": f_source,

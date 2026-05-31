@@ -37,7 +37,7 @@
           <td class="text-xs font-mono">
             {% if it.is_system %}<span title="Системный">🔒</span> {% endif %}{{ it.code }}
           </td>
-          <td>{{ it.name }}</td>
+          <td>{{ it.name }}{% if it.is_manual %} <span class="badge badge-outline badge-xs" title="Доступно для ручного добавления в логе">✋ ручное</span>{% endif %}</td>
           <td class="text-xs">
             {% if it.spawns_event %}
               <span class="badge badge-info badge-xs">→ {{ it.spawns_event.name }}</span>

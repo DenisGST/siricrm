@@ -511,6 +511,14 @@ class EventType(TimeStampedModel):
         "Системный", default=False,
         help_text="Системные типы нельзя удалять из UI.",
     )
+    is_manual = models.BooleanField(
+        "Доступно для ручного добавления", default=False,
+        help_text=(
+            "Тип можно выбрать в форме ручного добавления записи в логе "
+            "клиента. Авто-генерируемые типы (мессенджер, смена статуса, "
+            "импорт и т.п.) не помечаются."
+        ),
+    )
     is_active = models.BooleanField("Активен", default=True)
     order = models.PositiveIntegerField("Порядок", default=0)
 
@@ -545,6 +553,14 @@ class ActionType(TimeStampedModel):
     is_system = models.BooleanField(
         "Системный", default=False,
         help_text="Системные типы нельзя удалять из UI.",
+    )
+    is_manual = models.BooleanField(
+        "Доступно для ручного добавления", default=False,
+        help_text=(
+            "Тип можно выбрать в форме ручного добавления записи в логе "
+            "клиента. Авто-генерируемые типы (отправка файла из чата, "
+            "создание услуги, платежи и т.п.) не помечаются."
+        ),
     )
     is_active = models.BooleanField("Активен", default=True)
     order = models.PositiveIntegerField("Порядок", default=0)

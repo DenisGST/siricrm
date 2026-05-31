@@ -337,10 +337,16 @@ class EventTypeForm(forms.ModelForm):
     class Meta:
         model = EventType
         fields = ["code", "name", "source", "order",
-                  "description", "is_active", "standard_actions"]
+                  "description", "is_manual", "is_active", "standard_actions"]
         widgets = {
             "description": forms.Textarea(attrs={"rows": 2}),
         }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Новые кастомные типы по умолчанию доступны для ручного добавления.
+        if self.instance.pk is None:
+            self.fields["is_manual"].initial = True
 
 
 class ActionTypeForm(forms.ModelForm):
@@ -348,7 +354,12 @@ class ActionTypeForm(forms.ModelForm):
     class Meta:
         model = ActionType
         fields = ["code", "name", "order", "description",
-                  "spawns_event", "is_active"]
+                  "spawns_event", "is_manual", "is_active"]
         widgets = {
             "description": forms.Textarea(attrs={"rows": 2}),
         }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.instance.pk is None:
+            self.fields["is_manual"].initial = True

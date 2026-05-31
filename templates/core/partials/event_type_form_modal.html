@@ -70,6 +70,18 @@
 
       <div>
         <label class="label cursor-pointer justify-start gap-2">
+          <input type="checkbox" name="is_manual" class="checkbox checkbox-sm"
+                 {% if form.is_manual.value %}checked{% endif %}>
+          <span class="label-text">Доступно для ручного добавления</span>
+        </label>
+        <p class="text-xs text-base-content/50 ml-7 -mt-1">
+          Тип можно выбрать в форме добавления записи в логе клиента.
+          Авто-генерируемые типы (мессенджер, смена статуса, импорт) — не отмечать.
+        </p>
+      </div>
+
+      <div>
+        <label class="label cursor-pointer justify-start gap-2">
           <input type="checkbox" name="is_active" class="checkbox checkbox-sm"
                  {% if form.is_active.value %}checked{% endif %}>
           <span class="label-text">Активен (виден в UI)</span>

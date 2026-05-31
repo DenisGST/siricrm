@@ -205,21 +205,31 @@
                   class="join-item btn btn-xs"
                   onclick="setLogAddKind('action')">Действие</button>
         </div>
-        <input type="hidden" name="entry_kind" id="log-add-kind" value="event">
+        <input type="hidden" name="entry_kind" id="log-add-kind" value="action">
 
-        <select name="type_code" id="log-add-type" class="select select-bordered select-xs flex-1 min-w-[200px]" required>
-          <option value="">— выберите тип —</option>
-          <optgroup label="События" data-kind="event">
-            {% for et in event_types %}
-              <option value="{{ et.code }}" data-kind="event">{{ et.name }} ({{ et.get_source_display }})</option>
+        {% comment %}Typeahead-комбобокс выбора типа: видимый input для поиска
+           по первым буквам + скрытый type_code (его и отправляем). В списке —
+           только is_manual-типы (manual_action_types / manual_event_types),
+           отфильтрованные по активной вкладке Событие/Действие.{% endcomment %}
+        <div class="relative flex-1 min-w-[220px]" id="log-add-type-combo">
+          <input type="text" id="log-add-type-input" autocomplete="off"
+                 class="input input-bordered input-xs w-full"
+                 placeholder="Тип — начните вводить…">
+          <input type="hidden" name="type_code" id="log-add-type" required>
+          <ul id="log-add-type-list"
+              class="hidden absolute left-0 right-0 mt-1 max-h-60 overflow-y-auto
+                     bg-base-100 border border-base-300 rounded shadow-lg text-xs"
+              style="z-index:60">
+            {% for at in manual_action_types %}
+              <li class="log-type-opt px-2 py-1 cursor-pointer hover:bg-base-200"
+                  data-kind="action" data-code="{{ at.code }}" data-name="{{ at.name }}">{{ at.name }}</li>
             {% endfor %}
-          </optgroup>
-          <optgroup label="Действия" data-kind="action" class="hidden">
-            {% for at in action_types %}
-              <option value="{{ at.code }}" data-kind="action">{{ at.name }}</option>
+            {% for et in manual_event_types %}
+              <li class="log-type-opt px-2 py-1 cursor-pointer hover:bg-base-200"
+                  data-kind="event" data-code="{{ et.code }}" data-name="{{ et.name }}">{{ et.name }} <span class="opacity-50">({{ et.get_source_display }})</span></li>
             {% endfor %}
-          </optgroup>
-        </select>
+          </ul>
+        </div>
       </div>
 
       <textarea name="comment" rows="2"
@@ -237,6 +247,14 @@
   </form>
 
   <script>
+    // Карта всех активных типов (code → name) — для подстановки имени при
+    // prefill из chip стандартного действия (его код может быть не-manual,
+    // т.е. отсутствовать в списке комбобокса).
+    window.LOG_TYPE_NAMES = {
+      {% for et in event_types %}"{{ et.code }}": "{{ et.name|escapejs }}",{% endfor %}
+      {% for at in action_types %}"{{ at.code }}": "{{ at.name|escapejs }}",{% endfor %}
+    };
+
     // ── Фильтры ──
     function setLogKind(kind) {
       const form = document.getElementById('log-filter');
@@ -255,22 +273,86 @@
       htmx.trigger(form, 'change');
     }
 
-    // ── Форма добавления ──
+    // ── Форма добавления: комбобокс выбора типа (typeahead) ──
+    const _typeInput  = document.getElementById('log-add-type-input');
+    const _typeHidden = document.getElementById('log-add-type');
+    const _typeList   = document.getElementById('log-add-type-list');
+    let   _typeHi     = -1;  // индекс подсвеченного варианта
+
+    function _visibleOpts() {
+      return Array.from(_typeList.querySelectorAll('.log-type-opt'))
+        .filter(o => !o.classList.contains('hidden'));
+    }
+    function _paintHi(opts) {
+      opts.forEach((o, i) => o.classList.toggle('bg-base-200', i === _typeHi));
+      if (opts[_typeHi]) opts[_typeHi].scrollIntoView({block:'nearest'});
+    }
+    // Показать список: только активная категория (kind) + текстовый фильтр.
+    function _showTypeList(filter) {
+      const kind = document.getElementById('log-add-kind').value;
+      _typeList.querySelectorAll('.log-type-opt').forEach(o => {
+        const match = o.dataset.kind === kind &&
+                      (!filter || o.dataset.name.toLowerCase().includes(filter));
+        o.classList.toggle('hidden', !match);
+        o.classList.remove('bg-base-200');
+      });
+      _typeHi = -1;
+      _typeList.classList.remove('hidden');
+    }
+    function _closeTypeList() { _typeList.classList.add('hidden'); }
+
+    function setLogAddType(code, name) {
+      _typeHidden.value = code || '';
+      if (!name && code) {
+        const opt = _typeList.querySelector('.log-type-opt[data-code="' + code + '"]');
+        name = opt ? opt.dataset.name : (window.LOG_TYPE_NAMES[code] || code);
+      }
+      _typeInput.value = name || '';
+      _typeInput.classList.remove('border-error');
+      _closeTypeList();
+    }
+
     function setLogAddKind(kind) {
       document.getElementById('log-add-kind').value = kind;
       document.getElementById('log-add-kind-event').classList.toggle('btn-primary', kind==='event');
       document.getElementById('log-add-kind-action').classList.toggle('btn-primary', kind==='action');
-      // Переключаем видимость optgroup'ов
-      const sel = document.getElementById('log-add-type');
-      sel.querySelectorAll('optgroup').forEach(g => {
-        g.classList.toggle('hidden', g.dataset.kind !== kind);
-        g.querySelectorAll('option').forEach(o => o.disabled = (g.dataset.kind !== kind));
-      });
-      sel.value = '';
+      // Сбрасываем выбранный тип — он мог быть другой категории.
+      _typeHidden.value = '';
+      _typeInput.value = '';
+      _closeTypeList();
     }
+
+    _typeInput.addEventListener('focus', () => { _typeInput.select(); _showTypeList(''); });
+    _typeInput.addEventListener('input', () => {
+      _typeHidden.value = '';
+      _showTypeList(_typeInput.value.trim().toLowerCase());
+    });
+    _typeInput.addEventListener('blur', () => setTimeout(_closeTypeList, 150));
+    _typeInput.addEventListener('keydown', (e) => {
+      if (_typeList.classList.contains('hidden')) {
+        if (e.key === 'ArrowDown') { _showTypeList(_typeInput.value.trim().toLowerCase()); e.preventDefault(); }
+        return;
+      }
+      const opts = _visibleOpts();
+      if (e.key === 'ArrowDown') { e.preventDefault(); _typeHi = Math.min(_typeHi + 1, opts.length - 1); _paintHi(opts); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); _typeHi = Math.max(_typeHi - 1, 0); _paintHi(opts); }
+      else if (e.key === 'Enter') {
+        e.preventDefault();
+        const pick = opts[_typeHi] || opts[0];
+        if (pick) setLogAddType(pick.dataset.code, pick.dataset.name);
+      }
+      else if (e.key === 'Escape') { _closeTypeList(); }
+    });
+    // mousedown (не click) + preventDefault — чтобы выбор успел произойти
+    // до blur инпута и список не закрылся раньше времени.
+    _typeList.addEventListener('mousedown', (e) => {
+      const li = e.target.closest('.log-type-opt');
+      if (li) { e.preventDefault(); setLogAddType(li.dataset.code, li.dataset.name); }
+    });
+
     function prefillLogAdd(kind, typeCode, parentId, parentLabel) {
       if (kind) setLogAddKind(kind);
-      if (typeCode) document.getElementById('log-add-type').value = typeCode;
+      if (typeCode) setLogAddType(typeCode);
       if (parentId) {
         document.getElementById('log-add-parent').value = parentId;
         const hint = document.getElementById('log-add-parent-hint');
@@ -286,8 +368,19 @@
       document.getElementById('log-add-parent-hint').classList.add('hidden');
     }
 
-    // Установить initial kind=event
-    setLogAddKind('event');
+    // Гард сабмита: без выбранного type_code запрос не уходит (required на
+    // hidden браузером не валидируется). htmx:beforeRequest — отменяемое.
+    document.getElementById('log-add-form').addEventListener('htmx:beforeRequest', (e) => {
+      if (!_typeHidden.value) {
+        e.preventDefault();
+        _typeInput.classList.add('border-error');
+        _typeInput.focus();
+      }
+    });
+
+    // Дефолт — действие «Комментарий сотрудника».
+    setLogAddKind('action');
+    setLogAddType('employee_comment');
 
     // Авто-скролл ленты вниз (как в чате — самое свежее снизу). Лента
     // отсортирована по возрастанию created_at (см. client_events_modal во
