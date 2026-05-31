@@ -145,21 +145,24 @@
            по первым буквам + скрытый type_code (его и отправляем). В списке —
            только is_manual-типы (manual_action_types / manual_event_types),
            отфильтрованные по активной вкладке Событие/Действие.{% endcomment %}
-        <div class="relative flex-1 min-w-[220px]" id="log-add-type-combo">
+        <div class="relative w-56" id="log-add-type-combo">
           <input type="text" id="log-add-type-input" autocomplete="off"
                  class="input input-bordered input-xs w-full"
-                 placeholder="Тип — начните вводить…">
+                 style="padding-right:18px"
+                 placeholder="Тип…">
+          {# caret-индикатор дропдауна; pointer-events:none — клик проходит на input #}
+          <span style="position:absolute;right:6px;top:50%;transform:translateY(-50%);pointer-events:none;opacity:.5;font-size:11px">▾</span>
           <input type="hidden" name="type_code" id="log-add-type" required>
           <ul id="log-add-type-list"
-              class="hidden absolute left-0 right-0 mt-1 max-h-60 overflow-y-auto
+              class="hidden absolute left-0 mt-1 max-h-60 overflow-y-auto
                      bg-base-100 border border-base-300 rounded shadow-lg text-xs"
-              style="z-index:60">
+              style="z-index:60;min-width:100%;width:max-content;max-width:22rem">
             {% for at in manual_action_types %}
-              <li class="log-type-opt px-2 py-1 cursor-pointer hover:bg-base-200"
+              <li class="log-type-opt px-2 py-1 cursor-pointer hover:bg-base-200 whitespace-nowrap"
                   data-kind="action" data-code="{{ at.code }}" data-name="{{ at.name }}">{{ at.name }}</li>
             {% endfor %}
             {% for et in manual_event_types %}
-              <li class="log-type-opt px-2 py-1 cursor-pointer hover:bg-base-200"
+              <li class="log-type-opt px-2 py-1 cursor-pointer hover:bg-base-200 whitespace-nowrap"
                   data-kind="event" data-code="{{ et.code }}" data-name="{{ et.name }}">{{ et.name }} <span class="opacity-50">({{ et.get_source_display }})</span></li>
             {% endfor %}
           </ul>
@@ -256,7 +259,12 @@
       _closeTypeList();
     }
 
-    _typeInput.addEventListener('focus', () => { _typeInput.select(); _showTypeList(''); });
+    // Открыть весь список: и по focus (первый клик), и по click (повторный
+    // клик уже сфокусированного инпута, после Escape) — чтобы можно было
+    // выбирать мышкой, а не только набором текста.
+    function _openAll() { _typeInput.select(); _showTypeList(''); }
+    _typeInput.addEventListener('focus', _openAll);
+    _typeInput.addEventListener('click', _openAll);
     _typeInput.addEventListener('input', () => {
       _typeHidden.value = '';
       _showTypeList(_typeInput.value.trim().toLowerCase());
