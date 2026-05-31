@@ -1,0 +1,13 @@
+{
+  "recommendations": [
+    "ms-python.python",
+    "ms-python.vscode-pylance",
+    "batisteo.vscode-django",
+    "monosans.djlint",
+    "ms-azuretools.vscode-docker",
+    "eamodio.gitlens",
+    "bradlc.vscode-tailwindcss",
+    "redhat.vscode-yaml",
+    "tamasfe.even-better-toml"
+  ]
+}
