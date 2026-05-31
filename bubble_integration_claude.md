@@ -39,3 +39,62 @@ Bubble имеет **две версии** одного приложения: liv
   - GDrive отложены (`approved=False`): **837**.
   - WA-placeholder skipped: ~411 000 (нормально, без файла в Bubble).
   - Реально новых документов за неделю: 0–1 (отдел перешёл на SiriCRM, в Bubble больше не работают).
+
+## WA-медиа: `MessageWSP.url_file` vs `body`
+
+`apply_messagewsp` (`appliers.py:677`) при медиа-сообщении пытается скачать файл **только из поля `body`** (если `body.startswith("http")`). А **`url_file`** — отдельное поле, которое появилось позже как канонический URL медиа в Bubble — **игнорируется**.
+
+При импорте 31 мая 2026 нашли:
+- 43 215 MessageWSP с непустым `url_file` (99% → drive.google.com).
+- 40 787 из них уже имели Message.file (старые записи, когда apply брал URL из `body`).
+- 6 526 MessageWSP с url_file имеют Message **без файла** — кандидаты на доливку.
+
+**Backfill-скрипт (31 мая)** (`/tmp/wa_media_backfill2.py` на prod):
+```python
+candidates = Message.objects.filter(
+    channel="whatsapp", file__isnull=True, bubble_id__isnull=False,
+).exclude(bubble_id="").exclude(message_type="text").values_list("id","bubble_id")
+# Для каждого: BubbleRecord(MessageWSP, bubble_id) → raw.url_file → download_to_storedfile
+```
+
+Идти **от Message** (≈6.5k), а не от MessageWSP (≈260k) — иначе `raw__url_file__icontains` тормозит JSONB. Итог прогона: **2 124 ok / 4 402 err** из 6 526 (~33%, ~0.3 GB). Не однородно: первые ~4 000 — массово мёртвые (старые ссылки Google Drive), оставшиеся ~2 500 — почти 100% живых.
+
+## Привязка исполнителей по услугам / ответственных по клиентам из Bubble
+
+`_assign_service_employees` (`appliers.py:467`) при импорте читает поля `Manager / ROP / Jurist / Arbitragnik` и складывает их в `Service.employees` + `ServiceEmployeeState`. Но в реальных ProjectBFL также есть:
+- **`ownerDoc`** — сборщик документов (Оксана Тароватова и ещё 3 сотрудника отдела). НЕ резолвится по умолчанию — поэтому большинство клиентов на этапе «Сбор документов» висели без исполнителя.
+- **`executorDogovor`** — поле есть, но **не ссылается на Bubble User** (другая таблица). Резолвится в 0 случаях.
+
+**Что делать по новой схеме «ROP-Власов особый»** (применено 31 мая 2026):
+- ROP = Власов → `Client.employees.add(Власов)` + `Service.employees.add(Власов)`.
+- ROP = другой → `Client.employees.add(тот_другой)`; в `Service.employees` НИКОГО не добавляем.
+- Manager / Jurist / Arbitragnik / **ownerDoc** → всегда в `Service.employees`.
+- `Service.employees.add(...)` идемпотентен (M2M), плюс пишем дублирующе в `ServiceEmployeeState.objects.get_or_create()`.
+
+Скрипт-разовка (не management-команда; запускали через `python manage.py shell`). Итог: **+4 992 связки Client.employees, +984 связки Service.employees** (Власов в Service уже массово был, основной прирост — Manager/ownerDoc/Arbitragnik).
+
+> **Bubble UID Власова** — `1627026133165x761202125577024500` (через `BubbleRecord(User, target_id=Employee.id)`). Используется как маркер «ROP=Власов».
+
+## Дедубликация клиентов после импорта
+
+Импорт мог создать дубли клиентов (тот же человек попал из Bubble Man + из Telegram-чата + из WA-канала). Чистили вручную через `python manage.py shell` (UI у `client_merge` есть, но он переносит только messages/services/employees — недостаточно).
+
+**Полный мерж** должен переносить ВСЁ что FK→Client:
+- `Message`, `ClientLogEntry`, `Service`, `ClientFolder` (для файлов через `ClientFile.folder.client`)
+- `ClientEmployee` (M2M через through), `ClientPhone`
+- **`Payment.client`, `Charge.client`** — ⚠ у этих моделей **прямой FK на Client** (плюс через `Service`). Если переносить только через Service, удаление source клиента каскадно снесёт его Payment/Charge.
+- При конфликте unique-полей source (`telegram_id`, `username`): сначала очистить их у source (`source.username=""; source.telegram_id=None`), потом проставить target.
+
+> ⚠ **Прецедент 31 мая 2026**: мерж Смирнова Ивана Александровича пошёл без переноса `Charge.client` → каскад снёс **16 начислений**. Восстанавливали из backup `db-20260531-142120.sql.gz`: `gunzip | awk` секцию `COPY public.finance_charge` → grep по UUID source → `sed` подменить client_id/service_id на target/canonical → `psql COPY finance_charge FROM stdin`.
+
+**Логика отбора пар:**
+- **Совпадение телефона** (нормализованный E.164) — 100% дубль, всё равно показать пользователю (часто это разные члены семьи на одном номере — супруги, родители).
+- **100% совпадение нормализованного ФИО + любой второй сигнал** (`birth_date / inn / passport_number / email`) — высокая уверенность, тысячи однофамильцев исключаются.
+- 95%+ ФИО без второго сигнала — слишком много шума (Ивановы, Кузнецовы), без подтверждения смысла мало.
+
+**Шаблоны pair-types:**
+- «пустая lead + полная active» — основной массив, бот-пара после импорта (лид-карточка + реальная). Автомерж в активную.
+- «обе пустые» — дубли placeholder без данных, любую удалить.
+- «обе полные» — спрашиваем пользователя по полям (могут быть разные паспорта = разные люди).
+
+**Состояние на 31 мая 2026:** prod 6406 → ~5500 клиентов. По телефону объединено 9, по ФИО+сигнал — 166, пропущено как «разные люди» (Игнатенко с разными паспортами, Юрченко с супругой, и т.д.) — единичные кейсы. Snapshot каждой удаляемой записи лежал в `/tmp/merge_snapshot_<src_uuid>.json` на prod web (до рестарта).
