@@ -364,7 +364,7 @@
 
     document.addEventListener("htmx:afterRequest", function (e) {
       var btn = e.detail.elt;
-      if ((btn.id === "btn-send-telegram" || btn.id === "btn-send-max") && e.detail.successful) {
+      if ((btn.id === "btn-send-telegram" || btn.id === "btn-send-max" || btn.id === "btn-send-whatsapp") && e.detail.successful) {
         var html = e.detail.xhr.responseText;
         if (html && html.trim()) {
           list.insertAdjacentHTML("beforeend", html);
