@@ -345,9 +345,16 @@ def telegram_clients_list(request):
     sort = request.GET.get("sort") or "-last_message_at"
     if sort not in ALLOWED_SORTS:
         sort = "-last_message_at"
-    # Стабильная вторичная сортировка — чтобы клиенты с одинаковым значением
-    # не "прыгали" при пагинации
-    qs = qs.order_by(sort, "id")
+    # Для сортировки по last_message_at NULL'ы держим в конце — клиенты без
+    # сообщений не должны вытеснять реально активных наверх (NULLS FIRST в
+    # Postgres для DESC поднимал их). Для остальных сортировок — обычный
+    # order_by.
+    if sort == "-last_message_at":
+        qs = qs.order_by(F("last_message_at").desc(nulls_last=True), "id")
+    elif sort == "last_message_at":
+        qs = qs.order_by(F("last_message_at").asc(nulls_last=True), "id")
+    else:
+        qs = qs.order_by(sort, "id")
 
     search_q = None
     if query:
