@@ -135,9 +135,16 @@ def download_to_storedfile(url: str, filename: str, bubble_id: str | None = None
         data, prefix="bubble/import", filename=filename or "file.bin",
         content_type=content_type or None,
     )
+    # StoredFile.filename / content_type — CharField(max_length=255).
+    # filename из Bubble может быть длинным (кириллица × «Дополнение к
+    # договору об оказании юридических услуг от …»), content_type иногда
+    # приходит с параметрами «application/pdf; charset=...; name="..."».
+    # Обрезаем, чтобы apply_files не падал на DataError 255.
+    safe_filename = (filename or key)[:255]
+    safe_ctype = (content_type or "").split(";", 1)[0].strip()[:255]
     return StoredFile.objects.create(
-        bucket=bucket, key=key, filename=filename or key,
-        content_type=content_type, size=len(data), bubble_id=bubble_id,
+        bucket=bucket, key=key, filename=safe_filename,
+        content_type=safe_ctype, size=len(data), bubble_id=bubble_id,
     )
 
 
