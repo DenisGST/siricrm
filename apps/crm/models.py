@@ -632,6 +632,11 @@ class ClientLogEntry(models.Model):
         "self", on_delete=models.SET_NULL, null=True, blank=True,
         related_name="children", verbose_name="Родительская запись",
     )
+    stored_file = models.ForeignKey(
+        StoredFile, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="log_entries", verbose_name="Файл",
+        help_text="Привязанный файл (для событий «Получен/Отправлен файл»)",
+    )
     created_at = models.DateTimeField("Дата и время", auto_now_add=True)
 
     class Meta:

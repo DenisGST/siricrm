@@ -61,18 +61,25 @@ def log_messenger_message(client, message_obj, employee=None):
 
     else:
         # Файл / медиа — отдельно. Входящий = event, исходящий = action.
-        filename = getattr(message_obj, "file_name", "") or msg_type
+        stored_file = getattr(message_obj, "file", None)
+        filename = (
+            getattr(stored_file, "filename", "")
+            or getattr(message_obj, "file_name", "")
+            or msg_type
+        )
         if direction == "outgoing":
             client_log.record_action(
                 client, "file_sent",
                 comment=f"{label}: отправлен файл — {filename}",
                 employee=employee,
+                stored_file=stored_file,
             )
         else:
             client_log.record_event(
                 client, "file_received",
                 comment=f"{label}: получен файл — {filename}",
                 employee=None,
+                stored_file=stored_file,
             )
 
 

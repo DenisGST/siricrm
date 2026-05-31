@@ -2073,7 +2073,7 @@ def client_events_modal(request, client_id):
     f_q      = (request.GET.get("q") or "").strip()
 
     qs = ClientLogEntry.objects.filter(client=client).select_related(
-        "employee__user", "event_type", "action_type",
+        "employee__user", "event_type", "action_type", "stored_file",
     ).prefetch_related("event_type__standard_actions")
 
     if f_kind in ("event", "action"):

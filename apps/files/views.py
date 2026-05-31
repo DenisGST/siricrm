@@ -357,5 +357,16 @@ def _all_folder_ids(folder):
 @login_required
 def download_stored_file(request, file_id):
     stored = get_object_or_404(StoredFile, pk=file_id)
-    url = get_presigned_url(stored.bucket, stored.key, expiration=300)
+    # ?inline=1 — для предпросмотра в браузере (image/pdf/video/audio): просим
+    # S3 отдать с Content-Disposition: inline + правильным Content-Type, иначе
+    # Beget отдаёт attachment + octet-stream и браузер скачивает вместо показа.
+    inline = request.GET.get("inline") == "1"
+    kwargs = {"expiration": 300}
+    if inline and _preview_type(stored.filename, stored.content_type):
+        kwargs.update(
+            inline=True,
+            content_type=stored.content_type or None,
+            filename=stored.filename or None,
+        )
+    url = get_presigned_url(stored.bucket, stored.key, **kwargs)
     return redirect(url)

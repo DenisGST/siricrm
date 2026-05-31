@@ -73,11 +73,15 @@ def record_event(
     old_value: str = "",
     new_value: str = "",
     bubble_id: Optional[str] = None,
+    stored_file=None,
 ):
     """Записать событие в лог клиента.
 
     code — code из EventType (см. миграцию 0071). Если справочник не найден,
     лог пишется как WARNING и возвращается None (не падаем).
+
+    stored_file — опциональный StoredFile (для событий «Получен файл»),
+    чтобы в модалке лога вывести имя файла + ссылку на предпросмотр.
     """
     from apps.crm.models import ClientLogEntry
 
@@ -98,6 +102,7 @@ def record_event(
         old_value=str(old_value)[:255],
         new_value=str(new_value)[:255],
         bubble_id=bubble_id,
+        stored_file=stored_file,
     )
 
 
@@ -111,9 +116,12 @@ def record_action(
     old_value: str = "",
     new_value: str = "",
     bubble_id: Optional[str] = None,
+    stored_file=None,
 ):
     """Записать действие. Если у ActionType задан spawns_event — автоматически
     создаётся событие с parent=созданное действие.
+
+    stored_file — опциональный StoredFile (для действий «Отправлен файл»).
     """
     from apps.crm.models import ClientLogEntry
 
@@ -134,6 +142,7 @@ def record_action(
         old_value=str(old_value)[:255],
         new_value=str(new_value)[:255],
         bubble_id=bubble_id,
+        stored_file=stored_file,
     )
     # Spawn связанное событие, если задано
     if at.spawns_event_id is not None:
