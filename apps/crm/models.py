@@ -972,8 +972,17 @@ class ServiceEmployeeStatus(TimeStampedModel):
     common_status = models.ForeignKey(
         ServiceCommonStatus,
         on_delete=models.CASCADE,
+        null=True, blank=True,
         related_name="employee_statuses",
         verbose_name="Общий статус услуги",
+        help_text="Пусто — универсальная колонка-инбокс «Не принято» "
+                  "(не привязана к стадии/услуге).",
+    )
+    is_inbox = models.BooleanField(
+        "Инбокс «Не принято»", default=False,
+        help_text="Универсальная колонка для услуг, переданных сотруднику/"
+                  "отделу и ещё не принятых в работу. Одна на сотрудника, "
+                  "не привязана к стадии услуги (common_status пуст).",
     )
     name = models.CharField("Наименование статуса", max_length=100)
     comment = models.TextField("Комментарий", blank=True)
@@ -982,7 +991,7 @@ class ServiceEmployeeStatus(TimeStampedModel):
 
     @property
     def service_name(self):
-        return self.common_status.service_name
+        return self.common_status.service_name if self.common_status_id else None
 
     class Meta:
         verbose_name = "Статус услуги сотрудника"
@@ -993,10 +1002,18 @@ class ServiceEmployeeStatus(TimeStampedModel):
                 fields=["employee", "common_status", "name"],
                 name="unique_emp_status_per_emp_common_status",
             ),
+            # Один инбокс «Не принято» на сотрудника.
+            models.UniqueConstraint(
+                fields=["employee"],
+                condition=models.Q(is_inbox=True),
+                name="unique_inbox_status_per_employee",
+            ),
         ]
 
     def __str__(self):
-        return f"{self.employee} / {self.common_status.service_name.short_name} / {self.common_status.name}: {self.name}"
+        if self.common_status_id:
+            return f"{self.employee} / {self.common_status.service_name.short_name} / {self.common_status.name}: {self.name}"
+        return f"{self.employee} / [инбокс]: {self.name}"
 
 
 class ServiceTag(TimeStampedModel):

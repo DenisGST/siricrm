@@ -62,18 +62,25 @@
   <div style="display:flex;flex-direction:column;gap:0.5rem;flex:{{ group.statuses|length }} 1 0;min-width:{{ group.statuses|length }}00px;">
 
     <!-- Заголовок группы -->
+    {% if group.is_inbox %}
+    <div style="padding:0.3rem 0.75rem;border-radius:6px;border-left:3px solid #f59e0b;background:#f59e0b14;white-space:nowrap;">
+      <span class="text-sm font-bold" style="color:#b45309;">📥 Входящие</span>
+      <span class="text-xs" style="color:var(--ms-text-secondary);margin-left:0.25rem;">переданные, не принятые</span>
+    </div>
+    {% else %}
     <div style="padding:0.3rem 0.75rem;border-radius:6px;border-left:3px solid oklch(var(--p));background:oklch(var(--p)/0.08);white-space:nowrap;">
       <span class="text-xs font-semibold" style="color:oklch(var(--p));">{{ group.common_status.service_name.short_name }}</span>
       <span class="text-xs" style="color:var(--ms-text-secondary);margin:0 0.25rem;">·</span>
       <span class="text-sm font-bold" style="color:var(--ms-text);">{{ group.common_status.name }}</span>
     </div>
+    {% endif %}
 
     <!-- Колонки статусов сотрудника внутри группы -->
     <div style="display:flex;flex-direction:row;gap:0.75rem;flex:1;">
       {% for st in group.statuses %}
       <div class="bg-base-200 rounded-lg p-3" style="flex:1 1 0;min-width:180px;"
            data-my-status-id="{{ st.id }}"
-           data-service-name-id="{{ st.common_status.service_name_id }}"
+           data-service-name-id="{% if st.common_status_id %}{{ st.common_status.service_name_id }}{% endif %}"
            data-container="my-kanban-{{ st.id }}">
         <div class="flex items-center justify-between mb-2">
           <h3 class="font-bold text-sm">{{ st.name }}</h3>

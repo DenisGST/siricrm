@@ -1,9 +1,13 @@
 """Сигналы login/logout + outgoing message: пишут в EmployeeLog."""
+import logging
+
 from django.contrib.auth.signals import user_logged_in, user_logged_out
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 
 from apps.core.models import Employee
+
+logger = logging.getLogger(__name__)
 
 
 def _ip(request):
@@ -25,6 +29,19 @@ def _log(emp, action, description, request=None):
         employee=emp, action=action, description=description,
         ip_address=_ip(request), user_agent=_ua(request),
     )
+
+
+@receiver(post_save, sender=Employee)
+def on_employee_created(sender, instance, created, **kwargs):
+    """Новому сотруднику автоматически заводим инбокс «Не принято» в «Моём
+    канбане» (универсальная колонка для переданных, но не принятых услуг)."""
+    if not created:
+        return
+    try:
+        from apps.crm.kanban_inbox import ensure_inbox_status
+        ensure_inbox_status(instance)
+    except Exception:
+        logger.exception("Не удалось создать инбокс «Не принято» для %s", instance)
 
 
 @receiver(user_logged_in)

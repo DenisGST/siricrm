@@ -1942,14 +1942,17 @@ def my_kanban(request):
 
     emp_statuses = list(
         emp_statuses_qs.select_related("common_status__service_name")
-        .order_by("common_status__service_name__short_name", "common_status__order", "order")
+        # is_inbox=True (инбокс) — первым; затем по услуге/стадии.
+        .order_by("-is_inbox", "common_status__service_name__short_name", "common_status__order", "order")
     )
 
     groups = []
     for cs, statuses_iter in _groupby(emp_statuses, key=lambda s: s.common_status_id):
         statuses_list = list(statuses_iter)
+        first = statuses_list[0]
         groups.append({
-            "common_status": statuses_list[0].common_status,
+            "common_status": first.common_status,   # None для инбокса
+            "is_inbox": first.is_inbox,
             "statuses": statuses_list,
         })
 
