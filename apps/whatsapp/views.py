@@ -165,17 +165,27 @@ def wa_file_proxy(request, file_id):
         # знающий UUID мог бы тянуть медиа клиентов.
         raise Http404("expired or not whatsapp")
 
+    # WhatsApp/1msg парсит Content-Disposition как plain ASCII — Django при
+    # кириллице в filename подставляет RFC 2047 encoded-word, и 1msg валит
+    # «Media upload error». Делаем ASCII-safe basename из file_id + extension.
+    import os
+    from urllib.parse import quote
+    orig = f.filename or "file"
+    _, ext = os.path.splitext(orig)
+    ascii_name = f"{f.id}{ext}".encode("ascii", errors="ignore").decode("ascii") or "file"
+    cd = f'inline; filename="{ascii_name}"; filename*=UTF-8\'\'{quote(orig)}'
+
     if request.method == "HEAD":
         resp = StreamingHttpResponse(b"", content_type=f.content_type or "application/octet-stream")
         if f.size:
             resp["Content-Length"] = str(f.size)
-        resp["Content-Disposition"] = f'inline; filename="{f.filename or "file"}"'
+        resp["Content-Disposition"] = cd
         return resp
 
     data = download_file_from_s3(f.bucket, f.key)
     resp = StreamingHttpResponse(iter([data]), content_type=f.content_type or "application/octet-stream")
     resp["Content-Length"] = str(len(data))
-    resp["Content-Disposition"] = f'inline; filename="{f.filename or "file"}"'
+    resp["Content-Disposition"] = cd
     return resp
 
 
