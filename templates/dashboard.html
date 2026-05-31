@@ -2401,13 +2401,26 @@ function initMsSearch() {
 }
 </script>
 
-{# ── Idle UX: warning за 60 сек до auto-logout + locked overlay с inline-login ── #}
-<div id="idle-warning"
-     style="display:none;position:fixed;inset:0;z-index:9998;background:rgba(0,0,0,0.35);align-items:center;justify-content:center;">
+{% comment %}
+  Idle UX: warning за 60 сек до auto-logout + locked overlay с inline-login.
+  Используем <dialog>+showModal() (а не div+z-index), потому что нативный
+  dialog ставит контент в browser top-layer — он гарантированно поверх
+  любого другого открытого <dialog> (чат-модалка, daisyUI modal и т.д.).
+  С div'ом любой открытый <dialog> перекрывал нас даже при z-index 9999.
+{% endcomment %}
+<style>
+  #idle-warning, #idle-locked {
+    border: none; padding: 0; background: transparent; max-width: none;
+  }
+  #idle-warning::backdrop { background: rgba(0,0,0,0.35); }
+  #idle-locked::backdrop  { background: rgba(0,0,0,0.6); }
+</style>
+
+<dialog id="idle-warning">
   <div style="background:white;border-radius:12px;padding:24px 28px;max-width:420px;box-shadow:0 8px 24px rgba(0,0,0,0.18);font-family:inherit;">
-    <h3 style="font-size:1.1rem;font-weight:600;margin:0 0 8px;color:#333;">Сессия скоро завершится</h3>
+    <h3 style="font-size:1.1rem;font-weight:600;margin:0 0 8px;color:#333;">Бездействие 10 мин</h3>
     <p style="font-size:0.95rem;color:#555;margin:0 0 18px;line-height:1.5;">
-      Вы бездействовали продолжительное время. Через
+      Через
       <span id="idle-countdown" style="font-weight:700;color:#dc2626;">60</span> сек
       вы будете автоматически разлогинены.
     </p>
@@ -2418,11 +2431,10 @@ function initMsSearch() {
       </button>
     </div>
   </div>
-</div>
+</dialog>
 
-<div id="idle-locked"
-     style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.6);align-items:center;justify-content:center;">
-  <div style="background:white;border-radius:12px;padding:28px 32px;max-width:380px;width:90%;box-shadow:0 12px 32px rgba(0,0,0,0.25);font-family:inherit;">
+<dialog id="idle-locked">
+  <div style="background:white;border-radius:12px;padding:28px 32px;max-width:380px;width:90vw;box-shadow:0 12px 32px rgba(0,0,0,0.25);font-family:inherit;">
     <h3 style="font-size:1.15rem;font-weight:600;margin:0 0 6px;color:#333;">Сессия завершена</h3>
     <p id="idle-locked-reason" style="font-size:0.9rem;color:#666;margin:0 0 18px;line-height:1.5;">
       Введите пароль чтобы продолжить работу.
@@ -2439,7 +2451,7 @@ function initMsSearch() {
       </button>
     </form>
   </div>
-</div>
+</dialog>
 
 <script>
 (function() {
@@ -2472,9 +2484,17 @@ function initMsSearch() {
   var _countdownTimer = null;
   var _warningExpiresAt = 0;   // ms — когда модалка должна закрыться сама
 
+  // Блокируем Escape (нативно <dialog> закрывается по нему — нам не нужно).
+  if (warningEl && warningEl.addEventListener) {
+    warningEl.addEventListener('cancel', function(e) { e.preventDefault(); });
+  }
+  if (lockedEl && lockedEl.addEventListener) {
+    lockedEl.addEventListener('cancel', function(e) { e.preventDefault(); });
+  }
+
   function showWarning(remainingSec) {
     _showWarning = true;
-    warningEl.style.display = 'flex';
+    if (!warningEl.open) warningEl.showModal();
     _warningExpiresAt = Date.now() + remainingSec * 1000;
     _tickCountdown();
     if (_countdownTimer) clearInterval(_countdownTimer);
@@ -2494,7 +2514,7 @@ function initMsSearch() {
   function hideWarning() {
     _showWarning = false;
     if (_countdownTimer) { clearInterval(_countdownTimer); _countdownTimer = null; }
-    warningEl.style.display = 'none';
+    if (warningEl.open) warningEl.close();
   }
 
   function showLocked(reason) {
@@ -2504,12 +2524,12 @@ function initMsSearch() {
     if (reason && reasonEl) {
       reasonEl.textContent = reason + ' Введите пароль чтобы продолжить работу.';
     }
-    lockedEl.style.display = 'flex';
+    if (!lockedEl.open) lockedEl.showModal();
     if (usernameInput) setTimeout(function(){ usernameInput.focus(); }, 100);
   }
   function hideLocked() {
     _showLocked = false;
-    lockedEl.style.display = 'none';
+    if (lockedEl.open) lockedEl.close();
     if (loginError) loginError.style.display = 'none';
     if (passwordInput) passwordInput.value = '';
   }

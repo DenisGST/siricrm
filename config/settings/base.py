@@ -84,7 +84,7 @@ MIDDLEWARE = [
 ]
 
 # Авто-логаут после N минут бездействия (HTTP-неактивности).
-IDLE_TIMEOUT_MINUTES = 5
+IDLE_TIMEOUT_MINUTES = 10
 
 ROOT_URLCONF = "config.urls"
 
