@@ -139,6 +139,18 @@ guides/             — пользовательские инструкции (d
 
 Кратко: тонкий слой `apps/whatsapp/` (config+sender+tasks+views+middleware, без своих моделей) над общими Client/Message/StoredFile. Боевой канал клиента — JWT-токен 1msg в `WHATSAPP_API_TOKEN`. Все медиа уходят через `sendFile`. Исходящие — через прокси `/wa/file/<uuid>/` (Beget S3 pre-signed даёт 403 на HEAD, который 1msg делает первым). UI-кнопка в `telegram_chat_panel.html` — её ID `btn-send-whatsapp` обязательно проверять в `htmx:afterRequest`, иначе форма не очищается.
 
+## Telegram интеграция (apps/telegram)
+
+**Полное описание:** [`telegram_integration_claude.md`](./telegram_integration_claude.md) — userbot (Telethon) + leads-bot, polling vs webhook (split-tunnel ловушка), SETNX-лок, отправка из CRM, env-vars, отключение polling через django-celery-beat.
+
+Кратко: **два TG-канала** — userbot (Telethon, основной аккаунт компании для CRM-чата) и leads-bot (отдельный bot-account, мониторит канал с лидами лендинга). Webhook не работает из-за WireGuard split-tunnel → **polling getUpdates через Celery beat каждые 10с** с SETNX-локом (иначе 409 Conflict). Userbot — отдельный контейнер `userbot`. UI-кнопка `#btn-send-telegram` в чате. Лиды → `route_new_lead("Telegram", ...)` на сотрудников с `Employee.accept_telegram_leads`.
+
+## MAX интеграция (apps/maxchat)
+
+**Полное описание:** [`maxchat_integration_claude.md`](./maxchat_integration_claude.md) — MAX Bot API endpoint'ы, 3-step upload медиа (uploads → PUT → wait_attachment_ready → messages), webhook, использование как алёрт-канала для арбитража.
+
+Кратко: тонкий слой `apps/maxchat/` (sender+tasks+views, без своих моделей) над `Client/Message/StoredFile`. MAX Bot API `https://platform-api.max.ru` — auth header `Authorization: <MAX_BOT_TOKEN>` без Bearer. Отправка медиа: 3 шага (`POST /uploads` → `PUT <url>` → `POST /messages`). `Client.max_chat_id` обязателен. UI-кнопка `#btn-send-max` в чате. Также используется арбитром для алёртов о капче (`ARBITR_CAPTCHA_NOTIFY_MAX_CHAT_ID`).
+
 ## Права видимости клиентов (настраиваются в UI)
 
 Логика в `Client.objects.visible_to(user)` (`apps/crm/managers.py`). Видят ВСЕХ клиентов:
@@ -229,7 +241,9 @@ gunzip -c backups/db-XXXX.sql.gz | docker compose -f <compose> --env-file <env> 
 Интеграции со сторонними сервисами (детально):
 - [`arbitr_integration_claude.md`](./arbitr_integration_claude.md) — мониторинг kad.arbitr.ru (Selenium+Xvfb, anti-bot)
 - [`whatsapp_integration_claude.md`](./whatsapp_integration_claude.md) — WhatsApp Business через 1msg.io (sender, прокси медиа, webhook)
-- [`bubble_integration_claude.md`](./bubble_integration_claude.md) — импорт данных из bubble.io (BubbleRecord-буфер, appliers, doливка)
+- [`telegram_integration_claude.md`](./telegram_integration_claude.md) — Telegram userbot (Telethon) + leads-bot (polling getUpdates)
+- [`maxchat_integration_claude.md`](./maxchat_integration_claude.md) — MAX Bot API (3-step upload медиа, webhook, алёрт-канал арбитра)
+- [`bubble_integration_claude.md`](./bubble_integration_claude.md) — импорт данных из bubble.io (BubbleRecord-буфер, appliers, доливка)
 
 Техническое (`docs/`):
 - `docs/PRODUCTION.md` — развёртывание prod на 45.90.35.187
