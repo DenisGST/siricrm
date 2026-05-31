@@ -45,11 +45,11 @@
            Т — Telegram (синий), М — MAX (розовый), W — WhatsApp (зелёный).{% endcomment %}
         <span class="flex gap-1 flex-shrink-0" style="line-height:1">
           <span title="Telegram{% if not client.has_telegram %} — сообщений не было{% endif %}"
-                style="display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;border-radius:3px;font-size:9px;font-weight:700;color:#fff;line-height:1;background:{% if client.has_telegram %}#2563eb{% else %}#cbd5e1{% endif %}">Т</span>
+                style="display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;border-radius:3px;font-size:9px;font-weight:700;line-height:1;background:transparent;border:1px solid {% if client.has_telegram %}#2563eb{% else %}#cbd5e1{% endif %};color:{% if client.has_telegram %}#2563eb{% else %}#cbd5e1{% endif %}">Т</span>
           <span title="MAX{% if not client.has_max %} — сообщений не было{% endif %}"
-                style="display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;border-radius:3px;font-size:9px;font-weight:700;color:#fff;line-height:1;background:{% if client.has_max %}#ec4899{% else %}#cbd5e1{% endif %}">М</span>
+                style="display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;border-radius:3px;font-size:9px;font-weight:700;line-height:1;background:transparent;border:1px solid {% if client.has_max %}#ec4899{% else %}#cbd5e1{% endif %};color:{% if client.has_max %}#ec4899{% else %}#cbd5e1{% endif %}">М</span>
           <span title="WhatsApp{% if not client.has_whatsapp %} — сообщений не было{% endif %}"
-                style="display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;border-radius:3px;font-size:9px;font-weight:700;color:#fff;line-height:1;background:{% if client.has_whatsapp %}#22c55e{% else %}#cbd5e1{% endif %}">W</span>
+                style="display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;border-radius:3px;font-size:9px;font-weight:700;line-height:1;background:transparent;border:1px solid {% if client.has_whatsapp %}#22c55e{% else %}#cbd5e1{% endif %};color:{% if client.has_whatsapp %}#22c55e{% else %}#cbd5e1{% endif %}">W</span>
         </span>
       </div>
     </div>
