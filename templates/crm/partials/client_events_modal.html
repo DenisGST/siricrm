@@ -40,6 +40,7 @@
          в этой форме — q);
        • search — клик по «×» в поле поиска.{% endcomment %}
     <form id="log-filter"
+          onsubmit="return false"
           hx-get="{% url 'client_events_modal' client.id %}"
           hx-trigger="change, keyup changed delay:400ms, search"
           hx-target="#client-events-modal" hx-swap="outerHTML"
@@ -89,7 +90,10 @@
         {% endif %}
       </select>
 
-      <input type="search" name="q" value="{{ filter_q }}" placeholder="🔎 поиск в комментарии"
+      {% comment %}id обязателен: при swap всей модалки htmx восстанавливает
+         фокус и позицию курсора у элемента с тем же id — иначе при живом
+         поиске поле пересоздаётся и печатать невозможно.{% endcomment %}
+      <input type="search" name="q" id="log-q" value="{{ filter_q }}" placeholder="🔎 поиск в комментарии"
              class="input input-bordered input-xs flex-1 min-w-[150px]">
 
       {% if filter_kind or filter_source or filter_type or filter_q %}
