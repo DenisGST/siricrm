@@ -105,7 +105,7 @@
     {% comment %}Лента записей — стиль чата: хронология (новое снизу),
        без заголовков столбцов и порядковых номеров. Авто-скролл вниз
        при открытии модалки.{% endcomment %}
-    <div id="log-feed" class="flex-1 min-h-0 overflow-y-auto pr-1 space-y-2">
+    <div id="log-feed" class="flex-1 min-h-0 overflow-y-auto pr-1 space-y-1">
       {% for ev in events %}
         {% include "crm/partials/_log_entry_row.html" %}
       {% endfor %}

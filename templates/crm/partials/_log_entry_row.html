@@ -32,9 +32,10 @@
     {% endif %}
   </div>
 
-  {% comment %}Тело — рендерим только если есть содержимое.{% endcomment %}
+  {% comment %}Тело — рендерим только если есть содержимое. Вертикальные
+     отступы минимальные (inline, т.к. py-0.5 нет в сборке).{% endcomment %}
   {% if ev.stored_file_id or ev.comment or ev.event_type.standard_actions.all %}
-    <div class="bg-base-100 px-3 py-1">
+    <div class="bg-base-100 px-3" style="padding-top:.1rem;padding-bottom:.25rem">
       {% comment %}Файл (события «Получен/Отправлен файл») — имя + предпросмотр.{% endcomment %}
       {% if ev.stored_file_id %}
         <div class="flex items-center gap-2 text-xs">
@@ -48,7 +49,7 @@
              title="Скачать файл">скачать</a>
         </div>
       {% elif ev.comment %}
-        <div class="text-sm whitespace-pre-line break-words">
+        <div class="text-sm whitespace-pre-line break-words leading-tight">
           {{ ev.comment }}
           {% if ev.old_value or ev.new_value %}
             <span class="text-xs text-base-content/50 ml-1">
