@@ -2091,11 +2091,14 @@ def service_transfer_modal(request, pk):
         Service.objects.select_related("name", "client", "common_status__department"), pk=pk,
     )
     dept_ids = valid_target_department_ids(service)
+    # «В отдел» — только отделы, ведущие услугу (туда ставим во входной статус).
     departments = Department.objects.filter(
         id__in=dept_ids, is_active=True,
     ).order_by("name")
+    # «Сотруднику» — все активные сотрудники с отделом (валидацию «отдел ведёт
+    # услугу» делает transfer_service и вернёт понятную ошибку при несовпадении).
     employees = Employee.objects.filter(
-        is_active=True, department_id__in=dept_ids,
+        is_active=True, department__isnull=False,
     ).select_related("user", "department").order_by(
         "department__name", "user__last_name", "user__first_name",
     )
