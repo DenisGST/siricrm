@@ -5,36 +5,55 @@
 ``crm.delete_client``, ``crm.view_service``, ``crm.edit_service``,
 ``crm.delete_service``.
 
-Правила видимости (бизнес-логика):
+Правила видимости (бизнес-логика) — согласованы с
+``Client.objects.visible_to`` / ``Service.objects.visible_to`` в
+``apps/crm/managers.py``. Менять надо синхронно.
 
-* **Клиент** — обычный сотрудник видит только тех, где он есть в
-  ``Client.employees``; head_dep видит клиентов своего отдела
-  (любой Employee из ``Client.employees`` принадлежит его Department);
-  admin/superuser видят всех. См. также ``Client.objects.visible_to``.
-* **Услуга** — обычный сотрудник видит услуги, на которые он назначен
-  (``Service.employees``) либо чей тип услуги входит в его
-  ``services_allowed``; admin/head_dep/superuser видят всё.
+* **Клиент** — видят всех: admin/superuser, head_dep, managing_partner,
+  Employee.is_owner, сотрудник отдела с Department.sees_all_clients=True.
+  Остальные — клиента, где они в ``Client.employees`` ИЛИ в
+  ``Service.employees`` его услуг ИЛИ у его услуги ``common_status.department``
+  совпадает с их отделом.
+* **Услуга** — admin/head_dep/superuser — все; остальные — назначенные
+  (``Service.employees``) или тип услуги в ``services_allowed``.
 
-Querysets фильтруются не здесь, а через ``visible_to(user)`` менеджеры
-(``apps/crm/managers.py``). django-rules сам QuerySet не фильтрует.
+Querysets фильтруются не здесь, а через ``visible_to(user)`` менеджеры.
+django-rules сам QuerySet не фильтрует.
 """
 import rules
 
 from apps.core.permissions import (
     is_admin,
+    is_management,
     is_references_access,
     get_employee,
 )
 
 
 # ─── Базовые предикаты-обёртки ─────────────────────────────
-# Превращаем функции из apps.core.permissions в rules-предикаты, чтобы
-# их можно было комбинировать через |.
-
 is_admin_p = rules.predicate(is_admin, name="is_admin")
+is_management_p = rules.predicate(is_management, name="is_management")
 is_references_access_p = rules.predicate(
     is_references_access, name="is_references_access"
 )
+
+
+@rules.predicate
+def is_owner(user, _obj=None):
+    """Employee.is_owner — root-флаг основателя."""
+    emp = get_employee(user)
+    return bool(emp and getattr(emp, "is_owner", False))
+
+
+@rules.predicate
+def dept_sees_all_clients(user, _obj=None):
+    """Сотрудник отдела с ``Department.sees_all_clients=True`` (обычно «Отдел продаж»)."""
+    emp = get_employee(user)
+    return bool(
+        emp
+        and emp.department_id
+        and getattr(emp.department, "sees_all_clients", False)
+    )
 
 
 # ─── Object-level предикаты: клиенты ───────────────────────
@@ -48,17 +67,24 @@ def is_responsible_for_client(user, client):
 
 
 @rules.predicate
-def is_in_client_department(user, client):
-    """Клиент закреплён за сотрудником из того же отдела (для head_dep).
+def is_responsible_for_client_service(user, client):
+    """Назначен исполнителем хотя бы на одну услугу клиента (``Service.employees``)."""
+    emp = get_employee(user)
+    if not emp or not client:
+        return False
+    return client.services.filter(employees=emp).exists()
 
-    Считаем «отдел клиента» = отделы любых сотрудников из ``client.employees``.
-    """
+
+@rules.predicate
+def is_in_client_service_step_dept(user, client):
+    """У клиента есть услуга на этапе, закреплённом за отделом сотрудника
+    (``Service.common_status.department == emp.department``)."""
     emp = get_employee(user)
     if not emp or not client or not emp.department_id:
         return False
-    if emp.role != "head_dep":
-        return False
-    return client.employees.filter(department_id=emp.department_id).exists()
+    return client.services.filter(
+        common_status__department_id=emp.department_id
+    ).exists()
 
 
 # ─── Object-level предикаты: услуги ────────────────────────
@@ -73,11 +99,7 @@ def is_responsible_for_service(user, service):
 
 @rules.predicate
 def is_allowed_service_type(user, service):
-    """У сотрудника тип услуги доступен (Employee.services_allowed).
-
-    Сохраняет существующую логику: обычный сотрудник может видеть/менять
-    услугу нужного ему типа, даже если не назначен персонально.
-    """
+    """У сотрудника тип услуги доступен (Employee.services_allowed)."""
     emp = get_employee(user)
     if not emp or not service:
         return False
@@ -85,12 +107,14 @@ def is_allowed_service_type(user, service):
 
 
 # ─── Композиции и регистрация пермишенов ───────────────────
-# Клиент: admin/su — все; head_dep — свой отдел; остальные — только свои.
-# is_references_access_p НЕ включаем (head_dep не должен видеть чужой отдел).
+# Клиент — согласован с Client.objects.visible_to.
 view_client = (
-    is_admin_p
-    | is_responsible_for_client
-    | is_in_client_department
+    is_management_p                       # admin / head_dep / managing_partner / superuser
+    | is_owner                            # Employee.is_owner
+    | dept_sees_all_clients               # Department.sees_all_clients=True
+    | is_responsible_for_client           # Client.employees
+    | is_responsible_for_client_service   # Service.employees услуг клиента
+    | is_in_client_service_step_dept      # Service.common_status.department == моему отделу
 )
 edit_client = view_client          # кто видит, тот и редактирует
 delete_client = is_admin_p          # удаление только admin/superuser
