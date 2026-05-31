@@ -179,8 +179,11 @@
         </div>
       </div>
 
+      {% comment %}Компактное поле: daisyUI textarea имеет большой min-height,
+         поэтому при rows=2 много пустоты — режем min-height и leading.{% endcomment %}
       <textarea name="comment" rows="2"
-                class="textarea textarea-bordered text-sm"
+                class="textarea textarea-bordered textarea-sm text-sm leading-tight"
+                style="min-height:2.5rem"
                 placeholder="Комментарий (суть звонка, результат действия, текст письма…)"></textarea>
 
       <div class="flex justify-end gap-2">
