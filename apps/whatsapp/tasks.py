@@ -56,16 +56,14 @@ def send_whatsapp_message_task(self, message_id: str):
     file_url = None
     filename = None
     if msg.file:
-        try:
-            from apps.files.s3_utils import get_presigned_url
-            file_url = get_presigned_url(
-                msg.file.bucket, msg.file.key, expiration=3600,
-                content_type=msg.file.content_type or None,
-                filename=msg.file.filename or None,
-            )
-            filename = msg.file.filename
-        except Exception:
-            logger.exception("WA task: presigned URL failed for msg %s", msg.id)
+        # 1msg.io скачивает медиа с переданного URL и при этом сначала делает
+        # HEAD — Beget S3 pre-signed URL отвечает 403 на HEAD → «Media upload
+        # error». Отдаём через свой прокси (apps.whatsapp.views.wa_file_proxy),
+        # где HEAD работает и Content-Type корректный.
+        from django.conf import settings
+        base = (settings.PUBLIC_BASE_URL or "").rstrip("/")
+        file_url = f"{base}/wa/file/{msg.file.id}/"
+        filename = msg.file.filename
 
     reply_wamid = ""
     if msg.reply_to and msg.reply_to.whatsapp_message_id:

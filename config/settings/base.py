@@ -233,6 +233,12 @@ MAX_BOT_TOKEN = config("MAX_BOT_TOKEN", default="")
 MAX_API_BASE_URL = "https://platform-api.max.ru"
 MAX_WEBHOOK_SECRET = config("MAX_WEBHOOK_SECRET", default="")
 
+# Внешний публичный URL CRM — нужен для построения absolute-ссылок
+# из тасок (где нет request.get_host). Используется в WhatsApp-прокси
+# (apps/whatsapp/views.wa_file_proxy) — 1msg.io скачивает медиа по
+# этому URL вместо Beget S3 pre-signed (Beget даёт 403 на HEAD).
+PUBLIC_BASE_URL = config("PUBLIC_BASE_URL", default="https://crmsiri.ru")
+
 # --- Arbitr (kad.arbitr.ru) parser ---
 # Куда слать алёрты при капче / других интерактивных ошибках парсера.
 # Пока — один MAX chat_id админа; позже разнесём по Employee.max_chat_id.

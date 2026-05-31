@@ -12,12 +12,14 @@
 1msg-эндпоинты). Пока во входящих медиа создаётся Message с типом
 ``document`` и пустым file — текст-плейсхолдер «(медиа)».
 """
+import datetime
 import json
 import logging
 
-from django.http import JsonResponse, HttpResponseForbidden
+from django.http import JsonResponse, HttpResponseForbidden, StreamingHttpResponse, Http404
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_http_methods
 
 from apps.crm.models import Client, Message
 from apps.whatsapp import config as wa_conf
@@ -127,6 +129,54 @@ def _detect_message_type(message: dict) -> str:
 
 
 # ─── webhook ───────────────────────────────────────────────
+
+
+# Окно жизни прокси-ссылок на исходящие медиа: после этого периода
+# WhatsApp Cloud уже скачал и зеркалит файл сам, дальше не приходит.
+_WA_PROXY_TTL = datetime.timedelta(hours=24)
+
+
+@csrf_exempt
+@require_http_methods(["GET", "HEAD"])
+def wa_file_proxy(request, file_id):
+    """Публичный прокси-ридер StoredFile из S3 — нужен для 1msg.io.
+
+    Beget pre-signed URL отвечает 403 на HEAD, а 1msg перед скачиванием
+    делает HEAD-probe и обрывает доставку медиа с «Media upload error».
+    Стримим файл прямо со своего домена с корректным Content-Type и
+    поддержкой HEAD.
+
+    Защита: разрешаем только файлы, привязанные к WhatsApp-сообщениям
+    созданным в последние 24 часа.
+    """
+    from apps.files.models import StoredFile
+    from apps.files.s3_utils import download_file_from_s3
+
+    try:
+        f = StoredFile.objects.get(id=file_id)
+    except StoredFile.DoesNotExist:
+        raise Http404("not found")
+
+    cutoff = timezone.now() - _WA_PROXY_TTL
+    if not Message.objects.filter(
+        file=f, channel="whatsapp", created_at__gte=cutoff,
+    ).exists():
+        # Файл либо не WA-шный, либо «протух». Не отдаём — иначе любой
+        # знающий UUID мог бы тянуть медиа клиентов.
+        raise Http404("expired or not whatsapp")
+
+    if request.method == "HEAD":
+        resp = StreamingHttpResponse(b"", content_type=f.content_type or "application/octet-stream")
+        if f.size:
+            resp["Content-Length"] = str(f.size)
+        resp["Content-Disposition"] = f'inline; filename="{f.filename or "file"}"'
+        return resp
+
+    data = download_file_from_s3(f.bucket, f.key)
+    resp = StreamingHttpResponse(iter([data]), content_type=f.content_type or "application/octet-stream")
+    resp["Content-Length"] = str(len(data))
+    resp["Content-Disposition"] = f'inline; filename="{f.filename or "file"}"'
+    return resp
 
 
 @csrf_exempt
