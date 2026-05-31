@@ -1,13 +1,15 @@
 {% load icons %}
 {% comment %}Одна строка ленты лога (СОБЫТИЙКА). Ожидает в контексте `ev`
    (ClientLogEntry). Используется и в client_events_modal.html (цикл по ленте),
-   и в ответе client_log_add (append новой записи без ребилда модалки).{% endcomment %}
-<div class="log-row rounded border border-base-300 bg-base-100 px-3 py-1
+   и в ответе client_log_add (append новой записи без ребилда модалки).
+
+   Структура: «шапка» события (фон bg-base-200) — время · тип · источник · ФИО;
+   ниже на белом фоне — тело (файл / комментарий / чипсы стандартных действий).{% endcomment %}
+<div class="log-row rounded border border-base-300 overflow-hidden
      {% if ev.parent_id %}ml-6 border-l-4 border-l-info/40{% endif %}"
      id="log-{{ ev.id }}">
-  {% comment %}Одна строка метаданных: время · тип+наименование · ФИО.
-     Время и тип слева, ФИО + кнопка «+» справа.{% endcomment %}
-  <div class="flex items-center gap-2">
+  {% comment %}Шапка: время · тип+наименование · ФИО + кнопка «+».{% endcomment %}
+  <div class="flex items-center gap-2 bg-base-200 px-3 py-1">
     <span class="text-[11px] text-base-content/55 whitespace-nowrap flex-shrink-0" style="font-variant-numeric:tabular-nums">
       {{ ev.created_at|date:"d.m.Y H:i" }}
     </span>
@@ -30,39 +32,44 @@
     {% endif %}
   </div>
 
-  {% comment %}Файл (события «Получен/Отправлен файл») — имя + предпросмотр.{% endcomment %}
-  {% if ev.stored_file_id %}
-    <div class="flex items-center gap-2 mt-1 text-xs">
-      📎
-      <a href="{% url 'files:stored_download' ev.stored_file.id %}?inline=1" target="_blank"
-         class="link link-primary break-all" title="Открыть предпросмотр в новой вкладке">
-        {{ ev.stored_file.filename|default:"файл" }}
-      </a>
-      <a href="{% url 'files:stored_download' ev.stored_file.id %}"
-         class="link link-hover opacity-60 whitespace-nowrap flex-shrink-0"
-         title="Скачать файл">скачать</a>
-    </div>
-  {% elif ev.comment %}
-    <div class="text-sm mt-1 whitespace-pre-line break-words">
-      {{ ev.comment }}
-      {% if ev.old_value or ev.new_value %}
-        <span class="text-xs text-base-content/50 ml-1">
-          {% if ev.old_value %}<span class="line-through">{{ ev.old_value }}</span> → {% endif %}
-          {{ ev.new_value }}
-        </span>
+  {% comment %}Тело — рендерим только если есть содержимое.{% endcomment %}
+  {% if ev.stored_file_id or ev.comment or ev.event_type.standard_actions.all %}
+    <div class="bg-base-100 px-3 py-1">
+      {% comment %}Файл (события «Получен/Отправлен файл») — имя + предпросмотр.{% endcomment %}
+      {% if ev.stored_file_id %}
+        <div class="flex items-center gap-2 text-xs">
+          📎
+          <a href="{% url 'files:stored_download' ev.stored_file.id %}?inline=1" target="_blank"
+             class="link link-primary break-all" title="Открыть предпросмотр в новой вкладке">
+            {{ ev.stored_file.filename|default:"файл" }}
+          </a>
+          <a href="{% url 'files:stored_download' ev.stored_file.id %}"
+             class="link link-hover opacity-60 whitespace-nowrap flex-shrink-0"
+             title="Скачать файл">скачать</a>
+        </div>
+      {% elif ev.comment %}
+        <div class="text-sm whitespace-pre-line break-words">
+          {{ ev.comment }}
+          {% if ev.old_value or ev.new_value %}
+            <span class="text-xs text-base-content/50 ml-1">
+              {% if ev.old_value %}<span class="line-through">{{ ev.old_value }}</span> → {% endif %}
+              {{ ev.new_value }}
+            </span>
+          {% endif %}
+        </div>
       {% endif %}
-    </div>
-  {% endif %}
 
-  {% if ev.kind == 'event' and ev.event_type.standard_actions.all %}
-    <div class="flex flex-wrap gap-1 mt-1">
-      {% for sa in ev.event_type.standard_actions.all %}
-        <button type="button" class="btn btn-xs btn-ghost"
-                onclick="prefillLogAdd('action','{{ sa.code }}','{{ ev.id }}','{{ sa.name|escapejs }}')"
-                title="{{ sa.description|default:'' }}">
-          → {{ sa.name }}
-        </button>
-      {% endfor %}
+      {% if ev.kind == 'event' and ev.event_type.standard_actions.all %}
+        <div class="flex flex-wrap gap-1 mt-1">
+          {% for sa in ev.event_type.standard_actions.all %}
+            <button type="button" class="btn btn-xs btn-ghost"
+                    onclick="prefillLogAdd('action','{{ sa.code }}','{{ ev.id }}','{{ sa.name|escapejs }}')"
+                    title="{{ sa.description|default:'' }}">
+              → {{ sa.name }}
+            </button>
+          {% endfor %}
+        </div>
+      {% endif %}
     </div>
   {% endif %}
 </div>
