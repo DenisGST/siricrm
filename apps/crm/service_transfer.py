@@ -41,8 +41,15 @@ def entry_common_status(service, department):
 
 
 @transaction.atomic
-def transfer_service(service, *, target_department=None, target_employee=None, actor=None):
+def transfer_service(service, *, target_department=None, target_employee=None,
+                     actor=None, keep_actor=False, comment=""):
     """Передать услугу в отдел или сотруднику. Возвращает список получателей.
+
+    keep_actor=True («У меня завершить» снята) — актор оставляет услугу у себя
+    (его ServiceEmployeeState не снимается), остальные прежние исполнители
+    снимаются. keep_actor=False (галочка стоит) — полный переезд.
+
+    comment — пояснение «что делать дальше», попадает в событийку.
 
     Бросает ValueError с понятным сообщением, если передать нельзя.
     """
@@ -88,21 +95,24 @@ def transfer_service(service, *, target_department=None, target_employee=None, a
         )
         service.employees.add(emp)
 
-    # Лог СОБЫТИЙКИ: действие + событие.
+    # Лог СОБЫТИЙКИ: действие + событие. Комментарий «что делать дальше» и
+    # пометку «оставил у себя» подмешиваем в текст.
     sn = service.name.short_name
+    note = f" — {comment}" if comment else ""
+    self_note = " (исполнитель оставил услугу у себя)" if keep_emp_id else ""
     if target_employee is not None:
-        action_comment = f"Услуга «{sn}» передана в работу сотруднику: {target_employee}"
+        action_comment = f"Услуга «{sn}» передана в работу сотруднику: {target_employee}{self_note}{note}"
         event_code = "employee_assigned"
         event_comment = (
             f"Услуга «{sn}» передана в работу — {target_employee} "
-            f"(отдел «{department.name}», статус «{entry.name}»)"
+            f"(отдел «{department.name}», статус «{entry.name}»){note}"
         )
     else:
-        action_comment = f"Услуга «{sn}» передана в работу отдела «{department.name}»"
+        action_comment = f"Услуга «{sn}» передана в работу отдела «{department.name}»{self_note}{note}"
         event_code = "dept_assigned"
         event_comment = (
             f"Услуга «{sn}» передана в работу отдела «{department.name}» "
-            f"(статус «{entry.name}»), получателей: {len(recipients)}"
+            f"(статус «{entry.name}»), получателей: {len(recipients)}{note}"
         )
 
     action = client_log.record_action(

@@ -2119,13 +2119,21 @@ def service_transfer(request, pk):
     if not target_id:
         return HttpResponseBadRequest("Не выбран получатель")
 
+    # «У меня завершить» (галочка по умолчанию стоит): finish_self=True →
+    # keep_actor=False (полный переезд). Снята → услуга остаётся у актора.
+    finish_self = request.POST.get("finish_self") == "1"
+    keep_actor = not finish_self
+    comment = (request.POST.get("comment") or "").strip()
+
     try:
         if target_type == "employee":
             emp = get_object_or_404(Employee, pk=target_id, is_active=True)
-            transfer_service(service, target_employee=emp, actor=actor)
+            transfer_service(service, target_employee=emp, actor=actor,
+                             keep_actor=keep_actor, comment=comment)
         elif target_type == "dept":
             dept = get_object_or_404(Department, pk=target_id, is_active=True)
-            transfer_service(service, target_department=dept, actor=actor)
+            transfer_service(service, target_department=dept, actor=actor,
+                             keep_actor=keep_actor, comment=comment)
         else:
             return HttpResponseBadRequest("Неверный тип получателя")
     except ValueError as e:

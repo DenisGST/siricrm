@@ -24,6 +24,7 @@
       {% csrf_token %}
       <input type="hidden" name="target_type" id="transfer-target-type" value="dept">
       <input type="hidden" name="target_id" id="transfer-target-id">
+      <input type="hidden" name="finish_self" id="transfer-finish-self" value="1">
 
       <div class="join mb-3">
         <button type="button" id="tt-dept" class="join-item btn btn-sm btn-primary"
@@ -62,6 +63,23 @@
         <p class="text-xs text-base-content/60 mt-1">
           Появится в «Не принято» у выбранного сотрудника.
         </p>
+      </div>
+
+      {% comment %}«У меня завершить» (по умолчанию вкл): сотрудник свою работу
+         выполнил и передаёт дальше — услуга у него снимается. Снять галочку,
+         если услуга должна остаться и у него.{% endcomment %}
+      <label class="flex items-center gap-2 cursor-pointer mt-3 text-sm">
+        <input type="checkbox" id="transfer-finish-self-cb" class="checkbox checkbox-sm" checked
+               onchange="document.getElementById('transfer-finish-self').value = this.checked ? '1' : '0'">
+        <span>У меня завершить (передаю дальше, у себя убрать)</span>
+      </label>
+
+      <div class="mt-3">
+        <label class="label py-1"><span class="label-text text-sm">Комментарий — что делать дальше</span></label>
+        <textarea name="comment" rows="2"
+                  class="textarea textarea-bordered textarea-sm text-sm w-full leading-tight"
+                  style="min-height:2.5rem"
+                  placeholder="Например: подготовить документы к заседанию, проверить опись…"></textarea>
       </div>
 
       <div class="modal-action">
