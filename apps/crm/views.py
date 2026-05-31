@@ -2074,6 +2074,7 @@ def client_events_modal(request, client_id):
 
     qs = ClientLogEntry.objects.filter(client=client).select_related(
         "employee__user", "event_type", "action_type", "stored_file",
+        "parent__event_type", "parent__action_type",
     ).prefetch_related("event_type__standard_actions")
 
     if f_kind in ("event", "action"):
@@ -2178,6 +2179,7 @@ def client_log_add(request, client_id):
     )
     rows = ClientLogEntry.objects.filter(id__in=created_ids).select_related(
         "employee__user", "event_type", "action_type", "stored_file",
+        "parent__event_type", "parent__action_type",
     ).prefetch_related("event_type__standard_actions").order_by("created_at")
 
     html = "".join(

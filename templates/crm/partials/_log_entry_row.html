@@ -20,7 +20,6 @@
       {% else %}
         <span class="font-semibold" style="color:#166534">{{ ev.action_type.name|default:"—" }}</span>
       {% endif %}
-      {% if ev.parent_id %}<span class="ml-1 text-[11px] opacity-60">↳ ответ</span>{% endif %}
     </span>
     <span class="text-[11px] text-base-content/55 whitespace-nowrap flex-shrink-0">
       {{ ev.employee.user.get_full_name|default:"—" }}
@@ -32,10 +31,20 @@
     {% endif %}
   </div>
 
-  {% comment %}Тело — рендерим только если есть содержимое. Вертикальные
-     отступы минимальные (inline, т.к. py-0.5 нет в сборке).{% endcomment %}
-  {% if ev.stored_file_id or ev.comment or ev.event_type.standard_actions.all %}
+  {% comment %}Тело — рендерим если есть содержимое ИЛИ это ответ на запись.
+     Вертикальные отступы минимальные (inline, т.к. py-0.5 нет в сборке).{% endcomment %}
+  {% if ev.parent_id or ev.stored_file_id or ev.comment or ev.event_type.standard_actions.all %}
     <div class="bg-base-100 px-3" style="padding-top:.1rem;padding-bottom:.25rem">
+      {% comment %}Ссылка на запись, в ответ на которую это создано.{% endcomment %}
+      {% if ev.parent_id %}
+        <button type="button" class="text-[11px] opacity-70 link link-hover block text-left"
+                onclick="scrollToLogEntry('{{ ev.parent_id }}')"
+                title="Перейти к записи, на которую это ответ">
+          ↳ в ответ на:
+          {% if ev.parent.kind == 'event' %}{{ ev.parent.event_type.name|default:"запись" }}{% else %}{{ ev.parent.action_type.name|default:"запись" }}{% endif %}
+          · {{ ev.parent.created_at|date:"d.m.Y H:i" }}
+        </button>
+      {% endif %}
       {% comment %}Файл (события «Получен/Отправлен файл») — имя + предпросмотр.{% endcomment %}
       {% if ev.stored_file_id %}
         <div class="flex items-center gap-2 text-xs">

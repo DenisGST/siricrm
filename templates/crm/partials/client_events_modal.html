@@ -223,6 +223,17 @@
       htmx.trigger(form, 'change');
     }
 
+    // Перейти к записи, на которую это ответ (клик по «↳ в ответ на: …»):
+    // скролл к строке + кратковременная подсветка.
+    function scrollToLogEntry(id) {
+      const el = document.getElementById('log-' + id);
+      if (!el) return;
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      el.style.transition = 'box-shadow .25s';
+      el.style.boxShadow = '0 0 0 2px #3b82f6';
+      setTimeout(() => { el.style.boxShadow = ''; }, 1600);
+    }
+
     // ── Форма добавления: комбобокс выбора типа (typeahead) ──
     const _typeInput  = document.getElementById('log-add-type-input');
     const _typeHidden = document.getElementById('log-add-type');
