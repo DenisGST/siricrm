@@ -28,7 +28,7 @@ _MEDIA_TYPE_TO_METHOD = {
     "video": "sendFile",
     "audio": "sendFile",
     "document": "sendFile",
-    "voice": "sendPTT",  # голосовое — отдельный метод
+    "voice": "sendFile",  # 1msg.io отдельного sendPTT нет — голосовое тоже sendFile
 }
 
 
