@@ -16,7 +16,9 @@ import datetime
 import json
 import logging
 
-from django.http import JsonResponse, HttpResponseForbidden, StreamingHttpResponse, Http404
+from django.http import (
+    JsonResponse, HttpResponse, HttpResponseForbidden, Http404,
+)
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
@@ -165,28 +167,34 @@ def wa_file_proxy(request, file_id):
         # знающий UUID мог бы тянуть медиа клиентов.
         raise Http404("expired or not whatsapp")
 
-    # WhatsApp/1msg парсит Content-Disposition как plain ASCII — Django при
-    # кириллице в filename подставляет RFC 2047 encoded-word, и 1msg валит
-    # «Media upload error». Делаем ASCII-safe basename из file_id + extension.
-    import os
-    from urllib.parse import quote
-    orig = f.filename or "file"
-    _, ext = os.path.splitext(orig)
-    ascii_name = f"{f.id}{ext}".encode("ascii", errors="ignore").decode("ascii") or "file"
-    cd = f'inline; filename="{ascii_name}"; filename*=UTF-8\'\'{quote(orig)}'
-
+    # Отдаём максимально «голый» ответ: Meta-WhatsApp Cloud отвергал наш
+    # прокси с любым лишним заголовком (Vary/HSTS/X-Frame/Content-Disposition).
+    # Adobe/picsum дают чистые Content-Type + Content-Length — копируем это.
+    ctype = f.content_type or "application/octet-stream"
     if request.method == "HEAD":
-        resp = StreamingHttpResponse(b"", content_type=f.content_type or "application/octet-stream")
+        resp = HttpResponse(b"", content_type=ctype)
         if f.size:
             resp["Content-Length"] = str(f.size)
-        resp["Content-Disposition"] = cd
+        _strip_proxy_headers(resp)
         return resp
 
     data = download_file_from_s3(f.bucket, f.key)
-    resp = StreamingHttpResponse(iter([data]), content_type=f.content_type or "application/octet-stream")
+    resp = HttpResponse(data, content_type=ctype)
     resp["Content-Length"] = str(len(data))
-    resp["Content-Disposition"] = cd
+    _strip_proxy_headers(resp)
     return resp
+
+
+def _strip_proxy_headers(resp):
+    """Убираем security/cookie-заголовки, которые WhatsApp Cloud не любит
+    при media upload. Оставляем только Content-Type + Content-Length."""
+    for h in (
+        "Vary", "Set-Cookie", "X-Frame-Options", "X-Content-Type-Options",
+        "Referrer-Policy", "Cross-Origin-Opener-Policy",
+        "Content-Disposition", "Cache-Control", "Expires", "Pragma",
+    ):
+        if h in resp:
+            del resp[h]
 
 
 @csrf_exempt

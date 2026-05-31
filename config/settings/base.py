@@ -67,6 +67,9 @@ DEVOPS_AGENT_TOKEN = config("DEVOPS_AGENT_TOKEN", default="")
 DEVOPS_AGENT_TOKEN_PROD = config("DEVOPS_AGENT_TOKEN_PROD", default="")
 
 MIDDLEWARE = [
+    # Должна быть ПЕРВОЙ — её process_response вызывается последним и стирает
+    # security-headers для /wa/file/ (без этого WhatsApp Cloud отвергает media).
+    "apps.whatsapp.middleware.WAFileProxyHeaderStripMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
