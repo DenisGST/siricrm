@@ -26,6 +26,7 @@ from apps.telegram.telegram_sender import create_message_and_store_file
 from rules.contrib.views import permission_required as rules_permission_required
 from .tasks import send_telegram_message_task
 from apps.maxchat.tasks import send_max_message_task
+from apps.whatsapp.tasks import send_whatsapp_message_task
 
 
 CLIENTS_PER_PAGE = 20
@@ -141,6 +142,89 @@ def max_send_message(request, client_id):
         )
 
     send_max_message_task.delay(str(msg.id))
+
+    if employee:
+        ClientEmployee.objects.update_or_create(
+            client=client, employee=employee,
+            defaults={"messenger_status": "waiting", "status_changed_at": timezone.now()},
+        )
+        from apps.realtime.utils import push_messenger_status_update
+        push_messenger_status_update(client)
+
+    html = render_to_string(
+        "crm/partials/telegram_message.html",
+        {"msg": msg},
+        request=request,
+    )
+    resp = HttpResponse(html)
+    resp["HX-Trigger"] = "messengerStatusChanged"
+    return resp
+
+
+@login_required
+@require_POST
+def whatsapp_send_message(request, client_id):
+    """Отправить WhatsApp-сообщение через 1msg.io. Структура — копия
+    ``max_send_message``: создаём Message(channel='whatsapp'), кидаем в
+    Celery, возвращаем HTMX-партиал."""
+    from apps.crm.phone_utils import find_client_by_phone, normalize_phone
+
+    client = get_object_or_404(Client, pk=client_id)
+    content = (request.POST.get("content") or "").strip()
+    up_file = request.FILES.get("file")
+    reply_to_id = request.POST.get("reply_to_id")
+    reply_to_msg = None
+    if reply_to_id:
+        try:
+            reply_to_msg = Message.objects.get(id=reply_to_id)
+        except Message.DoesNotExist:
+            pass
+
+    if not content and not up_file:
+        return HttpResponseBadRequest("Empty message")
+
+    # Проверяем что у клиента есть WA-номер (в любом из вариантов)
+    has_wa = bool(
+        client.whatsapp_phone
+        or client.phones.filter(purpose__in=["whatsapp", "primary"]).exists()
+        or client.phone
+    )
+    if not has_wa:
+        return HttpResponseBadRequest("Client has no WhatsApp phone")
+
+    try:
+        employee = Employee.objects.get(user=request.user)
+    except Employee.DoesNotExist:
+        employee = None
+
+    client.last_message_at = timezone.now()
+    client.save(update_fields=["last_message_at"])
+
+    if up_file:
+        msg = create_message_and_store_file(
+            client=client,
+            text=content or None,
+            file=up_file,
+            employee=employee,
+        )
+        msg.channel = "whatsapp"
+        msg.telegram_date = timezone.now()
+        msg.reply_to = reply_to_msg
+        msg.save(update_fields=["channel", "telegram_date", "reply_to"])
+    else:
+        msg = Message.objects.create(
+            client=client,
+            employee=employee,
+            content=content,
+            direction="outgoing",
+            channel="whatsapp",
+            message_type="text",
+            telegram_date=timezone.now(),
+            is_sent=False,
+            reply_to=reply_to_msg,
+        )
+
+    send_whatsapp_message_task.delay(str(msg.id))
 
     if employee:
         ClientEmployee.objects.update_or_create(

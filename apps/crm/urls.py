@@ -15,6 +15,7 @@ urlpatterns = [
     path("clients/<uuid:client_id>/events/add/", views.client_log_add, name="client_log_add"),
     path("clients/<uuid:client_id>/identify/", views.client_identify_modal, name="client_identify_modal"),
     path("clients/<uuid:client_id>/max/send/", views.max_send_message, name="max_send_message"),
+    path("clients/<uuid:client_id>/whatsapp/send/", views.whatsapp_send_message, name="whatsapp_send_message"),
     path("clients/<uuid:client_id>/edit/", views.client_edit, name="client_edit"),
     path("clients/<uuid:client_id>/phones/", views.client_phones_block, name="client_phones_block"),
     path("clients/<uuid:client_id>/phones/add/", views.client_phone_add, name="client_phone_add"),

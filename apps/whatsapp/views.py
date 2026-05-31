@@ -191,6 +191,74 @@ def whatsapp_webhook(request, secret: str = ""):
     return JsonResponse({"ok": True})
 
 
+def _extract_media_url_and_name(message: dict) -> tuple[str, str]:
+    """Достать URL и имя файла из incoming-медиа.
+
+    Источники по убыванию приоритета:
+    1) 1msg-стиль: ``message["body"]`` — прямая https-ссылка;
+    2) Meta-стиль: ``message["image"|"video"|"document"|"audio"]`` —
+       объект с полями ``link`` / ``url`` / ``filename``;
+    3) Meta media id (только ``id``) — НЕ поддерживается в текущей версии:
+       нужен отдельный GET к медиа-endpoint Meta.
+    """
+    if not isinstance(message, dict):
+        return "", ""
+
+    body = message.get("body") or ""
+    if isinstance(body, str) and body.startswith(("http://", "https://")):
+        name = message.get("filename") or message.get("caption") or ""
+        return body, name
+
+    for key in ("image", "video", "audio", "voice", "document", "sticker"):
+        obj = message.get(key) or {}
+        if not isinstance(obj, dict):
+            continue
+        url = obj.get("link") or obj.get("url") or ""
+        name = obj.get("filename") or ""
+        if url:
+            return url, name
+
+    return "", ""
+
+
+def _download_wa_media_to_s3(url: str, filename: str, wamid: str):
+    """Скачать медиа из 1msg/Meta CDN и положить в S3 как StoredFile.
+    Best-effort: при ошибке возвращает None — обработка сообщения не падает."""
+    try:
+        from apps.whatsapp.sender import download_media
+        from apps.files.models import StoredFile
+        from apps.files.s3_utils import upload_file_to_s3
+
+        data, ctype, err = download_media(url)
+        if err or not data:
+            logger.warning("WA media недоступно: %s", err)
+            return None
+
+        # Если имя пустое — генерируем из wamid и расширения по content-type.
+        if not filename:
+            ext = ""
+            if ctype:
+                ext = {
+                    "image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp",
+                    "video/mp4": ".mp4", "audio/ogg": ".ogg", "audio/mpeg": ".mp3",
+                    "application/pdf": ".pdf",
+                }.get(ctype.split(";")[0].strip(), "")
+            filename = (wamid or "wa_media")[:60] + ext
+
+        bucket, key = upload_file_to_s3(
+            data, prefix="whatsapp/incoming",
+            filename=filename, content_type=ctype or None,
+        )
+        return StoredFile.objects.create(
+            bucket=bucket, key=key, filename=filename[:255],
+            content_type=(ctype or "")[:255], size=len(data),
+            bubble_id=f"wamedia_{wamid}"[:64],
+        )
+    except Exception:
+        logger.exception("WA media: download/upload failed for url=%s", url)
+        return None
+
+
 def _handle_incoming_message(message: dict, contacts: dict):
     """Один входящий message-объект из payload."""
     if not isinstance(message, dict):
@@ -229,9 +297,18 @@ def _handle_incoming_message(message: dict, contacts: dict):
         ).first()
 
     content = text
-    if not content and msg_type != "text":
-        # медиа без caption — плейсхолдер, файл скачаем на этапе 2
-        content = "(медиа)"
+
+    # Медиа: 1msg в большинстве случаев кладёт прямую CDN-ссылку в
+    # message["body"] для image/video/audio/document. Скачиваем в S3,
+    # привязываем StoredFile к сообщению. Если не получилось — оставляем
+    # текстовый плейсхолдер «(медиа)», обработка не валится.
+    stored_file = None
+    if msg_type != "text":
+        media_url, media_name = _extract_media_url_and_name(message)
+        if media_url:
+            stored_file = _download_wa_media_to_s3(media_url, media_name, wamid)
+        if not content:
+            content = media_name or "(медиа)"
 
     msg_obj = Message.objects.create(
         client=client,
@@ -242,6 +319,7 @@ def _handle_incoming_message(message: dict, contacts: dict):
         whatsapp_message_id=wamid,
         telegram_date=timezone.now(),
         reply_to=reply_to,
+        file=stored_file,
         raw_payload={"channel": "whatsapp", "message": message},
     )
     logger.info("💬 WA incoming msg %s type=%s for client %s", msg_obj.id, msg_type, client.id)

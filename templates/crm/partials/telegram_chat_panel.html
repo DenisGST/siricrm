@@ -218,6 +218,20 @@
             MAX
           </button>
           {% endif %}
+          {% if client.whatsapp_phone or client.phone %}
+          <button
+            type="submit"
+            id="btn-send-whatsapp"
+            class="btn btn-sm bg-success/20 hover:bg-success/40 text-success border-success/40"
+            hx-post="{% url 'whatsapp_send_message' client.id %}"
+            hx-encoding="multipart/form-data"
+            hx-swap="none"
+            disabled
+            title="Отправить через WhatsApp (1msg.io)"
+          >
+            WhatsApp
+          </button>
+          {% endif %}
           <span id="close-dialog-slot">
             <button type="button"
               class="btn btn-sm border-success bg-success/10 hover:bg-success/20 text-success"
@@ -268,8 +282,10 @@
       var canSend = hasText || hasFile;
       var btnTg  = document.getElementById("btn-send-telegram");
       var btnMax = document.getElementById("btn-send-max");
+      var btnWa  = document.getElementById("btn-send-whatsapp");
       if (btnTg)  btnTg.disabled  = !canSend;
       if (btnMax) btnMax.disabled = !canSend;
+      if (btnWa)  btnWa.disabled  = !canSend;
     }
 
     if (textarea) textarea.addEventListener("input", updateSendButtons); // ← ДОБАВЛЕНО
