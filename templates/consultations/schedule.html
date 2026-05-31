@@ -211,6 +211,12 @@ function openClientHistoryModal(clientId) {
       container.innerHTML = html;
       htmx.process(container);
       document.getElementById('client-events-modal')?.showModal();
+      // innerHTML не исполняет inline-скрипт модалки → автоскролл ленты
+      // вниз (свежее снизу, как в чате) дёргаем здесь вручную.
+      requestAnimationFrame(function() {
+        var feed = document.getElementById('log-feed');
+        if (feed) feed.scrollTop = feed.scrollHeight;
+      });
     });
 }
 

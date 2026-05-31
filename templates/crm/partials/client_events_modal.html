@@ -289,10 +289,16 @@
     // Установить initial kind=event
     setLogAddKind('event');
 
-    // Авто-скролл ленты вниз (как в чате — новое снизу)
+    // Авто-скролл ленты вниз (как в чате — самое свежее снизу). Лента
+    // отсортирована по возрастанию created_at (см. client_events_modal во
+    // views.py: order_by("created_at")). Двойной rAF — чтобы дождаться
+    // раскладки модалки (иначе scrollHeight ещё не финальный и промахиваемся).
     (function() {
-      const feed = document.getElementById('log-feed');
-      if (feed) feed.scrollTop = feed.scrollHeight;
+      const scrollToBottom = () => {
+        const feed = document.getElementById('log-feed');
+        if (feed) feed.scrollTop = feed.scrollHeight;
+      };
+      requestAnimationFrame(() => requestAnimationFrame(scrollToBottom));
     })();
   </script>
 </dialog>
