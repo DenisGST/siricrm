@@ -63,6 +63,8 @@ urlpatterns = [
     # Канбаны услуг
     path("services/<uuid:pk>/move/", views.service_move, name="service_move"),
     path("services/<uuid:pk>/my-move/", views.service_my_move, name="service_my_move"),
+    path("services/<uuid:pk>/transfer/", views.service_transfer_modal, name="service_transfer_modal"),
+    path("services/<uuid:pk>/transfer/do/", views.service_transfer, name="service_transfer"),
     path("services/<uuid:pk>/employees/picker/", views.service_employee_picker, name="service_employee_picker"),
     path("services/<uuid:pk>/employees/toggle/", views.service_employee_toggle, name="service_employee_toggle"),
     path("services-kanban/", views.services_kanban, name="services_kanban"),

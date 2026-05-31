@@ -2047,6 +2047,19 @@ def service_my_move(request, pk):
     state.status = new_status
     state.save(update_fields=["status"])
 
+    # «Принятие»: если услугу вытащили ИЗ инбокса «Не принято» в рабочую
+    # колонку — сотрудник взял её в работу. Убираем услугу из инбоксов
+    # остальных сотрудников отдела (один взял — у других пропала).
+    if (old_status and getattr(old_status, "is_inbox", False)
+            and not getattr(new_status, "is_inbox", False)):
+        others = ServiceEmployeeState.objects.filter(
+            service=service, status__is_inbox=True,
+        ).exclude(employee=emp)
+        other_ids = list(others.values_list("employee_id", flat=True))
+        if other_ids:
+            others.delete()
+            service.employees.remove(*other_ids)
+
     ServiceLog.objects.create(
         service=service,
         employee=emp,
@@ -2068,6 +2081,63 @@ def service_my_move(request, pk):
             employee=emp,
         )
     return HttpResponse(status=204)
+
+
+@login_required
+def service_transfer_modal(request, pk):
+    """Пикер «Передать в работу отдела/сотрудника» для услуги."""
+    from apps.crm.service_transfer import valid_target_department_ids
+    service = get_object_or_404(
+        Service.objects.select_related("name", "client", "common_status__department"), pk=pk,
+    )
+    dept_ids = valid_target_department_ids(service)
+    departments = Department.objects.filter(
+        id__in=dept_ids, is_active=True,
+    ).order_by("name")
+    employees = Employee.objects.filter(
+        is_active=True, department_id__in=dept_ids,
+    ).select_related("user", "department").order_by(
+        "department__name", "user__last_name", "user__first_name",
+    )
+    return render(request, "crm/partials/service_transfer_modal.html", {
+        "service": service,
+        "departments": departments,
+        "employees": employees,
+    })
+
+
+@login_required
+@require_POST
+def service_transfer(request, pk):
+    """Выполнить передачу услуги в отдел/сотруднику."""
+    from apps.crm.service_transfer import transfer_service
+    service = get_object_or_404(Service, pk=pk)
+    actor = _current_employee_from_user(request.user)
+
+    target_type = (request.POST.get("target_type") or "").strip()
+    target_id = (request.POST.get("target_id") or "").strip()
+    if not target_id:
+        return HttpResponseBadRequest("Не выбран получатель")
+
+    try:
+        if target_type == "employee":
+            emp = get_object_or_404(Employee, pk=target_id, is_active=True)
+            transfer_service(service, target_employee=emp, actor=actor)
+        elif target_type == "dept":
+            dept = get_object_or_404(Department, pk=target_id, is_active=True)
+            transfer_service(service, target_department=dept, actor=actor)
+        else:
+            return HttpResponseBadRequest("Неверный тип получателя")
+    except ValueError as e:
+        return HttpResponse(str(e), status=400)
+
+    # Перерисовываем модалку услуги (как GET) + сигнал на обновление канбанов.
+    from django.http import QueryDict
+    request.method = "GET"
+    request.POST = QueryDict()
+    resp = service_edit(request, pk)
+    resp["HX-Trigger"] = "serviceChanged"
+    return resp
 
 
 @login_required

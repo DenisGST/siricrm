@@ -272,6 +272,14 @@
                          class="file-input file-input-bordered file-input-sm w-full">
                 </div>
               </div>
+
+              <button type="button"
+                      class="btn btn-sm btn-outline w-full mt-2"
+                      hx-get="{% url 'service_transfer_modal' service.id %}"
+                      hx-target="body" hx-swap="beforeend"
+                      title="Передать услугу в работу отдела или сотрудника">
+                ↪ Передать в работу отдела/сотрудника
+              </button>
             </div>
             {% endif %}
           </div>
