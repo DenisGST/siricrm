@@ -2079,8 +2079,16 @@ def client_events_modal(request, client_id):
     if f_kind in ("event", "action"):
         qs = qs.filter(kind=f_kind)
     if f_source:
-        # Источник имеет смысл только для events
-        qs = qs.filter(kind="event", event_type__source=f_source)
+        if f_source == "employee":
+            # «Сотрудник» = всё, что сделал сотрудник: ДЕЙСТВИЯ (у них нет
+            # поля source — они по определению совершаются сотрудником) +
+            # события с источником employee (если такие появятся).
+            qs = qs.filter(
+                Q(kind="action") | Q(kind="event", event_type__source="employee")
+            )
+        else:
+            # Остальные источники имеют смысл только для событий.
+            qs = qs.filter(kind="event", event_type__source=f_source)
     if f_type:
         if f_kind == "action":
             qs = qs.filter(action_type__code=f_type)
