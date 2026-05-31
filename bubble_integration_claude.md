@@ -40,6 +40,50 @@ Bubble имеет **две версии** одного приложения: liv
   - WA-placeholder skipped: ~411 000 (нормально, без файла в Bubble).
   - Реально новых документов за неделю: 0–1 (отдел перешёл на SiriCRM, в Bubble больше не работают).
 
+## Доливка из Bubble на prod — ловушка с `--entities`
+
+`fetch_bubble_since N --apply` **по умолчанию** идёт по 11 сущностям (`DEFAULT_ENTITIES`: User, Man, ProjectBFL, Organization, Kreditors, PropetyAnketa, Events, Сorrespondence, Money, MessageWSP, Files). Запускать **только** через явный список:
+
+```bash
+python manage.py fetch_bubble_since 120 --entities Files --apply
+```
+
+Прецедент 31 мая 2026 ночью: запустил без `--entities` чтобы дотянуть свежие Files Авад → начал обновлять весь raw 9 сущностей и помечать `approved=True` тысячам не-imported записей. Прервали рестартом web. `approved=True` остались висеть (откатить точно невозможно — у `BubbleRecord` нет `updated_at`, отличить «сегодня» от «вчера» нельзя). Безопасно пока не запускается `apply_approved` массово. Урок: всегда `--entities`.
+
+## Prod-кэш Files обрезается датой последнего fetch'а
+
+На prod max `BubbleRecord(Files).bubble_created` = **2026-02-09** (свежее не пофетчили). Если в Bubble есть новый ProjectBFL — его файлов в нашей `BubbleRecord` нет, `apply_files` к ним не доберётся. Симптом — клиент в Siri без файлов, хотя в Bubble UI они открываются (прецедент: Авад Елена, ProjectBFL `1776929144653x271822434412527600`, в Bubble 95 файлов, у нас 0).
+
+**Точечный backfill «один клиент»** — обходным путём через Bubble API напрямую (без `BubbleRecord`-буфера):
+
+```python
+# В manage.py shell
+from apps.bubble_import import bubble_api
+from apps.bubble_import.appliers import download_to_storedfile, _bubble_folder_path
+from apps.bubble_import.extractors import clean_str
+from apps.files.models import ClientFile
+
+constraints = [{"key": "projectBFL", "constraint_type": "equals", "value": SVC_BID}]
+cursor = 0
+all_files = []
+while True:
+    page = bubble_api.fetch_page("Files", cursor=cursor, limit=bubble_api.PAGE_LIMIT, constraints=constraints)
+    results = page.get("results", [])
+    if not results: break
+    all_files.extend(results); cursor += len(results)
+    if page.get("remaining", 0) <= 0: break
+
+for f in all_files:
+    link = clean_str(f.get("linkGDrive"))
+    if not link: continue
+    stored = download_to_storedfile(link, clean_str(f.get("filename")) or f"file_{f['_id']}", f["_id"])
+    folder = _bubble_folder_path(client, clean_str(f.get("directory")))
+    ClientFile.objects.get_or_create(stored_file=stored, folder=folder,
+        defaults={"name": (clean_str(f.get("filename")) or "")[:255], "size": stored.size or 0, "content_type": stored.content_type})
+```
+
+Авад 31 мая: 95 файлов → 80 OK / 15 skip (пустой linkGDrive) / 0 err. Свежие (после 9 февраля) GDrive-ссылки **массово живы**, в отличие от старых из основной волны.
+
 ## WA-медиа: `MessageWSP.url_file` vs `body`
 
 `apply_messagewsp` (`appliers.py:677`) при медиа-сообщении пытается скачать файл **только из поля `body`** (если `body.startswith("http")`). А **`url_file`** — отдельное поле, которое появилось позже как канонический URL медиа в Bubble — **игнорируется**.
@@ -49,7 +93,9 @@ Bubble имеет **две версии** одного приложения: liv
 - 40 787 из них уже имели Message.file (старые записи, когда apply брал URL из `body`).
 - 6 526 MessageWSP с url_file имеют Message **без файла** — кандидаты на доливку.
 
-**Backfill-скрипт (31 мая)** (`/tmp/wa_media_backfill2.py` на prod):
+**Точечный backfill по конкретному автору** — через Bubble API constraint `author = "<phone>@c.us"`, забрать все MessageWSP, отфильтровать с непустым `url_file`, раскладывать в файловый менеджер клиента **в `Чат/Полученные` (`fromMe=False`) или `Чат/Отправленные` (`fromMe=True`)** — терминология «полученные/отправленные» принята пользователем, **не** «входящие/исходящие». Пример (Авад, 31 мая): 73 MessageWSP по `79377051717@c.us` → 43 с url_file → 43 OK / 0 err.
+
+**Backfill-скрипт (31 мая, общий по всем без файлов)** (`/tmp/wa_media_backfill2.py` на prod):
 ```python
 candidates = Message.objects.filter(
     channel="whatsapp", file__isnull=True, bubble_id__isnull=False,
