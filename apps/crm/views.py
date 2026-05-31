@@ -2125,15 +2125,16 @@ def client_events_modal(request, client_id):
 @login_required
 @require_POST
 def client_log_add(request, client_id):
-    """POST из формы добавления в модалке лога. Создаёт ClientLogEntry
-    и возвращает обновлённую модалку (re-render с теми же фильтрами).
+    """POST из формы добавления в модалке лога. Создаёт ClientLogEntry и
+    возвращает ТОЛЬКО HTML новой записи (action + порождённое событие, если
+    есть) — фронт добавляет их в конец ленты (hx-swap=beforeend) без ребилда
+    модалки, чтобы она не моргала и не прыгала.
 
     Поля формы:
       entry_kind  — 'event' | 'action' (что создаём)
       type_code   — code EventType/ActionType
       comment     — текст
       parent_id   — uuid родительской записи (опц.)
-      kind, source, type, q — эхо фильтров модалки (для re-render)
     """
     client = get_object_or_404(Client, pk=client_id)
     entry_kind = (request.POST.get("entry_kind") or "").strip()
@@ -2154,18 +2155,28 @@ def client_log_add(request, client_id):
         parent = ClientLogEntry.objects.filter(pk=parent_id, client=client).first()
 
     if entry_kind == "event":
-        client_log.record_event(client, type_code, comment=comment, employee=emp, parent=parent)
+        entry = client_log.record_event(client, type_code, comment=comment, employee=emp, parent=parent)
     else:
-        client_log.record_action(client, type_code, comment=comment, employee=emp, parent=parent)
+        entry = client_log.record_action(client, type_code, comment=comment, employee=emp, parent=parent)
 
-    # Re-render модалки с теми же фильтрами (POST → GET)
-    from django.http import QueryDict
-    request.GET = QueryDict(mutable=True)
-    for k in ("kind", "source", "type", "q"):
-        v = request.POST.get(k, "")
-        if v:
-            request.GET[k] = v
-    return client_events_modal(request, client_id)
+    if entry is None:
+        # тип не найден в справочнике (см. client_log) — не падаем
+        return HttpResponseBadRequest("Неизвестный тип записи")
+
+    # Новые записи: сама запись + порождённое событие (action.spawns_event),
+    # если оно было создано. Перечитываем с select_related для рендера строки.
+    created_ids = [entry.id] + list(
+        ClientLogEntry.objects.filter(parent=entry).values_list("id", flat=True)
+    )
+    rows = ClientLogEntry.objects.filter(id__in=created_ids).select_related(
+        "employee__user", "event_type", "action_type", "stored_file",
+    ).prefetch_related("event_type__standard_actions").order_by("created_at")
+
+    html = "".join(
+        render_to_string("crm/partials/_log_entry_row.html", {"ev": ev}, request=request)
+        for ev in rows
+    )
+    return HttpResponse(html)
 
 
 @login_required

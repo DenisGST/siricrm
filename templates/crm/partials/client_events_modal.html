@@ -96,98 +96,32 @@
        без заголовков столбцов и порядковых номеров. Авто-скролл вниз
        при открытии модалки.{% endcomment %}
     <div id="log-feed" class="flex-1 min-h-0 overflow-y-auto pr-1 space-y-2">
-      {% if events %}
       {% for ev in events %}
-        <div class="log-row rounded border border-base-300 bg-base-100 px-3 py-1
-             {% if ev.parent_id %}ml-6 border-l-4 border-l-info/40{% endif %}"
-             id="log-{{ ev.id }}">
-          {% comment %}Одна строка метаданных: время · тип+наименование · ФИО.
-             Время и тип слева, ФИО + кнопка «+» справа (justify-between).{% endcomment %}
-          <div class="flex items-center gap-2">
-            <span class="text-[11px] text-base-content/55 whitespace-nowrap flex-shrink-0" style="font-variant-numeric:tabular-nums">
-              {{ ev.created_at|date:"d.m.Y H:i" }}
-            </span>
-            <span class="min-w-0 flex-1 text-xs truncate">
-              {% if ev.kind == 'event' %}
-                <span class="font-semibold" style="color:#1e3a8a">{{ ev.event_type.name|default:"—" }}</span>
-                <span class="text-[11px] opacity-60">({{ ev.event_type.get_source_display }})</span>
-              {% else %}
-                <span class="font-semibold" style="color:#166534">{{ ev.action_type.name|default:"—" }}</span>
-              {% endif %}
-              {% if ev.parent_id %}<span class="ml-1 text-[11px] opacity-60">↳ ответ</span>{% endif %}
-            </span>
-            <span class="text-[11px] text-base-content/55 whitespace-nowrap flex-shrink-0">
-              {{ ev.employee.user.get_full_name|default:"—" }}
-            </span>
-            {% if ev.kind == 'event' %}
-            <button type="button" class="btn btn-xs btn-ghost btn-square flex-shrink-0"
-                    onclick="prefillLogAdd('','','{{ ev.id }}','')"
-                    title="Добавить действие в ответ на это событие">+</button>
-            {% endif %}
-          </div>
-
-          {% comment %}Файл (события «Получен/Отправлен файл») — имя + предпросмотр.{% endcomment %}
-          {% if ev.stored_file_id %}
-            <div class="flex items-center gap-2 mt-1 text-xs">
-              📎
-              <a href="{% url 'files:stored_download' ev.stored_file.id %}?inline=1" target="_blank"
-                 class="link link-primary break-all" title="Открыть предпросмотр в новой вкладке">
-                {{ ev.stored_file.filename|default:"файл" }}
-              </a>
-              <a href="{% url 'files:stored_download' ev.stored_file.id %}"
-                 class="link link-hover opacity-60 whitespace-nowrap flex-shrink-0"
-                 title="Скачать файл">скачать</a>
-            </div>
-          {% elif ev.comment %}
-            <div class="text-sm mt-1 whitespace-pre-line break-words">
-              {{ ev.comment }}
-              {% if ev.old_value or ev.new_value %}
-                <span class="text-xs text-base-content/50 ml-1">
-                  {% if ev.old_value %}<span class="line-through">{{ ev.old_value }}</span> → {% endif %}
-                  {{ ev.new_value }}
-                </span>
-              {% endif %}
-            </div>
-          {% endif %}
-
-          {% if ev.kind == 'event' and ev.event_type.standard_actions.all %}
-            <div class="flex flex-wrap gap-1 mt-1">
-              {% for sa in ev.event_type.standard_actions.all %}
-                <button type="button" class="btn btn-xs btn-ghost"
-                        onclick="prefillLogAdd('action','{{ sa.code }}','{{ ev.id }}','{{ sa.name|escapejs }}')"
-                        title="{{ sa.description|default:'' }}">
-                  → {{ sa.name }}
-                </button>
-              {% endfor %}
-            </div>
-          {% endif %}
-        </div>
+        {% include "crm/partials/_log_entry_row.html" %}
       {% endfor %}
-      {% else %}
-        <div class="text-center text-base-content/50 py-10">
-          {% icon "history" size=32 %}
-          <p class="mt-2 text-sm">Записей не найдено</p>
-          {% if filter_kind or filter_source or filter_type or filter_q %}
-            <button type="button" class="btn btn-xs btn-ghost mt-2"
-                    onclick="resetLogFilter()">Сбросить фильтр</button>
-          {% endif %}
-        </div>
-      {% endif %}
+      {% comment %}Плейсхолдер «пусто» — с id, чтобы убрать его при append
+         первой записи (см. resetLogAddForm). Скрыт, если записи есть.{% endcomment %}
+      <div id="log-feed-empty" class="text-center text-base-content/50 py-10 {% if events %}hidden{% endif %}">
+        {% icon "history" size=32 %}
+        <p class="mt-2 text-sm">Записей не найдено</p>
+        {% if filter_kind or filter_source or filter_type or filter_q %}
+          <button type="button" class="btn btn-xs btn-ghost mt-2"
+                  onclick="resetLogFilter()">Сбросить фильтр</button>
+        {% endif %}
+      </div>
     </div>
 
     {# ─── Форма добавления ─── #}
+    {% comment %}POST добавляет только новую запись в конец ленты (beforeend),
+       без ребилда модалки — чтобы не моргала и не прыгала. После успеха
+       resetLogAddForm() чистит поле и плавно доскролливает ленту вниз.{% endcomment %}
     <form id="log-add-form" method="post"
           hx-post="{% url 'client_log_add' client.id %}"
-          hx-target="#client-events-modal" hx-swap="outerHTML"
+          hx-target="#log-feed" hx-swap="beforeend"
+          hx-on::after-request="if (event.detail.successful) resetLogAddForm()"
           class="mt-3 pt-3 border-t flex flex-col gap-2"
           style="border-color:var(--ms-border-light)">
       {% csrf_token %}
-      {% comment %}Эхо текущих фильтров — чтобы после ответа модалка
-         перерисовалась с теми же активными фильтрами.{% endcomment %}
-      <input type="hidden" name="kind" value="{{ filter_kind }}">
-      <input type="hidden" name="source" value="{{ filter_source }}">
-      <input type="hidden" name="type" value="{{ filter_type }}">
-      <input type="hidden" name="q" value="{{ filter_q }}">
 
       <input type="hidden" name="parent_id" id="log-add-parent">
 
@@ -366,6 +300,21 @@
     function clearLogAddParent() {
       document.getElementById('log-add-parent').value = '';
       document.getElementById('log-add-parent-hint').classList.add('hidden');
+    }
+
+    // Сброс формы после успешного добавления: чистим комментарий, отвязываем
+    // parent, возвращаем дефолт «Комментарий сотрудника» и плавно доскролливаем
+    // ленту вниз к только что добавленной записи (без ребилда модалки).
+    function resetLogAddForm() {
+      const ta = document.querySelector('#log-add-form textarea');
+      if (ta) ta.value = '';
+      clearLogAddParent();
+      setLogAddKind('action');
+      setLogAddType('employee_comment');
+      // Убрать плейсхолдер «пусто», если это была первая запись.
+      document.getElementById('log-feed-empty')?.classList.add('hidden');
+      const feed = document.getElementById('log-feed');
+      if (feed) feed.scrollTo({ top: feed.scrollHeight, behavior: 'smooth' });
     }
 
     // Гард сабмита: без выбранного type_code запрос не уходит (required на
