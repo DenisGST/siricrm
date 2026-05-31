@@ -33,9 +33,15 @@
     </div>
 
     {# ─── Фильтры (HTMX-перерисовка таблицы) ─── #}
+    {% comment %}Триггеры form-level (надёжнее, чем from:select):
+       • change — всплывает с <select> источника/типа И ловит явный
+         htmx.trigger(form,'change') от кнопок kind / «Сбросить»;
+       • keyup changed delay — поиск по комментарию (единственный text-input
+         в этой форме — q);
+       • search — клик по «×» в поле поиска.{% endcomment %}
     <form id="log-filter"
           hx-get="{% url 'client_events_modal' client.id %}"
-          hx-trigger="change from:select, input from:input[type=search] delay:300ms"
+          hx-trigger="change, keyup changed delay:400ms, search"
           hx-target="#client-events-modal" hx-swap="outerHTML"
           class="flex flex-wrap gap-2 items-center mb-3 pb-3 border-b"
           style="border-color:var(--ms-border-light)">
