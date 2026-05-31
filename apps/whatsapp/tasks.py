@@ -56,14 +56,20 @@ def send_whatsapp_message_task(self, message_id: str):
     file_url = None
     filename = None
     if msg.file:
-        # 1msg.io скачивает медиа с переданного URL и при этом сначала делает
-        # HEAD — Beget S3 pre-signed URL отвечает 403 на HEAD → «Media upload
-        # error». Отдаём через свой прокси (apps.whatsapp.views.wa_file_proxy),
-        # где HEAD работает и Content-Type корректный.
-        from django.conf import settings
-        base = (settings.PUBLIC_BASE_URL or "").rstrip("/")
-        file_url = f"{base}/wa/file/{msg.file.id}/"
-        filename = msg.file.filename
+        # Шлём файл в 1msg как data:URI с base64 — это документированный
+        # формат body параметра sendFile (наряду с URL и multipart). Это
+        # надёжнее, чем гонять 1msg по нашему прокси: нет HEAD-probe,
+        # нет проблем с кириллицей в URL, нет лимита на размер по URL.
+        import base64
+        try:
+            from apps.files.s3_utils import download_file_from_s3
+            data = download_file_from_s3(msg.file.bucket, msg.file.key)
+            ctype = msg.file.content_type or "application/octet-stream"
+            b64 = base64.b64encode(data).decode("ascii")
+            file_url = f"data:{ctype};base64,{b64}"
+            filename = msg.file.filename
+        except Exception:
+            logger.exception("WA task: failed to base64-encode file for msg %s", msg.id)
 
     reply_wamid = ""
     if msg.reply_to and msg.reply_to.whatsapp_message_id:
