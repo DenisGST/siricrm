@@ -135,9 +135,9 @@ guides/             — пользовательские инструкции (d
 
 ## WhatsApp интеграция через 1msg.io (apps/whatsapp)
 
-**Полное описание:** [`whatsapp_integration_claude.md`](./whatsapp_integration_claude.md) — 1msg.io API, webhook flow, прокси `/wa/file/`, WAFileProxyHeaderStripMiddleware, кириллица, лимит ~1 MB, TEST_MODE, env-vars, curl-шпаргалка.
+**Полное описание:** [`whatsapp_integration_claude.md`](./whatsapp_integration_claude.md) — 1msg.io API, webhook flow, data:URI base64 для исходящих медиа, прокси `/wa/file/` (резерв), кириллица, TEST_MODE, env-vars, curl-шпаргалка.
 
-Кратко: тонкий слой `apps/whatsapp/` (config+sender+tasks+views+middleware, без своих моделей) над общими Client/Message/StoredFile. Боевой канал клиента — JWT-токен 1msg в `WHATSAPP_API_TOKEN`. Все медиа уходят через `sendFile`. Исходящие — через прокси `/wa/file/<uuid>/` (Beget S3 pre-signed даёт 403 на HEAD, который 1msg делает первым). UI-кнопка в `telegram_chat_panel.html` — её ID `btn-send-whatsapp` обязательно проверять в `htmx:afterRequest`, иначе форма не очищается.
+Кратко: тонкий слой `apps/whatsapp/` (config+sender+tasks+views+middleware, без своих моделей) над общими Client/Message/StoredFile. Боевой канал клиента — JWT-токен 1msg в `WHATSAPP_API_TOKEN`. Все медиа уходят через `sendFile`. **Исходящие медиа** — `data:<ctype>;base64,<...>` в payload (после нескольких итераций URL-режима — прокси, headers, лимиты, кириллица). Прокси `/wa/file/<uuid>/` оставлен в коде на случай URL-режима. UI-кнопка `#btn-send-whatsapp` в `telegram_chat_panel.html` — проверять в `htmx:afterRequest`, иначе форма не очищается после отправки.
 
 ## Telegram интеграция (apps/telegram)
 

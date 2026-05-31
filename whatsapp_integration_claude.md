@@ -32,32 +32,40 @@
 - **Дедуп** через `Message.whatsapp_message_id`+`channel='whatsapp'`. Незнакомый номер → автосоздание Client(status='lead') + `route_new_lead("WhatsApp", ...)`.
 - Ack-статусы (`sent/delivered/read`) обновляют `Message.is_sent/is_delivered/is_read` + push в WS через `push_message_status`.
 
-## Исходящие медиа: прокси `/wa/file/<uuid:file_id>/`
+## Исходящие медиа: data:URI base64 в payload `body`
 
-**Проблема:** 1msg перед скачиванием делает HEAD-probe. Beget S3 pre-signed URL отвечает **403 на HEAD** (sigv4 подписывает только GET) → 1msg отдаёт `ack: failed, error="Media upload error"`. Пробовать публичный bucket нельзя — медиа клиентов.
+**Текущая реализация (с 31 мая 2026):** в `tasks.py` файл качается из S3, кодируется в `base64`, отправляется в payload `body` как `data:<content-type>;base64,<...>`. 1msg документирует три формата для `body`: URL, base64 data:URI, multipart form. Data:URI обходит сразу всю URL-историю:
 
-**Решение:** прокси-эндпоинт `apps.whatsapp.views.wa_file_proxy` (GET+HEAD) — стримит `StoredFile` из S3 через свой домен с корректным `Content-Type` + `Content-Length`. Защита — файл должен быть привязан к `Message(channel='whatsapp', created_at >= now-24h)`; после WA Cloud его уже зеркалит и наш URL не нужен. URL формируется в `tasks.py` как `f"{settings.PUBLIC_BASE_URL}/wa/file/{msg.file.id}/"`.
+- нет HEAD-probe (1msg сразу читает байты из payload);
+- нет проблем с кириллицей в URL (в 1msg документации: «Кириллические символы в URL файла не поддерживаются — должна быть процент-кодировка»);
+- нет эмпирического ~1 МБ лимита, который ловили при URL-режиме (через payload лимит уже от POST body, ~50 МБ у 1msg);
+- не нужен публичный домен для CRM (Celery в локалке без публичного URL тоже может слать).
 
-**`PUBLIC_BASE_URL` в env** (новая переменная): `https://siricrm.ru` для prod, `https://crmsiri.ru` для dev. Default — `https://crmsiri.ru`. Нужен потому что Celery-task не имеет request.get_host().
+```python
+import base64
+from apps.files.s3_utils import download_file_from_s3
+data = download_file_from_s3(msg.file.bucket, msg.file.key)
+ctype = msg.file.content_type or "application/octet-stream"
+file_url = f"data:{ctype};base64,{base64.b64encode(data).decode('ascii')}"
+```
 
-## Заголовки прокси: `WAFileProxyHeaderStripMiddleware`
+В sender ничего менять не пришлось — `body` принимает что угодно (URL или data:URI). `filename` payload — отдельный параметр, в нём кириллица допустима (1msg/Meta её принимают).
 
-WhatsApp Cloud (через 1msg) отвергает media-upload, если в HTTP-ответе есть `Vary/Cookie/X-Frame-Options/HSTS/Content-Disposition/Cache-Control/Referrer-Policy/Cross-Origin-*`. Тест подтвердил: те же файлы по «голым» публичным URL (Adobe sample, picsum) проходят, наш Django-прокси — нет, пока эти заголовки не убрать.
+## Прокси `/wa/file/<uuid:file_id>/` (резерв)
 
-`apps/whatsapp/middleware.py:WAFileProxyHeaderStripMiddleware` стоит **первой в `MIDDLEWARE`** (её `process_response` отрабатывает последним — после Django security/session/csrf, у которых уже не получится вернуть свои заголовки) и стирает указанный список **только для путей `/wa/file/`**. Остальной сайт сохраняет полную security-обвязку.
+Изначально (до перехода на data:URI) исходящие медиа шли через прокси-эндпоинт `apps.whatsapp.views.wa_file_proxy` — он стримил `StoredFile` из S3 через наш домен (Beget pre-signed URL валился на HEAD-probe 1msg). Сейчас прокси **не используется**, но оставлен в коде:
 
-> ⚠ Если Django добавит новый security-заголовок в будущем — нужно дополнить список в `_STRIP`. Симптом: после релиза Django/middleware медиа снова перестают доходить, в логах прокси-ответа лишний заголовок.
+- `apps/whatsapp/views.py:wa_file_proxy` — GET+HEAD, стримит файл с корректным `Content-Type` + `Content-Length`. Защита — файл должен быть привязан к `Message(channel='whatsapp', created_at >= now-24h)`.
+- `apps/whatsapp/middleware.py:WAFileProxyHeaderStripMiddleware` (первой в `MIDDLEWARE`) — стирает `Vary/Cookie/X-Frame-Options/HSTS/Content-Disposition/Cache-Control/Referrer-Policy/Cross-Origin-*` только для путей `/wa/file/` (WhatsApp Cloud отвергал любой ответ с этими headers).
+- `settings.PUBLIC_BASE_URL` (env: `https://siricrm.ru` для prod, `https://crmsiri.ru` для dev/default) — для построения абсолютного URL из task без request.
 
-## Кириллица в filename
+Если в будущем потребуется отдавать медиа по ссылке (например, для предпросмотра в e-mail, для веб-просмотра клиентом) — инфраструктура готова.
 
-- В **payload sendFile** (`{"filename": "Ответ МРЭО.pdf"}`) — кириллица проходит, 1msg/Meta её принимают.
-- В **HTTP-заголовке `Content-Disposition`** — Django при кириллице автоматически кодирует через RFC 2047 `=?utf-8?b?...?=` (формат для email!), 1msg валит upload. На нашем прокси Content-Disposition полностью **снят** middleware'ом — проблема устранена.
+## Кириллица
 
-## Известный лимит на размер медиа
-
-Эмпирически: файлы **<1 МБ** проходят, **>1 МБ** валятся `ack: failed, error="Media upload error"` даже с идеально чистыми headers. Природа лимита неясна — может быть тариф 1msg, может Meta media-by-URL ограничение. WhatsApp Cloud официально разрешает Document до 100 MB, но через `body=<url>` 1msg пилит раньше.
-
-**На сегодня (31 мая 2026):** оставлено как есть — для крупных PDF/изображений по требованию разбираться (1msg support или авто-сжатие). Текст + мелкие медиа работают.
+- **URL файла** в `body` (при URL-режиме) — 1msg не поддерживает, должна быть процент-кодировка. С переходом на data:URI это не актуально.
+- **`filename`** в payload — кириллица проходит и в 1msg, и в Meta. Имя файла на телефоне получателя будет читаемым.
+- **HTTP `Content-Disposition` нашего прокси** (если возвращаемся к URL-режиму) — Django при кириллице автоматически кодирует через RFC 2047 `=?utf-8?b?...?=` (формат для email!), 1msg валит upload. В коде прокси Content-Disposition полностью **снят** middleware'ом — проблема устранена, но при возврате к URL-режиму помнить.
 
 ## TEST_MODE и allow-list
 
