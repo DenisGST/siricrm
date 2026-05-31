@@ -25,3 +25,17 @@ Bubble имеет **две версии** одного приложения: liv
 ## Backfill StatusPrj (этапы услуг + статусы клиентов)
 
 `python manage.py backfill_status_from_bubble [--dry-run]` (`apps/bubble_import/management/commands/`) — тянет `StatusPrj`-таблицу из Bubble (16 записей с `nameStatusPrj`), по жёстко прошитому `STATUS_MAP` в файле команды ставит `Service.common_status` всем 5764 услугам и пересчитывает `Client.status` по приоритету `PRIORITY = {active:1, closed:2, lead:3, unknown:4, refused:5, archive:6, to_delete:7}` (для каждого клиента — наивысший статус среди его услуг). Идемпотентна. Услуги без `statusPrj` / backing ProjectBFL → дефолт «Лидогенератор» (вклад в клиента — `unknown`). Клиенты без услуг — не трогаются.
+
+## Files-сущность: особенности
+
+- **«Свежие Files» с пустым `linkGDrive` — это placeholder-записи Bubble на каждое WA-сообщение** (поле `comments: "Автосохранен из Whatsapp"`, `filename: "wamid.xxxx"`). В самом Bubble файла нет — реальный WA-медиафайл уже у нас в S3 через webhook (`StoredFile.bubble_id='wamedia_<wamid>'`). `apply_files` корректно скипает их (пустая ссылка → `status='skipped'`).
+- **Bubble хранил «настоящие» документы в Google Drive** через `linkGDrive`. На сегодня (31 мая 2026) большинство таких ссылок мертвы (404/410/HTML stub), а живые требуют `_gdrive_fetch_with_confirm` (handshake-запросы, до минуты на запрос). При полном apply Files это блокирует всю очередь.
+- **Стратегия apply Files**:
+  1. `BubbleRecord.objects.filter(entity='Files', status='pending', approved=True).filter(raw__linkGDrive__icontains='google.com').update(approved=False)` — снять с очереди GDrive.
+  2. Запустить `apply_bubble Files` — пройдёт остальное за минуты (в основном skip + единицы HTTP-запросов на не-GDrive хосты).
+  3. **GDrive-хвост — отдельным проходом** (если когда-нибудь понадобится): вернуть `approved=True` для них, снизить timeout до 5с в `download_to_storedfile`, прогнать в фоне на ночь. Реально живых там единицы.
+- На 31 мая 2026 после доливки `fetch_bubble_since 7 --apply`:
+  - Imported Files (исторических): **92 234**.
+  - GDrive отложены (`approved=False`): **837**.
+  - WA-placeholder skipped: ~411 000 (нормально, без файла в Bubble).
+  - Реально новых документов за неделю: 0–1 (отдел перешёл на SiriCRM, в Bubble больше не работают).
