@@ -79,37 +79,47 @@ def transfer_service(service, *, target_department=None, target_employee=None,
 
     old_status = service.common_status
 
-    # Переезд: снимаем прежних исполнителей и их состояния.
-    service.employee_states.all().delete()
-    service.employees.clear()
+    # Переезд: снимаем прежних исполнителей. Если «У меня завершить» снята
+    # (keep_actor=True) — актор оставляет услугу у себя: его state сохраняем,
+    # остальных прежних снимаем.
+    keep_emp_id = actor.pk if (keep_actor and actor is not None) else None
+    service.employee_states.exclude(employee_id=keep_emp_id).delete()
+    leftover_ids = list(service.employee_states.values_list("employee_id", flat=True))
+    service.employees.set(leftover_ids)
 
     # Меняем общий статус (этим услуга «переходит» в отдел).
     service.common_status = entry
     service.save(update_fields=["common_status"])
 
-    # Новые получатели — в инбокс «Не принято».
+    # Новые получатели — в инбокс «Не принято». Кто уже остался исполнителем
+    # (актор без завершения) — не трогаем.
     for emp in recipients:
+        if emp.pk in leftover_ids:
+            continue
         inbox = ensure_inbox_status(emp)
         ServiceEmployeeState.objects.create(
             service=service, employee=emp, status=inbox, updated_by=actor,
         )
         service.employees.add(emp)
 
-    # Лог СОБЫТИЙКИ: действие + событие.
+    # Лог СОБЫТИЙКИ: действие + событие. Комментарий «что делать дальше» и
+    # пометку «оставил у себя» подмешиваем в текст.
     sn = service.name.short_name
+    note = f" — {comment}" if comment else ""
+    self_note = " (исполнитель оставил услугу у себя)" if keep_emp_id else ""
     if target_employee is not None:
-        action_comment = f"Услуга «{sn}» передана в работу сотруднику: {target_employee}"
+        action_comment = f"Услуга «{sn}» передана в работу сотруднику: {target_employee}{self_note}{note}"
         event_code = "employee_assigned"
         event_comment = (
             f"Услуга «{sn}» передана в работу — {target_employee} "
-            f"(отдел «{department.name}», статус «{entry.name}»)"
+            f"(отдел «{department.name}», статус «{entry.name}»){note}"
         )
     else:
-        action_comment = f"Услуга «{sn}» передана в работу отдела «{department.name}»"
+        action_comment = f"Услуга «{sn}» передана в работу отдела «{department.name}»{self_note}{note}"
         event_code = "dept_assigned"
         event_comment = (
             f"Услуга «{sn}» передана в работу отдела «{department.name}» "
-            f"(статус «{entry.name}»), получателей: {len(recipients)}"
+            f"(статус «{entry.name}»), получателей: {len(recipients)}{note}"
         )
 
     action = client_log.record_action(
