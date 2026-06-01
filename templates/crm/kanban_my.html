@@ -112,6 +112,9 @@
 (function() {
   var _dragCard    = null;
   var _dragFromCol = null;
+  // Чей канбан смотрим (для руководителя): пробрасываем в my-move,
+  // чтобы статус резолвился по просматриваемому сотруднику, а не по текущему.
+  var VIEWED_EMP_ID = '{{ viewed_emp_id|escapejs }}';
 
   window.myDragStart = function(e) {
     _dragCard    = e.currentTarget;
@@ -185,7 +188,8 @@
     fetch('/services/' + serviceId + '/my-move/', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-CSRFToken': csrf },
-      body: 'status_id=' + encodeURIComponent(statusId),
+      body: 'status_id=' + encodeURIComponent(statusId)
+          + (VIEWED_EMP_ID ? '&viewed_employee=' + encodeURIComponent(VIEWED_EMP_ID) : ''),
     }).then(function(r) {
       if (!r.ok) document.body.dispatchEvent(new CustomEvent('serviceChanged'));
     }).catch(function() {

@@ -2051,10 +2051,23 @@ def my_kanban_column(request, status_id):
 @login_required
 @require_POST
 def service_my_move(request, pk):
-    """Drag-and-drop в Моём канбане: смена личного статуса услуги."""
-    emp = _current_employee_from_user(request.user)
-    if not emp:
+    """Drag-and-drop в Моём канбане: смена личного статуса услуги.
+
+    Руководитель (is_management), просматривающий чужой «Мой канбан»
+    (?viewed_employee=), двигает карточки ТОГО сотрудника — поэтому статус и
+    состояние резолвим по просматриваемому сотруднику. Иначе колонки несут
+    ServiceEmployeeStatus просматриваемого, а lookup шёл по текущему юзеру →
+    get_object_or_404 не находил чужой статус → 404.
+    """
+    current_emp = _current_employee_from_user(request.user)
+    if not current_emp:
         return HttpResponse("", status=403)
+
+    viewed_emp_id = request.POST.get("viewed_employee") or ""
+    if is_management(request.user) and viewed_emp_id:
+        emp = get_object_or_404(Employee, pk=viewed_emp_id, is_active=True)
+    else:
+        emp = current_emp
 
     service    = get_object_or_404(Service, pk=pk)
     status_id  = request.POST.get("status_id")
