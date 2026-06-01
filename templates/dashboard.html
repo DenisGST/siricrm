@@ -2635,6 +2635,32 @@ function initMsSearch() {
   });
   window.addEventListener('focus', poll);
 
+  // ── Реальная активность пользователя продлевает сессию ─────────────
+  // Серверный idle-логаут (IdleAutoLogoutMiddleware) обновляет last_activity
+  // ТОЛЬКО при HTTP-запросе. Действия внутри открытой модалки (ввод в поля,
+  // клики, скролл) часто не шлют запросов — поэтому юзер, активно работающий
+  // в модалке, через IDLE_TIMEOUT получал ложный авто-логаут. Здесь ловим
+  // реальный ввод (capture-фаза → работает и внутри <dialog>/daisyUI-модалок)
+  // и не чаще раза в KEEPALIVE_MS пингуем /api/session/stay/, продлевая
+  // сессию. Если ввода нет — пинги прекращаются и idle-таймер срабатывает
+  // как раньше (юзер реально отошёл).
+  var KEEPALIVE_MS = 60000;
+  var _activitySincePing = false;
+  function _markActivity() { _activitySincePing = true; }
+  ['mousedown','keydown','touchstart','input','scroll','wheel'].forEach(function(ev) {
+    document.addEventListener(ev, _markActivity, {passive: true, capture: true});
+  });
+  setInterval(function() {
+    if (_showLocked || _showWarning) return;  // в этих состояниях продлевать нечего/нельзя
+    if (!_activitySincePing) return;           // не было ввода — пусть idle-таймер идёт
+    _activitySincePing = false;
+    fetch('/api/session/stay/', {
+      method: 'POST',
+      headers: {'X-CSRFToken': CSRF, 'X-Requested-With': 'XMLHttpRequest'},
+      credentials: 'same-origin',
+    }).catch(function() { /* следующий тик попробует снова */ });
+  }, KEEPALIVE_MS);
+
   // Перехват HTMX-ответов с HX-Redirect на /login/ или статусом 401.
   // Без этого: пользователь кликает после auto-logout → HTMX-запрос →
   // middleware заворачивает 302 на /login/ в `HX-Redirect: /accounts/login/`
