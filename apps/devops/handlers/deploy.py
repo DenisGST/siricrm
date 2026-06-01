@@ -1,7 +1,12 @@
-"""Deploy handler: git pull → migrate → restart web/celery контейнеров.
+"""Deploy handler: git pull → migrate → restart web/celery/userbot контейнеров.
 
 Запускается в devops-runner. Сам себя НЕ перезапускает — следующий deploy
 подхватит новый код runner-а.
+
+userbot ОБЯЗАТЕЛЬНО в списке рестарта: он держит Python-код в памяти и при
+деплое с миграциями (например, рефактор моделей) иначе остаётся на старом
+коде и падает на несуществующих таблицах. Рестарт безопасен — Telethon
+переподключается по TELEGRAM_SESSION_STRING.
 
 Полный rebuild image (для requirements.txt и Dockerfile изменений) — отдельной
 кнопкой/handler-ом в будущем; пока работает только если код берётся через volume
@@ -17,7 +22,8 @@ from apps.devops.tasks import register_handler
 
 
 REPO_DIR = "/app"
-RESTART_CONTAINERS = ["siricrm-web-1", "siricrm-celery-1", "siricrm-celery-beat-1"]
+RESTART_CONTAINERS = ["siricrm-web-1", "siricrm-celery-1", "siricrm-celery-beat-1",
+                      "siricrm-userbot-1"]
 HEALTH_URL = "http://web:8000/health/"
 # Host header нужен для прохождения ALLOWED_HOSTS на стороне Django.
 # Берём первый из ALLOWED_HOSTS env или дефолт.
