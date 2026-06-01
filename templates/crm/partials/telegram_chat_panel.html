@@ -149,8 +149,11 @@
         id="chat-textarea"
         name="content"
         rows="1"
-        class="w-full textarea textarea-bordered resize-none"
+        class="w-full textarea textarea-bordered"
+        style="line-height:1.3; min-height:4.5rem; resize:vertical;"
         placeholder="Напишите сообщение..."
+        spellcheck="true"
+        lang="ru"
       ></textarea>
       <div id="emoji-quick-bar" class="hidden flex flex-wrap gap-1 py-1">
         <button type="button" class="eq" onclick="insertEmoji('😊')">😊</button>
