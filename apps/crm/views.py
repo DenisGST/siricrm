@@ -1849,9 +1849,21 @@ def services_kanban(request):
 def services_kanban_column(request, status_id):
     status      = get_object_or_404(ServiceCommonStatus, pk=status_id)
     employee_id = request.GET.get("employee") or ""
+    q           = (request.GET.get("q") or "").strip()
     qs = _visible_services_qs(request.user).filter(common_status=status)
     if employee_id:
         qs = qs.filter(employees__id=employee_id)
+    # Поиск из верхнего поля (#kanban-filter-form q) — по ФИО/телефону клиента.
+    if q:
+        for word in q.split():
+            qs = qs.filter(
+                Q(client__first_name__icontains=word)
+                | Q(client__last_name__icontains=word)
+                | Q(client__patronymic__icontains=word)
+                | Q(client__phone__icontains=word)
+                | Q(client__phones__phone__icontains=word)
+            )
+        qs = qs.distinct()
     # Считаем total отдельным count() и режем срезом — иначе при большом
     # количестве услуг каждая колонка тянет всё в память (5-10 колонок
     # параллельно × сотни услуг с prefetch — отсюда «постоянно грузится»).
@@ -2014,6 +2026,18 @@ def my_kanban_column(request, status_id):
         )
         .order_by("-created_at")
     )
+    # Поиск из верхнего поля (#kanban-filter-form q) — по ФИО/телефону клиента.
+    q = (request.GET.get("q") or "").strip()
+    if q:
+        for word in q.split():
+            qs = qs.filter(
+                Q(client__first_name__icontains=word)
+                | Q(client__last_name__icontains=word)
+                | Q(client__patronymic__icontains=word)
+                | Q(client__phone__icontains=word)
+                | Q(client__phones__phone__icontains=word)
+            )
+        qs = qs.distinct()
     services = list(qs[:200])
     return render(request, "crm/partials/kanban_services_column.html", {
         "services": services, "status": status,
