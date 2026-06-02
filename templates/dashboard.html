@@ -2455,6 +2455,12 @@ function initMsSearch() {
 
 <script>
 (function() {
+  // Защита от повторного запуска: при hx-boost / повторной вставке скрипта
+  // (history-restore и т.п.) IIFE мог регистрироваться ещё раз → накапливались
+  // setInterval(poll) (был runaway idle-check ~десятки/сек). Один раз на вкладку.
+  if (window.__siriIdleInit) return;
+  window.__siriIdleInit = true;
+
   // Полная схема:
   //  1. Каждые 15 сек дёргаем /api/session/idle-check/ (не считается активностью).
   //  2. Сервер отдаёт idle_seconds, timeout_seconds (=5 мин), warning_seconds (=60).
@@ -2468,6 +2474,7 @@ function initMsSearch() {
 
   var POLL_INTERVAL_MS = 15000;
   var CSRF = (document.cookie.match(/csrftoken=([^;]+)/) || [])[1] || '';
+  var _lastActivity = Date.now();   // время последней реальной активности юзера
 
   var warningEl  = document.getElementById('idle-warning');
   var lockedEl   = document.getElementById('idle-locked');
@@ -2535,7 +2542,11 @@ function initMsSearch() {
   }
 
   function poll() {
-    fetch('/api/session/idle-check/', {credentials: 'same-origin'})
+    // Была ли реальная активность с прошлого опроса? Если да — просим сервер
+    // продлить сессию (?a=1). Поллер работает надёжно, поэтому это и есть
+    // основной механизм keepalive (не отдельный интервал).
+    var active = (Date.now() - _lastActivity) < (POLL_INTERVAL_MS + 2000);
+    fetch('/api/session/idle-check/' + (active ? '?a=1' : ''), {credentials: 'same-origin'})
       .then(function(r) { return r.ok ? r.json() : null; })
       .then(function(d) {
         if (!d) return;
@@ -2637,29 +2648,18 @@ function initMsSearch() {
 
   // ── Реальная активность пользователя продлевает сессию ─────────────
   // Серверный idle-логаут (IdleAutoLogoutMiddleware) обновляет last_activity
-  // ТОЛЬКО при HTTP-запросе. Действия внутри открытой модалки (ввод в поля,
-  // клики, скролл) часто не шлют запросов — поэтому юзер, активно работающий
-  // в модалке, через IDLE_TIMEOUT получал ложный авто-логаут. Здесь ловим
-  // реальный ввод (capture-фаза → работает и внутри <dialog>/daisyUI-модалок)
-  // и не чаще раза в KEEPALIVE_MS пингуем /api/session/stay/, продлевая
-  // сессию. Если ввода нет — пинги прекращаются и idle-таймер срабатывает
-  // как раньше (юзер реально отошёл).
-  var KEEPALIVE_MS = 60000;
-  var _activitySincePing = false;
-  function _markActivity() { _activitySincePing = true; }
-  ['mousedown','keydown','touchstart','input','scroll','wheel'].forEach(function(ev) {
-    document.addEventListener(ev, _markActivity, {passive: true, capture: true});
+  // ТОЛЬКО при HTTP-запросе. Клики/скролл/ввод/движение мыши (в т.ч. в
+  // модалках и в чате по WebSocket) часто не шлют HTTP — поэтому активный
+  // юзер получал ложный авто-логаут. Ловим реальный ввод (capture-фаза →
+  // работает и внутри <dialog>/daisyUI-модалок), запоминаем время, а poll()
+  // при наличии свежей активности шлёт ?a=1 → сервер продлевает сессию.
+  // Привязка к poll'у (он надёжно работает во всех вкладках), а не к
+  // отдельному интервалу — прежний keepalive-интервал на практике почти не
+  // срабатывал (троттлинг фоновых вкладок, гонки с warning-модалкой).
+  ['mousedown','mousemove','keydown','touchstart','input','scroll','wheel'].forEach(function(ev) {
+    document.addEventListener(ev, function() { _lastActivity = Date.now(); },
+                              {passive: true, capture: true});
   });
-  setInterval(function() {
-    if (_showLocked || _showWarning) return;  // в этих состояниях продлевать нечего/нельзя
-    if (!_activitySincePing) return;           // не было ввода — пусть idle-таймер идёт
-    _activitySincePing = false;
-    fetch('/api/session/stay/', {
-      method: 'POST',
-      headers: {'X-CSRFToken': CSRF, 'X-Requested-With': 'XMLHttpRequest'},
-      credentials: 'same-origin',
-    }).catch(function() { /* следующий тик попробует снова */ });
-  }, KEEPALIVE_MS);
 
   // Перехват HTMX-ответов с HX-Redirect на /login/ или статусом 401.
   // Без этого: пользователь кликает после auto-logout → HTMX-запрос →

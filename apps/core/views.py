@@ -893,8 +893,18 @@ def session_idle_check(request):
         })
 
     now_ts = timezone.now().timestamp()
-    last = request.session.get("last_activity")
-    idle_sec = (now_ts - float(last)) if last else 0
+    # Клиент сообщает о реальной активности (клики/скролл/ввод/движение мыши,
+    # в т.ч. в модалках и в чате по WebSocket) флагом ?a=1. idle-check сидит в
+    # IDLE_IGNORE_PREFIXES — middleware сам last_activity не трогает, поэтому
+    # продлеваем сессию здесь, но ТОЛЬКО при явном сигнале активности (иначе
+    # пустой поллинг держал бы сессию вечно). Поллер работает надёжно во всех
+    # вкладках, поэтому это устойчивее отдельного keepalive-интервала.
+    if request.GET.get("a") == "1":
+        request.session["last_activity"] = now_ts
+        idle_sec = 0
+    else:
+        last = request.session.get("last_activity")
+        idle_sec = (now_ts - float(last)) if last else 0
     return JsonResponse({
         "authenticated": True,
         "idle_seconds": int(idle_sec),
