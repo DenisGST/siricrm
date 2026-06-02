@@ -102,6 +102,15 @@ guides/             — пользовательские инструкции (d
 
 **Guard от runaway:** IIFE начинается с `if (window.__siriIdleInit) return; window.__siriIdleInit = true;` — при `hx-boost`/повторной вставке скрипта IIFE не регистрировал второй `setInterval(poll)` (был runaway idle-check).
 
+> 🛑 **НЕ ЛОМАТЬ — инварианты keepalive (иначе активных юзеров снова начнёт выкидывать).** Менять только осознанно, все пять держать вместе:
+> 1. **`/api/session/idle-check/` ОБЯЗАН оставаться в `IDLE_IGNORE_PREFIXES`** (middleware). Если убрать — каждый poll (раз в 15с) станет «активностью» и сессия будет жить вечно у всех → авто-логаут не сработает никогда.
+> 2. **Ветка `if request.GET.get("a") == "1"` в `session_idle_check` — это и есть keepalive.** Она и только она обновляет `last_activity` при активности (idle-check в IGNORE, middleware его не трогает). Удалишь/сломаешь условие → активность перестанет продлевать сессию.
+> 3. **`poll()` в `dashboard.html` должен слать `?a=1`, когда `_lastActivity` свежий** (в окне опроса). Не выкидывать параметр, не выносить keepalive в отдельный `setInterval` — отдельный интервал на практике НЕ работает (троттлинг фоновых вкладок, гонка с warning-модалкой), проверено на проде (~0 вызовов `/stay/`).
+> 4. **Слушатели активности на `document` — `capture:true, passive:true`** для `mousedown/mousemove/keydown/touchstart/input/scroll/wheel`. Capture обязателен, иначе ввод внутри `<dialog>`/модалок и чата не ловится. `passive:true` — чтобы не мешать скроллу/DnD.
+> 5. **Guard `window.__siriIdleInit`** не убирать — иначе runaway idle-check.
+>
+> И помни: **правка JS в `dashboard.html` доходит до юзера только после reload страницы** — открытые вкладки крутят старый JS. После изменений просить `Ctrl+Shift+R`.
+
 **Ключевые механизмы (всё в dashboard.html IIFE):**
 - `visibilitychange` + `focus` → `poll()` сразу. Без этого browser throttle'ит `setInterval` в фоновых вкладках до 1/мин → юзер мог вернуться и кликнуть до того как poll увидит logout.
 - Конец warning-countdown → `poll()` сразу (а не ждать 15с).
