@@ -418,6 +418,19 @@ def telegram_clients_list(request):
         c.has_max = "max" in chans
         c.has_whatsapp = "whatsapp" in chans
 
+    # Регион(ы) услуг клиента — для отображения в списке. Один запрос на страницу
+    # (без N+1). У клиента может быть несколько услуг в разных регионах — собираем
+    # уникальные названия.
+    region_map = {}
+    for cid_, rname in (
+        Service.objects.filter(client__in=clients_for_status, region__isnull=False)
+        .values_list("client_id", "region__name").distinct()
+    ):
+        if rname and rname not in region_map.setdefault(cid_, []):
+            region_map[cid_].append(rname)
+    for c in clients_for_status:
+        c.region_label = ", ".join(region_map.get(c.pk, []))
+
     if pinned_client is not None:
         page_obj.object_list = [pinned_client] + list(page_obj.object_list)
 
@@ -1462,7 +1475,7 @@ def global_search(request):
             Q(phone__icontains=word) | Q(phones__phone__icontains=word)
         )
     clients = clients_qs.distinct().prefetch_related(
-        "services__name", "services__common_status",
+        "services__name", "services__common_status", "services__region",
     ).order_by("last_name", "first_name")[:12]
 
     legal_entities = LegalEntity.objects.filter(

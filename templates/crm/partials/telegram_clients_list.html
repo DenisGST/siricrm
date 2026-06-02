@@ -40,7 +40,7 @@
         {% endif %}
       </div>
       <div class="flex items-center justify-between gap-2 mt-0.5">
-        <span class="text-[10px] text-base-content/50 truncate">{{ client.get_status_display }}</span>
+        <span class="text-[10px] text-base-content/50 truncate">{{ client.get_status_display }}{% if client.region_label %} · {{ client.region_label }}{% endif %}</span>
         {% comment %}Значки каналов: цвет = были сообщения, серый = не было.
            Т — Telegram (синий), М — MAX (розовый), W — WhatsApp (зелёный).{% endcomment %}
         <span class="flex gap-1 flex-shrink-0" style="line-height:1">

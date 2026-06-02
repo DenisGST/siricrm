@@ -20,7 +20,7 @@
           <span class="gs-meta">
             <span class="gs-status">{{ c.get_status_display }}</span>
             {% for s in c.services.all %}
-              · {{ s.name.short_name }}{% if s.common_status %} ({{ s.common_status.name }}){% endif %}
+              · {{ s.name.short_name }}{% if s.common_status %} ({{ s.common_status.name }}){% endif %}{% if s.region %} — {{ s.region.name }}{% endif %}
             {% endfor %}
           </span>
         </span>
