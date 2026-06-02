@@ -98,23 +98,41 @@
   <script>
     // Глобальный индикатор загрузки. Показываем полосу, только если
     // HTMX-запрос длится дольше 200 мс — иначе фоновые поллеры мигали бы.
+    //
+    // ВАЖНО (страховка от «вечной» полосы): если HTMX-запрос шёл с элемента,
+    // который успели удалить из DOM (напр. колонки канбана при навигации в
+    // #content-area), его htmx:afterRequest всплывает уже на ОТСОЕДИНЁННОМ
+    // узле и НЕ доходит до document → счётчик active «протекает» > 0 и полоса
+    // зависает с бесконечной анимацией («постоянно мелькает»). Поэтому помимо
+    // счётчика держим watchdog: гасим полосу через 1.2с после ПОСЛЕДНЕГО
+    // запроса, даже если afterRequest потерялся.
     (function () {
-      var active = 0, timer = null;
+      var active = 0, showTimer = null, hideTimer = null;
       var bar = document.getElementById("global-progress");
+      function scheduleHide() {
+        if (hideTimer) clearTimeout(hideTimer);
+        hideTimer = setTimeout(function () {
+          active = 0;
+          if (showTimer) { clearTimeout(showTimer); showTimer = null; }
+          bar.classList.remove("active");
+        }, 1200);
+      }
       document.addEventListener("htmx:beforeRequest", function () {
         active++;
-        if (active === 1 && !timer) {
-          timer = setTimeout(function () {
-            timer = null;
+        if (!showTimer && !bar.classList.contains("active")) {
+          showTimer = setTimeout(function () {
+            showTimer = null;
             if (active > 0) bar.classList.add("active");
           }, 200);
         }
+        scheduleHide();
       });
       function done() {
         active = Math.max(0, active - 1);
         if (active <= 0) {
           active = 0;
-          if (timer) { clearTimeout(timer); timer = null; }
+          if (showTimer) { clearTimeout(showTimer); showTimer = null; }
+          if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; }
           bar.classList.remove("active");
         }
       }

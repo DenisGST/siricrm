@@ -1,25 +1,39 @@
-// Multi-tab logout: при закрытии ПОСЛЕДНЕЙ вкладки приложения шлём
-// POST /accounts/logout/ через sendBeacon. Если осталась хоть одна вкладка
-// с тем же доменом — никаких действий.
+// Multi-tab logout (grace-версия).
 //
-// Этот скрипт ОБЯЗАН быть подключён на каждой странице приложения
-// (dashboard.html, arbitr/_layout.html, devops/_layout.html и т.п.) —
-// иначе:
-//   1) страница без heartbeat'а не появится в sirius_tabs → при закрытии
-//      её вкладки счётчик «живых» = 0 → лишний logout;
-//   2) или наоборот — открытая страница не отправит logout при
-//      реальном закрытии последней вкладки.
+// Задача: завершать сессию, когда пользователь ЗАКРЫЛ приложение (последнюю
+// вкладку), но НЕ выкидывать его при reload / внутренней навигации / закрытии
+// одной из нескольких вкладок.
 //
-// Также: при переходе по <a href> внутри своего origin sendBeacon НЕ
-// шлём — это просто навигация, не закрытие. См. sessionStorage флаг
-// sirius_internal_nav (срабатывает на 5 сек после клика по внутренней
-// ссылке + на любой form submit).
+// Почему так, а не sendBeacon прямо в beforeunload (как было раньше):
+//   beforeunload НЕ отличает закрытие вкладки от reload/навигации. Старый код
+//   слал sendBeacon('/accounts/logout/') на любом unload последней вкладки, если
+//   не успевала выставиться метка «внутренняя навигация» (а на JS-reload,
+//   HX-Redirect, back/forward, www↔без-www она не выставлялась). Итог — десятки
+//   ложных авто-логаутов в день: юзера выкидывало на ровном месте, страница
+//   уходила в цикл logout→login→тяжёлая перезагрузка.
+//
+// Grace-схема (чисто клиентская):
+//   1. heartbeat: каждая вкладка раз в 3с пишет своё «я жива» в localStorage.
+//   2. beforeunload: вкладка УДАЛЯЕТ свой heartbeat и СТАВИТ метку «намерение
+//      закрытия» (sirius_pending_logout = ts). Логаут НЕ шлём.
+//   3. Загрузка ЛЮБОЙ страницы приложения сразу СНИМАЕТ метку — значит предыдущий
+//      unload был reload/навигацией, а не закрытием → логаут не нужен.
+//   4. Живая вкладка раз в 2с: если метка висит дольше grace и есть живые
+//      вкладки (приложение открыто — закрыли одну из нескольких) — снимает метку.
+//   5. Реальное закрытие ПОСЛЕДНЕЙ вкладки: метка остаётся, но JS уже не работает
+//      и активно логаут никто не шлёт — сессию подчистит idle-таймаут (10 мин).
+//      Это осознанный компромисс ради нуля ложных логаутов.
+//
+// Скрипт ОБЯЗАН быть подключён на каждой странице приложения (dashboard.html,
+// arbitr/_layout.html, devops/_layout.html) — иначе загрузка такой страницы не
+// снимет метку (п.3) и heartbeat не будет учитываться (п.4).
 
 (function () {
     const KEY = "sirius_tabs";
-    const NAV_KEY = "sirius_internal_nav";
+    const PENDING = "sirius_pending_logout";
     const HEARTBEAT_MS = 3000;
-    const STALE_MS = 10000;
+    const STALE_MS = 10000;   // heartbeat старше — вкладка считается мёртвой
+    const GRACE_MS = 5000;    // окно «это был reload/навигация, не закрытие»
     const tabId = (crypto.randomUUID && crypto.randomUUID()) || String(Math.random());
 
     function readTabs() {
@@ -29,6 +43,19 @@
     function writeTabs(o) {
         try { localStorage.setItem(KEY, JSON.stringify(o)); } catch (e) {}
     }
+    function aliveCount() {
+        const tabs = readTabs();
+        const cutoff = Date.now() - STALE_MS;
+        return Object.values(tabs).filter(ts => ts > cutoff).length;
+    }
+    function clearPending() {
+        try { localStorage.removeItem(PENDING); } catch (e) {}
+    }
+
+    // (3) Эта страница загрузилась → предыдущий unload этой вкладки был
+    // reload/навигацией, а не закрытием. Снимаем метку «намерение закрытия».
+    clearPending();
+
     function heartbeat() {
         const tabs = readTabs();
         tabs[tabId] = Date.now();
@@ -39,58 +66,22 @@
     heartbeat();
     setInterval(heartbeat, HEARTBEAT_MS);
 
-    // Маркер «внутренней навигации»: если кликнули по <a href> внутри
-    // нашего origin, ИЛИ submit любой <form>, — выставляем флаг.
-    // beforeunload это увидит и пропустит beacon.
-    function markInternalNav() {
-        try { sessionStorage.setItem(NAV_KEY, String(Date.now())); } catch (e) {}
-    }
+    // (4) Живая вкладка: если метка висит дольше grace и приложение всё ещё
+    // открыто (есть живые вкладки — закрыли одну из нескольких ИЛИ это была наша
+    // вкладка после reload, которую п.3 не успел снять) — снимаем метку.
+    setInterval(function () {
+        const pending = parseInt(localStorage.getItem(PENDING) || "0", 10);
+        if (!pending) return;
+        if (Date.now() - pending < GRACE_MS) return;
+        if (aliveCount() > 0) clearPending();
+    }, 2000);
 
-    document.addEventListener("click", function (e) {
-        const a = e.target.closest && e.target.closest("a[href]");
-        if (!a) return;
-        const href = a.getAttribute("href") || "";
-        // якоря и javascript: — не навигация
-        if (!href || href.startsWith("#") || href.toLowerCase().startsWith("javascript:")) return;
-        // явный target=_blank — новая вкладка, текущая остаётся → тоже не закрытие
-        if (a.target === "_blank") return;
-        // проверяем что переход в пределах своего origin
-        try {
-            const url = new URL(a.href, window.location.href);
-            if (url.origin === window.location.origin) markInternalNav();
-        } catch (e) { /* invalid URL — игнорируем */ }
-    }, true);
-
-    document.addEventListener("submit", function () { markInternalNav(); }, true);
-
-    // F5 / Ctrl+R / Cmd+R — это reload, а не закрытие вкладки. beforeunload
-    // не отличает одно от другого, поэтому ловим хоткей сами и ставим
-    // маркер — иначе sendBeacon logout успевает дропнуть сессию между
-    // unload и re-GET, и Django выдаёт 400 SessionInterrupted на reload.
-    document.addEventListener("keydown", function (e) {
-        if (e.key === "F5" || ((e.ctrlKey || e.metaKey) && (e.key === "r" || e.key === "R"))) {
-            markInternalNav();
-        }
-    }, true);
-
+    // (2) При уходе со страницы только помечаем намерение закрытия. Логаут
+    // активно не шлём — это и убирало ложные разлогины на reload/навигации.
     window.addEventListener("beforeunload", function () {
         const tabs = readTabs();
         delete tabs[tabId];
-        const cutoff = Date.now() - STALE_MS;
-        const alive = Object.values(tabs).filter(ts => ts > cutoff).length;
         writeTabs(tabs);
-        if (alive > 0) return;
-
-        // Внутренняя навигация в пределах 5 сек — не закрытие, пропускаем
-        const navAt = parseInt(sessionStorage.getItem(NAV_KEY) || "0", 10);
-        if (Date.now() - navAt < 5000) {
-            try { sessionStorage.removeItem(NAV_KEY); } catch (e) {}
-            return;
-        }
-
-        const csrf = (document.cookie.split('; ').find(r => r.startsWith('csrftoken=')) || '').split('=')[1] || '';
-        const fd = new FormData();
-        fd.append("csrfmiddlewaretoken", csrf);
-        navigator.sendBeacon("/accounts/logout/", fd);
+        try { localStorage.setItem(PENDING, String(Date.now())); } catch (e) {}
     });
 })();

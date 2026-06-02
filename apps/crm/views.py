@@ -632,7 +632,10 @@ def kanban_column(request, status):
     # Bubble) рендер всех карточек разом вешает страницу. ВАЖНО: total
     # считаем через qs.count() и режем срезом, чтобы не тащить весь
     # queryset в память (это и был причиной тормозов).
-    PAGE_SIZE = 30
+    # PAGE_SIZE небольшой: 5 колонок × карточка (~185 строк шаблона) грузились
+    # на старте дашборда жадно (~1.7 МБ). Теперь начальная отрисовка лёгкая,
+    # остальное догружается на скролл (intersect «load more» в kanban_column.html).
+    PAGE_SIZE = 12
     total = qs.count()
     try:
         offset = max(int(request.GET.get("offset") or 0), 0)
@@ -1063,8 +1066,19 @@ def client_edit(request, client_id):
         if form.is_valid():
             form.save()
             if request.headers.get("HX-Request"):
+                # Раньше тут был window.location.reload() — он сбрасывал SPA на
+                # дефолтный вид дашборда (канбан клиентов), поэтому при
+                # сохранении клиента с канбана услуг/моего юзера выкидывало на
+                # главный канбан. Вместо перезагрузки закрываем модалку и
+                # обновляем ТЕКУЩИЙ канбан на месте через kanbanRefresh
+                # (его слушают все три канбана) + serviceChanged.
                 return HttpResponse(
-                    '<script>window.location.reload();</script>'
+                    "<script>(function(){"
+                    "var m=document.getElementById('client-edit-modal');"
+                    "if(m){try{m.close();}catch(e){}m.remove();}"
+                    "document.body.dispatchEvent(new CustomEvent('kanbanRefresh'));"
+                    "document.body.dispatchEvent(new CustomEvent('serviceChanged'));"
+                    "})();</script>"
                 )
             return redirect("chat", client_id=client_id)
         else:
