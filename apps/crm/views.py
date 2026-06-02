@@ -1,6 +1,7 @@
 from django.conf import settings
 from django.core.paginator import Paginator
 from django.shortcuts import render, get_object_or_404, redirect
+from django.core.cache import cache
 from django.contrib.auth.decorators import login_required
 from django.http import HttpResponse, HttpResponseBadRequest, JsonResponse
 from django.views.decorators.http import require_POST
@@ -1014,10 +1015,39 @@ def clients_list(request):
     )
 
 
+def _online_employees():
+    """Сотрудники, реально присутствующие в системе СЕЙЧАС — по heartbeat-маркеру
+    в Redis (`online_emp:<id>`, TTL 150с, ставит idle-poll из открытых вкладок).
+    Надёжнее флага Employee.is_online (тот застревает после рестарта/закрытия
+    вкладки). Возвращает список Employee, отсортированный по ФИО."""
+    emps = list(
+        Employee.objects.filter(is_active=True)
+        .select_related("user", "department")
+        .order_by("user__last_name", "user__first_name")
+    )
+    keymap = {e.id: f"online_emp:{e.id}" for e in emps}
+    present = cache.get_many(list(keymap.values()))
+    now_ts = timezone.now().timestamp()
+    online = []
+    for e in emps:
+        ts = present.get(keymap[e.id])
+        if ts:
+            e.seen_secs_ago = max(0, int(now_ts - float(ts)))
+            online.append(e)
+    return online
+
+
 @login_required
 def employees_online_count(request):
-    count = Employee.objects.filter(is_online=True).count()
-    return HttpResponse(count)
+    return HttpResponse(len(_online_employees()))
+
+
+@login_required
+def employees_online_list(request):
+    """Кто сейчас в системе — для попапа по клику на виджет «Активных сотрудников»."""
+    online = _online_employees()
+    return render(request, "crm/partials/employees_online_list.html",
+                  {"online": online, "count": len(online)})
 
 
 @login_required

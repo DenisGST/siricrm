@@ -298,7 +298,10 @@
 
       <!-- Статистика -->
       <div class="stats-row">
-        <div class="stat-card">
+        <div class="stat-card" style="cursor:pointer"
+             title="Показать, кто сейчас в системе"
+             hx-get="{% url 'employees_online_list' %}"
+             hx-target="body" hx-swap="beforeend" hx-trigger="click">
           <div class="stat-card-icon blue">
             <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
               <path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v2h8v-2zM6 8a2 2 0 11-4 0 2 2 0 014 0zM16 18v-3a5.972 5.972 0 00-.75-2.906A3.005 3.005 0 0119 15v3h-3zM4.75 12.094A5.973 5.973 0 004 15v3H1v-3a3 3 0 013.75-2.906z"></path>
@@ -308,7 +311,11 @@
             <div class="stat-card-label">Активных сотрудников</div>
           </div>
           <div class="stat-card-value">
-            <span hx-get="{% url 'employees_online_count' %}" hx-trigger="load" hx-swap="innerHTML">0</span>
+            {% comment %}hx-target="this" ОБЯЗАТЕЛЕН: иначе span наследует
+               hx-target="body" от .stat-card (для модалки по клику) и
+               innerHTML-свап счётчика затирал весь body значением «1».{% endcomment %}
+            <span hx-get="{% url 'employees_online_count' %}" hx-trigger="load, every 60s"
+                  hx-target="this" hx-swap="innerHTML">0</span>
           </div>
         </div>
 

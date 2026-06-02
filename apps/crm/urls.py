@@ -24,6 +24,7 @@ urlpatterns = [
     path('logs/', views.logs_list, name='logs_list'),
     path('logs/report/', views.employee_report, name='employee_report'),
     path("dashboard/stats/employee-online/", employees_online_count, name="employees_online_count"),
+    path("dashboard/stats/employee-online/list/", views.employees_online_list, name="employees_online_list"),
     path("dashboard/stats/client-active/", clients_active_count, name="clients_active_count"),
     path("dashboard/stats/message-new/", messages_new_count, name="messages_new_count"),
     path("dashboard/stats/lead/", lead_count, name="lead_count"),

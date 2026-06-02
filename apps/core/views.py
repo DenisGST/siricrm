@@ -893,6 +893,18 @@ def session_idle_check(request):
         })
 
     now_ts = timezone.now().timestamp()
+
+    # Heartbeat присутствия для виджета «Активных сотрудников». idle-check
+    # пингуется из каждой открытой вкладки дашборда раз в 15с — это надёжный
+    # сигнал «сотрудник в системе» (в отличие от флага Employee.is_online,
+    # который застревает True после рестарта сервера / закрытия вкладки).
+    # Маркер в Redis с TTL 150с сам истекает, когда вкладок не осталось →
+    # счётчик не завышает. Запрос Employee троттлим раз в 60с на юзера.
+    if cache.add(f"online_seen_throttle:{request.user.id}", 1, 60):
+        _emp = Employee.objects.filter(user=request.user).only("id").first()
+        if _emp:
+            cache.set(f"online_emp:{_emp.id}", now_ts, 150)
+
     # Клиент сообщает о реальной активности (клики/скролл/ввод/движение мыши,
     # в т.ч. в модалках и в чате по WebSocket) флагом ?a=1. idle-check сидит в
     # IDLE_IGNORE_PREFIXES — middleware сам last_activity не трогает, поэтому
