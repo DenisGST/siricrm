@@ -7,12 +7,14 @@ ENV PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1
 
 # Install system dependencies
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     git \
     curl \
     postgresql-client \
     fonts-dejavu \
+    fonts-liberation \
+    libreoffice-writer \
     && rm -rf /var/lib/apt/lists/*
 
 # Docker CLI + compose plugin (для devops-runner: rebuild/deploy образов).

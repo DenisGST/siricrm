@@ -1,0 +1,111 @@
+<div class="p-4" id="afd-panel"
+     hx-get="{% url 'afd:panel' %}"
+     hx-trigger="afdPanelChanged from:body"
+     hx-target="#afd-panel" hx-swap="outerHTML">
+  <h2 class="text-xl font-bold mb-4">📄 АФД — формирование документов</h2>
+
+  <!-- Реквизиты исполнителя -->
+  <div class="card bg-base-100 shadow mb-6">
+    <div class="card-body p-4">
+      <div class="flex items-center justify-between mb-2">
+        <h3 class="font-semibold">Организации-исполнители</h3>
+        <button class="btn btn-sm btn-primary"
+                hx-get="{% url 'afd:executor_create' %}" hx-target="body" hx-swap="beforeend">
+          + Добавить
+        </button>
+      </div>
+      <p class="text-xs text-base-content/60 mb-2">
+        Реквизиты для подстановки в договор: {ispolnitel}, {Реквизиты_исполнителя}, {Исполнитель}.
+      </p>
+      <table class="table table-sm">
+        <thead><tr><th>Название</th><th>Подписант</th><th>По умолч.</th><th>Активна</th><th></th></tr></thead>
+        <tbody>
+          {% for ex in executors %}
+          <tr>
+            <td>{{ ex.name }}</td>
+            <td>{{ ex.signer_name|default:"—" }}</td>
+            <td>{% if ex.is_default %}✓{% endif %}</td>
+            <td>{% if ex.is_active %}✓{% else %}—{% endif %}</td>
+            <td class="text-right">
+              <button class="btn btn-xs btn-ghost"
+                      hx-get="{% url 'afd:executor_edit' ex.id %}" hx-target="body" hx-swap="beforeend">✏</button>
+              <button class="btn btn-xs btn-ghost text-error"
+                      hx-post="{% url 'afd:executor_delete' ex.id %}"
+                      hx-confirm="Удалить исполнителя «{{ ex.name }}»?"
+                      hx-target="#afd-panel" hx-swap="none">🗑</button>
+            </td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="5" class="text-center text-base-content/50">Нет записей. Добавьте организацию-исполнителя.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Шаблоны -->
+  <div class="card bg-base-100 shadow mb-6">
+    <div class="card-body p-4">
+      <div class="flex items-center justify-between mb-2">
+        <h3 class="font-semibold">Шаблоны документов</h3>
+        <button class="btn btn-sm btn-primary"
+                hx-get="{% url 'afd:template_create' %}" hx-target="body" hx-swap="beforeend">
+          + Загрузить шаблон
+        </button>
+      </div>
+      <table class="table table-sm">
+        <thead><tr><th>Название</th><th>Тип</th><th>Файл</th><th>Активен</th><th></th></tr></thead>
+        <tbody>
+          {% for t in templates %}
+          <tr>
+            <td>{{ t.name }}</td>
+            <td>{{ t.get_kind_display }}</td>
+            <td class="font-mono text-xs">
+              {% if t.stored_file %}
+              <a class="link" href="{% url 'files:stored_download' t.stored_file.id %}" target="_blank">{{ t.stored_file.filename }}</a>
+              {% else %}—{% endif %}
+            </td>
+            <td>{% if t.is_active %}✓{% else %}—{% endif %}</td>
+            <td class="text-right">
+              <button class="btn btn-xs btn-ghost"
+                      hx-get="{% url 'afd:template_edit' t.id %}" hx-target="body" hx-swap="beforeend">✏</button>
+              <button class="btn btn-xs btn-ghost text-error"
+                      hx-post="{% url 'afd:template_delete' t.id %}"
+                      hx-confirm="Удалить шаблон «{{ t.name }}»?"
+                      hx-target="#afd-panel" hx-swap="none">🗑</button>
+            </td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="5" class="text-center text-base-content/50">Нет шаблонов.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- История генераций -->
+  <div class="card bg-base-100 shadow">
+    <div class="card-body p-4">
+      <h3 class="font-semibold mb-2">Последние сформированные документы</h3>
+      <table class="table table-sm">
+        <thead><tr><th>Документ</th><th>Клиент</th><th>Кто</th><th>Когда</th><th></th></tr></thead>
+        <tbody>
+          {% for g in recent %}
+          <tr>
+            <td>{{ g.title }}</td>
+            <td>{{ g.client.last_name }} {{ g.client.first_name }}</td>
+            <td>{{ g.created_by|default:"—" }}</td>
+            <td class="whitespace-nowrap">{{ g.created_at|date:"d.m.Y H:i" }}</td>
+            <td class="text-right">
+              {% if g.pdf_file %}<a class="link text-xs" href="{% url 'files:stored_download' g.pdf_file.id %}?inline=1" target="_blank">PDF</a>{% endif %}
+              {% if g.docx_file %} · <a class="link text-xs" href="{% url 'files:stored_download' g.docx_file.id %}" target="_blank">docx</a>{% endif %}
+            </td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="5" class="text-center text-base-content/50">Пока ничего не сформировано.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>

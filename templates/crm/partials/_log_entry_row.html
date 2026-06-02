@@ -57,7 +57,8 @@
              class="link link-hover opacity-60 whitespace-nowrap flex-shrink-0"
              title="Скачать файл">скачать</a>
         </div>
-      {% elif ev.comment %}
+      {% endif %}
+      {% if ev.comment %}
         <div class="text-sm whitespace-pre-line break-words leading-tight">
           {{ ev.comment }}
           {% if ev.old_value or ev.new_value %}

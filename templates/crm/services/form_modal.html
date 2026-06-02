@@ -243,8 +243,23 @@
                 </div>
               </div>
 
+              {% if service.contract_file %}
+              <!-- Текущий договор: ссылка с предпросмотром (над кнопками, слева) -->
+              <div class="flex items-center gap-2 mt-3">
+                <a href="{% url 'files:stored_download' service.contract_file.id %}?inline=1"
+                   target="_blank"
+                   class="link link-primary text-sm font-medium break-all"
+                   title="Открыть предпросмотр договора в новой вкладке">
+                  📄 {{ service.contract_file.filename }}
+                </a>
+                <a href="{% url 'files:stored_download' service.contract_file.id %}"
+                   class="link link-hover text-xs opacity-60 whitespace-nowrap flex-shrink-0"
+                   title="Скачать">скачать</a>
+              </div>
+              {% endif %}
+
               <!-- Нижняя строка: [График | Составить договор | Файл договора] -->
-              <div class="grid grid-cols-3 gap-3 mt-3 items-end">
+              <div class="grid grid-cols-3 gap-3 mt-2 items-end">
                 <div>
                   <button type="button"
                           class="btn btn-sm w-full {% if service.schedule_date %}btn-success{% else %}btn-outline{% endif %}"
@@ -255,19 +270,16 @@
                   </button>
                 </div>
                 <div>
-                  {% with ready=service.schedule_date|yesno:"1,0" %}
                   <button type="button"
                           class="btn btn-sm btn-outline w-full"
-                          {% if not service.schedule_date or not service.date_dogovor or not service.contract_price or not service.payment_procedure_id or not service.date_start %}disabled{% endif %}
-                          title="{% if not service.schedule_date %}Сначала составьте график платежей{% elif not service.date_dogovor %}Заполните дату договора{% elif not service.contract_price %}Заполните цену договора{% elif not service.payment_procedure_id %}Заполните порядок оплаты{% elif not service.date_start %}Заполните дату начала{% else %}Составить договор{% endif %}">
+                          hx-get="{% url 'afd:contract_check' service.id %}"
+                          hx-target="body" hx-swap="beforeend"
+                          hx-on::after-request="document.getElementById('afd-contract-modal')?.showModal()"
+                          title="Проверить реквизиты и составить договор">
                     Составить договор
                   </button>
-                  {% endwith %}
                 </div>
                 <div>
-                  {% if service.contract_file %}
-                    <div class="text-xs text-base-content/60 mb-1 font-mono truncate">{{ service.contract_file.filename }}</div>
-                  {% endif %}
                   <input type="file" name="contract_file_upload"
                          class="file-input file-input-bordered file-input-sm w-full">
                 </div>
