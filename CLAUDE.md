@@ -90,13 +90,17 @@ guides/             — пользовательские инструкции (d
 
 ### Idle UX — warning + locked-overlay (без редиректа на /login/)
 
-`IDLE_TIMEOUT_MINUTES = 5` (`config/settings/base.py`). Поток в `dashboard.html` (IIFE снизу) + `apps/core/views.py` + `apps/core/middleware.py`:
+`IDLE_TIMEOUT_MINUTES = 10` (`config/settings/base.py`). Поток в `dashboard.html` (IIFE снизу) + `apps/core/views.py` + `apps/core/middleware.py`:
 
 1. JS poller каждые **15с** → `GET /api/session/idle-check/` (этот путь в `IDLE_IGNORE_PREFIXES` middleware'а → НЕ обновляет `last_activity` и НЕ дёргает auto-logout сам).
 2. Ответ: `{authenticated, idle_seconds, timeout_seconds, warning_seconds=60, logout_reason}`.
 3. За **60с** до таймаута → **warning-модалка** (`#idle-warning`, z-index 9998) с countdown'ом и кнопкой «Остаться» (POST `/api/session/stay/` → обновляет `last_activity`).
-4. После **300с** middleware (`IdleAutoLogoutMiddleware`) делает `auth_logout()` и кладёт `logout_reason` в сессию.
+4. После **600с** middleware (`IdleAutoLogoutMiddleware`) делает `auth_logout()` и кладёт `logout_reason` в сессию.
 5. Следующий poll получает `authenticated=false` → **locked-overlay** (`#idle-locked`, z-index 9999) с inline-формой логина (POST `/api/session/login/` → `authenticate + login` в той же сессии, потом `window.location.reload()`).
+
+**Keepalive: активность продлевает сессию через poll (НЕ отдельный интервал).** `last_activity` на сервере обновляет только non-ignored HTTP-запрос. Но клики/скролл/ввод/движение мыши, а особенно чат по WebSocket (`/ws/` в IGNORE) и чтение длинных страниц, HTTP не шлют → активного юзера выкидывало по таймауту. Решение: слушаем `mousedown/mousemove/keydown/touchstart/input/scroll/wheel` (capture-фаза → ловится и в `<dialog>`/модалках) и пишем `_lastActivity`; `poll()` шлёт `GET /api/session/idle-check/?a=1`, если активность была в окне опроса, а вьюха при `a=1` обновляет `last_activity` и возвращает `idle_seconds=0`. Привязка к НАДЁЖНОМУ поллеру обязательна: прежний отдельный `setInterval`-keepalive (POST `/stay/`) на практике почти не срабатывал (троттлинг фоновых вкладок, гонка с warning-модалкой) — на проде было ~0 вызовов `/stay/` против ~42 idle-check/сек. **Гочча:** юзеры с уже открытыми вкладками крутят старый JS до перезагрузки страницы — фикс активируется по мере reload/релогина.
+
+**Guard от runaway:** IIFE начинается с `if (window.__siriIdleInit) return; window.__siriIdleInit = true;` — при `hx-boost`/повторной вставке скрипта IIFE не регистрировал второй `setInterval(poll)` (был runaway idle-check).
 
 **Ключевые механизмы (всё в dashboard.html IIFE):**
 - `visibilitychange` + `focus` → `poll()` сразу. Без этого browser throttle'ит `setInterval` в фоновых вкладках до 1/мин → юзер мог вернуться и кликнуть до того как poll увидит logout.
@@ -105,8 +109,8 @@ guides/             — пользовательские инструкции (d
 - **Capture-phase trap** для `click` / `keydown` / `submit`: пока `_showLocked === true`, всё что не внутри `#idle-locked` блокируется. Защита от `<a href>` навигации (которая идёт мимо HTMX) и от элементов с z-index ≥ 9999.
 
 **Эндпоинты `/api/session/`:**
-- `idle-check/` — публичный (auth не обязателен), в `IDLE_IGNORE_PREFIXES`.
-- `stay/` — `@require_POST`, требует auth, обновляет `last_activity`. НЕ в IGNORE_PREFIXES.
+- `idle-check/` — публичный (auth не обязателен), в `IDLE_IGNORE_PREFIXES`. При `?a=1` (клиент сообщил о реальной активности) обновляет `last_activity` и отдаёт `idle_seconds=0` — основной keepalive. Пустой поллинг (без `a=1`) активностью не считается.
+- `stay/` — `@require_POST`, требует auth, обновляет `last_activity`. НЕ в IGNORE_PREFIXES. Сейчас используется только кнопкой «Остаться» в warning-модалке.
 - `login/` — `@require_POST`, JSON `{username, password}` → `authenticate + login`. НЕ в IGNORE_PREFIXES.
 
 > ⚠ **Карточки клиента как отдельной страницы НЕТ** — в `apps/crm/urls.py` нет паттерна `clients/<uuid>/` без суффикса. Клиент открывается через `{% url 'chat' client.id %}` (`/clients/<uuid>/chat/`) HTMX-swap'ом в `#content-area` дашборда. Прямой переход на чат-URL даст голый партиал без sidebar. Для ссылок «открыть клиента» из вне дашборда (например, из `/arbitr/`) пока показываем ФИО просто текстом — когда понадобится deep-link, сделать обработчик `/dashboard/?openClient=<uuid>` в `dashboard.html`.
