@@ -23,7 +23,13 @@
                   hx-on:click="event.stopPropagation()">
             {% icon "info" size=16 %}
           </button>
-        {% endif %}{{ s.client.last_name }} {{ s.client.first_name }}{% if s.client.patronymic %}<br>{{ s.client.patronymic }}{% endif %}
+        {% endif %}<span class="cursor-pointer link-hover hover:text-primary transition-colors"
+              hx-get="{% url 'client_edit' s.client.id %}"
+              hx-target="body" hx-swap="beforeend"
+              onclick="event.stopPropagation()"
+              hx-on:click="event.stopPropagation()"
+              hx-on::after-request="document.getElementById('client-edit-modal')?.showModal()"
+              title="Редактировать клиента">{{ s.client.last_name }} {{ s.client.first_name }}{% if s.client.patronymic %}<br>{{ s.client.patronymic }}{% endif %}</span>
       </h3>
       <div class="flex items-center gap-1 shrink-0 ml-1">
         <span class="badge badge-ghost cursor-default font-medium"
@@ -116,6 +122,16 @@
               onclick="event.stopPropagation()"
               hx-on:click="event.stopPropagation()">
         {% icon "wallet" size=15 %}
+      </button>
+      <button type="button"
+              class="kanban-action-btn text-base-content/50"
+              hx-get="{% url 'client_events_modal' s.client.id %}"
+              hx-target="body"
+              hx-swap="beforeend"
+              title="Событийка (события и действия по клиенту)"
+              onclick="event.stopPropagation()"
+              hx-on:click="event.stopPropagation()">
+        {% icon "history" size=15 %}
       </button>
       {% if s.client.phone %}
       <a href="tel:{{ s.client.phone }}"
