@@ -9,7 +9,9 @@
 import io
 import re
 
-from docx import Document
+# python-docx импортируется лениво (внутри функций) — чтобы модуль (и весь
+# apps.afd, который тянется из urls) импортировался даже на образе без
+# установленного python-docx (актуально между rebuild'ами на prod).
 
 _PLACEHOLDER_RE = re.compile(r"\{[^{}\n]+\}")
 
@@ -56,6 +58,7 @@ def render_docx(template_bytes: bytes, context: dict) -> bytes:
     context: {"placeholder_key": "value", ...} — ключи БЕЗ фигурных скобок.
     Значение None трактуется как пустая строка.
     """
+    from docx import Document
     doc = Document(io.BytesIO(template_bytes))
     for para in _iter_paragraphs(doc):
         _replace_in_paragraph(para, context)
@@ -73,6 +76,7 @@ def render_docx(template_bytes: bytes, context: dict) -> bytes:
 
 def list_placeholders(template_bytes: bytes) -> list[str]:
     """Возвращает уникальные плейсхолдеры (без скобок) из шаблона — для UI."""
+    from docx import Document
     doc = Document(io.BytesIO(template_bytes))
     found = []
     seen = set()
