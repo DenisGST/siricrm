@@ -1,11 +1,16 @@
 <!-- templates/crm/partials/client_edit_modal.html -->
 <dialog id="client-edit-modal" class="modal modal-middle">
   <div class="modal-box w-full max-w-4xl">
-    <h3 class="font-bold text-lg mb-4">Редактирование клиента</h3>
+    <h3 class="font-bold text-lg mb-4">
+      Редактирование клиента —
+      <span class="font-normal">
+        {{ client.last_name }} {{ client.first_name }}{% if client.patronymic %} {{ client.patronymic }}{% endif %}
+      </span>
+    </h3>
 
     <!-- Табы -->
     <div role="tablist" class="tabs tabs-bordered mb-4">
-      <input type="radio" name="client-edit-tabs" role="tab" class="tab" aria-label="Основное" {% if open_tab != "addresses" %}checked{% endif %} />
+      <input type="radio" name="client-edit-tabs" role="tab" class="tab" aria-label="Основное" {% if open_tab != "documents" and open_tab != "addresses" and open_tab != "notes" %}checked{% endif %} />
       <div role="tabpanel" class="tab-content pt-4">
 
         <form id="client-edit-form"
@@ -38,11 +43,6 @@
           <!-- Контакты -->
           <div class="grid grid-cols-2 gap-3">
             <div>
-              <label class="label"><span class="label-text">Телефон</span></label>
-              <input type="text" name="phone" value="{{ form.phone.value|default:'' }}"
-                class="input input-bordered w-full input-sm">
-            </div>
-            <div>
               <label class="label"><span class="label-text">Email</span></label>
               <input type="email" name="email" value="{{ form.email.value|default:'' }}"
                 class="input input-bordered w-full input-sm">
@@ -52,6 +52,8 @@
               <input type="text" name="username" value="{{ form.username.value|default:'' }}"
                 class="input input-bordered w-full input-sm">
             </div>
+            {# Скрытый kэш-phone: ClientForm.save() ожидает поле; реальный CRUD ниже #}
+            <input type="hidden" name="phone" value="{{ form.phone.value|default:'' }}">
             <div>
               <label class="label"><span class="label-text">Статус</span></label>
               <select name="status" class="select select-bordered w-full select-sm">
@@ -66,15 +68,23 @@
           {% if form.errors %}
             <div class="alert alert-error text-sm">{{ form.errors }}</div>
           {% endif %}
-
-          <div class="modal-action">
-            <button type="submit" class="btn btn-primary btn-sm">Сохранить</button>
-            <button type="button" class="btn btn-sm"
-              onclick="document.getElementById('client-edit-modal').remove()">
-              Отмена
-            </button>
-          </div>
         </form>
+
+        <div class="divider text-xs">Контакты</div>
+        <div hx-get="{% url 'client_phones_block' client.id %}"
+             hx-trigger="load"
+             hx-swap="innerHTML">
+          <span class="loading loading-spinner loading-xs"></span>
+          Загружаем телефоны…
+        </div>
+
+        <div class="modal-action mt-4">
+          <button type="submit" form="client-edit-form" class="btn btn-primary btn-sm">Сохранить</button>
+          <button type="button" class="btn btn-sm"
+            onclick="document.getElementById('client-edit-modal').remove()">
+            Отмена
+          </button>
+        </div>
 
       </div>
 
@@ -165,7 +175,7 @@
 
       </div>
 
-      <input type="radio" name="client-edit-tabs" role="tab" class="tab" aria-label="Адреса и заметки" {% if open_tab == "addresses" %}checked{% endif %} />
+      <input type="radio" name="client-edit-tabs" role="tab" class="tab" aria-label="Адреса" {% if open_tab == "addresses" %}checked{% endif %} />
       <div role="tabpanel" class="tab-content pt-4">
 
         <!-- Адреса — вне любой формы, чтобы не было вложенных form -->
@@ -175,8 +185,11 @@
              hx-swap="innerHTML">
         </div>
 
-        <!-- Заметки — внутри отдельной формы -->
-        <div class="divider text-xs">Заметки</div>
+      </div>
+
+      <input type="radio" name="client-edit-tabs" role="tab" class="tab" aria-label="Заметки" {% if open_tab == "notes" %}checked{% endif %} />
+      <div role="tabpanel" class="tab-content pt-4">
+
         <form hx-post="{% url 'client_edit' client.id %}"
           hx-target="#client-edit-modal"
           hx-swap="outerHTML"
@@ -193,7 +206,7 @@
           <input type="hidden" name="status" value="{{ form.status.value|default:'' }}">
 
           <div>
-            <textarea name="notes" rows="3"
+            <textarea name="notes" rows="6"
               class="textarea textarea-bordered w-full">{{ form.notes.value|default:'' }}</textarea>
           </div>
 

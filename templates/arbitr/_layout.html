@@ -1,0 +1,32 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="ru" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}Арбитраж · SiriCRM{% endblock %}</title>
+  <link rel="icon" href="{% static 'img/favicon.ico' %}">
+  <link rel="stylesheet" href="{% static 'css/tailwind.css' %}">
+  <link rel="stylesheet" href="{% static 'css/style.css' %}">
+  <script src="{% static 'js/htmx-1.9.8.min.js' %}"></script>
+  {# multi-tab-logout: обязателен на каждом layout'е — иначе beforeunload  #}
+  {# на этой странице не зарегистрирует свою вкладку и попытается разлогинить.#}
+  <script src="{% static 'js/multi-tab-logout.js' %}" defer></script>
+  <script>
+    document.addEventListener('htmx:configRequest', (e) => {
+      const t = document.cookie.split('; ').find(r => r.startsWith('csrftoken='))?.split('=')[1];
+      if (t) e.detail.headers['X-CSRFToken'] = t;
+    });
+  </script>
+</head>
+<body class="min-h-screen bg-base-200">
+  <div class="navbar bg-base-100 shadow-sm sticky top-0 z-30">
+    <div class="container mx-auto max-w-6xl">
+      <a href="/dashboard/" class="btn btn-ghost text-lg">← SiriCRM</a>
+      <span class="ml-4 font-semibold">⚖ Арбитраж — мониторинг дел</span>
+      <div class="ml-auto text-sm opacity-60">{{ request.user.username }}</div>
+    </div>
+  </div>
+  {% block content %}{% endblock %}
+</body>
+</html>

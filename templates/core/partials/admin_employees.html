@@ -57,6 +57,15 @@
             {% if sort == col %}{% if dir == "asc" %}↑{% else %}↓{% endif %}{% endif %}
           </th>
           {% endwith %}
+          {% with col="status" %}
+          <th class="cursor-pointer select-none"
+              hx-get="{% url 'core:admin_employees' %}?sort={{ col }}&dir={% if sort == col and dir == 'asc' %}desc{% else %}asc{% endif %}"
+              hx-target="#employees-list" hx-swap="outerHTML">
+            Статус
+            {% if sort == col %}{% if dir == "asc" %}↑{% else %}↓{% endif %}{% endif %}
+          </th>
+          {% endwith %}
+          <th title="Заявки с лендингов через @Sirius_system_bot">Лиды TG</th>
           <th></th>
         </tr>
       </thead>
@@ -79,6 +88,20 @@
               <span class="badge badge-ghost badge-sm">Нет</span>
             {% endif %}
           </td>
+          <td>
+            {% if emp.is_active %}
+              <span class="badge badge-success badge-sm">Работает</span>
+            {% else %}
+              <span class="badge badge-error badge-sm">Уволен</span>
+            {% endif %}
+          </td>
+          <td onclick="event.stopPropagation()">
+            <input type="checkbox" class="toggle toggle-info toggle-sm"
+                   {% if emp.accept_telegram_leads %}checked{% endif %}
+                   hx-post="{% url 'core:admin_employee_toggle_tg_leads' emp.pk %}"
+                   hx-swap="none"
+                   title="Принимать лиды из Telegram">
+          </td>
           <td class="text-right" onclick="event.stopPropagation()">
             <button class="btn btn-xs btn-ghost"
                     hx-get="{% url 'core:admin_employee_settings' emp.pk %}"
@@ -90,7 +113,7 @@
           </td>
         </tr>
         {% empty %}
-        <tr><td colspan="6" class="text-center text-base-content/60">Сотрудников нет</td></tr>
+        <tr><td colspan="8" class="text-center text-base-content/60">Сотрудников нет</td></tr>
         {% endfor %}
       </tbody>
     </table>

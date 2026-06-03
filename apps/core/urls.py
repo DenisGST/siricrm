@@ -19,6 +19,7 @@ urlpatterns = [
     path('admin-panel/employee/add/', views.admin_employee_create, name='admin_employee_create'),
     path('admin-panel/employee/<int:pk>/', views.admin_employee_edit, name='admin_employee_edit'),
     path('admin-panel/employee/<int:pk>/settings/', views.admin_employee_settings, name='admin_employee_settings'),
+    path('admin-panel/employee/<int:pk>/toggle-tg-leads/', views.admin_employee_toggle_tg_leads, name='admin_employee_toggle_tg_leads'),
     path('admin-panel/dashboards/', views.admin_dashboards, name='admin_dashboards'),
     path('admin-panel/dashboard/add/', views.admin_dashboard_edit, name='admin_dashboard_add'),
     path('admin-panel/dashboard/<uuid:pk>/', views.admin_dashboard_edit, name='admin_dashboard_edit'),
@@ -67,4 +68,27 @@ urlpatterns = [
     path('references/tag/add/', views.reference_tag_edit, name='reference_tag_add'),
     path('references/tag/<uuid:pk>/', views.reference_tag_edit, name='reference_tag_edit'),
     path('references/tag/<uuid:pk>/delete/', views.reference_tag_delete, name='reference_tag_delete'),
+
+    path('references/message-templates/', views.references_message_templates, name='references_message_templates'),
+    path('references/message-template/add/', views.reference_message_template_edit, name='reference_message_template_add'),
+    path('references/message-template/<uuid:pk>/', views.reference_message_template_edit, name='reference_message_template_edit'),
+    path('references/message-template/<uuid:pk>/delete/', views.reference_message_template_delete, name='reference_message_template_delete'),
+
+    # Типы событий и действий (лог клиента)
+    path('references/event-types/', views.references_event_types, name='references_event_types'),
+    path('references/event-type/add/', views.reference_event_type_edit, name='reference_event_type_add'),
+    path('references/event-type/<int:pk>/', views.reference_event_type_edit, name='reference_event_type_edit'),
+    path('references/event-type/<int:pk>/delete/', views.reference_event_type_delete, name='reference_event_type_delete'),
+
+    path('references/action-types/', views.references_action_types, name='references_action_types'),
+    path('references/action-type/add/', views.reference_action_type_edit, name='reference_action_type_add'),
+    path('references/action-type/<int:pk>/', views.reference_action_type_edit, name='reference_action_type_edit'),
+    path('references/action-type/<int:pk>/delete/', views.reference_action_type_delete, name='reference_action_type_delete'),
+
+    # ─── Session idle / inline-login ───
+    # Префикс /api/session/ должен быть в IDLE_IGNORE_PREFIXES (middleware.py),
+    # чтобы поллер не считался активностью и не дёргал auto-logout сам.
+    path('api/session/idle-check/', views.session_idle_check, name='session_idle_check'),
+    path('api/session/stay/',       views.session_stay,       name='session_stay'),
+    path('api/session/login/',      views.session_login,      name='session_login'),
 ]

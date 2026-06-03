@@ -88,12 +88,16 @@
 
   <div class="bg-base-200 rounded-lg p-3" data-status="archive" data-container="kanban-archive">
     <div class="flex items-center justify-between mb-2">
-      <h2 class="font-bold text-sm uppercase">Архивные</h2>
+      <select id="archive-status-select"
+              style="background-color:transparent;border:none;cursor:pointer;font-weight:700;font-size:0.875rem;padding:0 1rem 0 0;">
+        <option value="archive">АРХИВНЫЕ</option>
+        <option value="refused">ОТКАЗНИКИ</option>
+        <option value="to_delete">НА УДАЛЕНИЕ</option>
+      </select>
       <span id="kanban-count-archive" class="badge badge-sm badge-neutral">{{ archives|length }}</span>
     </div>
+    {# hx-get/hx-trigger ставит JS снизу — URL зависит от выбранного значения select'а #}
     <div id="kanban-archive" class="space-y-2 min-h-[50px] kanban-col-body"
-         hx-get="{% url 'kanban_column' 'archive' %}"
-         hx-trigger="load, kanbanRefresh from:body"
          hx-include="#kanban-filter-form"
          hx-target="#kanban-archive"
          hx-swap="innerHTML">
@@ -198,6 +202,46 @@
     if (!status) return;
     var el = document.getElementById('kanban-count-' + status);
     if (el) el.textContent = Math.max(0, (parseInt(el.textContent) || 0) + delta);
+  }
+
+  // ── Колонка «Архивные» — переключатель Архивные/Отказники/На удаление ──
+  // Колонка одна, но контент зависит от выбранного значения <select>.
+  // Сохраняем в localStorage, чтобы при перезагрузке восстановить выбор.
+  var _archiveStatus = localStorage.getItem('archiveColStatus') || 'archive';
+  var _archiveSelect = document.getElementById('archive-status-select');
+  if (_archiveSelect) {
+    _archiveSelect.value = _archiveStatus;
+  }
+
+  function _refreshArchiveColumn() {
+    var col = document.getElementById('kanban-archive');
+    if (!col) return;
+    var url = '/kanban/' + _archiveStatus + '/?column_id=archive';
+    col.setAttribute('hx-get', url);
+    if (window.htmx) {
+      htmx.ajax('GET', url, {target: '#kanban-archive', source: col});
+    }
+  }
+
+  if (_archiveSelect) {
+    _archiveSelect.addEventListener('change', function() {
+      _archiveStatus = this.value;
+      localStorage.setItem('archiveColStatus', _archiveStatus);
+      _refreshArchiveColumn();
+    });
+  }
+
+  // Подхватываем общий триггер обновления канбана (фильтры) — и тут тоже
+  // дёргаем с актуальным URL, иначе hx-get у этой колонки устаревший.
+  document.body.addEventListener('kanbanRefresh', _refreshArchiveColumn);
+
+  // Первичная загрузка после установки DOM.
+  if (window.htmx) {
+    if (document.readyState === 'complete' || document.readyState === 'interactive') {
+      _refreshArchiveColumn();
+    } else {
+      document.addEventListener('DOMContentLoaded', _refreshArchiveColumn);
+    }
   }
 })();
 </script>

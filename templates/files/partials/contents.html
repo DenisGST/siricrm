@@ -1,164 +1,20 @@
 {% load icons file_tags %}
+{% comment %}HTMX-партиал для tree-кликов: oob-swap'ает левую панель и
+   правую (#files-main). Первичный рендер manager.html использует
+   contents_inner.html напрямую.{% endcomment %}
 
-<!-- Левая панель: дерево папок -->
-<div id="files-tree-panel">
+<!-- Левая панель: дерево папок (OOB) -->
+<div id="files-tree-panel" hx-swap-oob="true">
+  <div class="tree-actions">
+    <button type="button" class="tree-action-btn" onclick="filesTreeExpandAll()">⊕ Развернуть всё</button>
+    <button type="button" class="tree-action-btn" onclick="filesTreeCollapseAll()">⊖ Свернуть всё</button>
+  </div>
   <ul class="tree-root">
     {% include "files/partials/tree_node.html" with node=tree active=active %}
   </ul>
 </div>
 
-<!-- Правая панель: содержимое папки -->
+<!-- Правая панель: содержимое папки (OOB) -->
 <div id="files-main" hx-swap-oob="true">
-  {% if active %}
-
-  <!-- Тулбар -->
-  <div class="files-toolbar">
-    <!-- Хлебные крошки -->
-    <div class="files-breadcrumb">
-      {% for crumb in breadcrumb %}
-        {% if not forloop.last %}
-          <span class="crumb-link"
-                hx-get="{% url 'files:folder_contents' crumb.pk %}"
-                hx-target="#files-main"
-                hx-swap="innerHTML">{{ crumb.name }}</span>
-          <span class="crumb-sep">›</span>
-        {% else %}
-          <span class="crumb-current">{{ crumb.name }}</span>
-        {% endif %}
-      {% endfor %}
-    </div>
-
-    <div class="files-toolbar-actions">
-      <!-- Загрузить файл -->
-      <label class="btn btn-sm btn-primary gap-1" title="Загрузить файлы" id="files-upload-label-{{ active.pk }}">
-        {% icon "upload" size=14 %} Загрузить
-        <input type="file" multiple style="display:none;"
-               id="files-upload-input-{{ active.pk }}"
-               hx-post="{% url 'files:file_upload' active.pk %}"
-               hx-target="#files-main"
-               hx-swap="innerHTML"
-               hx-trigger="change"
-               hx-encoding="multipart/form-data"
-               name="files"
-               onchange="filesUploadStart(this)">
-      </label>
-
-      <!-- Новая папка -->
-      <button type="button" class="btn btn-sm btn-outline gap-1"
-              onclick="filesNewFolder('{{ active.pk }}', '{{ csrf_token }}')"
-              title="Создать папку">
-        {% icon "file-plus" size=14 %} Папка
-      </button>
-
-      <!-- Удалить папку (только для несистемных) -->
-      {% if not active.slug %}
-      <button type="button" class="btn btn-sm btn-ghost btn-square text-error"
-              hx-post="{% url 'files:folder_delete' active.pk %}"
-              hx-target="#files-main"
-              hx-swap="innerHTML"
-              hx-confirm="Удалить папку «{{ active.name }}» и все файлы в ней?"
-              hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'>
-        ✕ Папку
-      </button>
-      {% endif %}
-    </div>
-  </div>
-
-  <!-- Прогресс загрузки -->
-  <div id="files-upload-progress" style="display:none;padding:6px 12px;border-bottom:1px solid #f1f5f9;">
-    <div class="flex items-center gap-2">
-      <span class="text-xs" style="color:#64748b;white-space:nowrap;" id="files-upload-label-text">Загрузка...</span>
-      <div style="flex:1;background:#e2e8f0;border-radius:999px;height:6px;overflow:hidden;">
-        <div id="files-upload-bar"
-             style="height:100%;width:0%;background:#3b82f6;border-radius:999px;transition:width 0.1s linear;">
-        </div>
-      </div>
-      <span class="text-xs font-medium" style="color:#3b82f6;min-width:36px;text-align:right;" id="files-upload-pct">0%</span>
-    </div>
-  </div>
-
-  <!-- Список подпапок -->
-  {% with subfolders=active.children.all %}
-  {% if subfolders %}
-  <div class="files-folders-row">
-    {% for sf in subfolders %}
-    <div class="files-folder-chip"
-         hx-get="{% url 'files:folder_contents' sf.pk %}"
-         hx-target="#files-main"
-         hx-swap="innerHTML">
-      📁 {{ sf.name }}
-    </div>
-    {% endfor %}
-  </div>
-  {% endif %}
-  {% endwith %}
-
-  <!-- Список файлов -->
-  {% if files %}
-  <div class="files-table-wrap">
-    <table class="files-table">
-      <thead>
-        <tr>
-          <th>Имя файла</th>
-          <th>Размер</th>
-          <th>Дата</th>
-          <th>Кто загрузил</th>
-          <th></th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for f in files %}
-        <tr class="files-row" data-file-pk="{{ f.pk }}">
-          <td class="files-name">
-            <span class="files-icon">{{ f.name|file_icon }}</span>
-            <a href="{% url 'files:file_download' f.pk %}" target="_blank" class="files-link">{{ f.name }}</a>
-          </td>
-          <td class="files-size">{{ f.size|filesizeformat }}</td>
-          <td class="files-date">{{ f.created_at|date:"d.m.Y H:i" }}</td>
-          <td class="files-who">
-            {% if f.uploaded_by %}{{ f.uploaded_by.user.last_name }} {{ f.uploaded_by.user.first_name|slice:":1" }}.{% else %}—{% endif %}
-          </td>
-          <td class="files-actions">
-            <button type="button" class="btn btn-ghost btn-xs" title="Предпросмотр"
-                    hx-get="{% url 'files:file_preview' f.pk %}"
-                    hx-target="#files-preview-body"
-                    hx-swap="innerHTML"
-                    onclick="event.stopPropagation(); document.getElementById('files-preview-modal').showModal()">
-              {% icon "eye" size=13 %}
-            </button>
-            <a href="{% url 'files:file_download' f.pk %}" target="_blank"
-               class="btn btn-ghost btn-xs" title="Скачать">
-              {% icon "download" size=13 %}
-            </a>
-            <button type="button" class="btn btn-ghost btn-xs"
-                    title="Переместить"
-                    onclick="filesMoveDialog('{{ f.pk }}', '{{ csrf_token }}')">
-              {% icon "move" size=13 %}
-            </button>
-            <button type="button" class="btn btn-ghost btn-xs text-error"
-                    title="Удалить"
-                    hx-post="{% url 'files:file_delete' f.pk %}"
-                    hx-target="#files-main"
-                    hx-swap="innerHTML"
-                    hx-confirm="Удалить файл «{{ f.name }}»?"
-                    hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'>
-              ✕
-            </button>
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-  {% else %}
-  <div class="files-empty">
-    {% icon "inbox" size=32 %}
-    <p>Папка пуста</p>
-    <p class="files-empty-hint">Загрузите файлы или создайте подпапку</p>
-  </div>
-  {% endif %}
-
-  {% else %}
-  <div class="files-empty">{% icon "folder" size=40 %}<p>Выберите папку</p></div>
-  {% endif %}
+  {% include "files/partials/contents_inner.html" with active=active files=files breadcrumb=breadcrumb highlight_id=highlight_id %}
 </div>

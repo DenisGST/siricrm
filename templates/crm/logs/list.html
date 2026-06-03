@@ -1,0 +1,57 @@
+{% load icons %}
+<div id="logs-wrap">
+  <div class="flex items-center justify-between mb-3">
+    <h2 class="text-lg font-bold">Логи сотрудников</h2>
+    <div class="flex items-center gap-3">
+      <span class="text-xs text-base-content/60">{{ page_obj.paginator.count }} запис(ей)</span>
+      <button type="button" class="btn btn-xs btn-primary"
+              hx-get="{% url 'employee_report' %}"
+              hx-target="#content-area" hx-swap="innerHTML">
+        Отчёт по сотруднику
+      </button>
+    </div>
+  </div>
+
+  <form id="logs-filter-form"
+        hx-get="{% url 'logs_list' %}?partial=1"
+        hx-target="#logs-table"
+        hx-swap="innerHTML"
+        hx-trigger="change, keyup changed delay:400ms from:input[type=search]"
+        class="flex flex-wrap items-end gap-2 mb-3">
+    <label class="form-control">
+      <span class="label label-text !text-xs !py-0 !pb-1 opacity-70">Поиск</span>
+      <input type="search" name="search" value="{{ search }}"
+             placeholder="ФИО / действие / описание"
+             class="input input-bordered input-sm w-64">
+    </label>
+    <label class="form-control">
+      <span class="label label-text !text-xs !py-0 !pb-1 opacity-70">Сотрудник</span>
+      <select name="employee" class="select select-bordered select-sm w-56">
+        <option value="">— все —</option>
+        {% for e in employees_all %}
+          <option value="{{ e.pk }}" {% if emp_id == e.pk|stringformat:'s' %}selected{% endif %}>
+            {{ e.user.last_name }} {{ e.user.first_name }}
+          </option>
+        {% endfor %}
+      </select>
+    </label>
+    <label class="form-control">
+      <span class="label label-text !text-xs !py-0 !pb-1 opacity-70">С даты</span>
+      <input type="date" name="date_from" value="{{ date_from }}"
+             class="input input-bordered input-sm">
+    </label>
+    <label class="form-control">
+      <span class="label label-text !text-xs !py-0 !pb-1 opacity-70">По дату</span>
+      <input type="date" name="date_to" value="{{ date_to }}"
+             class="input input-bordered input-sm">
+    </label>
+    <button type="button" class="btn btn-sm btn-ghost"
+            onclick="this.closest('form').reset(); htmx.trigger(this.closest('form'), 'change');">
+      Сбросить
+    </button>
+  </form>
+
+  <div id="logs-table">
+    {% include "crm/logs/list_partial.html" %}
+  </div>
+</div>

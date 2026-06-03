@@ -1,4 +1,5 @@
-{% load icons crm_tags %}
+{% load icons crm_tags rules %}
+{% has_perm 'crm.edit_client' user client as can_edit_client %}
 <div class="card bg-base-100 shadow-sm cursor-pointer kanban-card"
      draggable="true"
      data-client-id="{{ client.id }}"
@@ -11,8 +12,19 @@
 
     <!-- ФИО + ответственный -->
     <div class="flex justify-between items-start mb-1">
-      <h3 class="card-title text-sm leading-tight">
-        {{ client.last_name }} {{ client.first_name }}{% if client.patronymic %}<br>{{ client.patronymic }}{% endif %}
+      <h3 class="card-title text-sm leading-tight {% if not client.is_identified %}text-red-900{% endif %}">
+        {% if not client.is_identified %}
+          <button type="button"
+                  class="kanban-identify-btn align-middle inline-flex items-center justify-center mr-1"
+                  title="Идентифицировать клиента"
+                  hx-get="{% url 'client_identify_modal' client.id %}"
+                  hx-target="body"
+                  hx-swap="beforeend"
+                  onclick="event.stopPropagation()"
+                  hx-on:click="event.stopPropagation()">
+            {% icon "info" size=16 %}
+          </button>
+        {% endif %}{{ client.last_name }} {{ client.first_name }}{% if client.patronymic %}<br>{{ client.patronymic }}{% endif %}
       </h3>
       {% with emp=client.employees.all.0 %}
         {% if emp %}
@@ -39,19 +51,34 @@
       {% endwith %}
     </div>
 
+    {% if client.phone %}
+    <a href="tel:{{ client.phone }}"
+       class="inline-flex items-center gap-1 text-xs text-base-content/70 hover:text-base-content hover:underline"
+       onclick="event.stopPropagation()"
+       title="Позвонить">
+      {% icon "phone" size=12 %}
+      {{ client.phone }}
+    </a>
+    {% endif %}
+
     <!-- Услуги -->
     {% with svcs=client.services.all %}
       {% if svcs %}
-        <div class="flex flex-wrap gap-1 mt-1">
+        <div class="flex flex-col gap-1 mt-1">
           {% for svc in svcs %}
-            <span class="badge badge-ghost cursor-pointer hover:badge-primary transition-colors font-medium"
-                  style="font-size:0.8rem;padding:0.35rem 0.65rem;"
-                  hx-get="{% url 'service_edit' svc.pk %}"
-                  hx-target="body"
-                  hx-swap="beforeend"
-                  hx-on::after-request="document.getElementById('service-modal')?.showModal()"
-                  onclick="event.stopPropagation()"
-                  title="{{ svc.name.name }}">{{ svc.name.short_name }}</span>
+            <span class="inline-flex items-center gap-1 flex-wrap">
+              <span class="badge badge-ghost cursor-pointer hover:badge-primary transition-colors font-medium"
+                    style="font-size:0.8rem;padding:0.35rem 0.65rem;"
+                    hx-get="{% url 'service_edit' svc.pk %}"
+                    hx-target="body"
+                    hx-swap="beforeend"
+                    hx-on::after-request="document.getElementById('service-modal')?.showModal()"
+                    onclick="event.stopPropagation()"
+                    title="{{ svc.name.name }}">{{ svc.name.short_name }}</span>
+              {% if svc.common_status %}
+                <span class="text-xs text-base-content/60 whitespace-nowrap">— {{ svc.common_status.name }}</span>
+              {% endif %}
+            </span>
           {% endfor %}
         </div>
       {% else %}
@@ -59,13 +86,32 @@
       {% endif %}
     {% endwith %}
 
+    {% if client.last_message_content %}
+      <p class="text-xs mt-1 truncate text-base-content/60 italic cursor-pointer hover:text-base-content"
+         title="Открыть чат — {{ client.last_message_content }}"
+         onclick="event.stopPropagation(); openTelegramChatModalForClient('{{ client.id }}')">
+        💬 {{ client.last_message_content }}
+      </p>
+    {% endif %}
+
     {% if client.notes %}
       <p class="text-xs mt-1 line-clamp-2 text-base-content/70">{{ client.notes }}</p>
     {% endif %}
 
     <!-- Кнопки -->
-    <div class="flex justify-end gap-1 mt-2">
-      {% if client.telegram_id %}
+    <div class="flex gap-1 mt-2 items-center">
+      <button
+        type="button"
+        class="kanban-action-btn text-base-content/50 mr-auto"
+        hx-get="{% url 'finance:finance_modal' client.id %}"
+        hx-target="body"
+        hx-swap="beforeend"
+        title="Финансы и расчёты"
+        onclick="event.stopPropagation()"
+        hx-on:click="event.stopPropagation()"
+      >
+        {% icon "wallet" size=18 %}
+      </button>
       <button
         type="button"
         class="kanban-action-btn"
@@ -74,7 +120,6 @@
       >
         <span id="ms-status-kanban-{{ client.id }}" class="inline-flex">{% include "crm/partials/telegram_by_status.html" with status=client.ms_status %}</span>
       </button>
-      {% endif %}
       {% if client.phone %}
       <a href="tel:{{ client.phone }}"
          class="kanban-action-btn text-base-content/50"
@@ -119,6 +164,7 @@
       >
         {% icon "file-text" size=18 %}
       </button>
+      {% if can_edit_client %}
       <button
         type="button"
         class="kanban-action-btn text-base-content/50"
@@ -132,6 +178,7 @@
       >
         {% icon "pencil" size=18 %}
       </button>
+      {% endif %}
     </div>
 
   </div>

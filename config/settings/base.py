@@ -26,6 +26,7 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    "django.contrib.humanize",  # naturaltime/intcomma/etc — используется в arbitr/* шаблонах
 
     "rest_framework",
     "corsheaders",
@@ -44,13 +45,32 @@ INSTALLED_APPS = [
     "apps.consultations",
     "apps.questionnaire",
     "apps.devops",
+    "apps.finance",
+    "apps.whatsapp",
+    "apps.bubble_import",
+    "apps.arbitr",
+    "apps.afd",
+
+    # django-rules: object-level permissions (apps/<app>/rules.py авто-импортируются)
+    "rules.apps.AutodiscoverRulesConfig",
 ]
+
+# Django по умолчанию использует только ModelBackend (он отвечает за логин).
+# Добавляем ObjectPermissionBackend из django-rules — он подключает
+# user.has_perm('crm.edit_client', client) и шаблонный тэг {% has_perm %}.
+AUTHENTICATION_BACKENDS = (
+    "django.contrib.auth.backends.ModelBackend",
+    "rules.permissions.ObjectPermissionBackend",
+)
 
 # --- DevOps panel ---
 DEVOPS_AGENT_TOKEN = config("DEVOPS_AGENT_TOKEN", default="")
 DEVOPS_AGENT_TOKEN_PROD = config("DEVOPS_AGENT_TOKEN_PROD", default="")
 
 MIDDLEWARE = [
+    # Должна быть ПЕРВОЙ — её process_response вызывается последним и стирает
+    # security-headers для /wa/file/ (без этого WhatsApp Cloud отвергает media).
+    "apps.whatsapp.middleware.WAFileProxyHeaderStripMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
@@ -60,7 +80,12 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    "apps.core.middleware.IdleAutoLogoutMiddleware",
+    "apps.core.middleware.HtmxLoginRedirectMiddleware",
 ]
+
+# Авто-логаут после N минут бездействия (HTTP-неактивности).
+IDLE_TIMEOUT_MINUTES = 10
 
 ROOT_URLCONF = "config.urls"
 
@@ -129,8 +154,19 @@ USE_TZ = True
 # --- Static / Media ---
 STATIC_URL = "/static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
-STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
 STATICFILES_DIRS = [BASE_DIR / "static"]
+# Django 5.x: settings.STATICFILES_STORAGE deprecated, нужен STORAGES dict.
+# Иначе fallback на простой StaticFilesStorage без manifest — без hash в имени
+# браузер кэширует CSS «навечно» (immutable от whitenoise), и обновления
+# стилей не подхватываются даже на Ctrl+Shift+R.
+STORAGES = {
+    "default": {
+        "BACKEND": "django.core.files.storage.FileSystemStorage",
+    },
+    "staticfiles": {
+        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+    },
+}
 
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
@@ -178,9 +214,13 @@ CELERY_TIMEZONE = TIME_ZONE
 CELERY_TASK_TRACK_STARTED = True
 CELERY_TASK_TIME_LIMIT = 30 * 60
 
-# Routing: задачи devops.* идут в очередь devops (исполняется devops-runner контейнером)
+# Routing: задачи <prefix>.* идут в отдельные очереди — каждую обслуживает свой контейнер:
+#   devops-runner  — очередь `devops`  (docker.sock, git, compose; обычный python:slim)
+#   arbitr-runner  — очередь `arbitr`  (Playwright + Chromium, образ mcr.microsoft.com/playwright)
+# Web/celery (общий worker) НЕ слушает эти очереди — задачи туда не попадут случайно.
 CELERY_TASK_ROUTES = {
     "devops.*": {"queue": "devops"},
+    "arbitr.*": {"queue": "arbitr"},
 }
 
 # --- Telegram ---
@@ -196,6 +236,19 @@ DADATA_SECRET_KEY = config("DADATA_SECRET_KEY", default="")
 MAX_BOT_TOKEN = config("MAX_BOT_TOKEN", default="")
 MAX_API_BASE_URL = "https://platform-api.max.ru"
 MAX_WEBHOOK_SECRET = config("MAX_WEBHOOK_SECRET", default="")
+
+# Внешний публичный URL CRM — нужен для построения absolute-ссылок
+# из тасок (где нет request.get_host). Используется в WhatsApp-прокси
+# (apps/whatsapp/views.wa_file_proxy) — 1msg.io скачивает медиа по
+# этому URL вместо Beget S3 pre-signed (Beget даёт 403 на HEAD).
+PUBLIC_BASE_URL = config("PUBLIC_BASE_URL", default="https://crmsiri.ru")
+
+# --- Arbitr (kad.arbitr.ru) parser ---
+# Куда слать алёрты при капче / других интерактивных ошибках парсера.
+# Пока — один MAX chat_id админа; позже разнесём по Employee.max_chat_id.
+ARBITR_CAPTCHA_NOTIFY_MAX_CHAT_ID = config("ARBITR_CAPTCHA_NOTIFY_MAX_CHAT_ID", default="")
+# Headless по умолчанию. Для локальной отладки парсера выставить ARBITR_HEADLESS=false.
+ARBITR_HEADLESS = config("ARBITR_HEADLESS", default="true").lower() != "false"
 
 # --- Auth redirects ---
 LOGIN_URL = "/accounts/login/"

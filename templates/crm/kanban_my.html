@@ -58,22 +58,31 @@
 <div id="my-kanban-grid" style="display:flex;flex-wrap:nowrap;gap:0.75rem;overflow-x:auto;padding-bottom:0.5rem;align-items:flex-start;">
 
   {% for group in groups %}
-  <!-- Группа: flex:N позволяет занимать пространство пропорционально кол-ву колонок -->
-  <div style="display:flex;flex-direction:column;gap:0.5rem;flex:{{ group.statuses|length }} 1 0;min-width:{{ group.statuses|length }}00px;">
+  <!-- Группа: flex:0 0 auto — НЕ сжимается ниже ширины своих колонок (иначе при
+       многих колонках flexbox их схлопывал и они накладывались). Ширина группы =
+       сумма её колонок фиксированной ширины → общий ряд переполняет вьюпорт и
+       включается горизонтальный скролл grid'а (overflow-x:auto). -->
+  <div style="display:flex;flex-direction:column;gap:0.5rem;flex:0 0 auto;">
 
     <!-- Заголовок группы -->
+    {% if group.is_inbox %}
+    <div style="padding:0.3rem 0.75rem;border-radius:6px;border-left:3px solid #f59e0b;background:#f59e0b14;white-space:nowrap;">
+      <span class="text-sm font-bold" style="color:#b45309;">📥 Входящие</span>
+    </div>
+    {% else %}
     <div style="padding:0.3rem 0.75rem;border-radius:6px;border-left:3px solid oklch(var(--p));background:oklch(var(--p)/0.08);white-space:nowrap;">
       <span class="text-xs font-semibold" style="color:oklch(var(--p));">{{ group.common_status.service_name.short_name }}</span>
       <span class="text-xs" style="color:var(--ms-text-secondary);margin:0 0.25rem;">·</span>
       <span class="text-sm font-bold" style="color:var(--ms-text);">{{ group.common_status.name }}</span>
     </div>
+    {% endif %}
 
     <!-- Колонки статусов сотрудника внутри группы -->
     <div style="display:flex;flex-direction:row;gap:0.75rem;flex:1;">
       {% for st in group.statuses %}
-      <div class="bg-base-200 rounded-lg p-3" style="flex:1 1 0;min-width:180px;"
+      <div class="bg-base-200 rounded-lg p-3" style="flex:0 0 210px;width:210px;"
            data-my-status-id="{{ st.id }}"
-           data-service-name-id="{{ st.common_status.service_name_id }}"
+           data-service-name-id="{% if st.common_status_id %}{{ st.common_status.service_name_id }}{% endif %}"
            data-container="my-kanban-{{ st.id }}">
         <div class="flex items-center justify-between mb-2">
           <h3 class="font-bold text-sm">{{ st.name }}</h3>
@@ -82,7 +91,8 @@
         <div id="my-kanban-{{ st.id }}"
              class="space-y-2 min-h-[50px] kanban-col-body"
              hx-get="{% url 'my_kanban_column' st.id %}{% if viewed_emp_id %}?viewed_employee={{ viewed_emp_id }}{% endif %}"
-             hx-trigger="load, serviceChanged from:body"
+             hx-trigger="load, serviceChanged from:body, kanbanRefresh from:body"
+             hx-include="#flt-q"
              hx-target="#my-kanban-{{ st.id }}"
              hx-swap="innerHTML">
         </div>
@@ -105,6 +115,9 @@
 (function() {
   var _dragCard    = null;
   var _dragFromCol = null;
+  // Чей канбан смотрим (для руководителя): пробрасываем в my-move,
+  // чтобы статус резолвился по просматриваемому сотруднику, а не по текущему.
+  var VIEWED_EMP_ID = '{{ viewed_emp_id|escapejs }}';
 
   window.myDragStart = function(e) {
     _dragCard    = e.currentTarget;
@@ -178,7 +191,8 @@
     fetch('/services/' + serviceId + '/my-move/', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-CSRFToken': csrf },
-      body: 'status_id=' + encodeURIComponent(statusId),
+      body: 'status_id=' + encodeURIComponent(statusId)
+          + (VIEWED_EMP_ID ? '&viewed_employee=' + encodeURIComponent(VIEWED_EMP_ID) : ''),
     }).then(function(r) {
       if (!r.ok) document.body.dispatchEvent(new CustomEvent('serviceChanged'));
     }).catch(function() {

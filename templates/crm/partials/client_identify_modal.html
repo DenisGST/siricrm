@@ -1,0 +1,200 @@
+{% load icons %}
+<dialog id="client-identify-modal" class="modal modal-middle" open>
+  <div class="modal-box w-full max-w-4xl">
+    <h3 class="font-bold text-lg mb-1">Идентификация клиента</h3>
+    <p class="text-xs text-base-content/60 mb-4">
+      Слева — данные из CRM. Справа — что Telegram вернул по этому telegram_id.
+      Внизу — итоговые поля, которые будут записаны в базу.
+    </p>
+
+    <!-- Две колонки: CRM vs Telegram -->
+    <div class="grid grid-cols-2 gap-4 mb-4">
+      <!-- Текущее в БД -->
+      <div class="border border-base-300 rounded-lg p-3">
+        <div class="text-xs uppercase tracking-wide text-base-content/50 mb-2">В базе сейчас</div>
+        <dl class="text-sm space-y-1">
+          <div class="flex gap-2">
+            <dt class="w-24 text-base-content/60">Фамилия:</dt>
+            <dd>{{ client.last_name|default:"—" }}</dd>
+          </div>
+          <div class="flex gap-2">
+            <dt class="w-24 text-base-content/60">Имя:</dt>
+            <dd>{{ client.first_name|default:"—" }}</dd>
+          </div>
+          <div class="flex gap-2">
+            <dt class="w-24 text-base-content/60">Отчество:</dt>
+            <dd>{{ client.patronymic|default:"—" }}</dd>
+          </div>
+          <div class="flex gap-2">
+            <dt class="w-24 text-base-content/60">Username:</dt>
+            <dd>{% if client.username %}@{{ client.username }}{% else %}—{% endif %}</dd>
+          </div>
+          <div class="flex gap-2">
+            <dt class="w-24 text-base-content/60">Телефон:</dt>
+            <dd>{{ client.phone|default:"—" }}</dd>
+          </div>
+          <div class="flex gap-2">
+            <dt class="w-24 text-base-content/60">TG ID:</dt>
+            <dd class="font-mono text-xs">{{ client.telegram_id|default:"—" }}</dd>
+          </div>
+        </dl>
+      </div>
+
+      <!-- Из Telegram -->
+      <div class="border border-base-300 rounded-lg p-3">
+        <div class="flex items-center justify-between mb-2">
+          <div class="text-xs uppercase tracking-wide text-base-content/50">Из Telegram</div>
+          {% if tg.ok %}
+            <span class="badge badge-success badge-xs">получено</span>
+          {% else %}
+            <span class="badge badge-error badge-xs">недоступно</span>
+          {% endif %}
+        </div>
+
+        {% if tg.ok %}
+          <div class="text-[10px] uppercase tracking-wide text-base-content/40 mb-1">
+            Как пришло из Telegram (raw)
+          </div>
+          <dl class="text-sm space-y-1 mb-3">
+            <div class="flex gap-2">
+              <dt class="w-24 text-base-content/60">last_name:</dt>
+              <dd>{{ tg.last_name|default:"—" }}</dd>
+            </div>
+            <div class="flex gap-2">
+              <dt class="w-24 text-base-content/60">first_name:</dt>
+              <dd>{{ tg.first_name|default:"—" }}</dd>
+            </div>
+            <div class="flex gap-2">
+              <dt class="w-24 text-base-content/60">Username:</dt>
+              <dd>{% if tg.username %}@{{ tg.username }}{% else %}—{% endif %}</dd>
+            </div>
+            <div class="flex gap-2">
+              <dt class="w-24 text-base-content/60">Телефон:</dt>
+              <dd id="tg-phone">
+                {{ tg.phone|default:"—" }}
+                {% if tg.phone_via_contact %}
+                  <span class="badge badge-ghost badge-xs ml-1" title="Клиент добавлен в контакты userbot, чтобы получить номер">
+                    через контакт
+                  </span>
+                {% endif %}
+              </dd>
+            </div>
+          </dl>
+
+          <div class="text-[10px] uppercase tracking-wide text-base-content/40 mb-1 flex items-center gap-2">
+            <span>Разобрано через DaData</span>
+            {% if tg.parsed_qc == 0 %}
+              <span class="badge badge-success badge-xs">qc=0 уверенно</span>
+            {% elif tg.parsed_qc == 1 %}
+              <span class="badge badge-warning badge-xs">qc=1 частично</span>
+            {% elif tg.parsed_qc == 2 %}
+              <span class="badge badge-error badge-xs">qc=2 не распознано</span>
+            {% elif tg.parsed_error %}
+              <span class="badge badge-error badge-xs" title="{{ tg.parsed_error }}">ошибка</span>
+            {% endif %}
+          </div>
+          <dl class="text-sm space-y-1">
+            <div class="flex gap-2">
+              <dt class="w-24 text-base-content/60">Фамилия:</dt>
+              <dd id="tg-last_name">{{ tg.parsed_surname|default:"—" }}</dd>
+            </div>
+            <div class="flex gap-2">
+              <dt class="w-24 text-base-content/60">Имя:</dt>
+              <dd id="tg-first_name">{{ tg.parsed_name|default:"—" }}</dd>
+            </div>
+            <div class="flex gap-2">
+              <dt class="w-24 text-base-content/60">Отчество:</dt>
+              <dd id="tg-patronymic">{{ tg.parsed_patronymic|default:"—" }}</dd>
+            </div>
+          </dl>
+
+          <button type="button"
+                  class="btn btn-xs btn-outline mt-3 w-full"
+                  onclick="copyTelegramToForm()">
+            {% icon "copy" size=14 %} Скопировать из Telegram в форму
+          </button>
+        {% else %}
+          <p class="text-sm text-base-content/60">{{ tg.error|default:"Данные из Telegram недоступны." }}</p>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Форма -->
+    <form hx-post="{% url 'client_identify_modal' client.id %}"
+          hx-swap="none"
+          class="space-y-3">
+      {% csrf_token %}
+
+      <div class="grid grid-cols-3 gap-3">
+        <div>
+          <label class="label py-1"><span class="label-text">Фамилия</span></label>
+          <input type="text" id="id-last_name" name="last_name"
+                 value="{{ client.last_name|default:'' }}"
+                 class="input input-bordered w-full input-sm">
+        </div>
+        <div>
+          <label class="label py-1"><span class="label-text">Имя <span class="text-error">*</span></span></label>
+          <input type="text" id="id-first_name" name="first_name"
+                 value="{{ client.first_name|default:'' }}"
+                 class="input input-bordered w-full input-sm" required>
+        </div>
+        <div>
+          <label class="label py-1"><span class="label-text">Отчество</span></label>
+          <input type="text" id="id-patronymic" name="patronymic"
+                 value="{{ client.patronymic|default:'' }}"
+                 class="input input-bordered w-full input-sm">
+        </div>
+      </div>
+
+      <div>
+        <label class="label py-1"><span class="label-text">Телефон</span></label>
+        <input type="text" id="id-phone" name="phone"
+               value="{{ client.phone|default:'' }}"
+               class="input input-bordered w-full input-sm">
+      </div>
+
+      <div class="modal-action mt-4">
+        <button type="button" class="btn btn-ghost btn-sm"
+                onclick="document.getElementById('client-identify-modal').close(); document.getElementById('client-identify-modal').remove();">
+          Отмена
+        </button>
+        <button type="submit" class="btn btn-primary btn-sm">
+          {% icon "check" size=16 %} Идентифицировать
+        </button>
+      </div>
+    </form>
+  </div>
+
+  <form method="dialog" class="modal-backdrop">
+    <button onclick="document.getElementById('client-identify-modal').remove();">close</button>
+  </form>
+</dialog>
+
+<script>
+  (function () {
+    // На случай если open-атрибут не сработал
+    const dlg = document.getElementById('client-identify-modal');
+    if (dlg && !dlg.open) dlg.showModal();
+  })();
+
+  function copyTelegramToForm() {
+    const get = (id) => {
+      const el = document.getElementById(id);
+      if (!el) return '';
+      const t = (el.textContent || '').trim();
+      return t === '—' ? '' : t;
+    };
+    // Берём именно разобранные DaData значения (правый блок «Разобрано
+    // через DaData»), не raw из Telegram — в TG нет поля «отчество»,
+    // и сотрудники писали ФИ в last_name, отчество в first_name.
+    const tgLast       = get('tg-last_name');
+    const tgFirst      = get('tg-first_name');
+    const tgPatronymic = get('tg-patronymic');
+    const tgPhone      = get('tg-phone').replace(/\s+через контакт.*$/, '').trim();
+
+    if (tgLast)       document.getElementById('id-last_name').value  = tgLast;
+    if (tgFirst)      document.getElementById('id-first_name').value = tgFirst;
+    if (tgPatronymic) document.getElementById('id-patronymic').value = tgPatronymic;
+    if (tgPhone)      document.getElementById('id-phone').value      = tgPhone;
+  }
+</script>

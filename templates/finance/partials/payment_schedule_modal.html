@@ -1,0 +1,266 @@
+{% load icons l10n %}
+<dialog id="payment-schedule-modal" class="modal modal-middle"
+        hx-trigger="reloadSchedule from:body"
+        hx-get="{% url 'finance:payment_schedule_modal' service.id %}"
+        hx-target="#payment-schedule-modal"
+        hx-swap="outerHTML">
+  <div class="modal-box w-full" style="max-width:48rem;">
+    <h3 class="font-bold text-lg mb-3">График платежей</h3>
+
+    {% if error %}
+      <div class="alert alert-error text-sm mb-3">{{ error }}</div>
+    {% endif %}
+    {% if success %}
+      <div class="alert alert-success text-sm mb-3">{{ success }}</div>
+    {% endif %}
+
+    <form id="schedule-form"
+          hx-post="{% url 'finance:payment_schedule_modal' service.id %}"
+          hx-target="#payment-schedule-modal"
+          hx-swap="outerHTML"
+          class="space-y-3">
+      {% csrf_token %}
+      <input type="hidden" name="strategy" id="schedule-strategy" value="save_only">
+
+      {% if not can_edit %}
+        <div class="alert alert-info text-sm mb-1 py-2">
+          👁 Только просмотр — редактирование графика платежей доступно
+          коммерческому отделу и бухгалтерии.
+        </div>
+      {% endif %}
+
+      {% comment %}Параметры графика: для не-редакторов fieldset disabled —
+         поля видны, но недоступны для ввода.{% endcomment %}
+      <fieldset {% if not can_edit %}disabled{% endif %} style="border:none;padding:0;margin:0;min-width:0;">
+
+      <!-- Дата начала оказания услуг + предупреждение в общей рамке -->
+      <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));
+                  gap:0.75rem;align-items:center;
+                  border:1px solid #7f1d1d;border-radius:8px;
+                  background:#fef2f2;padding:0.5rem 0.75rem;">
+        <div>
+          <label class="label py-1"><span class="label-text" style="color:#7f1d1d;">Дата начала оказания услуг <span class="text-error">*</span></span></label>
+          <input type="date" name="date_start"
+                 value="{{ date_start_value|date:'Y-m-d' }}"
+                 class="input input-bordered input-sm w-full" required>
+        </div>
+        <div class="text-sm font-semibold leading-snug"
+             style="grid-column:span 2 / span 2;color:#7f1d1d;">
+          От этой даты считается график внесения платежей.
+        </div>
+      </div>
+
+      <!-- Юруслуги + рассрочка -->
+      <div class="grid grid-cols-4 gap-3 items-end">
+        <div>
+          <label class="label py-1"><span class="label-text">Юруслуги по договору, ₽</span></label>
+          <input type="number" step="0.01" name="legal_services_amount" id="js-legal"
+                 value="{{ service.legal_services_amount|unlocalize }}"
+                 class="input input-bordered input-sm w-full" required>
+        </div>
+        <div>
+          <label class="label py-1"><span class="label-text">Рассрочка, мес</span></label>
+          <select name="installment_months" id="js-months" class="select select-bordered select-sm w-full">
+            {% for m in months_range %}
+              <option value="{{ m }}" {% if service.installment_months == m %}selected{% endif %}>{{ m }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <label class="label py-1"><span class="label-text">1-й платёж через, мес</span></label>
+          <select name="schedule_legal_offset" class="select select-bordered select-sm w-full">
+            {% for m in offset_range %}
+              <option value="{{ m }}" {% if service.schedule_legal_offset == m %}selected{% endif %}>{{ m }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <label class="label py-1"><span class="label-text">Ежемесячный платёж, ₽</span></label>
+          <input type="text" id="js-monthly" readonly
+                 class="input input-bordered input-sm w-full bg-base-200 font-mono">
+        </div>
+      </div>
+
+      <div class="border-t border-base-300 my-2"></div>
+
+      <!-- Прочие платежи -->
+      <div class="grid grid-cols-3 gap-3">
+        <div>
+          <label class="label py-1"><span class="label-text">Сбор документов, ₽</span></label>
+          <input type="number" step="0.01" name="doc_collection"
+                 value="{{ service.doc_collection|unlocalize }}"
+                 class="input input-bordered input-sm w-full">
+        </div>
+        <div>
+          <label class="label py-1"><span class="label-text">Почтовые расходы, ₽</span></label>
+          <input type="number" step="0.01" name="postal_costs"
+                 value="{{ service.postal_costs|unlocalize }}"
+                 class="input input-bordered input-sm w-full">
+        </div>
+        <div>
+          <label class="label py-1"><span class="label-text">Гос. пошлина, ₽</span></label>
+          <input type="number" step="0.01" name="state_duty"
+                 value="{{ service.state_duty|unlocalize }}"
+                 class="input input-bordered input-sm w-full">
+        </div>
+        <div>
+          <label class="label py-1"><span class="label-text">Вознаграждение ФУ, ₽</span></label>
+          <div class="flex gap-2">
+            <input type="number" step="0.01" name="fu_fee"
+                   value="{{ service.fu_fee|unlocalize }}"
+                   class="input input-bordered input-sm w-full">
+            <select name="schedule_fu_offset" class="select select-bordered select-sm" title="Через сколько месяцев">
+              {% for m in offset_range %}
+                <option value="{{ m }}" {% if service.schedule_fu_offset == m %}selected{% endif %}>{{ m }} м</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+        <div>
+          <label class="label py-1"><span class="label-text">Расходы на процедуру, ₽</span></label>
+          <div class="flex gap-2">
+            <input type="number" step="0.01" name="procedure_costs"
+                   value="{{ service.procedure_costs|unlocalize }}"
+                   class="input input-bordered input-sm w-full">
+            <select name="schedule_procedure_offset" class="select select-bordered select-sm" title="Через сколько месяцев">
+              {% for m in offset_range %}
+                <option value="{{ m }}" {% if service.schedule_procedure_offset == m %}selected{% endif %}>{{ m }} м</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+        <div>
+          <label class="label py-1"><span class="label-text">Доп. расходы, ₽</span></label>
+          <input type="number" step="0.01" name="additional_costs"
+                 value="{{ service.additional_costs|unlocalize }}"
+                 class="input input-bordered input-sm w-full">
+        </div>
+      </div>
+
+      </fieldset>
+
+      {% if charges or service.date_start %}
+        <div class="border-t border-base-300 pt-3">
+          <div class="flex justify-between items-baseline mb-2">
+            <h4 class="text-sm font-semibold">
+              Текущий график{% if charges %} ({{ charges|length }}){% endif %}
+            </h4>
+            <div class="flex items-center gap-3">
+              {% if charges %}
+                <div class="text-xs text-base-content/60">
+                  Итого: <b class="font-mono">{{ charges_total|default:"" }}</b>
+                </div>
+              {% endif %}
+              {% if can_edit %}
+              <button type="button" class="btn btn-primary btn-xs"
+                      hx-get="{% url 'finance:charge_add' service.id %}"
+                      hx-target="body" hx-swap="beforeend">
+                + Начисление
+              </button>
+              {% endif %}
+            </div>
+          </div>
+          {% if charges %}
+          <div class="overflow-y-auto border border-base-300 rounded-md" style="max-height:18rem;">
+            <table class="table table-xs w-full" style="border-collapse:separate;border-spacing:0;">
+              <thead style="position:sticky;top:0;z-index:1;background:#e5e7eb;">
+                <tr>
+                  <th style="border-bottom:1px solid #94a3b8;">Дата</th>
+                  <th style="border-bottom:1px solid #94a3b8;">Наименование</th>
+                  <th class="text-right" style="border-bottom:1px solid #94a3b8;">Сумма, ₽</th>
+                  <th class="text-right" style="border-bottom:1px solid #94a3b8;">Остаток, ₽</th>
+                  <th style="border-bottom:1px solid #94a3b8;">Статус</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for ch in charges %}
+                <tr {% if can_edit %}class="cursor-pointer hover:bg-base-200"
+                    hx-get="{% url 'finance:charge_edit' service.id ch.id %}"
+                    hx-target="body" hx-swap="beforeend"
+                    title="Редактировать"{% endif %}>
+                  <td class="whitespace-nowrap">{{ ch.due_date|date:"d.m.Y" }}</td>
+                  <td>{{ ch.title }}</td>
+                  <td class="text-right font-mono">{{ ch.amount|floatformat:2 }}</td>
+                  <td class="text-right font-mono {% if ch.remaining > 0 %}text-error{% else %}text-success{% endif %}">
+                    {{ ch.remaining|floatformat:2 }}
+                  </td>
+                  <td>
+                    {% if ch.display_status == 'paid' %}
+                      <span class="badge badge-success badge-xs">опл.</span>
+                    {% elif ch.display_status == 'overdue' %}
+                      <span class="badge badge-error badge-xs">проср.</span>
+                    {% else %}
+                      <span class="badge badge-ghost badge-xs">в графике</span>
+                    {% endif %}
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          {% endif %}
+        </div>
+      {% endif %}
+
+      {% if existing_count > 0 and can_edit %}
+        <div class="text-sm rounded-md px-3 py-2"
+             style="color:#7f1d1d;border:1px solid #7f1d1d;">
+          При нажатии «Заполнить график» выберите стратегию: добавить поверх или удалить старые.
+        </div>
+      {% endif %}
+
+      <div class="modal-action items-center flex-wrap gap-2">
+        <button type="button" class="btn btn-ghost btn-sm"
+                onclick="document.getElementById('payment-schedule-modal').remove()">
+          {% if can_edit %}Отмена{% else %}Закрыть{% endif %}
+        </button>
+
+        {% if can_edit %}
+        {% if existing_count > 0 %}
+          <button type="submit" class="btn btn-warning btn-sm"
+                  onclick="document.getElementById('schedule-strategy').value='append'">
+            Добавить поверх существующих
+          </button>
+          <button type="submit" class="btn btn-error btn-sm"
+                  onclick="document.getElementById('schedule-strategy').value='replace'"
+                  hx-confirm="Удалить {{ existing_count }} существующих начислени{{ existing_count|pluralize:"е,я,й" }} и создать новые?">
+            Удалить и заполнить заново
+          </button>
+        {% else %}
+          <button type="submit" class="btn btn-primary btn-sm"
+                  onclick="document.getElementById('schedule-strategy').value='replace'">
+            {% icon "check" size=16 %} Заполнить график
+          </button>
+        {% endif %}
+        {% endif %}
+      </div>
+    </form>
+  </div>
+  <form method="dialog" class="modal-backdrop">
+    <button onclick="document.getElementById('payment-schedule-modal').remove()">close</button>
+  </form>
+
+  <script>
+    (function () {
+      // Открываем как top-layer modal — иначе родительский <dialog
+      // service-modal перекрывает нашу модалку.
+      const dlg = document.getElementById('payment-schedule-modal');
+      if (dlg && !dlg.open) {
+        try { dlg.showModal(); } catch (e) { dlg.setAttribute('open', ''); }
+      }
+
+      const legal = document.getElementById('js-legal');
+      const months = document.getElementById('js-months');
+      const monthly = document.getElementById('js-monthly');
+      function recalc() {
+        const a = parseFloat((legal.value || '0').replace(',', '.'));
+        const m = parseInt(months.value || '1', 10);
+        if (!isFinite(a) || !m) { monthly.value = ''; return; }
+        monthly.value = (a / m).toFixed(2);
+      }
+      legal.addEventListener('input', recalc);
+      months.addEventListener('change', recalc);
+      recalc();
+    })();
+  </script>
+</dialog>

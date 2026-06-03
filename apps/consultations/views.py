@@ -8,7 +8,7 @@ from django.db.models import Q
 
 from apps.core.models import Employee
 from apps.crm.models import Client
-from apps.crm.models import ClientEvent
+from apps.crm import client_log
 from .models import Consultation, ConsultationResult
 
 SCHEDULE_HOURS = list(range(9, 19))
@@ -162,12 +162,11 @@ def book(request):
         consultant=consultant, client=client, booked_by=emp,
         datetime_start=dt, status="booked", comment=comment,
     )
-    ClientEvent.objects.create(
-        client      = client,
-        event_type  = "consultation_booked",
-        description = f"Записан на консультацию к {consultant.user.last_name} {consultant.user.first_name}",
-        new_value   = dt.strftime("%d.%m.%Y %H:%M"),
-        employee    = emp,
+    client_log.record_action(
+        client, "consultation_book",
+        comment=f"Записан на консультацию к {consultant.user.last_name} {consultant.user.first_name}",
+        new_value=dt.strftime("%d.%m.%Y %H:%M"),
+        employee=emp,
     )
     resp = HttpResponse("")
     resp["HX-Trigger"] = "consultationChanged"
@@ -204,12 +203,11 @@ def set_result(request, pk):
             parts.append(f"итог: {result_obj.name}")
         if status != old_status:
             parts.append(f"статус: {status_labels.get(status, status)}")
-        ClientEvent.objects.create(
-            client      = consultation.client,
-            event_type  = "consultation_result",
-            description = f"Консультация у {consultation.consultant.user.last_name} {consultation.consultant.user.first_name} — {', '.join(parts)}",
-            new_value   = result_obj.name if result_obj else "",
-            employee    = emp,
+        client_log.record_action(
+            consultation.client, "consultation_result_record",
+            comment=f"Консультация у {consultation.consultant.user.last_name} {consultation.consultant.user.first_name} — {', '.join(parts)}",
+            new_value=result_obj.name if result_obj else "",
+            employee=emp,
         )
     resp = HttpResponse("")
     resp["HX-Trigger"] = "consultationChanged"
@@ -259,13 +257,12 @@ def move_confirm(request, pk):
     if consultation.client:
         old_dt = consultation.datetime_start.strftime("%d.%m.%Y %H:%M")
         new_dt_str = dt.strftime("%d.%m.%Y %H:%M")
-        ClientEvent.objects.create(
-            client      = consultation.client,
-            event_type  = "consultation_transferred",
-            description = f"Консультация перенесена с {old_dt} на {new_dt_str}. Причина: {transfer_reason}",
-            old_value   = old_dt,
-            new_value   = new_dt_str,
-            employee    = emp,
+        client_log.record_action(
+            consultation.client, "consultation_transfer",
+            comment=f"Консультация перенесена с {old_dt} на {new_dt_str}. Причина: {transfer_reason}",
+            old_value=old_dt,
+            new_value=new_dt_str,
+            employee=emp,
         )
     resp = HttpResponse("")
     resp["HX-Trigger"] = "consultationChanged"
@@ -279,8 +276,9 @@ def client_search(request):
     if len(q) >= 2:
         clients = Client.objects.filter(
             Q(last_name__icontains=q) | Q(first_name__icontains=q) |
-            Q(phone__icontains=q) | Q(username__icontains=q)
-        ).order_by("last_name", "first_name")[:15]
+            Q(phone__icontains=q) | Q(phones__phone__icontains=q)
+            | Q(username__icontains=q)
+        ).distinct().order_by("last_name", "first_name")[:15]
     return render(request, "consultations/partials/client_search.html", {"clients": clients, "q": q})
 
 
@@ -306,11 +304,10 @@ def edit_modal(request, pk):
         consultation.comment = comment
         consultation.save(update_fields=["datetime_start", "comment", "updated_at"])
         if consultation.client and changed:
-            ClientEvent.objects.create(
-                client      = consultation.client,
-                event_type  = "consultation_edited",
-                description = f"Консультация изменена: {'; '.join(changed)}",
-                employee    = emp,
+            client_log.record_action(
+                consultation.client, "consultation_edit",
+                comment=f"Консультация изменена: {'; '.join(changed)}",
+                employee=emp,
             )
         resp = HttpResponse("")
         resp["HX-Trigger"] = "consultationChanged"

@@ -1,0 +1,391 @@
+"""UI импорта из Bubble.io — панель аудита и переноса данных.
+
+Доступ — только суперпользователь. Вкладки по сущностям:
+Man → Client, ProjectBFL → Service, Money → Payment/Charge.
+MessageWSP и Files — на следующем этапе (нужен фоновый скачиватель).
+
+Порядок Apply важен из-за зависимостей: сначала клиенты, затем услуги,
+затем платежи (applier сам вернёт ошибку, если зависимость не готова).
+"""
+import logging
+
+from django.contrib.auth.decorators import login_required
+from django.core.paginator import Paginator
+from django.http import Http404, HttpResponse, HttpResponseBadRequest
+from django.shortcuts import redirect, render
+from django.views.decorators.http import require_POST
+
+from apps.core.permissions import require_superuser
+
+from . import bubble_api
+from .extractors import extract_display
+from .models import BubbleRecord, BubbleFetchState, BubbleImportJob
+from .services import fetch_batch, DEFAULT_BATCH, get_state
+from .appliers import apply_approved
+from .tasks import full_import_task
+
+logger = logging.getLogger("bubble_import")
+
+PAGE_SIZE = 50
+
+# Активные вкладки. Порядок = рекомендуемый порядок Apply (зависимости).
+ACTIVE_ENTITIES = ["User", "Man", "ProjectBFL", "Money", "MessageWSP", "Files"]
+ENTITY_LABELS = {
+    "User": "Сотрудники",
+    "Man": "Клиенты",
+    "ProjectBFL": "Услуги",
+    "Money": "Платежи",
+    "MessageWSP": "WhatsApp",
+    "Files": "Файлы",
+}
+# Поля, доступные для inline-правки — только у клиентов.
+EDITABLE_FIELDS = {
+    "Man": {"fName", "lName", "mName", "tel", "email"},
+}
+
+
+def _check_entity(entity: str):
+    if entity not in ACTIVE_ENTITIES:
+        raise Http404(f"Сущность {entity} недоступна")
+
+
+def _stats(entity: str) -> dict:
+    qs = BubbleRecord.objects.filter(entity=entity)
+    state = get_state(entity)
+    total_fetched = qs.count()
+    imported = qs.filter(status="imported").count()
+    return {
+        "total_remote": state.total_remote,
+        "total_fetched": total_fetched,
+        # «Одобрено» в UI = кандидаты на повторный apply (не уже импортированные).
+        "approved": qs.filter(approved=True).exclude(status="imported").count(),
+        "imported": imported,
+        "errors": qs.filter(status="error").count(),
+        "pending": qs.filter(status="pending").count(),
+        "not_imported": total_fetched - imported,
+        "last_fetch_at": state.last_fetch_at,
+    }
+
+
+def _filtered_records(request, entity: str):
+    """QuerySet записей сущности с учётом активного фильтра и поиска."""
+    flt = request.GET.get("filter") or request.POST.get("filter") or "all"
+    qs = BubbleRecord.objects.filter(entity=entity)
+    if flt == "pending":
+        qs = qs.filter(status="pending")
+    elif flt == "approved":
+        qs = qs.filter(approved=True)
+    elif flt == "imported":
+        qs = qs.filter(status="imported")
+    elif flt == "error":
+        qs = qs.filter(status="error")
+
+    search = (request.GET.get("q") or request.POST.get("q") or "").strip()
+    if search:
+        qs = qs.filter(display_title__icontains=search)
+    return qs, flt, search
+
+
+# Классификация текста ошибки/пропуска по ключевым словам.
+# Порядок важен — берётся первое совпадение.
+_ERROR_RULES = [
+    ("дубл", "Дубль по телефону — запись не импортирована, чтобы не плодить дубли"),
+    ("не найден", "Клиент по номеру не найден — сначала импортируйте клиентов"),
+    ("связанной услуги", "Нет связанной услуги (поле Project пустое или ProjectBFL не импортирован)"),
+    ("не импортирован", "Зависимость не импортирована (импортируйте сущность уровнем выше)"),
+    ("сначала импортируйте", "Зависимость не импортирована (импортируйте сущность уровнем выше)"),
+    ("заглушка", "Телефон-заглушка (нули) — клиент не импортируется"),
+    ("appforest", "Старый файл Bubble S3 — недоступен (403), пропущен"),
+    ("google drive", "Файл Google Drive недоступен по ссылке"),
+    ("пуст", "Пустая запись — нечего импортировать"),
+]
+
+
+def _categorize_error(text: str) -> str:
+    low = (text or "").lower()
+    for kw, label in _ERROR_RULES:
+        if kw in low:
+            return label
+    return "Прочее"
+
+
+def _error_summary(entity: str) -> list:
+    """Сводка по проблемным записям сущности: категория → счётчик + пример."""
+    rows = BubbleRecord.objects.filter(
+        entity=entity, status__in=["error", "skipped"],
+    ).values_list("status", "error")
+    cats: dict = {}
+    for status, error in rows:
+        label = _categorize_error(error)
+        c = cats.setdefault(label, {"category": label, "count": 0, "sample": error or "",
+                                    "has_error": False})
+        c["count"] += 1
+        if status == "error":
+            c["has_error"] = True
+        if not c["sample"]:
+            c["sample"] = error or ""
+    return sorted(cats.values(), key=lambda x: -x["count"])
+
+
+def _tabs(current: str) -> list:
+    """Вкладки со счётчиками выгружено/всего по каждой сущности."""
+    states = {s.entity: s for s in BubbleFetchState.objects.all()}
+    tabs = []
+    for ent in ACTIVE_ENTITIES:
+        qs = BubbleRecord.objects.filter(entity=ent)
+        st = states.get(ent)
+        tabs.append({
+            "entity": ent,
+            "label": ENTITY_LABELS[ent],
+            "fetched": qs.count(),
+            "imported": qs.filter(status="imported").count(),
+            "remote": st.total_remote if st else 0,
+            "active": ent == current,
+        })
+    return tabs
+
+
+def _entity_context(request, entity: str) -> dict:
+    qs, flt, search = _filtered_records(request, entity)
+    qs = qs.order_by("bubble_created", "id")
+    paginator = Paginator(qs, PAGE_SIZE)
+    page = paginator.get_page(request.GET.get("page") or 1)
+    running_job = BubbleImportJob.objects.filter(
+        entity=entity, status__in=("pending", "running"),
+    ).first()
+    return {
+        "entity": entity,
+        "entity_label": ENTITY_LABELS[entity],
+        "active_entities": ACTIVE_ENTITIES,
+        "entity_labels": ENTITY_LABELS,
+        "tabs": _tabs(entity),
+        "error_summary": _error_summary(entity),
+        "running_job": running_job,
+        "page_obj": page,
+        "filter": flt,
+        "q": search,
+        "stats": _stats(entity),
+        "batch": DEFAULT_BATCH,
+        "api_ok": bubble_api.is_configured(),
+        "editable": entity in EDITABLE_FIELDS,
+    }
+
+
+@login_required
+@require_superuser
+def panel(request, entity="Man"):
+    """Главная страница импорта (грузится в #content-area)."""
+    _check_entity(entity)
+    return render(request, "bubble_import/panel.html", _entity_context(request, entity))
+
+
+@login_required
+@require_superuser
+def apply_button(request, entity):
+    """Только кнопка «Импортировать одобренные» — для обновления через
+    HX-Trigger='approvedChanged' после изменений approved в строках."""
+    _check_entity(entity)
+    ctx = _entity_context(request, entity)
+    return render(request, "bubble_import/partials/apply_approved_button.html", ctx)
+
+
+@login_required
+@require_superuser
+def entity_table(request, entity):
+    """HTMX-партиал таблицы сущности."""
+    _check_entity(entity)
+    return render(request, "bubble_import/partials/entity_table.html",
+                  _entity_context(request, entity))
+
+
+@login_required
+@require_superuser
+@require_POST
+def fetch(request, entity):
+    """Выкачать следующую порцию записей из Bubble."""
+    _check_entity(entity)
+    if not bubble_api.is_configured():
+        return HttpResponseBadRequest("Bubble API не настроен (BUBBLE_API_TOKEN)")
+    try:
+        result = fetch_batch(entity, batch=DEFAULT_BATCH)
+        logger.info("Bubble fetch %s: %s", entity, result)
+    except bubble_api.BubbleAPIError as e:
+        return HttpResponse(f"Ошибка Bubble API: {e}", status=502)
+    return render(request, "bubble_import/partials/entity_table.html",
+                  _entity_context(request, entity))
+
+
+@login_required
+@require_superuser
+@require_POST
+def toggle_approve(request, entity, pk):
+    """Переключить флаг одобрения одной записи."""
+    _check_entity(entity)
+    rec = BubbleRecord.objects.filter(pk=pk, entity=entity).first()
+    if not rec:
+        return HttpResponse(status=404)
+    rec.approved = not rec.approved
+    rec.save(update_fields=["approved"])
+    resp = render(request, "bubble_import/partials/row.html",
+                  {"rec": rec, "entity": entity, "editable": entity in EDITABLE_FIELDS})
+    resp["HX-Trigger"] = "approvedChanged"
+    return resp
+
+
+@login_required
+@require_superuser
+@require_POST
+def bulk_approve(request, entity):
+    """Одобрить/снять все записи текущей страницы (по номеру страницы)."""
+    _check_entity(entity)
+    action = request.POST.get("action")
+    qs, _flt, _q = _filtered_records(request, entity)
+    qs = qs.order_by("bubble_created", "id")
+    page = Paginator(qs, PAGE_SIZE).get_page(request.POST.get("page") or 1)
+    page_ids = [r.pk for r in page.object_list]
+    BubbleRecord.objects.filter(pk__in=page_ids).exclude(status="imported").update(
+        approved=(action == "approve"),
+    )
+    return render(request, "bubble_import/partials/entity_table.html",
+                  _entity_context(request, entity))
+
+
+@login_required
+@require_superuser
+@require_POST
+def select_all(request, entity):
+    """Одобрить/снять ВСЕ записи (по активному фильтру), кроме импортированных."""
+    _check_entity(entity)
+    action = request.POST.get("action")
+    qs, _flt, _q = _filtered_records(request, entity)
+    qs.exclude(status="imported").update(approved=(action == "approve"))
+    return render(request, "bubble_import/partials/entity_table.html",
+                  _entity_context(request, entity))
+
+
+@login_required
+@require_superuser
+@require_POST
+def toggle_overwrite_dup(request, entity, pk):
+    """Переключить флаг overrides['_overwrite_dup'] для записи Man.
+
+    При apply_man с дублем по телефону этот флаг означает «перезаписать
+    существующего клиента данными из Bubble» (вместо error).
+    """
+    _check_entity(entity)
+    if entity != "Man":
+        return HttpResponseBadRequest("Доступно только для клиентов")
+    rec = BubbleRecord.objects.filter(pk=pk, entity=entity).first()
+    if not rec:
+        return HttpResponse(status=404)
+    overrides = dict(rec.overrides or {})
+    overrides["overwrite_dup"] = not bool(overrides.get("overwrite_dup"))
+    rec.overrides = overrides
+    fields_to_save = ["overrides"]
+    # Если включаем «перезаписать» — сразу одобряем запись (чтобы попала в apply).
+    if overrides["overwrite_dup"] and not rec.approved:
+        rec.approved = True
+        fields_to_save.append("approved")
+    rec.save(update_fields=fields_to_save)
+    # Обновление кнопки «Импортировать одобренные» отдадим клиенту
+    # через HX-Trigger — JS обновит её отдельным запросом, без OOB.
+    resp = render(request, "bubble_import/partials/row.html",
+                  {"rec": rec, "entity": entity,
+                   "editable": entity in EDITABLE_FIELDS})
+    resp["HX-Trigger"] = "approvedChanged"
+    return resp
+
+
+@login_required
+@require_superuser
+@require_POST
+def edit_field(request, entity, pk):
+    """Inline-правка одного поля — сохраняется в overrides записи."""
+    _check_entity(entity)
+    if entity not in EDITABLE_FIELDS:
+        return HttpResponseBadRequest("Правка недоступна для этой сущности")
+    rec = BubbleRecord.objects.filter(pk=pk, entity=entity).first()
+    if not rec:
+        return HttpResponse(status=404)
+    field = request.POST.get("field")
+    if field not in EDITABLE_FIELDS[entity]:
+        return HttpResponseBadRequest("Поле нельзя редактировать")
+    value = (request.POST.get("value") or "").strip()
+
+    overrides = dict(rec.overrides or {})
+    if value:
+        overrides[field] = value
+    else:
+        overrides.pop(field, None)
+    rec.overrides = overrides
+    merged = {**(rec.raw or {}), **overrides}
+    for k, v in extract_display(entity, merged).items():
+        setattr(rec, k, v)
+    rec.save(update_fields=["overrides", "display_title", "display_subtitle"])
+    return render(request, "bubble_import/partials/row.html",
+                  {"rec": rec, "entity": entity, "editable": True})
+
+
+# ─── Фоновая задача «Импортировать ВСЁ» ───────────────────────
+
+def _job_partial(request, job):
+    return render(request, "bubble_import/partials/import_job.html", {"job": job})
+
+
+@login_required
+@require_superuser
+@require_POST
+def start_full_import(request, entity):
+    """Запустить фоновую задачу полного импорта сущности."""
+    _check_entity(entity)
+    if not bubble_api.is_configured():
+        return HttpResponseBadRequest("Bubble API не настроен (BUBBLE_API_TOKEN)")
+    if BubbleImportJob.objects.filter(
+        entity=entity, status__in=("pending", "running"),
+    ).exists():
+        return HttpResponse("Уже идёт импорт по этой сущности", status=409)
+    from apps.core.permissions import get_employee
+    job = BubbleImportJob.objects.create(
+        entity=entity, status="pending", started_by=get_employee(request.user),
+    )
+    full_import_task.delay(str(job.id))
+    # Возвращаем обновлённую таблицу — running_job попадёт через контекст.
+    return render(request, "bubble_import/partials/entity_table.html",
+                  _entity_context(request, entity))
+
+
+@login_required
+@require_superuser
+def job_status(request, job_id):
+    """HTMX-партиал статуса задачи (polling каждые ~2 с)."""
+    job = BubbleImportJob.objects.filter(pk=job_id).first()
+    if not job:
+        return HttpResponse("")
+    return _job_partial(request, job)
+
+
+@login_required
+@require_superuser
+@require_POST
+def cancel_job(request, job_id):
+    job = BubbleImportJob.objects.filter(pk=job_id).first()
+    if not job:
+        return HttpResponse(status=404)
+    if job.is_running:
+        job.cancel_requested = True
+        job.save(update_fields=["cancel_requested"])
+        job.add_log("Запрос отмены")
+    return _job_partial(request, job)
+
+
+@login_required
+@require_superuser
+@require_POST
+def apply(request, entity):
+    """Импортировать одобренные записи сущности в модели SiriCRM."""
+    _check_entity(entity)
+    result = apply_approved(entity)
+    logger.info("Bubble apply %s: %s", entity, result)
+    ctx = _entity_context(request, entity)
+    ctx["apply_result"] = result
+    return render(request, "bubble_import/partials/entity_table.html", ctx)

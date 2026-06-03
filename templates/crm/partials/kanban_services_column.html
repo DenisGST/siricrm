@@ -11,8 +11,25 @@
   <div class="card-body p-3">
 
     <div class="flex justify-between items-start mb-0">
-      <h3 class="card-title text-sm leading-tight">
-        {{ s.client.last_name }} {{ s.client.first_name }}{% if s.client.patronymic %}<br>{{ s.client.patronymic }}{% endif %}
+      <h3 class="card-title text-sm leading-tight {% if not s.client.is_identified %}text-red-900{% endif %}">
+        {% if not s.client.is_identified %}
+          <button type="button"
+                  class="kanban-identify-btn align-middle inline-flex items-center justify-center mr-1"
+                  title="Идентифицировать клиента"
+                  hx-get="{% url 'client_identify_modal' s.client.id %}"
+                  hx-target="body"
+                  hx-swap="beforeend"
+                  onclick="event.stopPropagation()"
+                  hx-on:click="event.stopPropagation()">
+            {% icon "info" size=16 %}
+          </button>
+        {% endif %}<span class="cursor-pointer link-hover hover:text-primary transition-colors"
+              hx-get="{% url 'client_edit' s.client.id %}"
+              hx-target="body" hx-swap="beforeend"
+              onclick="event.stopPropagation()"
+              hx-on:click="event.stopPropagation()"
+              hx-on::after-request="document.getElementById('client-edit-modal')?.showModal()"
+              title="Редактировать клиента">{{ s.client.last_name }} {{ s.client.first_name }}{% if s.client.patronymic %}<br>{{ s.client.patronymic }}{% endif %}</span>
       </h3>
       <div class="flex items-center gap-1 shrink-0 ml-1">
         <span class="badge badge-ghost cursor-default font-medium"
@@ -25,6 +42,32 @@
       {% if s.region %}<span>{{ s.region.name }}</span>{% endif %}
       {% if s.date_start %}<span>{% icon "calendar" size=12 %} {{ s.date_start|date:"d.m.Y" }}</span>{% endif %}
     </div>
+
+    {% comment %}Арбитражное дело: для услуг БФЛ. Кнопка «Иск отправлен» — пока только админу. Если дело уже заведено — показываем номер/статус.{% endcomment %}
+    {% if s.name and s.name.short_name == "БФЛ" %}
+      {% with case=s.arbitr_case %}
+        {% if case %}
+          <a class="badge badge-info gap-1 mt-1 cursor-pointer"
+             {% if case.kad_url %}href="{{ case.kad_url }}" target="_blank" rel="noopener"{% endif %}
+             title="{{ case.get_status_display }}"
+             onclick="event.stopPropagation()">
+            ⚖ {{ case.case_number|default:"(дело ищется)" }}
+          </a>
+        {% elif user.is_superuser %}
+          <button type="button"
+                  class="btn btn-xs btn-warning gap-1 mt-1"
+                  title="Запустить мониторинг арбитражного дела на kad.arbitr.ru"
+                  hx-post="{% url 'arbitr:mark_iskotpravlen' s.pk %}?partial=chip"
+                  hx-target="this"
+                  hx-swap="outerHTML"
+                  hx-confirm="Поставить «Иск отправлен в суд» по этому клиенту?"
+                  onclick="event.stopPropagation()"
+                  hx-on:click="event.stopPropagation()">
+            ⚖ Иск отправлен в суд
+          </button>
+        {% endif %}
+      {% endwith %}
+    {% endif %}
 
     {% with states=s.employee_states.all %}
     <div id="svc-emp-list-{{ s.pk }}" class="flex flex-wrap gap-1 items-center mb-1">
@@ -69,7 +112,27 @@
     </div>
     {% endif %}
 
-    <div class="flex gap-1 mt-1">
+    <div class="flex gap-1 mt-1 items-center">
+      <button type="button"
+              class="kanban-action-btn text-base-content/50 mr-auto"
+              hx-get="{% url 'finance:finance_modal' s.client.id %}"
+              hx-target="body"
+              hx-swap="beforeend"
+              title="Финансы и расчёты"
+              onclick="event.stopPropagation()"
+              hx-on:click="event.stopPropagation()">
+        {% icon "wallet" size=15 %}
+      </button>
+      <button type="button"
+              class="kanban-action-btn text-base-content/50"
+              hx-get="{% url 'client_events_modal' s.client.id %}"
+              hx-target="body"
+              hx-swap="beforeend"
+              title="Событийка (события и действия по клиенту)"
+              onclick="event.stopPropagation()"
+              hx-on:click="event.stopPropagation()">
+        {% icon "history" size=15 %}
+      </button>
       {% if s.client.phone %}
       <a href="tel:{{ s.client.phone }}"
          class="kanban-action-btn text-base-content/50"

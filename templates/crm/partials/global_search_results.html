@@ -1,28 +1,76 @@
 {% load icons %}
 {% if empty and q|length >= 2 %}
   <div class="global-search-empty">Ничего не найдено</div>
-{% elif clients or legal_entities or messages %}
+{% elif clients or legal_entities or messages or files %}
 
   {% if clients %}
     <div class="global-search-group-title">Клиенты</div>
     {% for c in clients %}
-      <a href="#" class="global-search-item"
-         onclick="focusKanbanClient('{{ c.id }}'); return false;">
+      <div class="global-search-item {% if c.no_access %}gs-no-access{% else %}cursor-pointer{% endif %}"
+           {% if c.no_access %}
+             title="У вас нет доступа к информации"
+             onclick="globalSearchNoAccess()"
+           {% else %}
+             title="Кликни — закрепить ФИО в фильтре канбана"
+             onclick="pickClientForKanbanFilter('{{ c.last_name }} {{ c.first_name }}'); closeGlobalSearch();"
+           {% endif %}>
         {% icon "user" size=14 %}
-        <span class="gs-main">{{ c.last_name }} {{ c.first_name }} {{ c.patronymic }}</span>
-        <span class="gs-aux">
-          {% if c.username %}@{{ c.username }}{% elif c.phone %}{{ c.phone }}{% endif %}
+        <span class="gs-body">
+          <span class="gs-main">{{ c.last_name }} {{ c.first_name }} {{ c.patronymic }}</span>
+          <span class="gs-meta">
+            <span class="gs-status">{{ c.get_status_display }}</span>
+            {% for s in c.services.all %}
+              · {{ s.name.short_name }}{% if s.common_status %} ({{ s.common_status.name }}){% endif %}{% if s.region %} — {{ s.region.name }}{% endif %}
+            {% endfor %}
+          </span>
         </span>
-      </a>
+        {% if not c.no_access %}
+        <span class="gs-actions" onclick="event.stopPropagation()">
+          <button type="button" class="gs-act" title="Чат"
+                  onclick="openTelegramChatModalForClient('{{ c.id }}'); closeGlobalSearch();">
+            {% icon "message-square" size=15 %}
+          </button>
+          <button type="button" class="gs-act" title="Финансы и начисления"
+                  hx-get="{% url 'finance:finance_modal' c.id %}"
+                  hx-target="body" hx-swap="beforeend"
+                  onclick="closeGlobalSearch()">
+            {% icon "wallet" size=15 %}
+          </button>
+          <button type="button" class="gs-act" title="Файлы клиента"
+                  hx-get="{% url 'files:manager' c.id %}"
+                  hx-target="body" hx-swap="beforeend"
+                  onclick="closeGlobalSearch()">
+            {% icon "folder" size=15 %}
+          </button>
+          <button type="button" class="gs-act" title="Карточка и события"
+                  hx-get="{% url 'client_events_modal' c.id %}"
+                  hx-target="body" hx-swap="beforeend"
+                  onclick="closeGlobalSearch()">
+            {% icon "history" size=15 %}
+          </button>
+          {% if c.phone %}
+          <a class="gs-act" href="tel:{{ c.phone }}" title="Позвонить: {{ c.phone }}">
+            {% icon "phone" size=15 %}
+          </a>
+          {% endif %}
+        </span>
+        {% endif %}
+      </div>
     {% endfor %}
   {% endif %}
 
   {% if clients %}
+    {% with chat_clients=clients|dictsort:"id" %}{% endwith %}
     <div class="global-search-group-title">Чат</div>
     {% for c in clients %}
       {% if c.telegram_id or c.max_chat_id %}
-      <a href="#" class="global-search-item"
-         onclick="openTelegramChatModalForClient('{{ c.id }}'); closeGlobalSearch(); return false;">
+      <a href="#" class="global-search-item {% if c.no_access %}gs-no-access{% endif %}"
+         {% if c.no_access %}
+           onclick="globalSearchNoAccess(); return false;"
+           title="У вас нет доступа к информации"
+         {% else %}
+           onclick="openTelegramChatModalForClient('{{ c.id }}'); closeGlobalSearch(); return false;"
+         {% endif %}>
         {% icon "message-square" size=14 %}
         <span class="gs-main">{{ c.last_name }} {{ c.first_name }} {{ c.patronymic }}</span>
         <span class="gs-aux">
@@ -48,11 +96,40 @@
     {% endfor %}
   {% endif %}
 
+  {% if files %}
+    <div class="global-search-group-title">Файлы</div>
+    {% for f in files %}
+      <a href="#" class="global-search-item {% if f.no_access %}gs-no-access{% endif %}"
+         {% if f.no_access %}
+           onclick="globalSearchNoAccess(); return false;"
+           title="У вас нет доступа к информации"
+         {% else %}
+           hx-get="{% url 'files:manager' f.folder.client_id %}?file={{ f.id }}"
+           hx-target="body" hx-swap="beforeend"
+           onclick="closeGlobalSearch()"
+         {% endif %}>
+        {% icon "file" size=14 %}
+        <span class="gs-body">
+          <span class="gs-main">{{ f.name }}</span>
+          <span class="gs-meta">
+            {{ f.folder.client.last_name }} {{ f.folder.client.first_name }}
+            · {{ f.folder.name }}
+          </span>
+        </span>
+      </a>
+    {% endfor %}
+  {% endif %}
+
   {% if messages %}
     <div class="global-search-group-title">Сообщения</div>
     {% for m in messages %}
-      <a href="#" class="global-search-item"
-         onclick="openTelegramChatModalForClient('{{ m.client_id }}'); closeGlobalSearch(); return false;">
+      <a href="#" class="global-search-item {% if m.no_access %}gs-no-access{% endif %}"
+         {% if m.no_access %}
+           onclick="globalSearchNoAccess(); return false;"
+           title="У вас нет доступа к информации"
+         {% else %}
+           onclick="openTelegramChatModalForClient('{{ m.client_id }}'); closeGlobalSearch(); return false;"
+         {% endif %}>
         {% icon "message-square" size=14 %}
         <span class="gs-main">{{ m.content|truncatechars:60 }}</span>
         <span class="gs-aux">{{ m.client.last_name }} {{ m.client.first_name }}</span>
@@ -61,3 +138,16 @@
   {% endif %}
 
 {% endif %}
+
+<style>
+  .gs-no-access {
+    opacity: 0.45;
+    cursor: not-allowed;
+    background: repeating-linear-gradient(
+      45deg,
+      transparent, transparent 6px,
+      rgba(220, 38, 38, 0.04) 6px, rgba(220, 38, 38, 0.04) 12px
+    );
+  }
+  .gs-no-access:hover { opacity: 0.6; }
+</style>

@@ -6,6 +6,7 @@ app_name = "files"
 urlpatterns = [
     # Файловый менеджер
     path("client/<uuid:client_pk>/",           views.file_manager,         name="manager"),
+    path("client/<uuid:client_pk>/search/",    views.file_search,          name="search"),
     path("folder/<uuid:folder_pk>/",           views.folder_contents,      name="folder_contents"),
     path("folder/<uuid:folder_pk>/upload/",    views.file_upload,          name="file_upload"),
     path("folder/<uuid:parent_pk>/mkdir/",     views.folder_create,        name="folder_create"),

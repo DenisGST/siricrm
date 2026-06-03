@@ -21,12 +21,12 @@ def _current_employee(request):
 
 
 def _log_questionnaire_event(event_type, response, employee):
-    from apps.crm.models import ClientEvent
+    """event_type — legacy-код (questionnaire_created/edited/deleted)."""
+    from apps.crm import client_log
     label = response.template.title
     svc   = response.service
-    ClientEvent.objects.create(
-        client=svc.client,
-        event_type=event_type,
+    client_log.record_legacy(
+        svc.client, event_type,
         description=f"{label} · {svc.name.short_name}" + (f" № {svc.numb_dogovor}" if svc.numb_dogovor else ""),
         employee=employee,
     )
@@ -545,8 +545,9 @@ def ref_search(request):
     if len(q) >= 2:
         if rtype == "client":
             items = Client.objects.filter(
-                Q(last_name__icontains=q) | Q(first_name__icontains=q) | Q(phone__icontains=q)
-            ).order_by("last_name", "first_name")[:15]
+                Q(last_name__icontains=q) | Q(first_name__icontains=q)
+                | Q(phone__icontains=q) | Q(phones__phone__icontains=q)
+            ).distinct().order_by("last_name", "first_name")[:15]
             results = [{"id": str(i.pk), "label": f"{i.last_name} {i.first_name}{' (' + i.phone + ')' if i.phone else ''}"} for i in items]
         elif rtype == "employee":
             items = Employee.objects.filter(

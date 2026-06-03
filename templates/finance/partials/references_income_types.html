@@ -1,0 +1,52 @@
+<div id="income-types-list"
+     hx-trigger="reloadIncomeTypes from:body"
+     hx-get="{% url 'finance:references_income_types' %}"
+     hx-swap="outerHTML">
+
+  <div class="flex justify-between items-center mb-3">
+    <h3 class="font-semibold">Типы доходов ({{ items|length }})</h3>
+    <button class="btn btn-primary btn-sm"
+            hx-get="{% url 'finance:reference_income_type_add' %}"
+            hx-target="body" hx-swap="beforeend">
+      + Добавить тип
+    </button>
+  </div>
+
+  <div class="overflow-x-auto">
+    <table class="table table-sm table-zebra">
+      <thead>
+        <tr>
+          <th>Услуга</th>
+          <th>Наименование</th>
+          <th>Статус</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for it in items %}
+        <tr>
+          <td><span class="badge badge-outline">{{ it.service_name.short_name }}</span></td>
+          <td>{{ it.name }}</td>
+          <td>
+            {% if it.is_active %}
+              <span class="badge badge-success badge-xs">активен</span>
+            {% else %}
+              <span class="badge badge-ghost badge-xs">неактивен</span>
+            {% endif %}
+          </td>
+          <td class="text-right">
+            <button class="btn btn-xs btn-outline"
+                    hx-get="{% url 'finance:reference_income_type_edit' it.pk %}"
+                    hx-target="body" hx-swap="beforeend">Изменить</button>
+            <button class="btn btn-xs btn-error btn-outline"
+                    hx-post="{% url 'finance:reference_income_type_delete' it.pk %}"
+                    hx-confirm="Удалить тип дохода «{{ it.name }}»?">Удалить</button>
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="4" class="text-center text-base-content/60">Типов доходов нет</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>

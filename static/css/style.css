@@ -382,6 +382,48 @@ img.emoji {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.global-search-item .gs-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.global-search-item .gs-body .gs-main {
+  flex: none;
+}
+.global-search-item .gs-meta {
+  font-size: 10px;
+  color: var(--ms-text-tertiary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.global-search-item .gs-meta .gs-status {
+  font-weight: 600;
+  color: var(--ms-text-secondary);
+}
+.global-search-item .gs-actions {
+  display: flex;
+  gap: 2px;
+  flex-shrink: 0;
+}
+.global-search-item .gs-act {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: none;
+  background: transparent;
+  border-radius: 5px;
+  cursor: pointer;
+  color: var(--ms-text-tertiary);
+}
+.global-search-item .gs-act:hover {
+  background: var(--ms-bg, #eef1f4);
+  color: var(--ms-blue);
+}
 .global-search-empty {
   padding: 12px;
   font-size: 12px;
@@ -394,7 +436,7 @@ img.emoji {
   position: fixed;
   top: 60px;
   left: 50%;
-  width: 440px;
+  width: 880px;
   max-width: calc(100vw - 16px);
   padding: 14px 14px 12px;
   background: var(--ms-surface);
@@ -732,6 +774,8 @@ input:focus, textarea:focus, select:focus {
 .bubble-telegram-out { background-color: #2b88d8 !important; color: #fff !important; }
 .bubble-max-in       { background-color: #8764b8 !important; color: #fff !important; }
 .bubble-max-out      { background-color: #b4a0ff !important; color: #fff !important; }
+.bubble-whatsapp-in  { background-color: #1faa54 !important; color: #fff !important; }
+.bubble-whatsapp-out { background-color: #25d366 !important; color: #fff !important; }
 
 .btn-max-send:not(:disabled) {
   background-color: #8764b8 !important;
@@ -759,6 +803,7 @@ input:focus, textarea:focus, select:focus {
 }
 .message-badge-telegram-in { background-color: var(--ms-blue); color: #fff; }
 .message-badge-max-in { background-color: #8764b8; color: #fff; }
+.message-badge-whatsapp-in { background-color: #25d366; color: #fff; }
 
 /* Цитата */
 .reply-preview {
@@ -930,6 +975,23 @@ input:focus, textarea:focus, select:focus {
   border-color: oklch(var(--p));
   box-shadow: 0 0 0 2px oklch(var(--p) / 0.25);
   color: oklch(var(--p));
+}
+
+/* Кнопка-иконка "i" для неидентифицированных клиентов на канбан-карточке */
+.kanban-identify-btn {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid currentColor;
+  background: transparent;
+  cursor: pointer;
+  color: #7f1d1d; /* совпадает с text-red-900 — тон ФИО */
+  transition: background-color 0.15s, color 0.15s;
+}
+.kanban-identify-btn:hover {
+  background: #7f1d1d;
+  color: #fff;
 }
 
 .kanban-col-body {

@@ -1,6 +1,7 @@
 from django.conf import settings
 from django.core.paginator import Paginator
 from django.shortcuts import render, get_object_or_404, redirect
+from django.core.cache import cache
 from django.contrib.auth.decorators import login_required
 from django.http import HttpResponse, HttpResponseBadRequest, JsonResponse
 from django.views.decorators.http import require_POST
@@ -8,20 +9,25 @@ from django.template.loader import render_to_string
 
 from apps.crm.models import *
 from django.db import models, transaction
-from django.db.models import Q, Prefetch
+from django.db.models import Q, Prefetch, F
 from django.utils import timezone
 
 from .models import (
     Client, Message, Address, LegalEntity, ClientEmployee,
     Service, ServiceName, PaymentProcedure, ServiceCommonStatus,
     ServiceEmployeeStatus, ServiceTag, ServiceEmployeeState,
-    ServiceTagAssignment, ServiceLog, ClientEvent,
+    ServiceTagAssignment, ServiceLog, ClientLogEntry,
+    EventType, ActionType,
 )
+from . import client_log
 from .forms import ClientForm, LegalEntityForm, ServiceForm
 from apps.core.models import Employee, EmployeeLog, Department
+from apps.core.permissions import is_management, is_references_access
 from apps.telegram.telegram_sender import create_message_and_store_file
+from rules.contrib.views import permission_required as rules_permission_required
 from .tasks import send_telegram_message_task
 from apps.maxchat.tasks import send_max_message_task
+from apps.whatsapp.tasks import send_whatsapp_message_task
 
 
 CLIENTS_PER_PAGE = 20
@@ -157,6 +163,89 @@ def max_send_message(request, client_id):
 
 
 @login_required
+@require_POST
+def whatsapp_send_message(request, client_id):
+    """Отправить WhatsApp-сообщение через 1msg.io. Структура — копия
+    ``max_send_message``: создаём Message(channel='whatsapp'), кидаем в
+    Celery, возвращаем HTMX-партиал."""
+    from apps.crm.phone_utils import find_client_by_phone, normalize_phone
+
+    client = get_object_or_404(Client, pk=client_id)
+    content = (request.POST.get("content") or "").strip()
+    up_file = request.FILES.get("file")
+    reply_to_id = request.POST.get("reply_to_id")
+    reply_to_msg = None
+    if reply_to_id:
+        try:
+            reply_to_msg = Message.objects.get(id=reply_to_id)
+        except Message.DoesNotExist:
+            pass
+
+    if not content and not up_file:
+        return HttpResponseBadRequest("Empty message")
+
+    # Проверяем что у клиента есть WA-номер (в любом из вариантов)
+    has_wa = bool(
+        client.whatsapp_phone
+        or client.phones.filter(purpose__in=["whatsapp", "primary"]).exists()
+        or client.phone
+    )
+    if not has_wa:
+        return HttpResponseBadRequest("Client has no WhatsApp phone")
+
+    try:
+        employee = Employee.objects.get(user=request.user)
+    except Employee.DoesNotExist:
+        employee = None
+
+    client.last_message_at = timezone.now()
+    client.save(update_fields=["last_message_at"])
+
+    if up_file:
+        msg = create_message_and_store_file(
+            client=client,
+            text=content or None,
+            file=up_file,
+            employee=employee,
+        )
+        msg.channel = "whatsapp"
+        msg.telegram_date = timezone.now()
+        msg.reply_to = reply_to_msg
+        msg.save(update_fields=["channel", "telegram_date", "reply_to"])
+    else:
+        msg = Message.objects.create(
+            client=client,
+            employee=employee,
+            content=content,
+            direction="outgoing",
+            channel="whatsapp",
+            message_type="text",
+            telegram_date=timezone.now(),
+            is_sent=False,
+            reply_to=reply_to_msg,
+        )
+
+    send_whatsapp_message_task.delay(str(msg.id))
+
+    if employee:
+        ClientEmployee.objects.update_or_create(
+            client=client, employee=employee,
+            defaults={"messenger_status": "waiting", "status_changed_at": timezone.now()},
+        )
+        from apps.realtime.utils import push_messenger_status_update
+        push_messenger_status_update(client)
+
+    html = render_to_string(
+        "crm/partials/telegram_message.html",
+        {"msg": msg},
+        request=request,
+    )
+    resp = HttpResponse(html)
+    resp["HX-Trigger"] = "messengerStatusChanged"
+    return resp
+
+
+@login_required
 def telegram_chat_for_client(request, client_id):
     client = get_object_or_404(Client, pk=client_id)
     search_q = (request.GET.get("q") or "").strip()
@@ -204,15 +293,22 @@ def telegram_chat_for_client(request, client_id):
 def _telegram_clients_base_qs(emp, scope):
     """Базовый queryset клиентов для scope ('mine'/'dept'/'all'). Без search/sort/paginate.
 
-    Используется и для самого списка, и для подсчёта количества клиентов
-    в кнопках-фильтрах сверху панели.
+    «Мои» / «Отдел» учитывают клиента и как ответственного
+    (Client.employees), и как исполнителя по любой его услуге
+    (Service.employees).
     """
+    from django.db.models import Q
     qs = Client.objects.all()
     if emp:
         if scope == "mine":
-            qs = qs.filter(employees=emp).distinct()
+            qs = qs.filter(
+                Q(employees=emp) | Q(services__employees=emp)
+            ).distinct()
         elif scope == "dept" and emp.department_id:
-            qs = qs.filter(employees__department_id=emp.department_id).distinct()
+            qs = qs.filter(
+                Q(employees__department_id=emp.department_id)
+                | Q(services__employees__department_id=emp.department_id)
+            ).distinct()
         # "all" → без фильтрации
     elif scope != "all":
         # Если не сотрудник и фильтр не "all" — пусто
@@ -233,6 +329,12 @@ def telegram_clients_list(request):
     except Employee.DoesNotExist:
         emp = None
 
+    # Backend-защита: scope='all' доступен только тем, кому видна вся компания
+    # (admin/head_dep/managing_partner/owner/Department.sees_all_clients).
+    from apps.core.permissions import can_view_all_clients
+    if scope == "all" and not can_view_all_clients(request.user):
+        scope = "mine"
+
     qs = _telegram_clients_base_qs(emp, scope)
 
     ALLOWED_SORTS = {
@@ -244,9 +346,16 @@ def telegram_clients_list(request):
     sort = request.GET.get("sort") or "-last_message_at"
     if sort not in ALLOWED_SORTS:
         sort = "-last_message_at"
-    # Стабильная вторичная сортировка — чтобы клиенты с одинаковым значением
-    # не "прыгали" при пагинации
-    qs = qs.order_by(sort, "id")
+    # Для сортировки по last_message_at NULL'ы держим в конце — клиенты без
+    # сообщений не должны вытеснять реально активных наверх (NULLS FIRST в
+    # Postgres для DESC поднимал их). Для остальных сортировок — обычный
+    # order_by.
+    if sort == "-last_message_at":
+        qs = qs.order_by(F("last_message_at").desc(nulls_last=True), "id")
+    elif sort == "last_message_at":
+        qs = qs.order_by(F("last_message_at").asc(nulls_last=True), "id")
+    else:
+        qs = qs.order_by(sort, "id")
 
     search_q = None
     if query:
@@ -255,24 +364,76 @@ def telegram_clients_list(request):
             | Q(last_name__icontains=query)
             | Q(username__icontains=query)
             | Q(phone__icontains=query)
+            | Q(phones__phone__icontains=query)
         )
-        qs = qs.filter(search_q)
+        qs = qs.filter(search_q).distinct()
 
     paginator = Paginator(qs, CLIENTS_PER_PAGE)
     page_obj = paginator.get_page(page_number)
 
+    # «Pin» клиент: если в запросе есть pin_client_id и этот клиент НЕ попал
+    # в текущий scope/search — допольним его в начало списка (только page=1).
+    # Используется при открытии чата конкретного клиента, чтобы в левой
+    # колонке гарантированно был виден активный (подсвеченный) клиент.
+    pinned_client = None
+    pin_client_id = (request.GET.get("pin_client_id") or "").strip()
+    if pin_client_id and page_obj.number == 1:
+        page_ids = {str(c.pk) for c in page_obj.object_list}
+        if pin_client_id not in page_ids:
+            try:
+                pinned_client = (
+                    Client.objects.visible_to(request.user)
+                    .filter(pk=pin_client_id)
+                    .first()
+                )
+            except (ValueError, TypeError):
+                pinned_client = None
+
     # Статусы мессенджера для текущего сотрудника
+    clients_for_status = list(page_obj.object_list)
+    if pinned_client is not None:
+        clients_for_status.append(pinned_client)
     if emp:
         statuses = dict(
             ClientEmployee.objects.filter(
-                employee=emp, client__in=page_obj.object_list,
+                employee=emp, client__in=clients_for_status,
             ).values_list("client_id", "messenger_status")
         )
-        for c in page_obj.object_list:
+        for c in clients_for_status:
             c.ms_status = statuses.get(c.pk, "")
     else:
-        for c in page_obj.object_list:
+        for c in clients_for_status:
             c.ms_status = ""
+
+    # Каналы, по которым у клиента есть сообщения — для значков Т/М/W в списке
+    # (серый = сообщений из канала не было). Один запрос на всю страницу.
+    channel_map = {}
+    for cid_, ch in (
+        Message.objects.filter(client__in=clients_for_status)
+        .values_list("client_id", "channel").distinct()
+    ):
+        channel_map.setdefault(cid_, set()).add(ch)
+    for c in clients_for_status:
+        chans = channel_map.get(c.pk, set())
+        c.has_telegram = "telegram" in chans
+        c.has_max = "max" in chans
+        c.has_whatsapp = "whatsapp" in chans
+
+    # Регион(ы) услуг клиента — для отображения в списке. Один запрос на страницу
+    # (без N+1). У клиента может быть несколько услуг в разных регионах — собираем
+    # уникальные названия.
+    region_map = {}
+    for cid_, rname in (
+        Service.objects.filter(client__in=clients_for_status, region__isnull=False)
+        .values_list("client_id", "region__name").distinct()
+    ):
+        if rname and rname not in region_map.setdefault(cid_, []):
+            region_map[cid_].append(rname)
+    for c in clients_for_status:
+        c.region_label = ", ".join(region_map.get(c.pk, []))
+
+    if pinned_client is not None:
+        page_obj.object_list = [pinned_client] + list(page_obj.object_list)
 
     # Счётчики для кнопок-фильтров. Учитывают текущий search, чтобы цифры
     # синхронно менялись при наборе в поиске. Считаются только для page=1 —
@@ -398,7 +559,7 @@ def kanban(request):
         except Employee.DoesNotExist:
             base_qs = base_qs.none()
 
-    _pfetch = ["employees", "services__name"]
+    _pfetch = ["employees", "services__name", "services__common_status"]
     unknowns = list(base_qs.filter(status="unknown").prefetch_related(*_pfetch))
     leads = list(base_qs.filter(status="lead").prefetch_related(*_pfetch))
     actives = list(base_qs.filter(status="active").prefetch_related(*_pfetch))
@@ -432,8 +593,21 @@ def kanban_column(request, status):
     ms_status    = request.GET.get("ms_status") or ""
     created_from = request.GET.get("created_from") or ""
     created_to   = request.GET.get("created_to") or ""
+    q            = (request.GET.get("q") or "").strip()
 
-    qs = Client.objects.filter(status=status)
+    qs = Client.objects.visible_to(request.user).filter(status=status)
+    if q:
+        # Разбиваем «Каныгин Денис» на слова — каждое слово должно
+        # совпасть с одним из полей (AND по словам, OR по полям).
+        for word in q.split():
+            qs = qs.filter(
+                Q(first_name__icontains=word)
+                | Q(last_name__icontains=word)
+                | Q(patronymic__icontains=word)
+                | Q(phone__icontains=word)
+                | Q(phones__phone__icontains=word)
+            )
+        qs = qs.distinct()
     if employee_id == "__none__":
         qs = qs.filter(employees__isnull=True)
     elif employee_id:
@@ -454,21 +628,53 @@ def kanban_column(request, status):
         except Employee.DoesNotExist:
             qs = qs.none()
 
-    clients = list(qs.prefetch_related("employees", "services__name").order_by("-last_message_at"))
-    _annotate_ms_status(clients, request.user)
+    # Сортировка: клиенты с перепиской — сверху по дате сообщения; без неё
+    # (импортированные, ещё без сообщений) — ниже, в стабильном порядке
+    # по дате создания. nulls_last обязателен — иначе пустые last_message_at
+    # уезжают в начало колонки.
+    # Последнее сообщение — через Subquery, чтобы не получить N+1 на колонке.
+    from django.db.models import OuterRef, Subquery
+    from apps.crm.models import Message
+    last_msg = Message.objects.filter(client=OuterRef("pk")).order_by("-created_at")
+    qs = qs.prefetch_related("employees", "services__name", "services__common_status").annotate(
+        last_message_content=Subquery(last_msg.values("content")[:1]),
+    ).order_by(
+        F("last_message_at").desc(nulls_last=True), "-created_at",
+    )
 
-    PAGE_SIZE = 25
-    total     = len(clients)
-    show_all  = request.GET.get("all") == "1"
-    shown     = clients if show_all else clients[:PAGE_SIZE]
-    has_more  = not show_all and total > PAGE_SIZE
+    # Постраничная подгрузка — иначе на больших колонках (после импорта из
+    # Bubble) рендер всех карточек разом вешает страницу. ВАЖНО: total
+    # считаем через qs.count() и режем срезом, чтобы не тащить весь
+    # queryset в память (это и был причиной тормозов).
+    # PAGE_SIZE небольшой: 5 колонок × карточка (~185 строк шаблона) грузились
+    # на старте дашборда жадно (~1.7 МБ). Теперь начальная отрисовка лёгкая,
+    # остальное догружается на скролл (intersect «load more» в kanban_column.html).
+    PAGE_SIZE = 12
+    total = qs.count()
+    try:
+        offset = max(int(request.GET.get("offset") or 0), 0)
+    except (TypeError, ValueError):
+        offset = 0
+    shown = list(qs[offset:offset + PAGE_SIZE])
+    _annotate_ms_status(shown, request.user)
+    next_offset = offset + PAGE_SIZE
+    has_more = next_offset < total
 
+    # column_id — DOM-идентификатор колонки (для intersect-root, OOB-счётчика,
+    # «Показать ещё»). Обычно совпадает со status, но для динамической
+    # колонки «Архивные» (где select переключает status) колонка остаётся
+    # одна — id всегда "archive", а status меняется.
+    column_id = request.GET.get("column_id") or status
     return render(request, "crm/partials/kanban_column.html", {
         "clients":   shown,
         "status":    status,
+        "column_id": column_id,
         "count":     total,
+        "offset":    offset,
         "has_more":  has_more,
-        "more_count": total - PAGE_SIZE if has_more else 0,
+        "next_offset": next_offset,
+        "remaining": max(total - next_offset, 0),
+        "page_size": PAGE_SIZE,
     })
 
 
@@ -570,9 +776,168 @@ def employees_list(request):
 
 
 @login_required
+def employee_report(request):
+    """Помесячный табель сотрудника по EmployeeLog (login/logout).
+
+    Рабочее окно 09:00–18:00 пн-пт, обед 13:00–14:00 (1 час). Норма
+    8 часов в день. Опоздание — день где первый login позже 09:00 или
+    последний logout раньше 18:00.
+    """
+    from datetime import date, datetime, time, timedelta
+    from calendar import monthrange
+    from collections import defaultdict
+
+    today = timezone.localdate()
+    try:
+        year = int(request.GET.get("year") or today.year)
+        month = int(request.GET.get("month") or today.month)
+    except (TypeError, ValueError):
+        year, month = today.year, today.month
+    emp_id = (request.GET.get("employee") or "").strip()
+
+    employees_all = (
+        Employee.objects.filter(is_active=True)
+        .select_related("user").order_by("user__last_name", "user__first_name")
+    )
+    selected_emp = None
+    if emp_id:
+        selected_emp = Employee.objects.filter(pk=emp_id).select_related("user").first()
+
+    # Месяц как диапазон.
+    last_day = monthrange(year, month)[1]
+    month_start = date(year, month, 1)
+    month_end = date(year, month, last_day)
+
+    days_data = []
+    week_totals = defaultdict(timedelta)  # iso week → timedelta
+    month_total = timedelta()
+    norm_per_day = timedelta(hours=8)
+    work_days = 0
+    late_days = 0
+    early_leave_days = 0
+    weekend_work_days = 0
+
+    if selected_emp:
+        # Берём все login/logout за месяц.
+        logs = list(
+            EmployeeLog.objects.filter(
+                employee=selected_emp,
+                action__in=("login", "logout"),
+                timestamp__date__gte=month_start,
+                timestamp__date__lte=month_end,
+            ).order_by("timestamp")
+        )
+        # Группируем по дате.
+        by_day = defaultdict(list)
+        for log in logs:
+            by_day[timezone.localtime(log.timestamp).date()].append(log)
+
+        cur = month_start
+        while cur <= month_end:
+            day_logs = by_day.get(cur, [])
+            first_login = None
+            last_logout = None
+            worked = timedelta()
+            for log in day_logs:
+                ts_local = timezone.localtime(log.timestamp)
+                if log.action == "login":
+                    if first_login is None:
+                        first_login = ts_local
+                elif log.action == "logout":
+                    last_logout = ts_local
+            if first_login and last_logout:
+                start = first_login.time()
+                end = last_logout.time()
+                # Усекаем окно до рабочего интервала.
+                eff_start = max(start, time(9, 0))
+                eff_end = min(end, time(18, 0))
+                if eff_end > eff_start:
+                    seconds = (
+                        datetime.combine(date.min, eff_end)
+                        - datetime.combine(date.min, eff_start)
+                    ).total_seconds()
+                    # Вычитаем обед 13-14 если окно покрывает.
+                    if eff_start <= time(13, 0) and eff_end >= time(14, 0):
+                        seconds -= 3600
+                    worked = timedelta(seconds=max(0, seconds))
+            iso_week = cur.isocalendar().week
+            week_totals[iso_week] += worked
+            month_total += worked
+            is_weekend = cur.weekday() >= 5
+            is_late = bool(first_login and first_login.time() > time(9, 0))
+            is_early_leave = bool(last_logout and last_logout.time() < time(18, 0))
+            if not is_weekend and worked > timedelta(0):
+                work_days += 1
+                if is_late:
+                    late_days += 1
+                if is_early_leave:
+                    early_leave_days += 1
+            if is_weekend and worked > timedelta(0):
+                weekend_work_days += 1
+            days_data.append({
+                "date": cur,
+                "weekday": cur.weekday(),
+                "is_weekend": is_weekend,
+                "first_login": first_login,
+                "last_logout": last_logout,
+                "worked": worked,
+                "is_late": is_late and not is_weekend,
+                "is_early_leave": is_early_leave and not is_weekend,
+                "iso_week": iso_week,
+            })
+            cur += timedelta(days=1)
+
+    def _td_h(td):
+        total = td.total_seconds() / 3600
+        return round(total, 2)
+
+    # Норма за месяц (пн-пт × 8ч).
+    norm_total = timedelta(hours=0)
+    cur = month_start
+    while cur <= month_end:
+        if cur.weekday() < 5:
+            norm_total += norm_per_day
+        cur += timedelta(days=1)
+
+    week_rows = sorted(week_totals.items())
+
+    return render(request, "crm/logs/report.html", {
+        "year": year, "month": month,
+        "employees_all": employees_all,
+        "selected_emp": selected_emp,
+        "emp_id": emp_id,
+        "days_data": days_data,
+        "week_rows": [(w, _td_h(t)) for w, t in week_rows],
+        "month_total_h": _td_h(month_total),
+        "norm_total_h": _td_h(norm_total),
+        "work_days": work_days,
+        "late_days": late_days,
+        "early_leave_days": early_leave_days,
+        "weekend_work_days": weekend_work_days,
+        "td_h": _td_h,
+        "year_choices": range(today.year - 3, today.year + 1),
+        "month_choices": [
+            (1, "Январь"), (2, "Февраль"), (3, "Март"), (4, "Апрель"),
+            (5, "Май"), (6, "Июнь"), (7, "Июль"), (8, "Август"),
+            (9, "Сентябрь"), (10, "Октябрь"), (11, "Ноябрь"), (12, "Декабрь"),
+        ],
+    })
+
+
+@login_required
 def logs_list(request):
+    from datetime import timedelta
     search = request.GET.get("search", "").strip()
-    qs = EmployeeLog.objects.select_related("employee", "client", "message")
+    emp_id = (request.GET.get("employee") or "").strip()
+    date_from = (request.GET.get("date_from") or "").strip()
+    date_to = (request.GET.get("date_to") or "").strip()
+
+    # Дефолт «последние 7 дней» — иначе COUNT(*) по огромной EmployeeLog
+    # делает страницу очень медленной. Юзер может поменять период вручную.
+    if not (search or emp_id or date_from or date_to):
+        date_from = (timezone.now().date() - timedelta(days=7)).isoformat()
+
+    qs = EmployeeLog.objects.select_related("employee__user", "client", "message")
 
     if search:
         qs = qs.filter(
@@ -583,32 +948,42 @@ def logs_list(request):
             | models.Q(client__first_name__icontains=search)
             | models.Q(client__last_name__icontains=search)
         )
+    if emp_id:
+        qs = qs.filter(employee_id=emp_id)
+    if date_from:
+        qs = qs.filter(timestamp__date__gte=date_from)
+    if date_to:
+        qs = qs.filter(timestamp__date__lte=date_to)
 
     paginator = Paginator(qs.order_by("-timestamp"), 50)
     page_number = request.GET.get("page") or 1
     page_obj = paginator.get_page(page_number)
 
+    # partial=1 → только таблица (для HTMX-filter-form, target=#logs-table).
+    # Иначе — full list.html с формой фильтров (открывается через меню HTMX
+    # в #content-area).
     template = (
         "crm/logs/list_partial.html"
-        if request.headers.get("HX-Request")
+        if request.GET.get("partial") == "1"
         else "crm/logs/list.html"
     )
 
-    return render(
-        request,
-        template,
-        {
-            "page_obj": page_obj,
-            "search": search,
-        },
-    )
+    return render(request, template, {
+        "page_obj": page_obj,
+        "search": search,
+        "emp_id": emp_id,
+        "date_from": date_from,
+        "date_to": date_to,
+        "employees_all": Employee.objects.filter(is_active=True)
+            .select_related("user").order_by("user__last_name", "user__first_name"),
+    })
 
 
 @login_required
 def clients_list(request):
     search = request.GET.get("search", "").strip()
 
-    qs = Client.objects.prefetch_related("employees")
+    qs = Client.objects.visible_to(request.user).prefetch_related("employees")
 
     if search:
         qs = qs.filter(
@@ -616,8 +991,9 @@ def clients_list(request):
             | models.Q(last_name__icontains=search)
             | models.Q(username__icontains=search)
             | models.Q(phone__icontains=search)
+            | models.Q(phones__phone__icontains=search)
             | models.Q(email__icontains=search)
-        )
+        ).distinct()
 
     paginator = Paginator(qs.order_by("-last_message_at"), 15)
     page_number = request.GET.get("page") or 1
@@ -639,10 +1015,39 @@ def clients_list(request):
     )
 
 
+def _online_employees():
+    """Сотрудники, реально присутствующие в системе СЕЙЧАС — по heartbeat-маркеру
+    в Redis (`online_emp:<id>`, TTL 150с, ставит idle-poll из открытых вкладок).
+    Надёжнее флага Employee.is_online (тот застревает после рестарта/закрытия
+    вкладки). Возвращает список Employee, отсортированный по ФИО."""
+    emps = list(
+        Employee.objects.filter(is_active=True)
+        .select_related("user", "department")
+        .order_by("user__last_name", "user__first_name")
+    )
+    keymap = {e.id: f"online_emp:{e.id}" for e in emps}
+    present = cache.get_many(list(keymap.values()))
+    now_ts = timezone.now().timestamp()
+    online = []
+    for e in emps:
+        ts = present.get(keymap[e.id])
+        if ts:
+            e.seen_secs_ago = max(0, int(now_ts - float(ts)))
+            online.append(e)
+    return online
+
+
 @login_required
 def employees_online_count(request):
-    count = Employee.objects.filter(is_online=True).count()
-    return HttpResponse(count)
+    return HttpResponse(len(_online_employees()))
+
+
+@login_required
+def employees_online_list(request):
+    """Кто сейчас в системе — для попапа по клику на виджет «Активных сотрудников»."""
+    online = _online_employees()
+    return render(request, "crm/partials/employees_online_list.html",
+                  {"online": online, "count": len(online)})
 
 
 @login_required
@@ -692,6 +1097,11 @@ def task_status(request, task_id):
     )
 
 @login_required
+@rules_permission_required(
+    "crm.edit_client",
+    fn=lambda request, client_id: get_object_or_404(Client, pk=client_id),
+    raise_exception=True,
+)
 def client_edit(request, client_id):
     client = get_object_or_404(Client, pk=client_id)
     if request.method == "POST":
@@ -699,8 +1109,19 @@ def client_edit(request, client_id):
         if form.is_valid():
             form.save()
             if request.headers.get("HX-Request"):
+                # Раньше тут был window.location.reload() — он сбрасывал SPA на
+                # дефолтный вид дашборда (канбан клиентов), поэтому при
+                # сохранении клиента с канбана услуг/моего юзера выкидывало на
+                # главный канбан. Вместо перезагрузки закрываем модалку и
+                # обновляем ТЕКУЩИЙ канбан на месте через kanbanRefresh
+                # (его слушают все три канбана) + serviceChanged.
                 return HttpResponse(
-                    '<script>window.location.reload();</script>'
+                    "<script>(function(){"
+                    "var m=document.getElementById('client-edit-modal');"
+                    "if(m){try{m.close();}catch(e){}m.remove();}"
+                    "document.body.dispatchEvent(new CustomEvent('kanbanRefresh'));"
+                    "document.body.dispatchEvent(new CustomEvent('serviceChanged'));"
+                    "})();</script>"
                 )
             return redirect("chat", client_id=client_id)
         else:
@@ -718,6 +1139,98 @@ def client_edit(request, client_id):
     })
 
 
+# ─── CRUD телефонов клиента (ClientPhone) ────────────────────
+
+
+from .models import ClientPhone  # noqa: E402
+from .phone_utils import add_client_phone, normalize_phone, sync_client_phone_cache  # noqa: E402
+
+
+def _render_phones_block(request, client):
+    return render(request, "crm/partials/client_phones_block.html", {
+        "client": client,
+        "phones": client.phones.order_by("purpose", "phone"),
+        "purpose_choices": ClientPhone.PURPOSE_CHOICES,
+    })
+
+
+@login_required
+def client_phones_block(request, client_id):
+    """HTMX-партиал со списком телефонов клиента + формой добавления."""
+    client = get_object_or_404(Client, pk=client_id)
+    return _render_phones_block(request, client)
+
+
+@login_required
+def client_phone_add(request, client_id):
+    """POST: добавить новый телефон клиента (или вернуть ошибку)."""
+    client = get_object_or_404(Client, pk=client_id)
+    if request.method != "POST":
+        return HttpResponseBadRequest("POST only")
+    raw = (request.POST.get("phone") or "").strip()
+    purpose = (request.POST.get("purpose") or "additional").strip()
+    if purpose not in dict(ClientPhone.PURPOSE_CHOICES):
+        return HttpResponseBadRequest("bad purpose")
+    phone = normalize_phone(raw)
+    if not phone:
+        return render(request, "crm/partials/client_phones_block.html", {
+            "client": client,
+            "phones": client.phones.order_by("purpose", "phone"),
+            "purpose_choices": ClientPhone.PURPOSE_CHOICES,
+            "error": f"Неверный номер: {raw}",
+        })
+    obj = add_client_phone(client, phone, purpose)
+    if obj is None:
+        return render(request, "crm/partials/client_phones_block.html", {
+            "client": client,
+            "phones": client.phones.order_by("purpose", "phone"),
+            "purpose_choices": ClientPhone.PURPOSE_CHOICES,
+            "error": f"+{phone} уже привязан к другому клиенту в назначении "
+                     f"«{dict(ClientPhone.PURPOSE_CHOICES).get(purpose)}»",
+        })
+    sync_client_phone_cache(client)
+    return _render_phones_block(request, client)
+
+
+@login_required
+def client_phone_delete(request, phone_id):
+    """POST: удалить телефон у клиента."""
+    if request.method != "POST":
+        return HttpResponseBadRequest("POST only")
+    cp = get_object_or_404(ClientPhone, pk=phone_id)
+    client = cp.client
+    cp.delete()
+    sync_client_phone_cache(client)
+    return _render_phones_block(request, client)
+
+
+@login_required
+def client_phone_set_purpose(request, phone_id):
+    """POST: сменить назначение существующего телефона."""
+    if request.method != "POST":
+        return HttpResponseBadRequest("POST only")
+    cp = get_object_or_404(ClientPhone, pk=phone_id)
+    purpose = (request.POST.get("purpose") or "").strip()
+    if purpose not in dict(ClientPhone.PURPOSE_CHOICES):
+        return HttpResponseBadRequest("bad purpose")
+    # Конфликт: если такой phone уже занят в новом назначении.
+    conflict = ClientPhone.objects.filter(
+        phone=cp.phone, purpose=purpose,
+    ).exclude(pk=cp.pk).first()
+    if conflict:
+        client = cp.client
+        return render(request, "crm/partials/client_phones_block.html", {
+            "client": client,
+            "phones": client.phones.order_by("purpose", "phone"),
+            "purpose_choices": ClientPhone.PURPOSE_CHOICES,
+            "error": f"+{cp.phone} в назначении «{dict(ClientPhone.PURPOSE_CHOICES).get(purpose)}» уже занят",
+        })
+    cp.purpose = purpose
+    cp.save(update_fields=["purpose", "updated_at"])
+    sync_client_phone_cache(cp.client)
+    return _render_phones_block(request, cp.client)
+
+
 @login_required
 def client_merge_search(request):
     """HTMX: search clients to merge with (excludes the source client)."""
@@ -733,9 +1246,11 @@ def client_merge_search(request):
                 | Q(last_name__icontains=query)
                 | Q(patronymic__icontains=query)
                 | Q(phone__icontains=query)
+                | Q(phones__phone__icontains=query)
                 | Q(username__icontains=query)
             )
             .exclude(pk=source_id)
+            .distinct()
             .order_by("last_name", "first_name")[:20]
         )
 
@@ -980,10 +1495,17 @@ def global_search(request):
         return render(request, "crm/partials/global_search_results.html",
                       {"q": q, "clients": [], "legal_entities": [], "messages": [], "empty": True})
 
-    clients = Client.objects.filter(
-        Q(first_name__icontains=q) | Q(last_name__icontains=q) |
-        Q(patronymic__icontains=q) | Q(username__icontains=q) |
-        Q(phone__icontains=q)
+    # Мультислово: «Каныгин Денис» → каждое слово должно match'иться
+    # хоть в одном из полей.
+    clients_qs = Client.objects.all()
+    for word in q.split():
+        clients_qs = clients_qs.filter(
+            Q(first_name__icontains=word) | Q(last_name__icontains=word) |
+            Q(patronymic__icontains=word) | Q(username__icontains=word) |
+            Q(phone__icontains=word) | Q(phones__phone__icontains=word)
+        )
+    clients = clients_qs.distinct().prefetch_related(
+        "services__name", "services__common_status", "services__region",
     ).order_by("last_name", "first_name")[:12]
 
     legal_entities = LegalEntity.objects.filter(
@@ -994,10 +1516,32 @@ def global_search(request):
         content__icontains=q
     ).select_related("client").order_by("-created_at")[:12]
 
-    empty = not (clients or legal_entities or messages)
+    # Файлы клиентов — по ClientFile.name (мультислово AND).
+    from apps.files.models import ClientFile
+    files_qs = ClientFile.objects.all()
+    for word in q.split():
+        files_qs = files_qs.filter(name__icontains=word)
+    files = files_qs.select_related(
+        "folder__client", "stored_file"
+    ).order_by("-created_at")[:12]
+
+    # Доступ к клиентам (object-level visibility). Затем затеняем строки
+    # тех клиентов, которые есть в результатах поиска, но недоступны.
+    visible_ids = set(
+        Client.objects.visible_to(request.user)
+        .values_list("id", flat=True)
+    )
+    for c in clients:
+        c.no_access = c.id not in visible_ids
+    for m in messages:
+        m.no_access = m.client_id not in visible_ids
+    for f in files:
+        f.no_access = f.folder.client_id not in visible_ids
+
+    empty = not (clients or legal_entities or messages or files)
     return render(request, "crm/partials/global_search_results.html", {
         "q": q, "clients": clients, "legal_entities": legal_entities,
-        "messages": messages, "empty": empty,
+        "messages": messages, "files": files, "empty": empty,
     })
 
 
@@ -1143,23 +1687,13 @@ def _current_employee(request):
 
 
 def _visible_services_qs(user):
-    """Услуги, к которым у пользователя есть доступ по services_allowed."""
-    qs = Service.objects.select_related(
+    """Услуги, видимые пользователю. Логика — в ``Service.objects.visible_to``."""
+    return Service.objects.visible_to(user).select_related(
         "client", "agent", "name", "region", "common_status", "payment_procedure",
     ).prefetch_related(
         "employee_states__employee__user", "employee_states__status",
         "tag_assignments__tag", "tag_assignments__employee",
     )
-    if user.is_superuser:
-        return qs
-    emp = _current_employee_from_user(user)
-    if not emp:
-        return qs.none()
-    # admin/head_dep видят всё из своих отделов / всех; обычные — только где есть доступ к этой услуге
-    if emp.role in ("admin", "head_dep"):
-        return qs
-    allowed_ids = list(emp.services_allowed.values_list("id", flat=True))
-    return qs.filter(name_id__in=allowed_ids)
 
 
 def _current_employee_from_user(user):
@@ -1180,10 +1714,10 @@ def service_edit(request, pk=None):
     emp = _current_employee_from_user(request.user)
     svc = get_object_or_404(Service, pk=pk) if pk else None
 
-    # Контроль доступа: нельзя редактировать услугу, к которой нет доступа.
-    if svc and emp and not request.user.is_superuser and emp.role not in ("admin", "head_dep"):
-        if not emp.services_allowed.filter(pk=svc.name_id).exists():
-            return HttpResponse("Нет доступа к услуге", status=403)
+    # Контроль доступа: нельзя редактировать чужую услугу. Для pk=None
+    # (создание новой) объектной проверки нет — see apps.crm.rules.
+    if svc and not request.user.has_perm("crm.edit_service", svc):
+        return HttpResponse("Нет доступа к услуге", status=403)
 
     preset_client_id = request.GET.get("client") or request.POST.get("_preset_client")
     preset_client = Client.objects.filter(pk=preset_client_id).first() if preset_client_id else None
@@ -1247,19 +1781,18 @@ def service_edit(request, pk=None):
                 # Лог клиента
                 if svc_new.client_id:
                     svc_label = svc_new.numb_dogovor or svc_new.name.short_name
-                    ClientEvent.objects.create(
-                        client_id=svc_new.client_id,
-                        event_type="service_created",
-                        description=f"Добавлена услуга: {svc_label}",
+                    # action 'service_create' автоматически породит event 'service_created'.
+                    client_log.record_action(
+                        svc_new.client, "service_create",
+                        comment=f"Добавлена услуга: {svc_label}",
                         new_value=svc_new.name.short_name,
                         employee=emp,
                     )
                     if assigned:
                         names = ", ".join(a.user.get_full_name() or a.user.username for a in assigned)
-                        ClientEvent.objects.create(
-                            client_id=svc_new.client_id,
-                            event_type="employee_assigned",
-                            description=f"Услуга {svc_label}: назначены исполнители — {names}",
+                        client_log.record_event(
+                            svc_new.client, "employee_assigned",
+                            comment=f"Услуга {svc_label}: назначены исполнители — {names}",
                             employee=emp,
                         )
 
@@ -1291,23 +1824,28 @@ def service_edit(request, pk=None):
 
 @login_required
 @require_POST
+@rules_permission_required(
+    "crm.delete_service",
+    fn=lambda request, pk: get_object_or_404(Service, pk=pk),
+    raise_exception=True,
+)
 def service_delete(request, pk):
     emp = _current_employee_from_user(request.user)
     svc = get_object_or_404(Service, pk=pk)
-    if not request.user.is_superuser and (not emp or emp.role not in ("admin", "head_dep")):
-        return HttpResponse("Нет доступа", status=403)
     client_id  = svc.client_id
     svc_label  = svc.numb_dogovor or svc.name.short_name
     svc_name   = svc.name.short_name
     svc.delete()
     if client_id:
-        ClientEvent.objects.create(
-            client_id=client_id,
-            event_type="service_deleted",
-            description=f"Удалена услуга: {svc_label}",
-            old_value=svc_name,
-            employee=emp,
-        )
+        client_for_log = Client.objects.filter(pk=client_id).first()
+        if client_for_log is not None:
+            # action 'service_delete' автоматически породит event 'service_deleted'.
+            client_log.record_action(
+                client_for_log, "service_delete",
+                comment=f"Удалена услуга: {svc_label}",
+                old_value=svc_name,
+                employee=emp,
+            )
     return HttpResponse("", headers={"HX-Trigger": '{"serviceChanged": "", "kanbanRefresh": ""}'})
 
 
@@ -1324,8 +1862,9 @@ def service_client_search(request):
                 | Q(last_name__icontains=q)
                 | Q(patronymic__icontains=q)
                 | Q(phone__icontains=q)
+                | Q(phones__phone__icontains=q)
                 | Q(username__icontains=q)
-            ).order_by("last_name", "first_name")[:15]
+            ).distinct().order_by("last_name", "first_name")[:15]
         )
     return render(request, "crm/services/client_search_results.html", {
         "clients": clients, "target": target, "query": q,
@@ -1367,14 +1906,30 @@ def services_kanban(request):
 def services_kanban_column(request, status_id):
     status      = get_object_or_404(ServiceCommonStatus, pk=status_id)
     employee_id = request.GET.get("employee") or ""
+    q           = (request.GET.get("q") or "").strip()
     qs = _visible_services_qs(request.user).filter(common_status=status)
     if employee_id:
         qs = qs.filter(employees__id=employee_id)
-    qs = qs.order_by("-created_at")
-    services = list(qs[:200])
+    # Поиск из верхнего поля (#kanban-filter-form q) — по ФИО/телефону клиента.
+    if q:
+        for word in q.split():
+            qs = qs.filter(
+                Q(client__first_name__icontains=word)
+                | Q(client__last_name__icontains=word)
+                | Q(client__patronymic__icontains=word)
+                | Q(client__phone__icontains=word)
+                | Q(client__phones__phone__icontains=word)
+            )
+        qs = qs.distinct()
+    # Считаем total отдельным count() и режем срезом — иначе при большом
+    # количестве услуг каждая колонка тянет всё в память (5-10 колонок
+    # параллельно × сотни услуг с prefetch — отсюда «постоянно грузится»).
+    PAGE_SIZE = 30
+    total = qs.count()
+    services = list(qs.order_by("-created_at")[:PAGE_SIZE])
     return render(request, "crm/partials/kanban_services_column.html", {
         "services": services, "status": status,
-        "for_my_kanban": False, "count": len(services),
+        "for_my_kanban": False, "count": total,
     })
 
 
@@ -1410,12 +1965,10 @@ def service_move(request, pk):
     )
 
     if service.client_id:
-        svc_label  = service.numb_dogovor or service.name.short_name
-        actor_name = actor.user.get_full_name() if actor else "система"
-        ClientEvent.objects.create(
-            client_id=service.client_id,
-            event_type="status_change",
-            description=(
+        svc_label = service.numb_dogovor or service.name.short_name
+        client_log.record_event(
+            service.client, "status_change",
+            comment=(
                 f"Услуга {svc_label}: статус изменён "
                 f"«{old_status.name}» → «{new_status.name}»"
             ),
@@ -1437,10 +1990,7 @@ def my_kanban(request):
         return HttpResponse("Нужен профиль сотрудника", status=403)
 
     # Права на просмотр чужих канбанов
-    CAN_VIEW_OTHERS = (
-        request.user.is_superuser or
-        current_emp.role in ("head_dep", "managing_partner", "admin")
-    )
+    CAN_VIEW_OTHERS = is_management(request.user)
 
     service_name_id  = request.GET.get("service_name") or ""
     common_status_id = request.GET.get("common_status") or ""
@@ -1461,14 +2011,17 @@ def my_kanban(request):
 
     emp_statuses = list(
         emp_statuses_qs.select_related("common_status__service_name")
-        .order_by("common_status__service_name__short_name", "common_status__order", "order")
+        # is_inbox=True (инбокс) — первым; затем по услуге/стадии.
+        .order_by("-is_inbox", "common_status__service_name__short_name", "common_status__order", "order")
     )
 
     groups = []
     for cs, statuses_iter in _groupby(emp_statuses, key=lambda s: s.common_status_id):
         statuses_list = list(statuses_iter)
+        first = statuses_list[0]
         groups.append({
-            "common_status": statuses_list[0].common_status,
+            "common_status": first.common_status,   # None для инбокса
+            "is_inbox": first.is_inbox,
             "statuses": statuses_list,
         })
 
@@ -1511,10 +2064,7 @@ def my_kanban_column(request, status_id):
         return HttpResponse("", status=403)
 
     viewed_emp_id = request.GET.get("viewed_employee") or ""
-    CAN_VIEW_OTHERS = (
-        request.user.is_superuser or
-        current_emp.role in ("head_dep", "managing_partner", "admin")
-    )
+    CAN_VIEW_OTHERS = is_management(request.user)
     if CAN_VIEW_OTHERS and viewed_emp_id:
         emp = get_object_or_404(Employee, pk=viewed_emp_id, is_active=True)
     else:
@@ -1533,6 +2083,18 @@ def my_kanban_column(request, status_id):
         )
         .order_by("-created_at")
     )
+    # Поиск из верхнего поля (#kanban-filter-form q) — по ФИО/телефону клиента.
+    q = (request.GET.get("q") or "").strip()
+    if q:
+        for word in q.split():
+            qs = qs.filter(
+                Q(client__first_name__icontains=word)
+                | Q(client__last_name__icontains=word)
+                | Q(client__patronymic__icontains=word)
+                | Q(client__phone__icontains=word)
+                | Q(client__phones__phone__icontains=word)
+            )
+        qs = qs.distinct()
     services = list(qs[:200])
     return render(request, "crm/partials/kanban_services_column.html", {
         "services": services, "status": status,
@@ -1546,10 +2108,23 @@ def my_kanban_column(request, status_id):
 @login_required
 @require_POST
 def service_my_move(request, pk):
-    """Drag-and-drop в Моём канбане: смена личного статуса услуги."""
-    emp = _current_employee_from_user(request.user)
-    if not emp:
+    """Drag-and-drop в Моём канбане: смена личного статуса услуги.
+
+    Руководитель (is_management), просматривающий чужой «Мой канбан»
+    (?viewed_employee=), двигает карточки ТОГО сотрудника — поэтому статус и
+    состояние резолвим по просматриваемому сотруднику. Иначе колонки несут
+    ServiceEmployeeStatus просматриваемого, а lookup шёл по текущему юзеру →
+    get_object_or_404 не находил чужой статус → 404.
+    """
+    current_emp = _current_employee_from_user(request.user)
+    if not current_emp:
         return HttpResponse("", status=403)
+
+    viewed_emp_id = request.POST.get("viewed_employee") or ""
+    if is_management(request.user) and viewed_emp_id:
+        emp = get_object_or_404(Employee, pk=viewed_emp_id, is_active=True)
+    else:
+        emp = current_emp
 
     service    = get_object_or_404(Service, pk=pk)
     status_id  = request.POST.get("status_id")
@@ -1566,6 +2141,19 @@ def service_my_move(request, pk):
     state.status = new_status
     state.save(update_fields=["status"])
 
+    # «Принятие»: если услугу вытащили ИЗ инбокса «Не принято» в рабочую
+    # колонку — сотрудник взял её в работу. Убираем услугу из инбоксов
+    # остальных сотрудников отдела (один взял — у других пропала).
+    if (old_status and getattr(old_status, "is_inbox", False)
+            and not getattr(new_status, "is_inbox", False)):
+        others = ServiceEmployeeState.objects.filter(
+            service=service, status__is_inbox=True,
+        ).exclude(employee=emp)
+        other_ids = list(others.values_list("employee_id", flat=True))
+        if other_ids:
+            others.delete()
+            service.employees.remove(*other_ids)
+
     ServiceLog.objects.create(
         service=service,
         employee=emp,
@@ -1576,10 +2164,9 @@ def service_my_move(request, pk):
 
     if service.client_id:
         svc_label = service.numb_dogovor or service.name.short_name
-        ClientEvent.objects.create(
-            client_id=service.client_id,
-            event_type="status_change",
-            description=(
+        client_log.record_event(
+            service.client, "status_change",
+            comment=(
                 f"Услуга {svc_label}: мой статус изменён "
                 f"«{old_status.name if old_status else '—'}» → «{new_status.name}»"
             ),
@@ -1591,14 +2178,282 @@ def service_my_move(request, pk):
 
 
 @login_required
+def service_transfer_modal(request, pk):
+    """Пикер «Передать в работу отдела/сотрудника» для услуги."""
+    from apps.crm.service_transfer import eligible_employees
+    service = get_object_or_404(
+        Service.objects.select_related("name", "client", "common_status__department"), pk=pk,
+    )
+    # Получатели: действующие сотрудники, работающие с этой услугой.
+    emp_qs = eligible_employees(service).select_related("user", "department").order_by(
+        "department__name", "user__last_name", "user__first_name",
+    )
+    employees = list(emp_qs)
+    # «В отдел» — отделы, в которых есть такие сотрудники.
+    dept_ids = {e.department_id for e in employees if e.department_id}
+    departments = Department.objects.filter(
+        id__in=dept_ids, is_active=True,
+    ).order_by("name")
+    return render(request, "crm/partials/service_transfer_modal.html", {
+        "service": service,
+        "departments": departments,
+        "employees": employees,
+    })
+
+
+@login_required
+@require_POST
+def service_transfer(request, pk):
+    """Выполнить передачу услуги в отдел/сотруднику."""
+    from apps.crm.service_transfer import transfer_service
+    service = get_object_or_404(Service, pk=pk)
+    actor = _current_employee_from_user(request.user)
+
+    target_type = (request.POST.get("target_type") or "").strip()
+    target_id = (request.POST.get("target_id") or "").strip()
+    if not target_id:
+        return HttpResponseBadRequest("Не выбран получатель")
+
+    # «У меня завершить» (галочка по умолчанию стоит): finish_self=True →
+    # keep_actor=False (полный переезд). Снята → услуга остаётся у актора.
+    finish_self = request.POST.get("finish_self") == "1"
+    keep_actor = not finish_self
+    comment = (request.POST.get("comment") or "").strip()
+
+    try:
+        if target_type == "employee":
+            emp = get_object_or_404(Employee, pk=target_id, is_active=True)
+            transfer_service(service, target_employee=emp, actor=actor,
+                             keep_actor=keep_actor, comment=comment)
+        elif target_type == "dept":
+            dept = get_object_or_404(Department, pk=target_id, is_active=True)
+            transfer_service(service, target_department=dept, actor=actor,
+                             keep_actor=keep_actor, comment=comment)
+        else:
+            return HttpResponseBadRequest("Неверный тип получателя")
+    except ValueError as e:
+        return HttpResponse(str(e), status=400)
+
+    # Перерисовываем модалку услуги (как GET) + сигнал на обновление канбанов.
+    from django.http import QueryDict
+    request.method = "GET"
+    request.POST = QueryDict()
+    resp = service_edit(request, pk)
+    resp["HX-Trigger"] = "serviceChanged"
+    return resp
+
+
+@login_required
 def client_events_modal(request, client_id):
-    client = get_object_or_404(Client.objects.prefetch_related("employees__user"), pk=client_id)
-    events = ClientEvent.objects.filter(client=client).select_related(
-        "employee__user"
-    ).order_by("-created_at")
+    """Модалка лога клиента: события + действия в одной хронологии.
+
+    Фильтры (GET):
+      ?kind=event|action|''  (пусто = все)
+      ?source=system|court|client|legal_entity|employee  (только для events)
+      ?type=<code>           (код EventType ИЛИ ActionType, в зависимости от kind)
+      ?q=<строка>            (поиск в comment)
+    """
+    client = get_object_or_404(
+        Client.objects.prefetch_related("employees__user"), pk=client_id,
+    )
+
+    f_kind   = (request.GET.get("kind") or "").strip()
+    f_source = (request.GET.get("source") or "").strip()
+    f_type   = (request.GET.get("type") or "").strip()
+    f_q      = (request.GET.get("q") or "").strip()
+
+    qs = ClientLogEntry.objects.filter(client=client).select_related(
+        "employee__user", "event_type", "action_type", "stored_file",
+        "parent__event_type", "parent__action_type",
+    ).prefetch_related("event_type__standard_actions")
+
+    if f_kind in ("event", "action"):
+        qs = qs.filter(kind=f_kind)
+    if f_source:
+        if f_source == "employee":
+            # «Сотрудник» = всё, что сделал сотрудник: ДЕЙСТВИЯ (у них нет
+            # поля source — они по определению совершаются сотрудником) +
+            # события с источником employee (если такие появятся).
+            qs = qs.filter(
+                Q(kind="action") | Q(kind="event", event_type__source="employee")
+            )
+        else:
+            # Остальные источники имеют смысл только для событий.
+            qs = qs.filter(kind="event", event_type__source=f_source)
+    if f_type:
+        if f_kind == "action":
+            qs = qs.filter(action_type__code=f_type)
+        elif f_kind == "event":
+            qs = qs.filter(event_type__code=f_type)
+        else:
+            qs = qs.filter(
+                Q(event_type__code=f_type) | Q(action_type__code=f_type)
+            )
+    if f_q:
+        qs = qs.filter(comment__icontains=f_q)
+
+    qs = qs.order_by("created_at")  # хронологически, как в чатах: новое снизу
+
+    event_types = EventType.objects.filter(is_active=True).order_by(
+        "source", "order", "name",
+    )
+    action_types = ActionType.objects.filter(is_active=True).order_by(
+        "order", "name",
+    )
+    # Для формы ручного добавления — только типы с is_manual (авто-генерируемые
+    # скрыты). Фильтр сверху по-прежнему работает по всем типам (event_types/
+    # action_types) — чтобы можно было отфильтровать уже записанные авто-события.
+    manual_event_types = event_types.filter(is_manual=True)
+    manual_action_types = action_types.filter(is_manual=True)
+
     return render(request, "crm/partials/client_events_modal.html", {
         "client": client,
-        "events": events,
+        "events": qs,
+        "event_types": event_types,
+        "action_types": action_types,
+        "manual_event_types": manual_event_types,
+        "manual_action_types": manual_action_types,
+        "source_choices": EventType.SOURCE_CHOICES,
+        "filter_kind": f_kind,
+        "filter_source": f_source,
+        "filter_type": f_type,
+        "filter_q": f_q,
+    })
+
+
+@login_required
+@require_POST
+def client_log_add(request, client_id):
+    """POST из формы добавления в модалке лога. Создаёт ClientLogEntry и
+    возвращает ТОЛЬКО HTML новой записи (action + порождённое событие, если
+    есть) — фронт добавляет их в конец ленты (hx-swap=beforeend) без ребилда
+    модалки, чтобы она не моргала и не прыгала.
+
+    Поля формы:
+      entry_kind  — 'event' | 'action' (что создаём)
+      type_code   — code EventType/ActionType
+      comment     — текст
+      parent_id   — uuid родительской записи (опц.)
+    """
+    client = get_object_or_404(Client, pk=client_id)
+    entry_kind = (request.POST.get("entry_kind") or "").strip()
+    type_code  = (request.POST.get("type_code") or "").strip()
+    comment    = (request.POST.get("comment") or "").strip()
+    parent_id  = (request.POST.get("parent_id") or "").strip() or None
+
+    if entry_kind not in ("event", "action") or not type_code:
+        return HttpResponseBadRequest("entry_kind и type_code обязательны")
+
+    try:
+        emp = Employee.objects.get(user=request.user)
+    except Employee.DoesNotExist:
+        emp = None
+
+    parent = None
+    if parent_id:
+        parent = ClientLogEntry.objects.filter(pk=parent_id, client=client).first()
+
+    if entry_kind == "event":
+        entry = client_log.record_event(client, type_code, comment=comment, employee=emp, parent=parent)
+    else:
+        entry = client_log.record_action(client, type_code, comment=comment, employee=emp, parent=parent)
+
+    if entry is None:
+        # тип не найден в справочнике (см. client_log) — не падаем
+        return HttpResponseBadRequest("Неизвестный тип записи")
+
+    # Новые записи: сама запись + порождённое событие (action.spawns_event),
+    # если оно было создано. Перечитываем с select_related для рендера строки.
+    created_ids = [entry.id] + list(
+        ClientLogEntry.objects.filter(parent=entry).values_list("id", flat=True)
+    )
+    rows = ClientLogEntry.objects.filter(id__in=created_ids).select_related(
+        "employee__user", "event_type", "action_type", "stored_file",
+        "parent__event_type", "parent__action_type",
+    ).prefetch_related("event_type__standard_actions").order_by("created_at")
+
+    html = "".join(
+        render_to_string("crm/partials/_log_entry_row.html", {"ev": ev}, request=request)
+        for ev in rows
+    )
+    return HttpResponse(html)
+
+
+@login_required
+def client_identify_modal(request, client_id):
+    """
+    HTMX: модалка «Идентификация».
+    GET  — открывает модалку: слева текущие ФИО/телефон из БД, справа —
+           данные из Telegram (через userbot).
+    POST — сохраняет правки, ставит is_identified=True и пишет
+           ClientEvent('client_identified').
+    """
+    from apps.telegram.identify_helper import identify_get_telegram_info
+
+    client = get_object_or_404(Client, pk=client_id)
+
+    if request.method == "POST":
+        last_name  = (request.POST.get("last_name")  or "").strip()
+        first_name = (request.POST.get("first_name") or "").strip()
+        patronymic = (request.POST.get("patronymic") or "").strip()
+        phone      = (request.POST.get("phone")      or "").strip()
+
+        if not first_name:
+            return HttpResponseBadRequest("Имя обязательно")
+
+        old_repr = (
+            f"{client.last_name} {client.first_name} {client.patronymic}".strip()
+            + (f", тел. {client.phone}" if client.phone else "")
+        )
+
+        with transaction.atomic():
+            client.last_name = last_name
+            client.first_name = first_name
+            client.patronymic = patronymic
+            client.phone = phone or None
+            client.is_identified = True
+            client.save(update_fields=[
+                "last_name", "first_name", "patronymic", "phone",
+                "is_identified", "updated_at",
+            ])
+            if phone:
+                from apps.crm.phone_utils import add_client_phone
+                add_client_phone(client, phone, purpose="primary")
+
+            try:
+                actor = Employee.objects.get(user=request.user)
+            except Employee.DoesNotExist:
+                actor = None
+
+            new_repr = (
+                f"{last_name} {first_name} {patronymic}".strip()
+                + (f", тел. {phone}" if phone else "")
+            )
+            client_log.record_action(
+                client, "client_identified",
+                comment=f"Идентифицирован. Было: «{old_repr}» → стало: «{new_repr}».",
+                old_value=old_repr,
+                new_value=new_repr,
+                employee=actor,
+            )
+
+        # Канбан должен перерисовать карточку (цвет ФИО + исчезновение
+        # кнопки «i») и модалка — закрыться. С hx-swap="none" сам ответ
+        # HTMX в DOM не вставляет, поэтому используем заголовок
+        # HX-Refresh: true — он триггерит full-page reload и убирает
+        # модалку вместе со страницей.
+        resp = HttpResponse(status=204)
+        resp["HX-Refresh"] = "true"
+        return resp
+
+    # GET — тянем данные из Telegram
+    tg_info = identify_get_telegram_info(client.telegram_id) if client.telegram_id else {
+        "ok": False,
+        "error": "У клиента не задан telegram_id.",
+    }
+    return render(request, "crm/partials/client_identify_modal.html", {
+        "client": client,
+        "tg": tg_info,
     })
 
 
@@ -1640,7 +2495,6 @@ def client_assign_employee(request, client_id):
 
     # Лог события только если назначение реально изменилось
     if created or (prev_employee and prev_employee != new_employee):
-        from apps.crm.models import ClientEvent
         try:
             actor = Employee.objects.get(user=request.user)
         except Employee.DoesNotExist:
@@ -1654,11 +2508,8 @@ def client_assign_employee(request, client_id):
         else:
             desc = f"Назначен ответственный: {new_employee.user.get_full_name()}"
 
-        ClientEvent.objects.create(
-            client=client,
-            event_type="employee_assigned",
-            description=desc,
-            employee=actor,
+        client_log.record_event(
+            client, "employee_assigned", comment=desc, employee=actor,
         )
 
     # Возвращаем обновлённый бэйдж
@@ -1691,11 +2542,9 @@ def client_move(request, client_id):
     except Employee.DoesNotExist:
         actor = None
 
-    from apps.crm.models import ClientEvent
-    ClientEvent.objects.create(
-        client=client,
-        event_type="status_change",
-        description=(
+    client_log.record_event(
+        client, "status_change",
+        comment=(
             f"Статус изменён: {STATUS_LABELS.get(old_status, old_status)} "
             f"→ {STATUS_LABELS.get(new_status, new_status)}"
         ),
@@ -1773,13 +2622,12 @@ def service_employee_toggle(request, pk):
         svc_label = service.numb_dogovor or service.name.short_name
         if action == "assigned":
             desc = f"Услуга {svc_label}: назначен исполнитель — {emp_name}"
+            event_code = "employee_assigned"
         else:
             desc = f"Услуга {svc_label}: снят исполнитель — {emp_name}"
-        ClientEvent.objects.create(
-            client_id=service.client_id,
-            event_type="employee_assigned",
-            description=desc,
-            employee=actor,
+            event_code = "employee_removed"
+        client_log.record_event(
+            service.client, event_code, comment=desc, employee=actor,
         )
 
     assigned_ids = list(

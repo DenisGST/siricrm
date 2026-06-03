@@ -205,6 +205,31 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  arbitr-runner:
+    # Парсер kad.arbitr.ru на Playwright (отдельный образ — там Chromium).
+    # Celery worker, очередь `arbitr` (см. CELERY_TASK_ROUTES в base.py).
+    build:
+      context: .
+      dockerfile: docker/arbitr/Dockerfile
+    command: celery -A config worker -Q arbitr -l info --concurrency=1 --max-tasks-per-child=20
+    volumes:
+      - .:/app
+    env_file:
+      - ${ENV_FILE:-.env.prod}
+    environment:
+      DJANGO_ENV: prod
+    # Chromium любит большой /dev/shm — иначе падает на сложных страницах.
+    shm_size: '2gb'
+    depends_on:
+      - db
+      - redis
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "5"
+
   backup:
     build: .
     command: >

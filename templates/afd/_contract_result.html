@@ -1,0 +1,127 @@
+<div class="flex items-center justify-between mb-3">
+  <h3 class="font-bold text-lg">Составить договор</h3>
+  <button type="button" class="btn btn-sm btn-circle btn-ghost"
+          onclick="this.closest('dialog').remove()">✕</button>
+</div>
+
+{% if error %}
+  <div class="alert alert-error text-sm mb-3">{{ error }}</div>
+  <div class="modal-action">
+    <button type="button" class="btn btn-sm" onclick="this.closest('dialog').remove()">Закрыть</button>
+  </div>
+{% else %}
+  <div class="alert alert-success text-sm mb-3">
+    Договор «{{ gen.title }}» сформирован и прикреплён к услуге (поле «Файл договора»)
+    и в папку «Договоры» файлового менеджера клиента.
+  </div>
+  <div class="flex flex-col gap-2">
+    {% if gen.pdf_file %}
+    <a class="btn btn-outline btn-sm justify-start"
+       href="{% url 'files:stored_download' gen.pdf_file.id %}?inline=1" target="_blank">
+      📄 Открыть PDF (договор + приложения)
+    </a>
+    {% endif %}
+    {% if gen.docx_file %}
+    <a class="btn btn-outline btn-sm justify-start"
+       href="{% url 'files:stored_download' gen.docx_file.id %}" target="_blank">
+      📝 Скачать .docx (редактируемый)
+    </a>
+    {% endif %}
+    {% if gen.pdf_file %}
+    <button type="button" id="afd-preview-btn" class="btn btn-outline btn-sm justify-start" onclick="afdTogglePreview(this)">
+      👁 Предпросмотр договора
+    </button>
+    {% endif %}
+  </div>
+
+  {% if gen.pdf_file %}
+  <div id="afd-preview-wrap" class="mt-2" style="display:none">
+    <div class="flex justify-end mb-1">
+      <button type="button" class="btn btn-xs btn-ghost gap-1" onclick="afdClosePreview()">
+        ✕ Закрыть предпросмотр
+      </button>
+    </div>
+    <iframe data-src="{% url 'files:stored_download' gen.pdf_file.id %}?inline=1"
+            class="w-full rounded border border-base-300 bg-base-200"
+            style="height:65vh" title="Предпросмотр договора"></iframe>
+  </div>
+  <script>
+  function afdTogglePreview(btn){
+    var w = document.getElementById('afd-preview-wrap');
+    if (!w) return;
+    var f = w.querySelector('iframe');
+    var box = btn.closest('.modal-box');  // расширяем/сужаем модалку
+    if (w.style.display === 'none') {
+      if (!f.getAttribute('src')) f.setAttribute('src', f.dataset.src);  // ленивая загрузка
+      w.style.display = '';
+      btn.classList.add('btn-active');
+      if (box) box.style.maxWidth = '95vw';  // шире под предпросмотр
+      btn.scrollIntoView({behavior: 'smooth', block: 'nearest'});
+    } else {
+      afdClosePreview();
+    }
+  }
+  function afdClosePreview(){
+    var w = document.getElementById('afd-preview-wrap');
+    if (!w) return;
+    w.style.display = 'none';
+    var box = w.closest('.modal-box');
+    if (box) box.style.maxWidth = '';  // вернуть к max-w-3xl
+    var b = document.getElementById('afd-preview-btn');
+    if (b) b.classList.remove('btn-active');
+  }
+  </script>
+  {% endif %}
+
+  <div class="divider my-3 text-xs">Отправить договор клиенту</div>
+
+  {% if send_error %}<div class="alert alert-error text-sm mb-2">{{ send_error }}</div>{% endif %}
+  {% if sent_channel %}
+    <div class="alert alert-success text-sm mb-2">
+      Договор отправлен клиенту через
+      {% if sent_channel == 'telegram' %}Telegram{% elif sent_channel == 'max' %}MAX{% else %}WhatsApp{% endif %}.
+      Доставка может занять несколько секунд.
+    </div>
+  {% endif %}
+
+  {% if gen.pdf_file %}
+  <div class="grid grid-cols-3 gap-2">
+    {# Подсветка канала, откуда пришло последнее входящее сообщение #}
+    <button type="button"
+            class="btn btn-sm gap-1 {% if last_incoming_channel == 'telegram' %}btn-info{% else %}btn-outline{% endif %}"
+            {% if not can_telegram %}disabled title="У клиента нет Telegram"{% endif %}
+            hx-post="{% url 'afd:contract_send' gen.id 'telegram' %}"
+            hx-target="#afd-contract-body" hx-swap="innerHTML"
+            hx-indicator="#afd-send-ind">
+      {% if last_incoming_channel == 'telegram' %}★{% endif %} Telegram
+    </button>
+    <button type="button"
+            class="btn btn-sm gap-1 {% if last_incoming_channel == 'max' %}btn-secondary{% else %}btn-outline{% endif %}"
+            {% if not can_max %}disabled title="У клиента нет MAX"{% endif %}
+            hx-post="{% url 'afd:contract_send' gen.id 'max' %}"
+            hx-target="#afd-contract-body" hx-swap="innerHTML"
+            hx-indicator="#afd-send-ind">
+      {% if last_incoming_channel == 'max' %}★{% endif %} MAX
+    </button>
+    <button type="button"
+            class="btn btn-sm gap-1 {% if last_incoming_channel == 'whatsapp' %}btn-success{% else %}btn-outline{% endif %}"
+            {% if not can_whatsapp %}disabled title="У клиента нет WhatsApp"{% endif %}
+            hx-post="{% url 'afd:contract_send' gen.id 'whatsapp' %}"
+            hx-target="#afd-contract-body" hx-swap="innerHTML"
+            hx-indicator="#afd-send-ind">
+      {% if last_incoming_channel == 'whatsapp' %}★{% endif %} WhatsApp
+    </button>
+  </div>
+  {% if last_incoming_channel %}
+    <p class="text-xs text-base-content/50 mt-1">★ — канал последнего сообщения клиента</p>
+  {% endif %}
+  <div class="text-center"><span id="afd-send-ind" class="loading loading-spinner loading-xs htmx-indicator"></span></div>
+  {% endif %}
+
+  <div class="modal-action">
+    <button type="button" class="btn btn-primary btn-sm"
+            onclick="this.closest('dialog').remove(); document.body.dispatchEvent(new CustomEvent('kanbanRefresh'));">
+      Готово
+    </button>
+  </div>
+{% endif %}

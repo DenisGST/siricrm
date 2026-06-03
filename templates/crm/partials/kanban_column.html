@@ -1,23 +1,31 @@
 {% for client in clients %}
   {% include "crm/partials/kanban_card.html" with client=client %}
 {% empty %}
+  {% if offset == 0 %}
   <div class="kanban-empty-placeholder text-xs text-base-content/50">Нет клиентов</div>
+  {% endif %}
 {% endfor %}
 
 {% if has_more %}
-<div class="mt-2 pt-2 border-t border-base-200">
-  <button type="button"
-          class="btn btn-xs btn-ghost w-full text-base-content/50"
-          hx-get="{% url 'kanban_column' status %}?all=1"
-          hx-target="#kanban-{{ status }}"
-          hx-swap="innerHTML"
-          hx-include="#kanban-filter-form"
-          hx-indicator="find .htmx-indicator">
-    <span class="htmx-indicator loading loading-spinner loading-xs"></span>
-    Показать ещё {{ more_count }}
-  </button>
-</div>
+{% comment %}intersect с root:closest .kanban-col-body — колонка скроллится внутри себя
+(overflow-y:auto), и revealed от viewport документа не срабатывает. Клик — fallback.
+column_id обычно совпадает со status, но для «Архивные/Отказники/На удаление»
+DOM-id колонки остаётся "archive" — тогда intersect-root и счётчик должны
+указывать на column_id, а сам GET идёт по status.{% endcomment %}
+<button type="button"
+        class="kanban-load-more btn btn-xs btn-ghost w-full text-base-content/50 mt-2"
+        hx-get="{% url 'kanban_column' status %}?offset={{ next_offset }}&column_id={{ column_id }}"
+        hx-target="this"
+        hx-swap="outerHTML"
+        hx-trigger="intersect root:#kanban-{{ column_id }} threshold:0.1, click"
+        hx-disabled-elt="this"
+        hx-indicator="#kanban-{{ column_id }}"
+        hx-include="#kanban-filter-form">
+  Показать ещё {{ page_size }} <span class="opacity-60">(осталось {{ remaining }})</span>
+</button>
 {% endif %}
 
-<span id="kanban-count-{{ status }}" hx-swap-oob="true"
-      class="badge badge-sm {% if status == 'lead' %}badge-warning{% elif status == 'active' %}badge-success{% elif status == 'closed' %}badge-error{% elif status == 'archive' %}badge-neutral{% else %}badge-ghost{% endif %}">{{ count }}</span>
+{% if offset == 0 %}
+<span id="kanban-count-{{ column_id }}" hx-swap-oob="true"
+      class="badge badge-sm {% if status == 'lead' %}badge-warning{% elif status == 'active' %}badge-success{% elif status == 'closed' %}badge-error{% elif status == 'archive' %}badge-neutral{% elif status == 'refused' %}badge-warning{% elif status == 'to_delete' %}badge-error{% else %}badge-ghost{% endif %}">{{ count }}</span>
+{% endif %}

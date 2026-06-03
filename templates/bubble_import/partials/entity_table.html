@@ -1,0 +1,201 @@
+{% load bubble_extras %}
+<div id="bubble-entity-inner">
+
+  {% if apply_result %}
+  <div class="alert alert-success text-sm mb-3">
+    Импортировано: {{ apply_result.imported }} ·
+    ошибок: {{ apply_result.errors }}
+    {% if apply_result.spouses_linked %} · связано супругов: {{ apply_result.spouses_linked }}{% endif %}
+  </div>
+  {% endif %}
+
+  {% if running_job %}
+    {% include "bubble_import/partials/import_job.html" with job=running_job %}
+  {% endif %}
+
+  <!-- Сводка -->
+  <div class="grid grid-cols-2 md:grid-cols-6 gap-2 mb-3">
+    {% with s=stats %}
+    <div class="stat bg-base-200 rounded p-2">
+      <div class="stat-title text-xs">В Bubble</div>
+      <div class="stat-value text-lg">{{ s.total_remote }}</div>
+    </div>
+    <div class="stat bg-base-200 rounded p-2">
+      <div class="stat-title text-xs">Выгружено</div>
+      <div class="stat-value text-lg">{{ s.total_fetched }}</div>
+    </div>
+    <div class="stat bg-base-200 rounded p-2">
+      <div class="stat-title text-xs">Ожидают</div>
+      <div class="stat-value text-lg">{{ s.pending }}</div>
+    </div>
+    <div class="stat bg-base-200 rounded p-2">
+      <div class="stat-title text-xs">Одобрено</div>
+      <div class="stat-value text-lg text-info">{{ s.approved }}</div>
+    </div>
+    <div class="stat bg-base-200 rounded p-2">
+      <div class="stat-title text-xs">Импортировано</div>
+      <div class="stat-value text-lg text-success">{{ s.imported }}</div>
+    </div>
+    <div class="stat bg-base-200 rounded p-2">
+      <div class="stat-title text-xs">Ошибки</div>
+      <div class="stat-value text-lg text-error">{{ s.errors }}</div>
+    </div>
+    {% endwith %}
+  </div>
+
+  <!-- Лог ошибок и пропусков -->
+  {% if error_summary %}
+  <details class="mb-3 border border-warning rounded bg-warning/5" open>
+    <summary class="cursor-pointer text-sm font-semibold px-3 py-2">
+      Лог ошибок и пропусков — {{ error_summary|length }} тип(ов)
+    </summary>
+    <div class="px-3 pb-3 space-y-1">
+      {% for e in error_summary %}
+      <div class="text-xs flex items-start gap-2">
+        <span class="badge badge-sm {% if e.has_error %}badge-error{% else %}badge-ghost{% endif %} shrink-0">
+          {{ e.count }}
+        </span>
+        <span>
+          {{ e.category }}
+          {% if e.sample %}
+          <span class="text-base-content/50" title="{{ e.sample }}">— пример при наведении</span>
+          {% endif %}
+        </span>
+      </div>
+      {% endfor %}
+      <div class="text-xs text-base-content/60 pt-1">
+        Подробности по каждой записи — в столбце «Статус». Фильтр «Ошибки» показывает только проблемные.
+      </div>
+    </div>
+  </details>
+  {% endif %}
+
+  <!-- Панель действий -->
+  <form id="bubble-bulk-form" class="flex flex-wrap items-center gap-2 mb-3">
+    <button type="button" class="btn btn-sm btn-primary"
+            hx-post="{% url 'bubble_import:fetch' entity %}"
+            hx-target="#bubble-entity-inner" hx-swap="outerHTML"
+            hx-disabled-elt="this"
+            {% if not api_ok %}disabled{% endif %}>
+      ↧ Загрузить ещё {{ batch }} из Bubble
+    </button>
+
+    <div class="join">
+      <button type="button" class="btn btn-sm join-item"
+              hx-post="{% url 'bubble_import:bulk_approve' entity %}"
+              hx-vals='{"action":"approve","filter":"{{ filter }}","q":"{{ q }}","page":"{{ page_obj.number }}"}'
+              hx-target="#bubble-entity-inner" hx-swap="outerHTML">☑ Одобрить страницу</button>
+      <button type="button" class="btn btn-sm join-item"
+              hx-post="{% url 'bubble_import:bulk_approve' entity %}"
+              hx-vals='{"action":"unapprove","filter":"{{ filter }}","q":"{{ q }}","page":"{{ page_obj.number }}"}'
+              hx-target="#bubble-entity-inner" hx-swap="outerHTML">☐ Снять страницу</button>
+    </div>
+
+    <div class="join">
+      <button type="button" class="btn btn-sm btn-info join-item"
+              hx-post="{% url 'bubble_import:select_all' entity %}"
+              hx-vals='{"action":"approve","filter":"{{ filter }}","q":"{{ q }}"}'
+              hx-target="#bubble-entity-inner" hx-swap="outerHTML">
+        ☑ Одобрить ВСЕ ({{ stats.not_imported }})
+      </button>
+      <button type="button" class="btn btn-sm join-item"
+              hx-post="{% url 'bubble_import:select_all' entity %}"
+              hx-vals='{"action":"unapprove","filter":"{{ filter }}","q":"{{ q }}"}'
+              hx-target="#bubble-entity-inner" hx-swap="outerHTML">☐ Снять ВСЕ</button>
+    </div>
+
+    {% include "bubble_import/partials/apply_approved_button.html" %}
+    <span hx-get="{% url 'bubble_import:apply_button' entity %}"
+          hx-trigger="approvedChanged from:body"
+          hx-target="#apply-approved-btn"
+          hx-swap="outerHTML"
+          style="display:none;"></span>
+
+    <button type="button" class="btn btn-sm btn-error"
+            hx-post="{% url 'bubble_import:start_full' entity %}"
+            hx-target="#bubble-entity-inner" hx-swap="outerHTML"
+            hx-confirm="Запустить фоновый импорт ВСЕЙ сущности «{{ entity_label }}» из Bubble? Действие необратимое."
+            hx-disabled-elt="this"
+            {% if not api_ok or running_job %}disabled{% endif %}
+            title="Полный импорт в фоне: fetch всего → одобрить → apply">
+      ⇪ Импортировать ВСЁ
+    </button>
+  </form>
+
+  <!-- Фильтр + поиск -->
+  <div class="flex flex-wrap items-center gap-2 mb-2 text-sm">
+    <div class="join">
+      {% with cur=filter %}
+      <a class="btn btn-xs join-item {% if cur == 'all' %}btn-active{% endif %}"
+         hx-get="{% url 'bubble_import:entity_table' entity %}?filter=all&q={{ q }}"
+         hx-target="#bubble-entity-inner" hx-swap="outerHTML">Все</a>
+      <a class="btn btn-xs join-item {% if cur == 'pending' %}btn-active{% endif %}"
+         hx-get="{% url 'bubble_import:entity_table' entity %}?filter=pending&q={{ q }}"
+         hx-target="#bubble-entity-inner" hx-swap="outerHTML">Ожидают</a>
+      <a class="btn btn-xs join-item {% if cur == 'approved' %}btn-active{% endif %}"
+         hx-get="{% url 'bubble_import:entity_table' entity %}?filter=approved&q={{ q }}"
+         hx-target="#bubble-entity-inner" hx-swap="outerHTML">Одобрены</a>
+      <a class="btn btn-xs join-item {% if cur == 'imported' %}btn-active{% endif %}"
+         hx-get="{% url 'bubble_import:entity_table' entity %}?filter=imported&q={{ q }}"
+         hx-target="#bubble-entity-inner" hx-swap="outerHTML">Импортированы</a>
+      <a class="btn btn-xs join-item {% if cur == 'error' %}btn-active{% endif %}"
+         hx-get="{% url 'bubble_import:entity_table' entity %}?filter=error&q={{ q }}"
+         hx-target="#bubble-entity-inner" hx-swap="outerHTML">Ошибки</a>
+      {% endwith %}
+    </div>
+    <input type="search" name="q" value="{{ q }}" placeholder="Поиск…"
+           class="input input-bordered input-xs w-48"
+           hx-get="{% url 'bubble_import:entity_table' entity %}?filter={{ filter }}"
+           hx-target="#bubble-entity-inner" hx-swap="outerHTML"
+           hx-trigger="keyup changed delay:400ms">
+  </div>
+
+  <!-- Таблица -->
+  <div class="overflow-x-auto border border-base-300 rounded">
+    <table class="table table-xs table-zebra">
+      <thead>
+        <tr class="bg-base-200">
+          <th class="w-8"></th>
+          {% if editable %}
+          <th>Фамилия</th><th>Имя</th><th>Отчество</th><th>Телефон</th><th>Email</th><th>Пол</th>
+          {% else %}
+          <th>Наименование</th><th>Детали</th>
+          {% endif %}
+          {% if entity == 'ProjectBFL' %}<th>Статус услуги</th>{% endif %}
+          <th>Создан</th>
+          <th>Статус</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for rec in page_obj %}
+          {% include "bubble_import/partials/row.html" %}
+        {% empty %}
+        <tr><td colspan="9" class="text-center text-base-content/60 py-4">
+          Нет записей. Нажмите «Загрузить ещё из Bubble».
+        </td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Пагинация -->
+  {% if page_obj.paginator.num_pages > 1 %}
+  <div class="flex items-center justify-center gap-1 mt-3">
+    {% if page_obj.has_previous %}
+    <a class="btn btn-xs"
+       hx-get="{% url 'bubble_import:entity_table' entity %}?filter={{ filter }}&q={{ q }}&page={{ page_obj.previous_page_number }}"
+       hx-target="#bubble-entity-inner" hx-swap="outerHTML">←</a>
+    {% endif %}
+    <span class="text-xs px-2">
+      стр. {{ page_obj.number }} из {{ page_obj.paginator.num_pages }}
+      ({{ page_obj.paginator.count }} записей)
+    </span>
+    {% if page_obj.has_next %}
+    <a class="btn btn-xs"
+       hx-get="{% url 'bubble_import:entity_table' entity %}?filter={{ filter }}&q={{ q }}&page={{ page_obj.next_page_number }}"
+       hx-target="#bubble-entity-inner" hx-swap="outerHTML">→</a>
+    {% endif %}
+  </div>
+  {% endif %}
+
+</div>

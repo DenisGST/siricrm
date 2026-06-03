@@ -1,0 +1,71 @@
+{% load bubble_extras %}
+<tr id="rec-{{ rec.pk }}" class="{% if rec.status == 'imported' %}bg-success/10{% elif rec.status == 'error' %}bg-error/10{% endif %}">
+  <td>
+    <input type="checkbox" class="checkbox checkbox-xs"
+           name="ids" value="{{ rec.pk }}" form="bubble-bulk-form"
+           {% if rec.approved %}checked{% endif %}
+           {% if rec.status == 'imported' %}disabled{% endif %}
+           hx-post="{% url 'bubble_import:toggle_approve' entity rec.pk %}"
+           hx-target="#rec-{{ rec.pk }}" hx-swap="outerHTML">
+  </td>
+
+  {% if editable %}
+  <td><input value="{{ rec|bv:'lName' }}" name="value" class="input input-xs input-ghost w-28"
+        hx-post="{% url 'bubble_import:edit_field' entity rec.pk %}" hx-vals='{"field":"lName"}'
+        hx-trigger="change" hx-target="#rec-{{ rec.pk }}" hx-swap="outerHTML"
+        {% if rec.status == 'imported' %}disabled{% endif %}></td>
+  <td><input value="{{ rec|bv:'fName' }}" name="value" class="input input-xs input-ghost w-24"
+        hx-post="{% url 'bubble_import:edit_field' entity rec.pk %}" hx-vals='{"field":"fName"}'
+        hx-trigger="change" hx-target="#rec-{{ rec.pk }}" hx-swap="outerHTML"
+        {% if rec.status == 'imported' %}disabled{% endif %}></td>
+  <td><input value="{{ rec|bv:'mName' }}" name="value" class="input input-xs input-ghost w-24"
+        hx-post="{% url 'bubble_import:edit_field' entity rec.pk %}" hx-vals='{"field":"mName"}'
+        hx-trigger="change" hx-target="#rec-{{ rec.pk }}" hx-swap="outerHTML"
+        {% if rec.status == 'imported' %}disabled{% endif %}></td>
+  <td><input value="{{ rec|bv:'tel' }}" name="value" class="input input-xs input-ghost w-28"
+        hx-post="{% url 'bubble_import:edit_field' entity rec.pk %}" hx-vals='{"field":"tel"}'
+        hx-trigger="change" hx-target="#rec-{{ rec.pk }}" hx-swap="outerHTML"
+        {% if rec.status == 'imported' %}disabled{% endif %}></td>
+  <td><input value="{{ rec|bv:'email' }}" name="value" class="input input-xs input-ghost w-40"
+        hx-post="{% url 'bubble_import:edit_field' entity rec.pk %}" hx-vals='{"field":"email"}'
+        hx-trigger="change" hx-target="#rec-{{ rec.pk }}" hx-swap="outerHTML"
+        {% if rec.status == 'imported' %}disabled{% endif %}></td>
+  <td class="text-xs">{{ rec|bv:'Пол' }}</td>
+  {% else %}
+  <td class="font-medium">{{ rec.display_title }}</td>
+  <td class="text-xs text-base-content/70">{{ rec.display_subtitle }}</td>
+  {% endif %}
+
+  {% if entity == 'ProjectBFL' %}
+  <td class="text-xs">
+    {% if rec.display_status %}
+      <span class="badge badge-sm badge-outline">{{ rec.display_status }}</span>
+    {% else %}—{% endif %}
+  </td>
+  {% endif %}
+
+  <td class="text-xs whitespace-nowrap">{{ rec.bubble_created|date:"d.m.Y"|default:"—" }}</td>
+  <td class="min-w-[14rem]">
+    {% if rec.status == 'imported' %}
+      <span class="badge badge-success badge-xs">импортирован</span>
+      {% if rec.error %}<div class="text-base-content/60 text-xs mt-0.5 leading-snug">{{ rec.error }}</div>{% endif %}
+    {% elif rec.status == 'error' %}
+      <span class="badge badge-error badge-xs">ошибка</span>
+      <div class="text-error text-xs mt-0.5 leading-snug">{{ rec.error }}</div>
+      {% if entity == 'Man' %}
+      <label class="flex items-center gap-1 mt-1 text-xs cursor-pointer">
+        <input type="checkbox" class="checkbox checkbox-xs"
+               {% if rec|bv:'overwrite_dup' %}checked{% endif %}
+               hx-post="{% url 'bubble_import:toggle_overwrite_dup' entity rec.pk %}"
+               hx-target="#rec-{{ rec.pk }}" hx-swap="outerHTML">
+        <span>Перезаписать существующего</span>
+      </label>
+      {% endif %}
+    {% elif rec.status == 'skipped' %}
+      <span class="badge badge-ghost badge-xs">пропущен</span>
+      {% if rec.error %}<div class="text-base-content/60 text-xs mt-0.5 leading-snug">{{ rec.error }}</div>{% endif %}
+    {% else %}
+      <span class="badge badge-ghost badge-xs">ожидает</span>
+    {% endif %}
+  </td>
+</tr>

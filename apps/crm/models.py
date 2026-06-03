@@ -8,6 +8,8 @@ from apps.files.models import StoredFile
 from apps.core.models import Employee
 from django.contrib.postgres.fields import JSONField
 
+from apps.crm.managers import ClientQuerySet, ServiceQuerySet
+
 
 
 class Region(models.Model):
@@ -69,6 +71,11 @@ class Client(TimeStampedModel):
         verbose_name="Telegram ID",
     )
     max_chat_id = models.CharField(max_length=64, blank=True, null=True)
+    whatsapp_phone = models.CharField(
+        max_length=20, blank=True, null=True, unique=True,
+        verbose_name="WhatsApp phone (E.164 без +)",
+        help_text="Например, 79991234567",
+    )
     first_name = models.CharField(max_length=255, verbose_name='Имя')
     last_name = models.CharField(max_length=255, blank=True, verbose_name='Фамилия')
     patronymic = models.CharField(max_length=255, blank=True, verbose_name='Отчество')
@@ -104,15 +111,52 @@ class Client(TimeStampedModel):
         ('active', 'Активный'),
         ('closed', 'Закрыт'),
         ('archive', 'Архивный'),
+        ('refused', 'Отказники'),
+        ('to_delete', 'На удаление'),
     ]
+    # Статусы, не отображаемые в канбане по клиентам.
+    KANBAN_HIDDEN_STATUSES = ('refused', 'to_delete')
     status = models.CharField(
         max_length=20,
         choices=STATUS_CHOICES,
         default='lead',
         verbose_name='Статус'
     )
-    
-    
+    is_identified = models.BooleanField(
+        default=False,
+        verbose_name='Идентифицирован',
+        help_text='ФИО клиента подтверждено сотрудником через модалку «Идентификация»',
+    )
+
+    # Доп. атрибуты (часть приходит из импорта Bubble.io)
+    GENDER_CHOICES = [
+        ('male', 'Мужчина'),
+        ('female', 'Женщина'),
+    ]
+    gender = models.CharField(
+        'Пол', max_length=10, choices=GENDER_CHOICES, blank=True, default='',
+    )
+    is_married = models.BooleanField('В браке', default=False)
+    spouse = models.ForeignKey(
+        'self', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='spouse_of', verbose_name='Супруг(а)',
+    )
+    referral_source = models.CharField(
+        'Источник привлечения', max_length=255, blank=True, default='',
+        help_text='Откуда клиент узнал о компании',
+    )
+
+    # Импорт из Bubble.io — bubble _id для дедупликации при повторном импорте.
+    bubble_id = models.CharField(
+        'Bubble ID', max_length=64, blank=True, null=True, unique=True,
+        help_text='Идентификатор записи в исходной CRM на bubble.io',
+    )
+
+    objects = ClientQuerySet.as_manager()
+
+    @property
+    def is_from_bubble(self) -> bool:
+        return bool(self.bubble_id)
 
     def __str__(self):
         return f"{self.first_name} {self.last_name} (@{self.username})"
@@ -125,6 +169,64 @@ class Client(TimeStampedModel):
             models.Index(fields=['telegram_id']),
             models.Index(fields=['status']),
         ]
+
+
+class ClientPhone(models.Model):
+    """Все телефоны клиента: основной, WhatsApp, Telegram, MAX, дополнительные.
+
+    Источник правды для поиска клиента по номеру (входящий WhatsApp, лид с
+    лендинга, дедуп при импорте). `Client.phone` и `Client.whatsapp_phone`
+    оставлены как кэш — пишутся синхронно при изменении этого справочника.
+
+    Номер хранится в E.164 без «+» (например, 79991234567). Шаблоны/UI при
+    показе добавляют «+» сами.
+    """
+    PURPOSE_CHOICES = [
+        ("primary", "Основной"),
+        ("whatsapp", "WhatsApp"),
+        ("telegram", "Telegram"),
+        ("max", "MAX"),
+        ("additional", "Дополнительный"),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    client = models.ForeignKey(
+        Client, on_delete=models.CASCADE, related_name="phones",
+        verbose_name="Клиент",
+    )
+    phone = models.CharField(
+        "Номер телефона", max_length=20,
+        help_text="E.164 без «+», например 79991234567",
+    )
+    purpose = models.CharField(
+        "Назначение", max_length=20,
+        choices=PURPOSE_CHOICES, default="additional",
+    )
+    is_active = models.BooleanField("Активен", default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Телефон клиента"
+        verbose_name_plural = "Телефоны клиента"
+        ordering = ["purpose", "phone"]
+        constraints = [
+            # Один номер может принадлежать только одному клиенту в рамках
+            # назначения (один WhatsApp-номер — у одного клиента и т. п.).
+            # У того же клиента тот же номер можно зафиксировать с разными
+            # назначениями (primary + whatsapp одновременно).
+            models.UniqueConstraint(
+                fields=["phone", "purpose"],
+                name="uniq_clientphone_phone_purpose",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["phone"]),
+            models.Index(fields=["client", "purpose"]),
+        ]
+
+    def __str__(self):
+        return f"+{self.phone} · {self.get_purpose_display()}"
 
 
 class ClientEmployee(models.Model):
@@ -155,6 +257,31 @@ class ClientEmployee(models.Model):
 
     def __str__(self):
         return f"{self.client} — {self.employee} ({self.get_messenger_status_display()})"
+
+
+class ClientNameHistory(models.Model):
+    """Предыдущие ФИО клиента (смена фамилии/имени/отчества).
+
+    Заполняется при импорте из Bubble (поля fNameOld/lNameOld/mNameOld/lastFIO).
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    client = models.ForeignKey(
+        Client, on_delete=models.CASCADE, related_name="name_history",
+        verbose_name="Клиент",
+    )
+    last_name = models.CharField("Прежняя фамилия", max_length=255, blank=True, default="")
+    first_name = models.CharField("Прежнее имя", max_length=255, blank=True, default="")
+    patronymic = models.CharField("Прежнее отчество", max_length=255, blank=True, default="")
+    note = models.CharField("Комментарий", max_length=500, blank=True, default="")
+    created_at = models.DateTimeField("Добавлено", auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Прежнее ФИО клиента"
+        verbose_name_plural = "История ФИО клиентов"
+        ordering = ["client", "-created_at"]
+
+    def __str__(self):
+        return f"{self.client}: {self.last_name} {self.first_name} {self.patronymic}".strip()
 
 
 class Address(TimeStampedModel):
@@ -255,6 +382,10 @@ class Address(TimeStampedModel):
 class LegalEntityKind(TimeStampedModel):
     """Справочник типов юридических лиц (Банк, МФО, СРО, КО, ФНС, ФССП и т. п.)."""
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    bubble_id = models.CharField(
+        "Bubble ID", max_length=64, blank=True, null=True, unique=True,
+        help_text="ID соответствующей записи в Bubble (для импорта).",
+    )
     name = models.CharField(max_length=255, unique=True, verbose_name="Наименование типа")
     short_name = models.CharField(max_length=50, verbose_name="Сокращённое наименование")
 
@@ -270,6 +401,10 @@ class LegalEntityKind(TimeStampedModel):
 class LegalEntity(TimeStampedModel):
     """Юридическое лицо"""
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    bubble_id = models.CharField(
+        "Bubble ID", max_length=64, blank=True, null=True, unique=True,
+        help_text="ID соответствующей записи в Bubble (для импорта Organization).",
+    )
 
     ENTITY_TYPE_CHOICES = [
         ("ooo", "ООО"),
@@ -347,85 +482,203 @@ class LegalEntity(TimeStampedModel):
         ordering = ["name"]
 
 
-class ClientEvent(models.Model):
-    """Лог событий по клиенту.
 
-    Все значимые действия фиксируются здесь. Набор event_type расширяется
-    по мере доработки CRM — добавляем новые choices, не меняя схему.
+# ─── Унифицированный лог клиента (новая архитектура) ───────────────────────
+# EventType / ActionType — редактируемые справочники.
+# ClientLogEntry — единая запись (kind=event|action) с FK на нужный справочник.
+# См. CLAUDE.md секцию «Лог клиента».
+
+class EventType(TimeStampedModel):
+    """Справочник типов событий. Событие = что произошло.
+
+    Источник (source) — кто сгенерировал событие: система, суд, клиент,
+    юр.лицо или сотрудник. На сотрудника-актора пишем в ClientLogEntry.employee.
     """
-    EVENT_CHOICES = [
-        # --- Общие ---
-        ("first_contact",    "Первое обращение"),
-        ("status_change",    "Смена статуса"),
-        ("note",             "Заметка"),
-        # --- Договор ---
-        ("contract_created", "Заключение договора"),
-        ("contract_terminated", "Расторжение договора"),
-        # --- Сотрудники ---
-        ("employee_assigned",  "Назначен сотрудник"),
-        ("employee_removed",   "Сотрудник снят"),
-        # --- Производство ---
-        ("dept_assigned",    "Передан в работу отдела"),
-        ("claim_filed",      "Подан иск в суд"),
-        ("hearing_scheduled","Назначено судебное заседание"),
-        ("procedure_started","Введена процедура"),
-        ("procedure_ended",  "Окончена процедура"),
-        # --- Мессенджер ---
-        ("dialog_started",   "Начат диалог"),
-        ("dialog_ended",     "Окончен диалог"),
-        ("file_received",    "Получен файл"),
-        ("file_sent",        "Отправлен файл"),
-        # --- Корреспонденция ---
-        ("letter_outgoing",  "Направлено исходящее письмо"),
-        ("letter_incoming",  "Получено входящее письмо"),
-        # --- Услуги ---
-        ("service_created",  "Услуга добавлена"),
-        ("service_deleted",  "Услуга удалена"),
-        # --- Консультации ---
-        ("consultation_booked",      "Записан на консультацию"),
-        ("consultation_result",      "Результат консультации"),
-        ("consultation_transferred", "Консультация перенесена"),
-        ("consultation_edited",      "Консультация изменена"),
-        # --- Анкеты ---
-        ("questionnaire_created", "Анкета создана"),
-        ("questionnaire_edited",  "Анкета отредактирована"),
-        ("questionnaire_deleted", "Анкета удалена"),
-        # --- Система ---
-        ("system",           "Системное событие"),
+    SOURCE_CHOICES = [
+        ("system",       "Система"),
+        ("court",        "Суд"),
+        ("client",       "Клиент"),
+        ("legal_entity", "Юр. лицо"),
+        ("employee",     "Сотрудник"),
+    ]
+    code = models.CharField("Код", max_length=40, unique=True)
+    name = models.CharField("Название", max_length=120)
+    source = models.CharField(
+        "Источник", max_length=20, choices=SOURCE_CHOICES, default="system",
+    )
+    description = models.TextField("Описание", blank=True)
+    is_system = models.BooleanField(
+        "Системный", default=False,
+        help_text="Системные типы нельзя удалять из UI.",
+    )
+    is_manual = models.BooleanField(
+        "Доступно для ручного добавления", default=False,
+        help_text=(
+            "Тип можно выбрать в форме ручного добавления записи в логе "
+            "клиента. Авто-генерируемые типы (мессенджер, смена статуса, "
+            "импорт и т.п.) не помечаются."
+        ),
+    )
+    is_active = models.BooleanField("Активен", default=True)
+    order = models.PositiveIntegerField("Порядок", default=0)
+
+    class Meta:
+        verbose_name = "Тип события"
+        verbose_name_plural = "Типы событий"
+        ordering = ["order", "name"]
+
+    def __str__(self):
+        return self.name
+
+
+class ActionType(TimeStampedModel):
+    """Справочник типов действий. Действие = что сотрудник сделал.
+
+    spawns_event — если задан, при записи действия автоматически создаётся
+    событие указанного типа с parent=созданное действие. Так моделируем
+    «действие порождает событие» (например ActionType `service_create`
+    порождает EventType `service_created`).
+    """
+    code = models.CharField("Код", max_length=40, unique=True)
+    name = models.CharField("Название", max_length=120)
+    description = models.TextField("Описание", blank=True)
+    spawns_event = models.ForeignKey(
+        EventType,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name="spawned_by_actions",
+        verbose_name="Порождает событие",
+        help_text="При записи действия автоматически создаётся событие этого типа.",
+    )
+    is_system = models.BooleanField(
+        "Системный", default=False,
+        help_text="Системные типы нельзя удалять из UI.",
+    )
+    is_manual = models.BooleanField(
+        "Доступно для ручного добавления", default=False,
+        help_text=(
+            "Тип можно выбрать в форме ручного добавления записи в логе "
+            "клиента. Авто-генерируемые типы (отправка файла из чата, "
+            "создание услуги, платежи и т.п.) не помечаются."
+        ),
+    )
+    is_active = models.BooleanField("Активен", default=True)
+    order = models.PositiveIntegerField("Порядок", default=0)
+
+    class Meta:
+        verbose_name = "Тип действия"
+        verbose_name_plural = "Типы действий"
+        ordering = ["order", "name"]
+
+    def __str__(self):
+        return self.name
+
+
+# Стандартный порядок действий по событию: M2M «событие → действия».
+# Определяется после ActionType, поэтому через add_to_class.
+EventType.add_to_class(
+    "standard_actions",
+    models.ManyToManyField(
+        ActionType,
+        blank=True,
+        related_name="standard_for_events",
+        verbose_name="Стандартные действия",
+        help_text=(
+            "Действия, которые сотрудник должен выполнить при наступлении "
+            "этого события. Используются как подсказки в UI."
+        ),
+    ),
+)
+
+
+class ClientLogEntry(models.Model):
+    """Единый лог клиента: события и действия в одной таблице.
+
+    Замена устаревшей `ClientEvent` (миграция 0071). Subject события/действия —
+    Client, либо «наша компания» (subject_kind='company'), либо Employee
+    (subject_kind='employee'). В этой итерации заполняется только Client.
+
+    parent — связь между записями: action, порождённое стандартной процедурой
+    по event'у, указывает на event как parent. Spawned-event от action указывает
+    на action как parent (см. helper apps/crm/client_log.py).
+    """
+    KIND_CHOICES = [("event", "Событие"), ("action", "Действие")]
+    SUBJECT_KIND_CHOICES = [
+        ("client",   "Клиент"),
+        ("company",  "Наша компания"),
+        ("employee", "Сотрудник"),
     ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    bubble_id = models.CharField(
+        "Bubble ID", max_length=64, blank=True, null=True, unique=True,
+    )
+
+    subject_kind = models.CharField(
+        "Subject", max_length=10, choices=SUBJECT_KIND_CHOICES, default="client",
+    )
     client = models.ForeignKey(
-        "Client",
-        on_delete=models.CASCADE,
-        related_name="events",
-        verbose_name="Клиент",
+        "Client", on_delete=models.CASCADE, null=True, blank=True,
+        related_name="log_entries", verbose_name="Клиент",
     )
-    event_type = models.CharField(
-        "Тип события", max_length=30, choices=EVENT_CHOICES, default="note",
+    subject_employee = models.ForeignKey(
+        Employee, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="log_as_subject", verbose_name="Сотрудник (subject)",
     )
-    description = models.TextField("Описание", blank=True)
+
+    kind = models.CharField("Тип записи", max_length=10, choices=KIND_CHOICES)
+    event_type = models.ForeignKey(
+        EventType, on_delete=models.PROTECT, null=True, blank=True,
+        related_name="entries", verbose_name="Тип события",
+    )
+    action_type = models.ForeignKey(
+        ActionType, on_delete=models.PROTECT, null=True, blank=True,
+        related_name="entries", verbose_name="Тип действия",
+    )
+
+    comment = models.TextField("Комментарий", blank=True)
     old_value = models.CharField("Старое значение", max_length=255, blank=True)
     new_value = models.CharField("Новое значение", max_length=255, blank=True)
+
     employee = models.ForeignKey(
-        Employee,
-        on_delete=models.SET_NULL,
-        null=True, blank=True,
-        related_name="client_events",
-        verbose_name="Сотрудник",
+        Employee, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="log_entries", verbose_name="Сотрудник-актор",
+    )
+    parent = models.ForeignKey(
+        "self", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="children", verbose_name="Родительская запись",
+    )
+    stored_file = models.ForeignKey(
+        StoredFile, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="log_entries", verbose_name="Файл",
+        help_text="Привязанный файл (для событий «Получен/Отправлен файл»)",
     )
     created_at = models.DateTimeField("Дата и время", auto_now_add=True)
 
     class Meta:
-        verbose_name = "Событие клиента"
-        verbose_name_plural = "События клиентов"
+        verbose_name = "Запись лога клиента"
+        verbose_name_plural = "Лог клиента"
         ordering = ["-created_at"]
         indexes = [
             models.Index(fields=["client", "created_at"]),
+            models.Index(fields=["subject_kind", "kind"]),
+            models.Index(fields=["kind", "event_type"]),
+            models.Index(fields=["kind", "action_type"]),
+        ]
+        constraints = [
+            models.CheckConstraint(
+                check=(
+                    models.Q(kind="event", event_type__isnull=False, action_type__isnull=True)
+                    | models.Q(kind="action", action_type__isnull=False, event_type__isnull=True)
+                ),
+                name="log_entry_kind_matches_type_fk",
+            ),
         ]
 
     def __str__(self):
-        return f"{self.client} — {self.get_event_type_display()} ({self.created_at:%d.%m.%Y %H:%M})"
+        subj = self.client or self.subject_employee or self.get_subject_kind_display()
+        type_obj = self.event_type or self.action_type
+        return f"{subj} — {type_obj} ({self.created_at:%d.%m.%Y %H:%M})"
 
 
 class Message(TimeStampedModel):
@@ -467,15 +720,25 @@ class Message(TimeStampedModel):
     
     channel = models.CharField(
         max_length=16,
-        choices=[("telegram", "Telegram"), ("max", "MAX")],
+        choices=[("telegram", "Telegram"), ("max", "MAX"), ("whatsapp", "WhatsApp")],
         default="telegram",
     )
-    
+
     max_message_id = models.CharField(
         max_length=128,
         blank=True,
         null=True,
         help_text="ID сообщения в MAX",
+    )
+
+    whatsapp_message_id = models.CharField(
+        max_length=128, blank=True, null=True,
+        help_text="ID сообщения в WhatsApp (Meta wamid)",
+    )
+
+    bubble_id = models.CharField(
+        max_length=64, blank=True, null=True, unique=True,
+        help_text="ID записи MessageWSP в исходной CRM на bubble.io",
     )
 
     raw_payload = models.JSONField(
@@ -709,8 +972,17 @@ class ServiceEmployeeStatus(TimeStampedModel):
     common_status = models.ForeignKey(
         ServiceCommonStatus,
         on_delete=models.CASCADE,
+        null=True, blank=True,
         related_name="employee_statuses",
         verbose_name="Общий статус услуги",
+        help_text="Пусто — универсальная колонка-инбокс «Не принято» "
+                  "(не привязана к стадии/услуге).",
+    )
+    is_inbox = models.BooleanField(
+        "Инбокс «Не принято»", default=False,
+        help_text="Универсальная колонка для услуг, переданных сотруднику/"
+                  "отделу и ещё не принятых в работу. Одна на сотрудника, "
+                  "не привязана к стадии услуги (common_status пуст).",
     )
     name = models.CharField("Наименование статуса", max_length=100)
     comment = models.TextField("Комментарий", blank=True)
@@ -719,7 +991,7 @@ class ServiceEmployeeStatus(TimeStampedModel):
 
     @property
     def service_name(self):
-        return self.common_status.service_name
+        return self.common_status.service_name if self.common_status_id else None
 
     class Meta:
         verbose_name = "Статус услуги сотрудника"
@@ -730,10 +1002,18 @@ class ServiceEmployeeStatus(TimeStampedModel):
                 fields=["employee", "common_status", "name"],
                 name="unique_emp_status_per_emp_common_status",
             ),
+            # Один инбокс «Не принято» на сотрудника.
+            models.UniqueConstraint(
+                fields=["employee"],
+                condition=models.Q(is_inbox=True),
+                name="unique_inbox_status_per_employee",
+            ),
         ]
 
     def __str__(self):
-        return f"{self.employee} / {self.common_status.service_name.short_name} / {self.common_status.name}: {self.name}"
+        if self.common_status_id:
+            return f"{self.employee} / {self.common_status.service_name.short_name} / {self.common_status.name}: {self.name}"
+        return f"{self.employee} / [инбокс]: {self.name}"
 
 
 class ServiceTag(TimeStampedModel):
@@ -849,6 +1129,66 @@ class Service(TimeStampedModel):
         max_digits=14, decimal_places=2,
         null=True, blank=True,
     )
+
+    # Параметры генератора графика платежей (модалка «График платежей»).
+    legal_services_amount = models.DecimalField(
+        "Юруслуги по договору, ₽",
+        max_digits=14, decimal_places=2,
+        default=72000,
+    )
+    installment_months = models.PositiveSmallIntegerField(
+        "Рассрочка, мес",
+        default=6,
+    )
+    doc_collection = models.DecimalField(
+        "Сбор документов, ₽", max_digits=14, decimal_places=2, default=7500,
+    )
+    postal_costs = models.DecimalField(
+        "Почтовые расходы, ₽", max_digits=14, decimal_places=2, default=0,
+    )
+    state_duty = models.DecimalField(
+        "Гос. пошлина, ₽", max_digits=14, decimal_places=2, default=0,
+    )
+    fu_fee = models.DecimalField(
+        "Вознаграждение ФУ, ₽", max_digits=14, decimal_places=2, default=25000,
+    )
+    procedure_costs = models.DecimalField(
+        "Расходы на процедуру, ₽", max_digits=14, decimal_places=2, default=20000,
+    )
+    additional_costs = models.DecimalField(
+        "Доп. расходы, ₽", max_digits=14, decimal_places=2, default=0,
+    )
+
+    # Смещения дат (в месяцах, 0–6) — настраиваются в модалке графика.
+    schedule_legal_offset = models.PositiveSmallIntegerField(
+        "Первый платёж за юруслуги через, мес", default=2,
+    )
+    schedule_fu_offset = models.PositiveSmallIntegerField(
+        "Вознаграждение ФУ через, мес", default=1,
+    )
+    schedule_procedure_offset = models.PositiveSmallIntegerField(
+        "Расходы на процедуру через, мес", default=2,
+    )
+
+    # Метаданные графика: дата составления / последнего изменения + автор.
+    schedule_date = models.DateField(
+        "Дата составления графика платежей", null=True, blank=True,
+    )
+    schedule_created_by = models.ForeignKey(
+        "core.Employee",
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name="schedules_created",
+        verbose_name="Кто составил график",
+    )
+    schedule_updated_by = models.ForeignKey(
+        "core.Employee",
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name="schedules_updated",
+        verbose_name="Кто изменил график",
+    )
+
     payment_procedure = models.ForeignKey(
         PaymentProcedure,
         on_delete=models.SET_NULL,
@@ -881,6 +1221,13 @@ class Service(TimeStampedModel):
     )
 
     is_active = models.BooleanField("Активна", default=True)
+
+    bubble_id = models.CharField(
+        'Bubble ID', max_length=64, blank=True, null=True, unique=True,
+        help_text='Идентификатор ProjectBFL в исходной CRM на bubble.io',
+    )
+
+    objects = ServiceQuerySet.as_manager()
 
     def __str__(self):
         return f"{self.name.short_name} ({self.client})"
@@ -1025,4 +1372,344 @@ class ServiceLog(models.Model):
 
     def __str__(self):
         return f"{self.service} — {self.get_action_display()} ({self.created_at:%d.%m %H:%M})"
+
+
+class MessageTemplate(models.Model):
+    """Шаблон сообщения для отправки клиенту через мессенджеры.
+
+    Используется для быстрых ответов (Telegram/MAX — свободный текст) и
+    Meta-approved-шаблонов WhatsApp Business (WABA).
+
+    WA-only поля заполняются если в ``channels`` есть ``'whatsapp'``.
+    Без модерации Meta WA-шаблон отправлять нельзя — статус контролируется
+    через ``whatsapp_meta_status`` (см. apps/whatsapp в дальнейшем).
+    """
+
+    CHANNEL_CHOICES = [
+        ('telegram', 'Telegram'),
+        ('max', 'MAX'),
+        ('whatsapp', 'WhatsApp'),
+    ]
+
+    WA_STATUS_CHOICES = [
+        ('draft', 'Черновик'),
+        ('pending', 'На модерации'),
+        ('approved', 'Одобрен'),
+        ('rejected', 'Отклонён'),
+    ]
+
+    WA_CATEGORY_CHOICES = [
+        ('UTILITY', 'Сервисный (UTILITY)'),
+        ('MARKETING', 'Маркетинговый (MARKETING)'),
+        ('AUTHENTICATION', 'Аутентификация (AUTHENTICATION)'),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField('Название', max_length=200, unique=True)
+    body = models.TextField(
+        'Текст шаблона',
+        help_text='Плейсхолдеры: {{ client.first_name }}, {{ client.last_name }}, '
+                  '{{ service.numb_dogovor }}, {{ employee.user.first_name }}. Для WA-шаблонов '
+                  'переменные обозначаются {{1}}, {{2}} согласно требованиям Meta.',
+    )
+    channels = models.JSONField(
+        'Каналы',
+        default=list,
+        help_text='Список из telegram / max / whatsapp.',
+    )
+    is_active = models.BooleanField('Активен', default=True)
+
+    # WhatsApp Business-specific
+    whatsapp_meta_id = models.CharField(
+        'Meta template ID', max_length=200, blank=True, default='',
+    )
+    whatsapp_meta_status = models.CharField(
+        'Статус модерации Meta', max_length=20,
+        choices=WA_STATUS_CHOICES, default='draft', blank=True,
+    )
+    whatsapp_meta_rejection = models.TextField(
+        'Причина отклонения Meta', blank=True, default='',
+    )
+    whatsapp_category = models.CharField(
+        'Категория WA', max_length=20, choices=WA_CATEGORY_CHOICES,
+        blank=True, default='',
+    )
+    whatsapp_language = models.CharField(
+        'Язык WA', max_length=10, default='ru', blank=True,
+    )
+    whatsapp_params_schema = models.JSONField(
+        'Описание параметров WA',
+        default=list, blank=True,
+        help_text='Список объектов вида {"placeholder": "{{1}}", "example": "Иван"}.',
+    )
+
+    created_by = models.ForeignKey(
+        Employee, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='message_templates_created',
+    )
+    updated_by = models.ForeignKey(
+        Employee, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='message_templates_updated',
+    )
+    created_at = models.DateTimeField('Создан', auto_now_add=True)
+    updated_at = models.DateTimeField('Обновлён', auto_now=True)
+
+    class Meta:
+        verbose_name = 'Шаблон сообщения'
+        verbose_name_plural = 'Шаблоны сообщений'
+        ordering = ['name']
+
+    def __str__(self):
+        return self.name
+
+    @property
+    def is_for_whatsapp(self) -> bool:
+        return 'whatsapp' in (self.channels or [])
+
+
+# ============================================================================
+# Кредиторы клиента (для БФЛ)
+# ============================================================================
+
+class Kreditor(TimeStampedModel):
+    """Кредитор клиента в рамках процедуры банкротства.
+
+    Жизненный цикл:
+    1. Заполняется в анкете БФЛ (source='anketa', sum_anketa со слов клиента).
+    2. После сбора справок юрист сверяет и корректирует (source='verified',
+       sum_verified — по факту).
+    3. В ходе процедуры пишутся события смены статуса (KreditorStatusEvent):
+       заявление подано → включено в РТК → оплачено частично / полностью.
+
+    Субъект кредитора — ровно одно из трёх (CheckConstraint):
+    legal_entity (юрлицо/ИП/банк/МФО/госорган), client_person (физлицо-
+    клиент Сириуса) или name_manual (свободная строка для случаев, когда
+    справочник ещё не привязан).
+    """
+    SOURCE_CHOICES = [
+        ('anketa', 'Из анкеты клиента'),
+        ('verified', 'По полученным справкам'),
+        ('manual', 'Добавлен вручную'),
+    ]
+    STATUS_CHOICES = [
+        ('', '—'),
+        ('claim_filed', 'Подано заявление о включении в РТК'),
+        ('included', 'Включено в РТК'),
+        ('paid_partial', 'Оплачено частично'),
+        ('paid_full', 'Оплачено полностью'),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    bubble_id = models.CharField(
+        "Bubble ID", max_length=64, blank=True, null=True, unique=True,
+    )
+
+    service = models.ForeignKey(
+        Service, on_delete=models.CASCADE, related_name='kreditors',
+        verbose_name='Услуга БФЛ',
+    )
+
+    legal_entity = models.ForeignKey(
+        LegalEntity, on_delete=models.PROTECT,
+        null=True, blank=True, related_name='kreditor_of',
+        verbose_name='Юрлицо/ИП (кредитор)',
+    )
+    client_person = models.ForeignKey(
+        Client, on_delete=models.PROTECT,
+        null=True, blank=True, related_name='as_kreditor_for',
+        verbose_name='Физлицо (кредитор)',
+    )
+    name_manual = models.CharField(
+        'Имя кредитора (свободный ввод)', max_length=500, blank=True,
+        help_text='Заполняется, когда субъект ещё не привязан к справочнику.',
+    )
+
+    source = models.CharField(
+        'Источник', max_length=12, choices=SOURCE_CHOICES, default='anketa',
+    )
+    debt_basis = models.TextField('Основание долга', blank=True)
+    sum_anketa = models.DecimalField(
+        'Сумма со слов клиента (анкета)', max_digits=14, decimal_places=2,
+        null=True, blank=True,
+    )
+    sum_verified = models.DecimalField(
+        'Сумма по справке', max_digits=14, decimal_places=2,
+        null=True, blank=True,
+    )
+
+    current_status = models.CharField(
+        'Текущий статус по процедуре', max_length=20,
+        choices=STATUS_CHOICES, blank=True, default='',
+    )
+    current_status_date = models.DateField(
+        'Дата текущего статуса', null=True, blank=True,
+    )
+
+    secured_by_collateral = models.BooleanField('Обеспечено залогом', default=False)
+    collateral_description = models.TextField('Описание залога', blank=True)
+
+    class Meta:
+        verbose_name = 'Кредитор'
+        verbose_name_plural = 'Кредиторы'
+        ordering = ['-sum_anketa', 'created_at']
+        constraints = [
+            models.CheckConstraint(
+                check=(
+                    models.Q(legal_entity__isnull=False)
+                    | models.Q(client_person__isnull=False)
+                    | ~models.Q(name_manual='')
+                ),
+                name='kreditor_has_subject',
+            ),
+        ]
+        indexes = [
+            models.Index(fields=['service']),
+            models.Index(fields=['current_status']),
+        ]
+
+    def __str__(self):
+        if self.legal_entity:
+            subj = str(self.legal_entity)
+        elif self.client_person:
+            subj = str(self.client_person)
+        else:
+            subj = self.name_manual or '—'
+        return f'{subj} ({self.sum_anketa or 0} ₽)'
+
+
+class KreditorStatusEvent(models.Model):
+    """История смены статусов кредитора в ходе процедуры банкротства.
+
+    Каждое изменение — отдельная запись с датой/суммой/описанием. Текущий
+    статус кредитора (Kreditor.current_status) денормализуется через
+    post_save сигнал — это последний event по дате.
+    """
+    STATUS_CHOICES = [
+        ('claim_filed', 'Подано заявление о включении в РТК'),
+        ('included', 'Включено в РТК'),
+        ('paid_partial', 'Оплачено частично'),
+        ('paid_full', 'Оплачено полностью'),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    kreditor = models.ForeignKey(
+        Kreditor, on_delete=models.CASCADE, related_name='status_events',
+        verbose_name='Кредитор',
+    )
+    status = models.CharField('Статус', max_length=20, choices=STATUS_CHOICES)
+    date = models.DateField('Дата')
+    amount = models.DecimalField(
+        'Сумма', max_digits=14, decimal_places=2, null=True, blank=True,
+    )
+    description = models.TextField('Описание', blank=True)
+    employee = models.ForeignKey(
+        'core.Employee', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='kreditor_events',
+        verbose_name='Сотрудник',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Событие смены статуса кредитора'
+        verbose_name_plural = 'События смены статусов кредиторов'
+        ordering = ['-date', '-created_at']
+
+    def __str__(self):
+        return f'{self.kreditor_id} → {self.get_status_display()} ({self.date})'
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        # Денормализуем «последний по дате» статус в Kreditor — чтобы списки
+        # кредиторов услуги не делали join к истории на каждый рендер.
+        latest = (
+            type(self).objects
+            .filter(kreditor_id=self.kreditor_id)
+            .order_by('-date', '-created_at')
+            .first()
+        )
+        if latest and latest.pk == self.pk:
+            Kreditor.objects.filter(pk=self.kreditor_id).update(
+                current_status=self.status,
+                current_status_date=self.date,
+            )
+
+
+# ============================================================================
+# Корреспонденция (исходящие/входящие письма по услугам БФЛ)
+# ============================================================================
+
+class Correspondence(TimeStampedModel):
+    """Лог переписки по услуге: запросы в госорганы (Росреестр, ИФНС, МРЭО,
+    ПФР), информационные письма в банки/приставам, ходатайства, исковые,
+    договоры. С контролем ответа.
+
+    Импортируется из Bubble Correspondence; новые записи юристы создают
+    через UI (UI добавим отдельно — пока работа только через админку).
+    """
+    DIRECTION_CHOICES = [
+        ('outgoing', 'Исходящее'),
+        ('incoming', 'Входящее'),
+    ]
+    DELIVERY_CHOICES = [
+        ('', '—'),
+        ('post', 'Почта РФ'),
+        ('email', 'Электронная почта'),
+        ('site', 'Сайт организации'),
+        ('telegram', 'Телеграмма'),
+        ('courier', 'Нарочно / курьером'),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    bubble_id = models.CharField(
+        "Bubble ID", max_length=64, blank=True, null=True, unique=True,
+    )
+    service = models.ForeignKey(
+        Service, on_delete=models.CASCADE, related_name='correspondences',
+        verbose_name='Услуга',
+    )
+    counterparty = models.ForeignKey(
+        LegalEntity, on_delete=models.PROTECT,
+        null=True, blank=True, related_name='correspondences',
+        verbose_name='Контрагент',
+    )
+
+    direction = models.CharField(
+        'Направление', max_length=10, choices=DIRECTION_CHOICES, default='outgoing',
+    )
+    subject_type = models.CharField(
+        'Тип письма', max_length=255, blank=True,
+        help_text='Например, «Запрос в Росреестр», «Исковое заявление».',
+    )
+
+    outgoing_number = models.CharField('Исходящий номер', max_length=100, blank=True)
+    sent_at = models.DateField('Дата отправки', null=True, blank=True)
+    delivery_method = models.CharField(
+        'Способ отправки', max_length=20, choices=DELIVERY_CHOICES,
+        blank=True, default='',
+    )
+    file_link = models.TextField(
+        'Ссылка на файл письма', blank=True,
+        help_text='URL Google Drive (исторический) или S3.',
+    )
+
+    track_response = models.BooleanField('Отслеживать ответ', default=False)
+    control_date = models.DateField('Контрольная дата', null=True, blank=True)
+    response_received = models.BooleanField('Получен ответ', default=False)
+    response_date = models.DateField('Дата ответа', null=True, blank=True)
+    response_text = models.TextField('Текст ответа', blank=True)
+    response_number = models.CharField('Номер ответа', max_length=100, blank=True)
+
+    comments = models.TextField('Комментарии', blank=True)
+
+    class Meta:
+        verbose_name = 'Корреспонденция'
+        verbose_name_plural = 'Корреспонденция'
+        ordering = ['-sent_at', '-created_at']
+        indexes = [
+            models.Index(fields=['service', 'sent_at']),
+            models.Index(fields=['direction']),
+        ]
+
+    def __str__(self):
+        return f'{self.get_direction_display()}: {self.subject_type or self.outgoing_number or "—"} ({self.sent_at})'
 

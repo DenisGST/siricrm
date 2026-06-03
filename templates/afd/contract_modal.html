@@ -1,0 +1,72 @@
+<dialog id="afd-contract-modal" class="modal modal-open">
+  <div class="modal-box max-w-3xl">
+    <div id="afd-contract-body">
+      <div class="flex items-center justify-between mb-3">
+        <h3 class="font-bold text-lg">Составить договор</h3>
+        <button type="button" class="btn btn-sm btn-circle btn-ghost"
+                onclick="this.closest('dialog').remove()">✕</button>
+      </div>
+
+      <p class="text-sm text-base-content/70 mb-3">
+        Проверка реквизитов для договора
+        {% if service.numb_dogovor %}№ {{ service.numb_dogovor }}{% endif %}
+        — {{ service.client.last_name }} {{ service.client.first_name }} {{ service.client.patronymic }}
+      </p>
+
+      {% for group in groups %}
+      <div class="mb-3">
+        <div class="font-semibold text-sm mb-1">{{ group.title }}</div>
+        <div class="overflow-x-auto">
+          <table class="table table-xs">
+            <tbody>
+              {% for it in group.items %}
+              <tr>
+                <td class="w-6">
+                  {% if it.ok %}<span class="text-success">✓</span>
+                  {% elif it.required %}<span class="text-error">✗</span>
+                  {% else %}<span class="text-warning">•</span>{% endif %}
+                </td>
+                <td class="whitespace-nowrap text-base-content/70">
+                  {{ it.label }}{% if not it.required %} <span class="text-xs opacity-50">(необязательно)</span>{% endif %}
+                </td>
+                <td class="font-mono text-xs truncate max-w-xs">
+                  {% if it.value %}{{ it.value }}{% else %}<span class="text-error">— не заполнено</span>{% endif %}
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      {% endfor %}
+
+      {% if not has_template %}
+        <div class="alert alert-warning text-sm">
+          Не загружен шаблон договора БФЛ. Загрузите его в разделе АФД.
+        </div>
+      {% elif not ok %}
+        <div class="alert alert-error text-sm">
+          Не все обязательные реквизиты заполнены. Заполните отмеченные ✗ поля и повторите.
+        </div>
+      {% else %}
+        <div class="alert alert-success text-sm">Все обязательные реквизиты заполнены.</div>
+      {% endif %}
+
+      <div class="modal-action">
+        {% if ok and has_template %}
+        <button type="button" class="btn btn-primary btn-sm"
+                hx-post="{% url 'afd:contract_generate' service.id %}"
+                hx-target="#afd-contract-body" hx-swap="innerHTML"
+                hx-indicator="#afd-gen-indicator">
+          <span id="afd-gen-indicator" class="loading loading-spinner loading-xs htmx-indicator"></span>
+          Сформировать договор
+        </button>
+        {% endif %}
+        <button type="button" class="btn btn-sm" onclick="this.closest('dialog').remove()">Закрыть</button>
+      </div>
+    </div>
+  </div>
+  <form method="dialog" class="modal-backdrop">
+    <button onclick="this.closest('dialog').remove()">close</button>
+  </form>
+</dialog>

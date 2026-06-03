@@ -1,5 +1,6 @@
 {% load icons file_tags %}
-<dialog id="files-dialog" class="modal modal-open" style="z-index:1100;">
+<dialog id="files-dialog" class="modal modal-open" style="z-index:1100;"
+        data-highlight-id="{{ highlight_id }}">
   <div class="modal-box p-0 overflow-hidden"
        style="width:96vw;max-width:1400px;height:85vh;display:flex;flex-direction:column;">
 
@@ -11,6 +12,13 @@
         <span style="color:#94a3b8;">·</span>
         <span style="color:#64748b;">{{ client.last_name }} {{ client.first_name }}</span>
       </div>
+      <input type="search" placeholder="Поиск по имени файла…"
+             class="input input-bordered input-xs"
+             style="width:280px;"
+             hx-get="{% url 'files:search' client.id %}"
+             hx-trigger="input changed delay:300ms, search"
+             hx-target="#files-main" hx-swap="outerHTML"
+             name="q">
       <button type="button" class="btn btn-sm btn-ghost btn-circle"
               onclick="document.getElementById('files-dialog').remove()">✕</button>
     </div>
@@ -18,18 +26,23 @@
     <!-- Основное тело: дерево + содержимое -->
     <div class="files-body">
       <div id="files-tree-panel">
+        <div class="tree-actions">
+          <button type="button" class="tree-action-btn" onclick="filesTreeExpandAll()">⊕ Развернуть всё</button>
+          <button type="button" class="tree-action-btn" onclick="filesTreeCollapseAll()">⊖ Свернуть всё</button>
+        </div>
         <ul class="tree-root">
           {% include "files/partials/tree_node.html" with node=tree active=active %}
         </ul>
       </div>
       <div id="files-main">
-        {% include "files/partials/contents.html" with tree=tree active=active files=files breadcrumb=breadcrumb %}
+        {% include "files/partials/contents_inner.html" with active=active files=files breadcrumb=breadcrumb highlight_id=highlight_id %}
       </div>
     </div>
 
   </div>
   <div class="modal-backdrop" onclick="document.getElementById('files-dialog').remove()"></div>
 </dialog>
+
 
 <!-- Модалка предпросмотра -->
 <dialog id="files-preview-modal" class="modal" style="z-index:1200;">
@@ -82,6 +95,12 @@
   flex: 1; overflow-y: auto; display: flex; flex-direction: column;
 }
 /* Tree */
+.tree-actions { display: flex; gap: 4px; margin-bottom: 6px; }
+.tree-action-btn {
+  flex: 1; font-size: 11px; padding: 3px 4px; cursor: pointer;
+  border: 1px solid #e2e8f0; border-radius: 4px; background: #fff; color: #475569;
+}
+.tree-action-btn:hover { background: #f1f5f9; color: #1e293b; }
 .tree-root, .tree-children { list-style: none; margin: 0; padding: 0; }
 .tree-children { padding-left: 14px; }
 .tree-item { margin: 0; }
@@ -93,6 +112,7 @@
 .tree-label:hover { background: #e2e8f0; }
 .tree-item--active > .tree-label { background: #dbeafe; color: #1d4ed8; font-weight: 500; }
 .tree-name { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tree-count { flex-shrink: 0; font-size: 11px; color: #64748b; background: #e2e8f0; border-radius: 9px; padding: 0 6px; line-height: 16px; }
 .tree-toggle { font-size: 16px; color: #64748b; flex-shrink: 0; transform: rotate(0deg); transition: transform .15s; line-height: 1; padding: 0 2px; }
 .tree-toggle:hover { color: #1e293b; }
 .tree-item--open > .tree-label .tree-toggle { transform: rotate(90deg); }
@@ -123,6 +143,14 @@
 }
 .files-row { border-bottom: 1px solid #f1f5f9; }
 .files-row:hover { background: #f8fafc; }
+.files-row--highlight {
+  background: #fef3c7 !important;
+  animation: files-row-pulse 1.5s ease-out;
+}
+@keyframes files-row-pulse {
+  0%   { background: #fde68a; }
+  100% { background: #fef3c7; }
+}
 .files-row td { padding: 6px 10px; vertical-align: middle; }
 .files-name { display: flex; align-items: center; gap: 6px; }
 .files-link { color: #1e293b; } .files-link:hover { color: #2563eb; text-decoration: underline; }

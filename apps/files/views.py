@@ -25,15 +25,30 @@ def _current_employee(request):
 
 @login_required
 def file_manager(request, client_pk):
+    """Файловый менеджер клиента. Поддерживает ?file=<uuid> — открыть
+    папку конкретного файла и подсветить запись."""
     from django.shortcuts import render
+    from .models import ClientFile
+
     client = get_object_or_404(Client, pk=client_pk)
     # Создаём папки по умолчанию если их нет
     if not ClientFolder.objects.filter(client=client).exists():
         create_default_folders(client)
     tree = build_tree(client)
-    # Открываем корневую папку по умолчанию
     root = next((f for f in tree), None)
+
     active = root
+    highlight_id = ""
+    target_file_id = request.GET.get("file") or ""
+    if target_file_id:
+        cf = (
+            ClientFile.objects.filter(pk=target_file_id, folder__client=client)
+            .select_related("folder").first()
+        )
+        if cf is not None:
+            active = cf.folder
+            highlight_id = str(cf.pk)
+
     files = list(active.files.select_related("uploaded_by__user").all()) if active else []
     breadcrumb = get_folder_path(active) if active else []
     all_folders = _flat_folders(tree)
@@ -44,6 +59,27 @@ def file_manager(request, client_pk):
         "files": files,
         "breadcrumb": breadcrumb,
         "all_folders": all_folders,
+        "highlight_id": highlight_id,
+    })
+
+
+@login_required
+def file_search(request, client_pk):
+    """HTMX-партиал: список файлов клиента, отфильтрованный по имени."""
+    from django.shortcuts import render
+    from .models import ClientFile
+
+    client = get_object_or_404(Client, pk=client_pk)
+    q = (request.GET.get("q") or "").strip()
+    qs = (
+        ClientFile.objects.filter(folder__client=client)
+        .select_related("folder", "uploaded_by__user")
+    )
+    for word in q.split():
+        qs = qs.filter(name__icontains=word)
+    files = list(qs.order_by("folder__name", "name")[:200])
+    return render(request, "files/partials/search_results.html", {
+        "client": client, "files": files, "q": q,
     })
 
 
@@ -246,6 +282,7 @@ def folder_delete(request, folder_pk):
 _PREVIEWABLE = {
     "image":  {"jpg", "jpeg", "png", "gif", "webp", "svg", "bmp"},
     "pdf":    {"pdf"},
+    "office": {"doc", "docx", "xls", "xlsx", "ppt", "pptx"},
     "video":  {"mp4", "webm", "mov", "avi"},
     "audio":  {"mp3", "wav", "ogg", "m4a", "flac"},
     "text":   {"txt", "csv", "log", "json", "xml", "html", "md"},
@@ -271,8 +308,18 @@ def file_preview(request, file_pk):
     cf = get_object_or_404(ClientFile, pk=file_pk)
     if not cf.stored_file:
         return HttpResponse("Файл не найден в хранилище", status=404)
-    url  = get_presigned_url(cf.stored_file.bucket, cf.stored_file.key, expiration=1800)
     kind = _preview_type(cf.name, cf.content_type)
+    # Для предпросмотра в браузере (image/pdf/video/audio) просим S3 отдать
+    # файл с Content-Disposition: inline и правильным Content-Type — иначе
+    # Beget по умолчанию отдаёт application/octet-stream + attachment и
+    # браузер показывает диалог скачивания вместо отрисовки.
+    inline = kind in {"image", "pdf", "video", "audio"}
+    url = get_presigned_url(
+        cf.stored_file.bucket, cf.stored_file.key, expiration=1800,
+        inline=inline,
+        content_type=cf.content_type or None,
+        filename=cf.name if inline else None,
+    )
     text_content = None
     if kind == "text":
         try:
@@ -310,5 +357,16 @@ def _all_folder_ids(folder):
 @login_required
 def download_stored_file(request, file_id):
     stored = get_object_or_404(StoredFile, pk=file_id)
-    url = get_presigned_url(stored.bucket, stored.key, expiration=300)
+    # ?inline=1 — для предпросмотра в браузере (image/pdf/video/audio): просим
+    # S3 отдать с Content-Disposition: inline + правильным Content-Type, иначе
+    # Beget отдаёт attachment + octet-stream и браузер скачивает вместо показа.
+    inline = request.GET.get("inline") == "1"
+    kwargs = {"expiration": 300}
+    if inline and _preview_type(stored.filename, stored.content_type):
+        kwargs.update(
+            inline=True,
+            content_type=stored.content_type or None,
+            filename=stored.filename or None,
+        )
+    url = get_presigned_url(stored.bucket, stored.key, **kwargs)
     return redirect(url)

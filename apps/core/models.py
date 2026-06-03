@@ -30,6 +30,20 @@ class Department(TimeStampedModel):
         verbose_name='Руководитель отдела'
     )
     is_active = models.BooleanField(default=True, verbose_name='Активен')
+    sees_all_clients = models.BooleanField(
+        "Видит всех клиентов",
+        default=False,
+        help_text="Сотрудники этого отдела видят всех клиентов компании "
+                  "(например, отдел продаж, который сопровождает клиента "
+                  "от первого обращения до архива).",
+    )
+    can_edit_payment_schedule = models.BooleanField(
+        "Редактирует график платежей",
+        default=False,
+        help_text="Сотрудники этого отдела могут составлять/редактировать "
+                  "график платежей и начисления (например, коммерческий "
+                  "отдел и бухгалтерия). Просмотр графика доступен всем.",
+    )
 
     def __str__(self):
         return self.name
@@ -121,8 +135,10 @@ class Employee(models.Model):
         ("lawyer", "Юрист"),
         ("head_dep", "Руководитель отдела"),
         ("arbitration", "Арбитражный управляющий"),
+        ("arbitr_assistant", "Помощник АУ"),
         ("agent", "Агент"),
         ("managing_partner", "Управляющий партнер"),
+        ("accountant", "Бухгалтер"),
         ("admin", "Администратор"),
     ]
 
@@ -166,6 +182,20 @@ class Employee(models.Model):
     phone_internal = models.CharField("Внутренний номер", max_length=10, blank=True)
     is_active = models.BooleanField("Активен", default=True)
     is_online = models.BooleanField(default=False, verbose_name='Онлайн')
+    is_owner = models.BooleanField(
+        "Owner (root)",
+        default=False,
+        help_text="Видит ВСЁ (включая Django-admin). Только для основателя/админа.",
+    )
+    accept_telegram_leads = models.BooleanField(
+        "Принимать лиды из Telegram", default=False,
+        help_text="Заявки с лендингов через @Sirius_system_bot будут "
+                  "попадать в «Мой канбан» в колонку «Лиды из Telegram».",
+    )
+    bubble_id = models.CharField(
+        "Bubble ID", max_length=64, blank=True, null=True, unique=True,
+        help_text="ID записи User в исходной CRM на bubble.io",
+    )
     joined_at = models.DateTimeField(auto_now_add=True, verbose_name='Дата присоединения')
     dismiss_at = models.DateTimeField(auto_now_add=False,null=True, blank=True, verbose_name='Дата увольнения')
 

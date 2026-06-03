@@ -1,0 +1,222 @@
+{% load icons %}
+
+<!-- Блок ИТОГО: 3 колонки × 2 ряда, «Начислено» растянуто на 2 ряда.
+     Inline grid-template/row-span — в pre-compiled tailwind нет md:grid-cols-3/row-span-2.
+     !important — перестраховка против возможных глобальных стилей модалки. -->
+<div class="finance-totals gap-2 mb-3"
+     style="display:grid !important;grid-template-columns:repeat(3,minmax(0,1fr)) !important;width:100%;">
+  <div class="rounded-md border border-base-300 bg-base-200/60 px-3 py-2 flex flex-col gap-1"
+       style="grid-row:1/span 2 !important;">
+    <div>
+      <span class="text-base-content/60 mr-2">Начислено:</span>
+      <span class="font-mono font-semibold">{{ totals.charged|floatformat:2 }} руб.</span>
+    </div>
+    {% if client_services %}
+      <div class="text-xs text-base-content/60 mt-1">по договору:</div>
+      <div class="text-xs space-y-2">
+        {% for s in client_services %}
+          <div>
+            <div class="flex justify-between gap-2">
+              <span class="text-base-content/70">№{{ s.numb_dogovor|default:"—" }}</span>
+              <span class="font-mono">{% if s.contract_price %}{{ s.contract_price|floatformat:2 }} руб.{% else %}—{% endif %}</span>
+            </div>
+            {% if s.charges_total > 0 %}
+              <div class="flex justify-between gap-2 text-[10px] text-base-content/60 pl-2">
+                <span>оплачено</span>
+                <span class="font-mono text-success">{{ s.charges_paid|floatformat:2 }}</span>
+              </div>
+              <div class="flex justify-between gap-2 text-[10px] text-base-content/60 pl-2">
+                <span>остаток</span>
+                <span class="font-mono {% if s.charges_remaining > 0 %}text-error{% else %}text-success{% endif %}">{{ s.charges_remaining|floatformat:2 }}</span>
+              </div>
+            {% endif %}
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  </div>
+  <div class="rounded-md border border-success/30 bg-success/10 px-3 py-2 flex items-center">
+    <span class="text-base-content/60 mr-2">Оплачено:</span>
+    <span class="font-mono font-semibold text-success">{{ totals.paid_in|floatformat:2 }} руб.</span>
+  </div>
+  <div class="rounded-md border border-base-300 bg-base-200/60 px-3 py-2 flex items-center">
+    <span class="text-base-content/60 mr-2">Сальдо план:</span>
+    <span class="font-mono font-semibold {% if totals.saldo_plan > 0 %}text-warning{% else %}text-success{% endif %}">{{ totals.saldo_plan|floatformat:2 }} руб.</span>
+  </div>
+  <div class="rounded-md border border-error/30 bg-error/10 px-3 py-2 flex items-center">
+    <span class="text-base-content/60 mr-2">Расходы:</span>
+    <span class="font-mono font-semibold text-error">{{ totals.paid_out|floatformat:2 }} руб.</span>
+  </div>
+  <div class="rounded-md border border-base-300 bg-base-200/60 px-3 py-2 flex items-center">
+    <span class="text-base-content/60 mr-2">Сальдо факт:</span>
+    <span class="font-mono font-semibold {% if totals.saldo_fact < 0 %}text-error{% else %}text-success{% endif %}">{{ totals.saldo_fact|floatformat:2 }} руб.</span>
+  </div>
+</div>
+
+<!-- Фильтр (сегментные кнопки) + кнопки добавления -->
+<div class="flex justify-between items-center mb-2 flex-wrap gap-2">
+  <form id="finance-filter-form"
+        hx-get="{% url 'finance:finance_modal' client.id %}?partial=1"
+        hx-target="#finance-content"
+        hx-swap="innerHTML"
+        hx-trigger="change"
+        class="flex items-center gap-2 text-xs">
+    <input type="hidden" name="partial" value="1">
+    <input type="hidden" name="filter_applied" value="1">
+    <input type="hidden" name="sort" value="{{ sort }}">
+    <input type="hidden" name="dir" value="{{ dir }}">
+
+    <span class="text-base-content/60 mr-1">Показать:</span>
+
+    <div class="join shadow-sm">
+      <label class="join-item btn btn-sm normal-case {% if show_charge %}btn-neutral{% else %}btn-outline btn-neutral{% endif %}">
+        <input type="checkbox" name="kinds" value="charge" class="hidden"
+               {% if show_charge %}checked{% endif %}>
+        Начисления
+      </label>
+      <label class="join-item btn btn-sm normal-case {% if show_in %}btn-neutral{% else %}btn-outline btn-neutral{% endif %}">
+        <input type="checkbox" name="kinds" value="in" class="hidden"
+               {% if show_in %}checked{% endif %}>
+        Входящие
+      </label>
+      <label class="join-item btn btn-sm normal-case {% if show_out %}btn-neutral{% else %}btn-outline btn-neutral{% endif %}">
+        <input type="checkbox" name="kinds" value="out" class="hidden"
+               {% if show_out %}checked{% endif %}>
+        Исходящие
+      </label>
+    </div>
+  </form>
+
+  {% if can_edit %}
+  <div class="flex gap-2 items-center">
+    {% if client_services %}
+      <div class="dropdown dropdown-end">
+        <label tabindex="0" class="btn btn-warning btn-sm">+ Начисление</label>
+        <ul tabindex="0" class="dropdown-content menu bg-base-100 rounded-md shadow z-50 w-64 p-1 border border-base-300">
+          {% for s in client_services %}
+          <li>
+            <a hx-get="{% url 'finance:charge_add' s.id %}"
+               hx-target="body" hx-swap="beforeend"
+               class="text-xs">
+              {{ s.numb_dogovor|default:s.name.short_name }} — {{ s.name.short_name }}
+            </a>
+          </li>
+          {% endfor %}
+        </ul>
+      </div>
+    {% endif %}
+    <button class="btn btn-success btn-sm"
+            hx-get="{% url 'finance:payment_add' client.id 'in' %}"
+            hx-target="body" hx-swap="beforeend">
+      + Входящий
+    </button>
+    <button class="btn btn-error btn-sm"
+            hx-get="{% url 'finance:payment_add' client.id 'out' %}"
+            hx-target="body" hx-swap="beforeend">
+      − Исходящий
+    </button>
+  </div>
+  {% endif %}
+</div>
+
+<!-- Таблица. max-height ≈ 10 строк + sticky thead -->
+<div class="overflow-x-auto overflow-y-auto border border-base-300 rounded-md"
+     style="max-height:28rem;">
+  <table class="table table-sm w-full finance-table">
+    <thead class="bg-base-200 finance-thead-sticky">
+      <tr>
+        {% include "finance/partials/_finance_th.html" with key="date"    label="Дата" align="" %}
+        {% include "finance/partials/_finance_th.html" with key="kind"    label="Тип"  align="" %}
+        {% include "finance/partials/_finance_th.html" with key="title"   label="Наименование" align="" %}
+        {% include "finance/partials/_finance_th.html" with key="service" label="Услуга" align="" %}
+        {% include "finance/partials/_finance_th.html" with key="amount"  label="Сумма, ₽" align="text-right" %}
+        {% include "finance/partials/_finance_th.html" with key="account" label="Касса/банк" align="" %}
+        {% include "finance/partials/_finance_th.html" with key="status"  label="Форма" align="" %}
+        <th class="font-semibold text-base-content/80">Комментарии</th>
+        <th class="w-6"></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in rows %}
+      <tr{% if row.kind == 'in' %} style="background:#ecfdf5;"{% elif row.kind == 'out' %} style="background:#fff1f2;"{% endif %}
+         {% if can_edit and row.kind != 'charge' %}class="cursor-pointer finance-row-clickable"
+         hx-get="{% url 'finance:payment_edit' client.id row.obj.id %}"
+         hx-target="body" hx-swap="beforeend"
+         title="Редактировать платёж"{% endif %}>
+        <td class="whitespace-nowrap">{{ row.date|date:"d.m.Y" }}</td>
+        <td>
+          {% if row.kind == 'in' %}
+            <span class="badge badge-success badge-xs">Доход</span>
+          {% elif row.kind == 'out' %}
+            <span class="badge badge-error badge-xs">Расход</span>
+          {% else %}
+            <span class="badge badge-warning badge-xs">Начисление</span>
+          {% endif %}
+        </td>
+        <td>{{ row.title }}</td>
+        <td>{% if row.service %}<span class="badge badge-ghost badge-xs">{{ row.service.name.short_name }}</span>{% else %}—{% endif %}</td>
+        <td class="text-right font-mono whitespace-nowrap {% if row.kind == 'out' %}text-error{% elif row.kind == 'in' %}text-success{% endif %}">
+          {{ row.amount|floatformat:2 }}
+        </td>
+        <td>{{ row.account|default:"—" }}</td>
+        <td class="whitespace-nowrap">{{ row.status }}</td>
+        <td class="text-xs text-base-content/70" title="{{ row.comments }}">
+          <div class="line-clamp-2 whitespace-pre-line">{{ row.comments|default:"" }}</div>
+        </td>
+        <td class="text-center">
+          {% if row.meta.created_by or row.meta.updated_by %}
+            <span class="inline-flex text-base-content/40 cursor-help"
+                  title="Создал: {{ row.meta.created_by|default:'—' }}, {{ row.meta.created_at|date:'d.m.Y H:i' }}{% if row.meta.updated_by and row.meta.updated_at != row.meta.created_at %}&#10;Редактировал: {{ row.meta.updated_by }}, {{ row.meta.updated_at|date:'d.m.Y H:i' }}{% endif %}">
+              {% icon "info" size=14 %}
+            </span>
+          {% endif %}
+        </td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="9" class="text-center text-base-content/60 py-4">Записей нет</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<style>
+  /* Полная решётка для таблицы финансов.
+     !important — потому что daisyUI .table даёт border-spacing:0 и
+     собственные бордеры с псевдо-классами высокой специфичности. */
+  .finance-table {
+    border-collapse: separate !important;
+    border-spacing: 0 !important;
+  }
+  .finance-table th,
+  .finance-table td {
+    border-right: 1px solid #cbd5e1 !important;  /* slate-300 */
+    border-bottom: 1px solid #cbd5e1 !important;
+  }
+  .finance-table th:last-child,
+  .finance-table td:last-child {
+    border-right: none !important;
+  }
+  .finance-table tbody tr:last-child td {
+    border-bottom: none !important;
+  }
+  .finance-table .sort-th {
+    cursor: pointer;
+    user-select: none;
+  }
+  .finance-table .sort-th:hover {
+    background-color: rgba(0,0,0,0.05);
+  }
+  .finance-table tr.finance-row-clickable:hover {
+    filter: brightness(0.96);
+  }
+  /* Sticky-шапка поверх строк при скролле.
+     z-index:30 — daisyUI таблицы и модалки используют z 10–20.
+     Border у sticky-элементов «не прилипает» — заменён на box-shadow. */
+  .finance-table .finance-thead-sticky th {
+    position: sticky !important;
+    top: 0 !important;
+    z-index: 30 !important;
+    background-color: #e5e7eb !important;  /* gray-200 — непрозрачный */
+    box-shadow: inset 0 -2px 0 #94a3b8 !important;  /* slate-400 */
+  }
+</style>

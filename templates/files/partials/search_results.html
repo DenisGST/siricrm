@@ -1,0 +1,60 @@
+{% load icons file_tags %}
+{# Список файлов клиента по поиску. Подставляется в #files-main. #}
+<div id="files-main">
+  <div class="files-toolbar">
+    <div class="files-breadcrumb">
+      <span class="crumb-current">Поиск: «{{ q }}» — найдено {{ files|length }}</span>
+    </div>
+    <button type="button" class="btn btn-xs btn-ghost"
+            hx-get="{% url 'files:manager' client.id %}"
+            hx-target="body" hx-swap="beforeend"
+            onclick="document.getElementById('files-dialog')?.remove()">
+      ← К дереву
+    </button>
+  </div>
+
+  {% if files %}
+  <div class="files-table-wrap">
+    <table class="files-table">
+      <thead>
+        <tr>
+          <th>Имя</th>
+          <th>Папка</th>
+          <th>Размер</th>
+          <th>Загрузил</th>
+          <th>Дата</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for f in files %}
+        <tr class="files-row">
+          <td class="files-name">
+            {% icon "file" size=14 %}
+            <a class="files-link"
+               hx-get="{% url 'files:file_preview' f.pk %}"
+               hx-target="#files-preview-body" hx-swap="innerHTML"
+               hx-on::after-request="document.getElementById('files-preview-modal').showModal()">{{ f.name }}</a>
+          </td>
+          <td class="files-who">{{ f.folder.name }}</td>
+          <td class="files-size">{{ f.size|filesizeformat }}</td>
+          <td class="files-who">
+            {% if f.uploaded_by %}{{ f.uploaded_by.user.last_name }} {{ f.uploaded_by.user.first_name|first }}.{% else %}—{% endif %}
+          </td>
+          <td class="files-date">{{ f.created_at|date:"d.m.Y H:i" }}</td>
+          <td class="files-actions">
+            <a class="btn btn-xs btn-ghost" href="{% url 'files:file_download' f.pk %}" title="Скачать">↓</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="files-empty">
+    {% icon "search" size=32 %}
+    <span>Ничего не найдено</span>
+    <span class="files-empty-hint">Попробуй другой запрос</span>
+  </div>
+  {% endif %}
+</div>

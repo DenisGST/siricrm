@@ -1,0 +1,59 @@
+<div class="p-4">
+  <div class="flex items-center justify-between mb-4">
+    <h2 class="text-xl font-bold">↧ Импорт из Bubble.io</h2>
+    <div class="tabs tabs-boxed">
+      {% for t in tabs %}
+      <a class="tab {% if t.active %}tab-active{% endif %}"
+         hx-get="{% url 'bubble_import:panel_entity' t.entity %}"
+         hx-target="#content-area" hx-swap="innerHTML">
+        {{ t.label }}
+        {% if t.remote %}
+        <span class="badge badge-xs ml-1" title="импортировано {{ t.imported }}">{{ t.fetched }}/{{ t.remote }}</span>
+        {% elif t.fetched %}
+        <span class="badge badge-xs ml-1">{{ t.fetched }}</span>
+        {% endif %}
+      </a>
+      {% endfor %}
+    </div>
+  </div>
+
+  {% if not api_ok %}
+  <div class="alert alert-warning mb-3 text-sm">
+    Не задан <code>BUBBLE_API_TOKEN</code> — выгрузка из Bubble недоступна.
+  </div>
+  {% endif %}
+
+  {% if entity == 'User' %}
+  <div class="alert alert-info mb-3 text-sm py-2">
+    Сотрудники из Bubble. Действующие сопоставляются с существующими в
+    SiriCRM по ФИО (результат — в столбце «Статус»), уволенные и новые —
+    создаются (логина нет). Импортируйте сотрудников до услуг — услуги
+    закрепляются за Manager / ROP / Jurist.
+  </div>
+  {% elif entity == 'Money' %}
+  <div class="alert alert-info mb-3 text-sm py-2">
+    Платежи импортируются после услуг: запись Money привязывается к услуге
+    по полю Project. Сначала импортируйте Клиентов и Услуги.
+  </div>
+  {% elif entity == 'ProjectBFL' %}
+  <div class="alert alert-info mb-3 text-sm py-2">
+    Услуга привязывается к клиенту (dolgnik). Сначала импортируйте Клиентов.
+  </div>
+  {% elif entity == 'MessageWSP' %}
+  <div class="alert alert-info mb-3 text-sm py-2">
+    Сообщения за последние 3 года, привязка к клиенту по номеру телефона.
+    Медиа скачиваются в S3 — Apply больших порций идёт медленно, для
+    массового импорта используйте <code>manage.py apply_bubble MessageWSP</code>.
+  </div>
+  {% elif entity == 'Files' %}
+  <div class="alert alert-warning mb-3 text-sm py-2">
+    Файлы скачиваются по ссылке (Bubble S3 / Google Drive) в наш S3 —
+    операция тяжёлая (объём ~546k). Apply через UI — малыми порциями;
+    массовый импорт — <code>manage.py apply_bubble Files</code> в фоне.
+  </div>
+  {% endif %}
+
+  <div id="bubble-entity">
+    {% include "bubble_import/partials/entity_table.html" %}
+  </div>
+</div>

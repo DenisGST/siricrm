@@ -1,9 +1,19 @@
 from django.contrib import admin
 from .models import (
-    Client, ClientEmployee, Message, Service, Region, LegalEntityKind, ClientEvent,
-    ServiceName, PaymentProcedure, ServiceCommonStatus, ServiceEmployeeStatus,
-    ServiceTag, ServiceEmployeeState, ServiceTagAssignment, ServiceLog,
+    Client, ClientEmployee, ClientPhone, Message, Service, Region,
+    LegalEntityKind, ClientLogEntry, EventType, ActionType,
+    ServiceName, PaymentProcedure,
+    ServiceCommonStatus, ServiceEmployeeStatus, ServiceTag,
+    ServiceEmployeeState, ServiceTagAssignment, ServiceLog,
 )
+
+
+@admin.register(ClientPhone)
+class ClientPhoneAdmin(admin.ModelAdmin):
+    list_display = ("client", "phone", "purpose", "is_active", "created_at")
+    list_filter = ("purpose", "is_active")
+    search_fields = ("phone", "client__last_name", "client__first_name")
+    autocomplete_fields = ("client",)
 
 
 @admin.register(LegalEntityKind)
@@ -36,6 +46,7 @@ class ClientAdmin(admin.ModelAdmin):
         "last_name",
         "username",
         "phone",
+        "phones__phone",
         "email",
         "telegram_id",
         "contacts_confirmed",
@@ -58,7 +69,10 @@ class MessageAdmin(admin.ModelAdmin):
         "raw_payload",
     )
     list_filter = ("direction", "message_type", "is_read", "client")  # ✅ добавили "client"
-    search_fields = ("content", "client__first_name", "client__last_name", "client__username", "client__phone")  # ✅ расширили поиск
+    search_fields = (
+        "content", "client__first_name", "client__last_name",
+        "client__username", "client__phone", "client__phones__phone",
+    )
     autocomplete_fields = ("client", "employee",)
     date_hierarchy = "created_at"
     ordering = ("created_at",)
@@ -146,10 +160,27 @@ class RegionAdmin(admin.ModelAdmin):
     ordering = ('number',)
 
 
-@admin.register(ClientEvent)
-class ClientEventAdmin(admin.ModelAdmin):
-    list_display = ("created_at", "client", "event_type", "employee", "description")
-    list_filter = ("event_type",)
-    search_fields = ("client__last_name", "client__first_name", "description")
+@admin.register(EventType)
+class EventTypeAdmin(admin.ModelAdmin):
+    list_display = ("order", "code", "name", "source", "is_system", "is_active")
+    list_filter = ("source", "is_system", "is_active")
+    search_fields = ("code", "name")
+    ordering = ("order", "name")
+
+
+@admin.register(ActionType)
+class ActionTypeAdmin(admin.ModelAdmin):
+    list_display = ("order", "code", "name", "spawns_event", "is_system", "is_active")
+    list_filter = ("is_system", "is_active")
+    search_fields = ("code", "name")
+    ordering = ("order", "name")
+
+
+@admin.register(ClientLogEntry)
+class ClientLogEntryAdmin(admin.ModelAdmin):
+    list_display = ("created_at", "client", "kind", "event_type", "action_type", "employee")
+    list_filter = ("kind", "event_type", "action_type")
+    search_fields = ("client__last_name", "client__first_name", "comment")
     date_hierarchy = "created_at"
     ordering = ("-created_at",)
+    raw_id_fields = ("client", "employee", "subject_employee", "parent")

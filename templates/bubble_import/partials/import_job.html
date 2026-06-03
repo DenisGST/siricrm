@@ -1,0 +1,82 @@
+{# Прогресс-блок задачи импорта. HTMX-полит обновляет себя каждые 2с. #}
+<div id="import-job-{{ job.id }}"
+     class="border rounded p-3 mb-3
+            {% if job.status == 'done' %}border-success bg-success/5
+            {% elif job.status == 'error' %}border-error bg-error/5
+            {% elif job.status == 'cancelled' %}border-warning bg-warning/5
+            {% else %}border-info bg-info/5{% endif %}"
+     {% if job.is_running %}
+       hx-get="{% url 'bubble_import:job_status' job.id %}"
+       hx-trigger="every 2s"
+       hx-swap="outerHTML"
+     {% endif %}>
+
+  <div class="flex items-center justify-between mb-2">
+    <div class="font-semibold text-sm">
+      {% if job.status == 'running' or job.status == 'pending' %}
+        <span class="loading loading-spinner loading-xs"></span>
+      {% endif %}
+      Импорт «{{ job.get_entity_display }}» — {{ job.get_status_display }}
+      <span class="text-xs text-base-content/60">({{ job.duration_sec }} с)</span>
+    </div>
+    <div class="flex gap-1">
+      {% if job.is_running %}
+        <button type="button" class="btn btn-xs btn-warning"
+                hx-post="{% url 'bubble_import:cancel_job' job.id %}"
+                hx-target="#import-job-{{ job.id }}" hx-swap="outerHTML"
+                {% if job.cancel_requested %}disabled{% endif %}>
+          {% if job.cancel_requested %}Отмена…{% else %}Отменить{% endif %}
+        </button>
+      {% else %}
+        <button type="button" class="btn btn-xs btn-ghost"
+                onclick="document.getElementById('import-job-{{ job.id }}').remove()">✕</button>
+      {% endif %}
+    </div>
+  </div>
+
+  {% if job.current_action %}
+  <div class="text-xs text-base-content/70 mb-2">{{ job.current_action }}…</div>
+  {% endif %}
+
+  <div class="grid grid-cols-2 md:grid-cols-4 gap-2 mb-2 text-xs">
+    <div class="bg-base-200/60 rounded px-2 py-1">
+      <span class="text-base-content/60">Выгружено</span>
+      <div class="font-semibold">{{ job.fetched_total }}{% if job.remote_total %} / {{ job.remote_total }}{% endif %}</div>
+    </div>
+    <div class="bg-base-200/60 rounded px-2 py-1">
+      <span class="text-base-content/60">Импортировано</span>
+      <div class="font-semibold text-success">{{ job.applied_count }}</div>
+    </div>
+    <div class="bg-base-200/60 rounded px-2 py-1">
+      <span class="text-base-content/60">Ошибки</span>
+      <div class="font-semibold text-error">{{ job.errors_count }}</div>
+    </div>
+    <div class="bg-base-200/60 rounded px-2 py-1">
+      <span class="text-base-content/60">Пропущено</span>
+      <div class="font-semibold">{{ job.skipped_count }}</div>
+    </div>
+  </div>
+
+  {% if job.remote_total and job.fetched_total %}
+  <div class="w-full bg-base-300 rounded-full h-1.5 mb-2">
+    <div class="bg-info h-1.5 rounded-full"
+         style="width: {% widthratio job.fetched_total job.remote_total 100 %}%;"></div>
+  </div>
+  {% endif %}
+
+  {% if job.log_text %}
+  <details class="text-xs" {% if job.is_running or job.status == 'error' %}open{% endif %}>
+    <summary class="cursor-pointer text-base-content/70">Лог</summary>
+    <pre style="max-height: 320px;"
+         class="bg-base-300 rounded p-2 mt-1 overflow-auto whitespace-pre-wrap break-all font-mono text-[10px] leading-snug">{{ job.log_text }}</pre>
+  </details>
+  {% endif %}
+
+  {% if job.error_text %}
+  <details class="text-xs mt-1" open>
+    <summary class="cursor-pointer text-error">Traceback</summary>
+    <pre style="max-height: 240px;"
+         class="bg-error/10 text-error rounded p-2 mt-1 overflow-auto whitespace-pre-wrap break-all font-mono text-[10px]">{{ job.error_text }}</pre>
+  </details>
+  {% endif %}
+</div>

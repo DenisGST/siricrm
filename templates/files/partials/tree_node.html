@@ -8,6 +8,7 @@
        onclick="filesTreeSelect(this)">
     <span class="tree-icon">{% if folder|has_children %}📂{% else %}📁{% endif %}</span>
     <span class="tree-name">{{ folder.name }}</span>
+    {% if folder.files_count %}<span class="tree-count">{{ folder.files_count }}</span>{% endif %}
     {% if folder|has_children %}
     <span class="tree-toggle" onclick="event.stopPropagation(); filesTreeToggle(this.closest('.tree-item'))">▸</span>
     {% endif %}

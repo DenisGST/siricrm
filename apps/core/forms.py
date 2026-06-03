@@ -1,10 +1,12 @@
 from django import forms
 from django.contrib.auth.models import User
+from django.utils import timezone
 from .models import Department, Employee, MenuItem, Widget, DashboardConfig
 from apps.crm.models import (
     Region, LegalEntityKind,
     ServiceName, PaymentProcedure, ServiceCommonStatus,
-    ServiceEmployeeStatus, ServiceTag,
+    ServiceEmployeeStatus, ServiceTag, MessageTemplate,
+    EventType, ActionType,
 )
 
 
@@ -34,7 +36,7 @@ class DepartmentForm(forms.ModelForm):
 
     class Meta:
         model = Department
-        fields = ["name", "description", "manager", "is_active"]
+        fields = ["name", "description", "manager", "is_active", "sees_all_clients", "can_edit_payment_schedule"]
         widgets = {
             "description": forms.Textarea(attrs={"rows": 2}),
         }
@@ -61,6 +63,9 @@ class EmployeeFullEditForm(forms.ModelForm):
     last_name = forms.CharField(max_length=150, label="Фамилия")
     first_name = forms.CharField(max_length=150, label="Имя")
     email = forms.EmailField(required=False, label="Email")
+    # Статус сотрудника. «Уволен» — инверсия Employee.is_active; отдельным
+    # модельным полем не делаем, храним через is_active + dismiss_at.
+    is_dismissed = forms.BooleanField(required=False, label="Уволен")
     services_allowed = forms.ModelMultipleChoiceField(
         queryset=ServiceName.objects.filter(is_active=True).order_by("short_name"),
         widget=forms.CheckboxSelectMultiple,
@@ -72,9 +77,10 @@ class EmployeeFullEditForm(forms.ModelForm):
         model = Employee
         fields = [
             "department", "role", "dashboard_config",
-            "has_messenger_access", "patronymic",
+            "has_messenger_access", "accept_telegram_leads", "is_owner",
+            "patronymic",
             "phone_mobile", "phone_internal",
-            "services_allowed", "is_active",
+            "services_allowed",
         ]
 
     def __init__(self, *args, **kwargs):
@@ -83,6 +89,7 @@ class EmployeeFullEditForm(forms.ModelForm):
             self.fields["last_name"].initial = self.instance.user.last_name
             self.fields["first_name"].initial = self.instance.user.first_name
             self.fields["email"].initial = self.instance.user.email
+            self.fields["is_dismissed"].initial = not self.instance.is_active
 
     def save(self, commit=True):
         emp = super().save(commit=False)
@@ -90,6 +97,18 @@ class EmployeeFullEditForm(forms.ModelForm):
         emp.user.first_name = self.cleaned_data["first_name"]
         emp.user.email = self.cleaned_data.get("email", "")
         emp.user.save(update_fields=["last_name", "first_name", "email"])
+
+        dismissed = self.cleaned_data.get("is_dismissed", False)
+        emp.is_active = not dismissed
+        if dismissed and emp.dismiss_at is None:
+            emp.dismiss_at = timezone.now()
+        elif not dismissed:
+            emp.dismiss_at = None
+        # Учётка django — уволенный не должен входить в систему.
+        if emp.user.is_active != (not dismissed):
+            emp.user.is_active = not dismissed
+            emp.user.save(update_fields=["is_active"])
+
         if commit:
             emp.save()
             self.save_m2m()
@@ -246,6 +265,43 @@ class ServiceTagForm(forms.ModelForm):
         fields = ["employee", "name", "color", "is_active"]
 
 
+class MessageTemplateForm(forms.ModelForm):
+    """Шаблон сообщения. Каналы — через MultipleChoice, сохраняем как list в JSON.
+
+    WA-only поля видны/обязательны только если выбран канал 'whatsapp'.
+    """
+
+    channels = forms.MultipleChoiceField(
+        label="Каналы",
+        choices=MessageTemplate.CHANNEL_CHOICES,
+        widget=forms.CheckboxSelectMultiple,
+        help_text="Где можно использовать этот шаблон.",
+    )
+
+    class Meta:
+        model = MessageTemplate
+        fields = [
+            "name", "body", "channels", "is_active",
+            "whatsapp_category", "whatsapp_language",
+            "whatsapp_meta_id", "whatsapp_meta_status", "whatsapp_meta_rejection",
+        ]
+        widgets = {
+            "body": forms.Textarea(attrs={"rows": 6}),
+            "whatsapp_meta_rejection": forms.Textarea(attrs={"rows": 2}),
+        }
+
+    def clean(self):
+        cleaned = super().clean()
+        channels = cleaned.get("channels") or []
+        cleaned["channels"] = list(channels)
+        if "whatsapp" in channels:
+            if not cleaned.get("whatsapp_category"):
+                self.add_error("whatsapp_category", "Обязательно для WhatsApp-шаблона.")
+            if not cleaned.get("whatsapp_language"):
+                cleaned["whatsapp_language"] = "ru"
+        return cleaned
+
+
 class DashboardConfigForm(forms.ModelForm):
     menu_items = forms.ModelMultipleChoiceField(
         queryset=MenuItem.objects.filter(is_active=True),
@@ -266,3 +322,44 @@ class DashboardConfigForm(forms.ModelForm):
         widgets = {
             "description": forms.Textarea(attrs={"rows": 2}),
         }
+
+
+class EventTypeForm(forms.ModelForm):
+    """Форма EventType. standard_actions — M2M-подсказки «какие действия
+    обычно совершают при этом событии» (используется в модалке лога)."""
+    standard_actions = forms.ModelMultipleChoiceField(
+        queryset=ActionType.objects.filter(is_active=True).order_by("order", "name"),
+        widget=forms.CheckboxSelectMultiple,
+        required=False,
+        label="Стандартные действия",
+    )
+
+    class Meta:
+        model = EventType
+        fields = ["code", "name", "source", "order",
+                  "description", "is_manual", "is_active", "standard_actions"]
+        widgets = {
+            "description": forms.Textarea(attrs={"rows": 2}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Новые кастомные типы по умолчанию доступны для ручного добавления.
+        if self.instance.pk is None:
+            self.fields["is_manual"].initial = True
+
+
+class ActionTypeForm(forms.ModelForm):
+    """Форма ActionType. spawns_event — опционально порождаемое событие."""
+    class Meta:
+        model = ActionType
+        fields = ["code", "name", "order", "description",
+                  "spawns_event", "is_manual", "is_active"]
+        widgets = {
+            "description": forms.Textarea(attrs={"rows": 2}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.instance.pk is None:
+            self.fields["is_manual"].initial = True

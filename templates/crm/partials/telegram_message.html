@@ -12,6 +12,8 @@
       <span class="message-badge message-badge-telegram-in">TLG</span>
     {% elif msg.channel == "max" %}
       <span class="message-badge message-badge-max-in">MAX</span>
+    {% elif msg.channel == "whatsapp" %}
+      <span class="message-badge message-badge-whatsapp-in">WA</span>
     {% endif %}
   </div>
 
@@ -24,6 +26,10 @@
     <div class="chat-bubble bubble-max-in msg-bubble">
   {% elif msg.channel == "max" and msg.direction == "outgoing" %}
     <div class="chat-bubble bubble-max-out msg-bubble">
+  {% elif msg.channel == "whatsapp" and msg.direction == "incoming" %}
+    <div class="chat-bubble bubble-whatsapp-in msg-bubble">
+  {% elif msg.channel == "whatsapp" and msg.direction == "outgoing" %}
+    <div class="chat-bubble bubble-whatsapp-out msg-bubble">
   {% else %}
     <div class="chat-bubble msg-bubble">
   {% endif %}
@@ -126,7 +132,7 @@
 
   {# ── Футер: время + статус + подпись ── #}
   <div class="chat-footer text-[10px] text-base-content/60 flex items-center gap-1 flex-wrap">
-    {{ msg.telegram_date|default:msg.created_at|date:"d.m H:i" }}
+    {{ msg.telegram_date|default:msg.created_at|date:"d.m.Y H:i" }}
     {% if msg.direction == "outgoing" %}
       {% if msg.is_sent %}
         <span class="msg-status text-green-500" title="Отправлено">✓</span>

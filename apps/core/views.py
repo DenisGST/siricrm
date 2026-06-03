@@ -16,6 +16,12 @@ import psutil
 import os
 import re
 
+# Реэкспорт предикатов прав, чтобы существующие @user_passes_test(is_admin)
+# и импорты из apps.core.views продолжали работать.
+from apps.core.permissions import (  # noqa: F401
+    is_superuser, is_admin, is_references_access,
+)
+
 
 LOG_FILES = {
     'django':   '/app/logs/crm.log',
@@ -23,10 +29,6 @@ LOG_FILES = {
     'celery':   '/app/logs/celery.log',
     'maxbot':   '/app/logs/maxbot.log',
 }
-
-
-def is_superuser(user):
-    return user.is_superuser
 
 
 @user_passes_test(is_superuser)
@@ -210,13 +212,6 @@ def parse_last_errors(log_file, limit=30, cleared_at=None):
 # Панель управления (admin panel)
 # ─────────────────────────────────────────────
 
-def is_admin(user):
-    if not user.is_authenticated:
-        return False
-    if user.is_superuser:
-        return True
-    return hasattr(user, "employee") and user.employee.role == "admin"
-
 
 @user_passes_test(is_admin)
 def admin_panel(request):
@@ -265,14 +260,15 @@ def admin_employees(request):
         "role": "role",
         "dashboard": "dashboard_config__name",
         "messenger": "has_messenger_access",
+        "status": "is_active",
     }
     order_field = allowed_sorts.get(sort, "user__last_name")
     if direction == "desc":
         order_field = f"-{order_field}"
+    # Показываем всех — и работающих, и уволенных (статус виден в таблице).
     employees = (
         Employee.objects
         .select_related("user", "department", "dashboard_config")
-        .filter(is_active=True)
         .order_by(order_field)
     )
     return render(request, "core/partials/admin_employees.html", {
@@ -296,6 +292,23 @@ def admin_employee_edit(request, pk):
     return render(request, "core/partials/employee_edit_modal.html", {
         "form": form, "emp": emp,
     })
+
+
+@user_passes_test(is_admin)
+def admin_employee_toggle_tg_leads(request, pk):
+    """Быстрая галка из таблицы сотрудников: принимать лиды из Telegram.
+    При включении гарантирует у сотрудника личный статус «Лиды из Telegram»."""
+    emp = get_object_or_404(Employee, pk=pk)
+    new_val = not emp.accept_telegram_leads
+    emp.accept_telegram_leads = new_val
+    emp.save(update_fields=["accept_telegram_leads"])
+    if new_val:
+        try:
+            from apps.telegram.leads_bot import _ensure_leads_emp_status
+            _ensure_leads_emp_status(emp)
+        except Exception:  # noqa: BLE001
+            pass
+    return HttpResponse(status=204)
 
 
 @user_passes_test(is_admin)
@@ -429,16 +442,6 @@ def admin_widget_delete(request, pk):
 # ─────────────────────────────────────────────
 # Справочники (references): доступ руководителям и администраторам
 # ─────────────────────────────────────────────
-
-def is_references_access(user):
-    """Доступ к справочникам: суперпользователь, администратор, руководитель отдела."""
-    if not user.is_authenticated:
-        return False
-    if user.is_superuser:
-        return True
-    if not hasattr(user, "employee"):
-        return False
-    return user.employee.role in ("admin", "head_dep")
 
 
 @user_passes_test(is_references_access)
@@ -731,3 +734,233 @@ def reference_tag_delete(request, pk):
     obj = get_object_or_404(ServiceTag, pk=pk)
     obj.delete()
     return HttpResponse(headers={"HX-Trigger": "reloadTags"})
+
+
+# ─── Справочник: Шаблоны сообщений (для мессенджеров) ───
+@user_passes_test(is_references_access)
+def references_message_templates(request):
+    from apps.crm.models import MessageTemplate
+    items = MessageTemplate.objects.all()
+    return render(request, "core/partials/references_message_templates.html", {"items": items})
+
+
+@user_passes_test(is_references_access)
+def reference_message_template_edit(request, pk=None):
+    from apps.crm.models import MessageTemplate
+    from apps.core.forms import MessageTemplateForm
+
+    obj = get_object_or_404(MessageTemplate, pk=pk) if pk else None
+    employee = getattr(request.user, "employee", None)
+
+    if request.method == "POST":
+        form = MessageTemplateForm(request.POST, instance=obj)
+        if form.is_valid():
+            instance = form.save(commit=False)
+            if not instance.pk:
+                instance.created_by = employee
+            instance.updated_by = employee
+            instance.save()
+            return HttpResponse(headers={"HX-Trigger": "reloadMessageTemplates"})
+    else:
+        initial = {}
+        if obj:
+            initial["channels"] = obj.channels or []
+        form = MessageTemplateForm(instance=obj, initial=initial)
+
+    return render(request, "core/partials/message_template_form_modal.html", {
+        "form": form, "obj": obj,
+    })
+
+
+@user_passes_test(is_references_access)
+@require_POST
+def reference_message_template_delete(request, pk):
+    from apps.crm.models import MessageTemplate
+    obj = get_object_or_404(MessageTemplate, pk=pk)
+    obj.delete()
+    return HttpResponse(headers={"HX-Trigger": "reloadMessageTemplates"})
+
+
+# ─── Справочник: Типы событий клиента (EventType) ────────────────────────
+@user_passes_test(is_references_access)
+def references_event_types(request):
+    from apps.crm.models import EventType
+    items = EventType.objects.prefetch_related("standard_actions").order_by(
+        "source", "order", "name"
+    )
+    return render(request, "core/partials/references_event_types.html", {"items": items})
+
+
+@user_passes_test(is_references_access)
+def reference_event_type_edit(request, pk=None):
+    from apps.crm.models import EventType
+    from apps.core.forms import EventTypeForm
+    obj = get_object_or_404(EventType, pk=pk) if pk else None
+    if request.method == "POST":
+        form = EventTypeForm(request.POST, instance=obj)
+        if form.is_valid():
+            form.save()
+            from apps.crm.client_log import invalidate_cache
+            invalidate_cache()
+            return HttpResponse(headers={"HX-Trigger": "reloadEventTypes"})
+    else:
+        form = EventTypeForm(instance=obj)
+    return render(request, "core/partials/event_type_form_modal.html", {
+        "form": form, "obj": obj,
+    })
+
+
+@user_passes_test(is_references_access)
+@require_POST
+def reference_event_type_delete(request, pk):
+    from apps.crm.models import EventType
+    obj = get_object_or_404(EventType, pk=pk)
+    if obj.is_system:
+        return HttpResponse("Системный тип нельзя удалить", status=400)
+    obj.delete()
+    from apps.crm.client_log import invalidate_cache
+    invalidate_cache()
+    return HttpResponse(headers={"HX-Trigger": "reloadEventTypes"})
+
+
+# ─── Справочник: Типы действий сотрудника (ActionType) ───────────────────
+@user_passes_test(is_references_access)
+def references_action_types(request):
+    from apps.crm.models import ActionType
+    items = ActionType.objects.select_related("spawns_event").order_by("order", "name")
+    return render(request, "core/partials/references_action_types.html", {"items": items})
+
+
+@user_passes_test(is_references_access)
+def reference_action_type_edit(request, pk=None):
+    from apps.crm.models import ActionType
+    from apps.core.forms import ActionTypeForm
+    obj = get_object_or_404(ActionType, pk=pk) if pk else None
+    if request.method == "POST":
+        form = ActionTypeForm(request.POST, instance=obj)
+        if form.is_valid():
+            form.save()
+            from apps.crm.client_log import invalidate_cache
+            invalidate_cache()
+            return HttpResponse(headers={"HX-Trigger": "reloadActionTypes"})
+    else:
+        form = ActionTypeForm(instance=obj)
+    return render(request, "core/partials/action_type_form_modal.html", {
+        "form": form, "obj": obj,
+    })
+
+
+@user_passes_test(is_references_access)
+@require_POST
+def reference_action_type_delete(request, pk):
+    from apps.crm.models import ActionType
+    obj = get_object_or_404(ActionType, pk=pk)
+    if obj.is_system:
+        return HttpResponse("Системный тип нельзя удалить", status=400)
+    obj.delete()
+    from apps.crm.client_log import invalidate_cache
+    invalidate_cache()
+    return HttpResponse(headers={"HX-Trigger": "reloadActionTypes"})
+
+
+# ─── Idle-sessions API ──────────────────────────────────────────────────
+# Используется фронтендом для предупреждения о близком авто-логауте и
+# для locked-overlay при истечении сессии. Все три endpoint'а в
+# /api/session/* — этот префикс добавлен в IDLE_IGNORE_PREFIXES, чтобы
+# поллер сам не сбрасывал/не вызывал idle-timeout.
+
+def session_idle_check(request):
+    """Сколько прошло с последней активности; нужен ли warning/locked.
+
+    Не требует авторизации — публичный endpoint. Возвращает JSON с
+    `authenticated`, `idle_seconds`, `timeout_seconds`, `warning_seconds`
+    (за сколько секунд до timeout начинаем показывать warning), а также
+    `logout_reason` (если ранее сработал auto-logout — забираем из сессии
+    и стираем, чтобы overlay показал причину один раз).
+    """
+    from django.conf import settings
+    timeout = int(getattr(settings, "IDLE_TIMEOUT_MINUTES", 5)) * 60
+    warning = 60  # за минуту до logout — показываем warning
+
+    if not request.user.is_authenticated:
+        reason = request.session.pop("logout_reason", "") if hasattr(request, "session") else ""
+        return JsonResponse({
+            "authenticated": False,
+            "idle_seconds": 0,
+            "timeout_seconds": timeout,
+            "warning_seconds": warning,
+            "logout_reason": reason,
+        })
+
+    now_ts = timezone.now().timestamp()
+
+    # Heartbeat присутствия для виджета «Активных сотрудников». idle-check
+    # пингуется из каждой открытой вкладки дашборда раз в 15с — это надёжный
+    # сигнал «сотрудник в системе» (в отличие от флага Employee.is_online,
+    # который застревает True после рестарта сервера / закрытия вкладки).
+    # Маркер в Redis с TTL 150с сам истекает, когда вкладок не осталось →
+    # счётчик не завышает. Запрос Employee троттлим раз в 60с на юзера.
+    if cache.add(f"online_seen_throttle:{request.user.id}", 1, 60):
+        _emp = Employee.objects.filter(user=request.user).only("id").first()
+        if _emp:
+            cache.set(f"online_emp:{_emp.id}", now_ts, 150)
+
+    # Клиент сообщает о реальной активности (клики/скролл/ввод/движение мыши,
+    # в т.ч. в модалках и в чате по WebSocket) флагом ?a=1. idle-check сидит в
+    # IDLE_IGNORE_PREFIXES — middleware сам last_activity не трогает, поэтому
+    # продлеваем сессию здесь, но ТОЛЬКО при явном сигнале активности (иначе
+    # пустой поллинг держал бы сессию вечно). Поллер работает надёжно во всех
+    # вкладках, поэтому это устойчивее отдельного keepalive-интервала.
+    if request.GET.get("a") == "1":
+        request.session["last_activity"] = now_ts
+        idle_sec = 0
+    else:
+        last = request.session.get("last_activity")
+        idle_sec = (now_ts - float(last)) if last else 0
+    return JsonResponse({
+        "authenticated": True,
+        "idle_seconds": int(idle_sec),
+        "timeout_seconds": timeout,
+        "warning_seconds": warning,
+        "logout_reason": "",
+    })
+
+
+@require_POST
+def session_stay(request):
+    """Продлить сессию — сбросить idle-таймер. Дёргается из warning
+    модалки кнопкой «Остаться». Так как путь /api/session/stay/
+    тоже в IDLE_IGNORE_PREFIXES — middleware сам не обновит
+    last_activity. Делаем это руками здесь."""
+    if not request.user.is_authenticated:
+        return JsonResponse({"ok": False}, status=401)
+    request.session["last_activity"] = timezone.now().timestamp()
+    return JsonResponse({"ok": True})
+
+
+@require_POST
+def session_login(request):
+    """Inline-login из locked-overlay. Принимает JSON или form-encoded
+    {username, password}. При успехе логинит в текущую сессию (страница
+    клиента в браузере остаётся открытой). При ошибке — 401 с текстом."""
+    import json
+    from django.contrib.auth import authenticate, login as auth_login
+
+    if request.content_type == "application/json":
+        try:
+            payload = json.loads(request.body.decode() or "{}")
+        except ValueError:
+            payload = {}
+    else:
+        payload = request.POST
+    username = (payload.get("username") or "").strip()
+    password = payload.get("password") or ""
+    if not username or not password:
+        return JsonResponse({"ok": False, "error": "Введите логин и пароль"}, status=400)
+
+    user = authenticate(request, username=username, password=password)
+    if user is None or not user.is_active:
+        return JsonResponse({"ok": False, "error": "Неверный логин или пароль"}, status=401)
+    auth_login(request, user)
+    request.session["last_activity"] = timezone.now().timestamp()
+    return JsonResponse({"ok": True, "username": user.get_username()})

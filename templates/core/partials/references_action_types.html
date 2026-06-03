@@ -1,0 +1,72 @@
+<div id="action-types-list"
+     hx-trigger="reloadActionTypes from:body"
+     hx-get="{% url 'core:references_action_types' %}"
+     hx-swap="outerHTML">
+
+  <div class="flex flex-wrap justify-between items-center mb-3 gap-2">
+    <h3 class="font-semibold">Типы действий ({{ items|length }})</h3>
+    <button class="btn btn-primary btn-sm"
+            hx-get="{% url 'core:reference_action_type_add' %}"
+            hx-target="body" hx-swap="beforeend">
+      + Добавить тип действия
+    </button>
+  </div>
+
+  <p class="text-xs text-base-content/60 mb-3">
+    Действие = что сделал сотрудник. <b>Порождает событие</b> — если задано,
+    при записи действия автоматически создаётся связанное событие.
+    Системные типы помечены 🔒. Клик по заголовку — сортировка.
+  </p>
+
+  <div class="overflow-x-auto">
+    <table class="table table-sm table-zebra ref-sortable">
+      <thead>
+        <tr>
+          <th class="w-12 cursor-pointer select-none" onclick="sortRefTable(this,'num')">№<span class="ml-1 opacity-40">↕</span></th>
+          <th class="cursor-pointer select-none" onclick="sortRefTable(this,'str')">Код<span class="ml-1 opacity-40">↕</span></th>
+          <th class="cursor-pointer select-none" onclick="sortRefTable(this,'str')">Название<span class="ml-1 opacity-40">↕</span></th>
+          <th class="cursor-pointer select-none" onclick="sortRefTable(this,'str')">Порождает событие<span class="ml-1 opacity-40">↕</span></th>
+          <th class="w-20 text-center cursor-pointer select-none" onclick="sortRefTable(this,'str')">Статус<span class="ml-1 opacity-40">↕</span></th>
+          <th class="w-32 text-right"></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for it in items %}
+        <tr>
+          <td class="text-xs text-base-content/50">{{ it.order }}</td>
+          <td class="text-xs font-mono">
+            {% if it.is_system %}<span title="Системный">🔒</span> {% endif %}{{ it.code }}
+          </td>
+          <td>{{ it.name }}{% if it.is_manual %} <span class="badge badge-outline badge-xs" title="Доступно для ручного добавления в логе">✋ ручное</span>{% endif %}</td>
+          <td class="text-xs">
+            {% if it.spawns_event %}
+              <span class="badge badge-info badge-xs">→ {{ it.spawns_event.name }}</span>
+            {% else %}
+              <span class="text-base-content/40">—</span>
+            {% endif %}
+          </td>
+          <td class="text-center">
+            {% if it.is_active %}
+              <span class="badge badge-success badge-xs">активен</span>
+            {% else %}
+              <span class="badge badge-ghost badge-xs">скрыт</span>
+            {% endif %}
+          </td>
+          <td class="text-right whitespace-nowrap">
+            <button class="btn btn-xs btn-outline"
+                    hx-get="{% url 'core:reference_action_type_edit' it.pk %}"
+                    hx-target="body" hx-swap="beforeend">Изменить</button>
+            {% if not it.is_system %}
+            <button class="btn btn-xs btn-error btn-outline"
+                    hx-post="{% url 'core:reference_action_type_delete' it.pk %}"
+                    hx-confirm="Удалить тип «{{ it.name }}»?">Удалить</button>
+            {% endif %}
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="6" class="text-center text-base-content/60">Типов действий нет</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>

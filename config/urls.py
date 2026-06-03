@@ -56,5 +56,11 @@ urlpatterns = [
     path("consultations/", include("apps.consultations.urls", namespace="consultations")),
     path("questionnaire/", include("apps.questionnaire.urls", namespace="questionnaire")),
     path("devops/", include("apps.devops.urls", namespace="devops")),
+    path("finance/", include("apps.finance.urls", namespace="finance")),
+    path("", include("apps.whatsapp.urls", namespace="whatsapp")),
+    path("", include("apps.bubble_import.urls", namespace="bubble_import")),
+    path("telegram/", include("apps.telegram.urls", namespace="telegram")),
+    path("arbitr/", include("apps.arbitr.urls", namespace="arbitr")),
+    path("afd/", include("apps.afd.urls", namespace="afd")),
     path("robots.txt", serve, {"document_root": settings.STATIC_ROOT, "path": "robots.txt"}),
 ]

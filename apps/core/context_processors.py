@@ -1,4 +1,5 @@
 from apps.core.models import MenuItem, DashboardConfig
+from apps.core.permissions import is_references_access
 
 
 def sidebar_menu(request):
@@ -18,10 +19,7 @@ def sidebar_menu(request):
         items = MenuItem.objects.filter(is_active=True)
 
     user = request.user
-    is_elevated = user.is_superuser or (
-        hasattr(user, "employee")
-        and user.employee.role in ("admin", "head_dep")
-    )
+    is_elevated = is_references_access(user)
 
     if not user.is_superuser:
         items = items.filter(requires_superuser=False)

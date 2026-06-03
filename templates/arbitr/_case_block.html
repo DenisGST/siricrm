@@ -1,0 +1,85 @@
+{% load icons %}
+<div id="arbitr-block-{{ service.id }}" class="border rounded p-3 mt-3 bg-base-100">
+  <h4 class="font-semibold text-sm mb-2">⚖ Арбитражное дело</h4>
+
+  {% if not case %}
+    {% if user.is_superuser %}
+    <button type="button" class="btn btn-xs btn-warning"
+            hx-post="{% url 'arbitr:mark_iskotpravlen' service.id %}"
+            hx-target="#arbitr-block-{{ service.id }}"
+            hx-swap="outerHTML"
+            hx-confirm="Поставить «Иск отправлен в суд»? Запустится мониторинг kad.arbitr.ru.">
+      Иск отправлен в суд
+    </button>
+    <p class="text-xs text-base-content/60 mt-1">
+      Появится после подачи иска. Кнопка временно видна только администраторам.
+    </p>
+    {% else %}
+    <p class="text-xs text-base-content/60">Иск ещё не отправлен в суд.</p>
+    {% endif %}
+
+  {% elif case.status == "searching" %}
+    <div class="alert alert-warning text-xs mb-2">
+      🔍 Ищем дело на kad.arbitr.ru по ФИО и региону.
+      Когда найдём — пришлём уведомление, сотрудник подтвердит и привяжет.
+    </div>
+    <div class="text-xs text-base-content/70 mb-2">
+      Последняя проверка: {{ case.last_check_at|default:"—" }}
+    </div>
+    <details class="text-xs">
+      <summary class="cursor-pointer">Привязать дело вручную</summary>
+      <form class="mt-2 flex flex-wrap gap-2 items-end"
+            hx-post="{% url 'arbitr:confirm_case' case.id %}"
+            hx-target="#arbitr-block-{{ service.id }}"
+            hx-swap="outerHTML">
+        {% csrf_token %}
+        <input type="text" name="case_number" placeholder="А12-1234/2026"
+               class="input input-bordered input-xs">
+        <input type="url" name="kad_url" placeholder="https://kad.arbitr.ru/Card/..."
+               class="input input-bordered input-xs w-72">
+        <button type="submit" class="btn btn-xs btn-primary">Привязать</button>
+      </form>
+    </details>
+
+  {% else %}
+    <div class="flex flex-wrap items-center gap-2 mb-2">
+      <span class="badge badge-info">{{ case.get_status_display }}</span>
+      <a class="link link-primary text-sm font-mono" href="{{ case.kad_url }}" target="_blank" rel="noopener">
+        {{ case.case_number }}
+      </a>
+      {% if case.judge %}<span class="text-xs text-base-content/60">Судья: {{ case.judge }}</span>{% endif %}
+    </div>
+
+    {% with events=case.events.all %}
+      {% if events %}
+      <details open class="mt-2">
+        <summary class="cursor-pointer text-sm font-semibold">События ({{ events|length }})</summary>
+        <table class="table table-xs table-zebra mt-2">
+          <thead><tr><th>Дата</th><th>Тип</th><th>Описание</th><th>Файлы</th></tr></thead>
+          <tbody>
+            {% for ev in events %}
+            <tr>
+              <td class="text-xs">{{ ev.event_date|date:"d.m.Y"|default:"—" }}</td>
+              <td class="text-xs">{{ ev.kind|default:"—" }}</td>
+              <td class="text-xs">{{ ev.title }}</td>
+              <td class="text-xs">
+                {% for a in ev.attachments.all %}
+                  {% if a.is_locked %}🔒{% else %}📎{% endif %} {{ a.name|truncatechars:30 }}{% if not forloop.last %}, {% endif %}
+                {% empty %}—{% endfor %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </details>
+      {% else %}
+      <p class="text-xs text-base-content/60">Событий пока нет.</p>
+      {% endif %}
+    {% endwith %}
+
+    <div class="text-xs text-base-content/60 mt-2">
+      Последняя проверка:
+      {% if case.last_check_ok %}✓ {{ case.last_check_at|default:"—" }}{% else %}⚠ {{ case.last_check_at|default:"никогда" }}{% endif %}
+    </div>
+  {% endif %}
+</div>

@@ -75,8 +75,8 @@
         {% for it in items %}
         <tr>
           <td>{{ it.employee.user.get_full_name|default:it.employee.user.username }}</td>
-          <td><span class="badge badge-outline badge-sm">{{ it.common_status.service_name.short_name }}</span></td>
-          <td><span class="badge badge-ghost badge-sm">{{ it.common_status.name }}</span></td>
+          <td>{% if it.is_inbox %}<span class="badge badge-warning badge-sm">📥 инбокс</span>{% else %}<span class="badge badge-outline badge-sm">{{ it.common_status.service_name.short_name }}</span>{% endif %}</td>
+          <td>{% if not it.is_inbox %}<span class="badge badge-ghost badge-sm">{{ it.common_status.name }}</span>{% endif %}</td>
           <td class="font-medium">{{ it.name }}</td>
           <td class="text-xs text-base-content/70 max-w-xs truncate" title="{{ it.comment }}">{{ it.comment|default:"—" }}</td>
           <td>{{ it.order }}</td>

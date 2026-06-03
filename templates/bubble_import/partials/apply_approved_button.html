@@ -1,0 +1,11 @@
+<button id="apply-approved-btn"
+        type="button"
+        class="btn btn-sm btn-success ml-auto"
+        {% if oob %}hx-swap-oob="true"{% endif %}
+        hx-post="{% url 'bubble_import:apply' entity %}"
+        hx-target="#bubble-entity-inner" hx-swap="outerHTML"
+        hx-confirm="Импортировать одобренные записи ({{ entity_label }}) в SiriCRM?"
+        hx-disabled-elt="this"
+        {% if not stats.approved or running_job %}disabled{% endif %}>
+  ⇪ Импортировать одобренные ({{ stats.approved }})
+</button>

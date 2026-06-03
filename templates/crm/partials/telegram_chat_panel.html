@@ -149,8 +149,11 @@
         id="chat-textarea"
         name="content"
         rows="1"
-        class="w-full textarea textarea-bordered resize-none"
+        class="w-full textarea textarea-bordered"
+        style="line-height:1.3; min-height:4.5rem; resize:vertical;"
         placeholder="Напишите сообщение..."
+        spellcheck="true"
+        lang="ru"
       ></textarea>
       <div id="emoji-quick-bar" class="hidden flex flex-wrap gap-1 py-1">
         <button type="button" class="eq" onclick="insertEmoji('😊')">😊</button>
@@ -218,6 +221,20 @@
             MAX
           </button>
           {% endif %}
+          {% if client.whatsapp_phone or client.phone %}
+          <button
+            type="submit"
+            id="btn-send-whatsapp"
+            class="btn btn-sm bg-success/20 hover:bg-success/40 text-success border-success/40"
+            hx-post="{% url 'whatsapp_send_message' client.id %}"
+            hx-encoding="multipart/form-data"
+            hx-swap="none"
+            disabled
+            title="Отправить через WhatsApp (1msg.io)"
+          >
+            WhatsApp
+          </button>
+          {% endif %}
           <span id="close-dialog-slot">
             <button type="button"
               class="btn btn-sm border-success bg-success/10 hover:bg-success/20 text-success"
@@ -236,11 +253,14 @@
     </form>
   </div>
 
-  <!-- WebSocket для чата -->
+  <!-- WebSocket для чата.
+       Хост определяется из request.scheme + request.get_host(), чтобы на
+       dev (crmsiri.ru) соединение шло на dev, а не было захардкожено
+       siricrm.ru. -->
   <div
     id="telegram-chat-ws"
     hx-ext="ws"
-    ws-connect="wss://siricrm.ru/ws/telegram/client/{{ client.id }}/"
+    ws-connect="{% if request.is_secure %}wss{% else %}ws{% endif %}://{{ request.get_host }}/ws/telegram/client/{{ client.id }}/"
   ></div>
 
   <audio id="incoming-sound" src="{% static 'sounds/incoming.mp3' %}" preload="auto"></audio>
@@ -265,8 +285,10 @@
       var canSend = hasText || hasFile;
       var btnTg  = document.getElementById("btn-send-telegram");
       var btnMax = document.getElementById("btn-send-max");
+      var btnWa  = document.getElementById("btn-send-whatsapp");
       if (btnTg)  btnTg.disabled  = !canSend;
       if (btnMax) btnMax.disabled = !canSend;
+      if (btnWa)  btnWa.disabled  = !canSend;
     }
 
     if (textarea) textarea.addEventListener("input", updateSendButtons); // ← ДОБАВЛЕНО
@@ -345,7 +367,7 @@
 
     document.addEventListener("htmx:afterRequest", function (e) {
       var btn = e.detail.elt;
-      if ((btn.id === "btn-send-telegram" || btn.id === "btn-send-max") && e.detail.successful) {
+      if ((btn.id === "btn-send-telegram" || btn.id === "btn-send-max" || btn.id === "btn-send-whatsapp") && e.detail.successful) {
         var html = e.detail.xhr.responseText;
         if (html && html.trim()) {
           list.insertAdjacentHTML("beforeend", html);
