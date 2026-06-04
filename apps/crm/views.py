@@ -775,15 +775,10 @@ def client_create(request):
             return redirect("clients_list")
 
         # Ошибки валидации — перерендерим модалку
-        if request.headers.get("HX-Request"):
-            return render(request, "crm/partials/client_create_modal.html", {"form": form})
-        return render(request, "crm/clients/form.html", {"form": form})
+        return render(request, "crm/partials/client_create_modal.html", {"form": form})
 
     form = ClientForm()
-
-    if request.headers.get("HX-Request"):
-        return render(request, "crm/partials/client_create_modal.html", {"form": form})
-    return render(request, "crm/clients/form.html", {"form": form})
+    return render(request, "crm/partials/client_create_modal.html", {"form": form})
 
 
 @login_required
