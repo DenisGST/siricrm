@@ -23,6 +23,7 @@ class ClientForm(forms.ModelForm):
             "passport_number",
             "passport_issued_by",
             "passport_issued_date",
+            "passport_division_code",
             "inn",
             "snils",
             "status",

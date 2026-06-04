@@ -86,6 +86,7 @@ class Client(TimeStampedModel):
     passport_number = models.CharField(max_length=6, blank=True, verbose_name='Номер паспорта')
     passport_issued_by = models.CharField(max_length=500, blank=True, verbose_name='Кем выдан')
     passport_issued_date = models.DateField(null=True, blank=True, verbose_name='Дата выдачи')
+    passport_division_code = models.CharField(max_length=7, blank=True, verbose_name='Код подразделения')
     # Документы
     inn = models.CharField(max_length=12, blank=True, verbose_name='ИНН')
     snils = models.CharField(max_length=14, blank=True, verbose_name='СНИЛС')

@@ -1399,7 +1399,8 @@ def client_merge(request, client_id):
         # Fill in missing contact info from target
         for field in ("first_name", "phone", "email", "username", "last_name", "patronymic",
                       "birth_date", "birth_place", "passport_series", "passport_number",
-                      "passport_issued_by", "passport_issued_date", "inn", "snils", "notes"):
+                      "passport_issued_by", "passport_issued_date", "passport_division_code",
+                      "inn", "snils", "notes"):
             if not getattr(source, field) and getattr(target, field):
                 setattr(source, field, getattr(target, field))
 

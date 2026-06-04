@@ -144,6 +144,11 @@
             <input type="date" form="client-edit-form" name="passport_issued_date" value="{{ form.passport_issued_date.value|date:'Y-m-d' }}"
               class="input input-bordered w-full input-sm">
           </div>
+          <div>
+            <label class="label"><span class="label-text">Код подразделения</span></label>
+            <input type="text" form="client-edit-form" name="passport_division_code" value="{{ form.passport_division_code.value|default:'' }}"
+              maxlength="7" placeholder="340-007" class="input input-bordered w-full input-sm">
+          </div>
         </div>
 
         <div class="divider text-xs">ИНН / СНИЛС</div>
