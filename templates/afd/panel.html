@@ -83,6 +83,59 @@
     </div>
   </div>
 
+  <!-- Заявление о банкротстве: конструктор разделов -->
+  <div class="card bg-base-100 shadow mb-6">
+    <div class="card-body p-4">
+      <div class="flex items-center justify-between mb-2">
+        <h3 class="font-semibold">Заявление о банкротстве — разделы
+          {% if isk_template %}<span class="text-xs text-base-content/50">({{ isk_template.name }})</span>{% endif %}
+        </h3>
+        <button class="btn btn-sm btn-primary"
+                hx-get="{% url 'afd:isk_section_create' %}" hx-target="body" hx-swap="beforeend">
+          + Раздел
+        </button>
+      </div>
+      <p class="text-xs text-base-content/60 mb-2">
+        Смысловые разделы заявления. Текст с плейсхолдерами {…} подставляется при формировании.
+        Динамика: {debts_list} (перечень долгов), {creditors_block}, {sum_total}, {petition_sro}, {appendix_list}.
+      </p>
+      <table class="table table-xs">
+        <thead><tr><th class="w-10">#</th><th>Раздел / заголовок</th><th>Тип</th><th>Условие</th><th></th><th></th></tr></thead>
+        <tbody>
+          {% for s in isk_sections %}
+          <tr class="{% if not s.is_active %}opacity-40{% endif %}">
+            <td class="font-mono">{{ s.order }}</td>
+            <td>
+              <span class="font-medium">{{ s.title|default:s.key|default:s.get_block_type_display }}</span>
+              <div class="text-[11px] text-base-content/50 font-mono truncate" style="max-width:46ch">{{ s.body|truncatechars:70 }}</div>
+            </td>
+            <td><span class="badge badge-ghost badge-sm">{{ s.get_block_type_display }}</span></td>
+            <td class="text-xs">{% if s.is_optional %}<span class="text-warning">опц.</span> {% endif %}{{ s.include_condition }}</td>
+            <td class="whitespace-nowrap">
+              <button class="btn btn-xs btn-ghost px-1" title="Вверх"
+                      hx-post="{% url 'afd:isk_section_move' s.id 'up' %}" hx-target="#afd-panel" hx-swap="none">↑</button>
+              <button class="btn btn-xs btn-ghost px-1" title="Вниз"
+                      hx-post="{% url 'afd:isk_section_move' s.id 'down' %}" hx-target="#afd-panel" hx-swap="none">↓</button>
+            </td>
+            <td class="text-right whitespace-nowrap">
+              <button class="btn btn-xs btn-ghost"
+                      hx-get="{% url 'afd:isk_section_edit' s.id %}" hx-target="body" hx-swap="beforeend">✏</button>
+              <button class="btn btn-xs btn-ghost text-error"
+                      hx-post="{% url 'afd:isk_section_delete' s.id %}"
+                      hx-confirm="Удалить раздел?"
+                      hx-target="#afd-panel" hx-swap="none">🗑</button>
+            </td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="6" class="text-center text-base-content/50">
+            Нет разделов. Засидьте: <code>python manage.py afd_isk_seed</code> или добавьте вручную.
+          </td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
   <!-- История генераций -->
   <div class="card bg-base-100 shadow">
     <div class="card-body p-4">

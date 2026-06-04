@@ -1,0 +1,73 @@
+<div class="flex items-center justify-between mb-3">
+  <h3 class="font-bold text-lg">Заявление о банкротстве</h3>
+  <button type="button" class="btn btn-sm btn-circle btn-ghost"
+          onclick="this.closest('dialog').remove()">✕</button>
+</div>
+
+{% if error %}
+  <div class="alert alert-error text-sm mb-3">{{ error }}</div>
+  <div class="modal-action">
+    <button type="button" class="btn btn-sm" onclick="this.closest('dialog').remove()">Закрыть</button>
+  </div>
+{% else %}
+  <div class="alert alert-success text-sm mb-3">
+    Заявление «{{ gen.title }}» сформировано (кредиторов: {{ creditors_count }}) и положено
+    в папку «Заявления в суд» файлового менеджера клиента.
+  </div>
+  {% if warnings %}
+  <div class="alert alert-warning text-sm mb-3">
+    Без реквизитов в справочнике ЮЛ: {{ warnings|join:", " }}. Адреса/ОГРН этих кредиторов в документе пустые — добавьте их и пересформируйте.
+  </div>
+  {% endif %}
+
+  <div class="flex flex-col gap-2">
+    {% if gen.pdf_file %}
+    <a class="btn btn-outline btn-sm justify-start"
+       href="{% url 'files:stored_download' gen.pdf_file.id %}?inline=1" target="_blank">
+      📄 Открыть PDF (заявление + приложения)
+    </a>
+    {% endif %}
+    {% if gen.docx_file %}
+    <a class="btn btn-outline btn-sm justify-start"
+       href="{% url 'files:stored_download' gen.docx_file.id %}" target="_blank">
+      📝 Скачать .docx заявления (редактируемый)
+    </a>
+    {% endif %}
+    {% if gen.pdf_file %}
+    <button type="button" id="afd-isk-preview-btn" class="btn btn-outline btn-sm justify-start" onclick="afdIskTogglePreview(this)">
+      👁 Предпросмотр
+    </button>
+    {% endif %}
+  </div>
+
+  {% if gen.pdf_file %}
+  <div id="afd-isk-preview-wrap" class="mt-2" style="display:none">
+    <div class="flex justify-end mb-1">
+      <button type="button" class="btn btn-xs btn-ghost" onclick="afdIskClosePreview()">✕ Закрыть предпросмотр</button>
+    </div>
+    <iframe data-src="{% url 'files:stored_download' gen.pdf_file.id %}?inline=1"
+            class="w-full rounded border border-base-300 bg-base-200" style="height:65vh" title="Предпросмотр"></iframe>
+  </div>
+  <script>
+  function afdIskTogglePreview(btn){
+    var w=document.getElementById('afd-isk-preview-wrap'); if(!w) return;
+    var f=w.querySelector('iframe'); var box=btn.closest('.modal-box');
+    if(w.style.display==='none'){ if(!f.getAttribute('src')) f.setAttribute('src', f.dataset.src);
+      w.style.display=''; btn.classList.add('btn-active'); if(box) box.style.maxWidth='95vw'; }
+    else { afdIskClosePreview(); }
+  }
+  function afdIskClosePreview(){
+    var w=document.getElementById('afd-isk-preview-wrap'); if(!w) return;
+    w.style.display='none'; var box=w.closest('.modal-box'); if(box) box.style.maxWidth='';
+    var b=document.getElementById('afd-isk-preview-btn'); if(b) b.classList.remove('btn-active');
+  }
+  </script>
+  {% endif %}
+
+  <div class="modal-action">
+    <button type="button" class="btn btn-primary btn-sm"
+            onclick="this.closest('dialog').remove(); document.body.dispatchEvent(new CustomEvent('kanbanRefresh'));">
+      Готово
+    </button>
+  </div>
+{% endif %}

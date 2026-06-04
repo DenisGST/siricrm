@@ -87,12 +87,16 @@ class DocumentTemplateForm(forms.ModelForm):
 @login_required
 @require_references_access
 def panel(request):
+    from .models import IskTemplate
+    isk_tpl = IskTemplate.get_default()
     ctx = {
         "executors": ExecutorOrg.objects.all(),
         "templates": DocumentTemplate.objects.select_related("stored_file").all(),
         "recent": GeneratedDocument.objects.select_related(
             "client", "service", "pdf_file", "docx_file"
         )[:20],
+        "isk_template": isk_tpl,
+        "isk_sections": isk_tpl.sections.order_by("order") if isk_tpl else [],
     }
     return render(request, "afd/panel.html", ctx)
 
@@ -250,3 +254,158 @@ def contract_send(request, gen_id, channel):
 
     base_ctx["sent_channel"] = channel
     return render(request, "afd/_contract_result.html", base_ctx)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Заявление о банкротстве (иск) — секционный конструктор + генерация
+# ═══════════════════════════════════════════════════════════════════════════
+class IskSectionForm(forms.ModelForm):
+    class Meta:
+        from .models import IskSection
+        model = IskSection
+        fields = ["title", "block_type", "align", "bold", "body",
+                  "is_optional", "include_condition", "is_active"]
+        widgets = {
+            "title": forms.TextInput(attrs={"class": "input input-bordered input-sm w-full"}),
+            "block_type": forms.Select(attrs={"class": "select select-bordered select-sm w-full"}),
+            "align": forms.Select(attrs={"class": "select select-bordered select-sm w-full"}),
+            "include_condition": forms.TextInput(attrs={"class": "input input-bordered input-sm w-full"}),
+            "body": forms.Textarea(attrs={"rows": 8, "class": "textarea textarea-bordered w-full font-mono text-xs"}),
+        }
+
+
+@login_required
+@require_references_access
+def isk_section_edit(request, pk=None):
+    from .models import IskSection, IskTemplate
+    obj = get_object_or_404(IskSection, pk=pk) if pk else None
+    if request.method == "POST":
+        form = IskSectionForm(request.POST, instance=obj)
+        if form.is_valid():
+            sec = form.save(commit=False)
+            if obj is None:
+                tpl = IskTemplate.get_default()
+                if tpl is None:
+                    tpl = IskTemplate.objects.create(name="Заявление о банкротстве (БФЛ)",
+                                                     is_default=True)
+                sec.template = tpl
+                last = tpl.sections.order_by("-order").first()
+                sec.order = (last.order + 10) if last else 10
+            sec.save()
+            return _panel_reload()
+    else:
+        form = IskSectionForm(instance=obj)
+    return render(request, "afd/_isk_section_form.html", {"form": form, "obj": obj})
+
+
+@login_required
+@require_references_access
+@require_POST
+def isk_section_delete(request, pk):
+    from .models import IskSection
+    get_object_or_404(IskSection, pk=pk).delete()
+    return _panel_reload()
+
+
+@login_required
+@require_references_access
+@require_POST
+def isk_section_move(request, pk, direction):
+    """Переместить раздел вверх/вниз (обмен порядком с соседом)."""
+    from .models import IskSection
+    sec = get_object_or_404(IskSection, pk=pk)
+    siblings = list(sec.template.sections.order_by("order"))
+    idx = next((i for i, s in enumerate(siblings) if s.pk == sec.pk), None)
+    swap = None
+    if direction == "up" and idx > 0:
+        swap = siblings[idx - 1]
+    elif direction == "down" and idx is not None and idx < len(siblings) - 1:
+        swap = siblings[idx + 1]
+    if swap:
+        sec.order, swap.order = swap.order, sec.order
+        sec.save(update_fields=["order"])
+        swap.save(update_fields=["order"])
+    return _panel_reload()
+
+
+def _isk_review_ctx(service, overrides=None, response_id=None):
+    from django.conf import settings
+    from . import isk_context
+    responses = list(service.questionnaire_responses
+                     .select_related("template").order_by("-is_complete", "-updated_at"))
+    chosen = None
+    if response_id:
+        chosen = next((r for r in responses if str(r.id) == str(response_id)), None)
+    if chosen is None:
+        chosen = responses[0] if responses else None
+    ctx, flags, creditors, warnings = isk_context.build_isk_context(
+        service, overrides=overrides or {}, response=chosen)
+    from .isk_seed_data import DEFAULT_APPENDIX
+    appendix = []
+    for a in DEFAULT_APPENDIX:
+        cond = a.get("cond")
+        appendix.append({**a, "checked": (not cond) or flags.get(cond, False)})
+    return {
+        "service": service, "client": service.client,
+        "creditors": creditors, "warnings": warnings, "flags": flags,
+        "appendix": appendix,
+        "responses": responses, "chosen_id": (str(chosen.id) if chosen else ""),
+        "dadata_api_key": settings.DADATA_API_KEY,
+        "missing_count": sum(1 for c in creditors
+                             if c["kind"] in ("bank", "mfo") and not c["has_requisites"]),
+    }
+
+
+@login_required
+def isk_review(request, service_id):
+    service = get_object_or_404(
+        Service.objects.select_related("client", "region"), pk=service_id)
+    rid = request.GET.get("response_id")
+    return render(request, "afd/isk_review_modal.html", _isk_review_ctx(service, response_id=rid))
+
+
+@login_required
+def isk_creditors(request, service_id):
+    """Перечень кредиторов для выбранной анкеты (обновляется при смене анкеты)."""
+    service = get_object_or_404(
+        Service.objects.select_related("client", "region"), pk=service_id)
+    rid = request.GET.get("response_id")
+    return render(request, "afd/_isk_creditors.html", _isk_review_ctx(service, response_id=rid))
+
+
+@login_required
+@require_POST
+def isk_generate(request, service_id):
+    from .isk_generator import IskGenerationError, generate_isk
+    service = get_object_or_404(
+        Service.objects.select_related("client", "region"), pk=service_id)
+    employee = get_employee(request.user)
+
+    overrides = {
+        "employer": request.POST.get("employer", "").strip(),
+        "former_name": request.POST.get("former_name", "").strip(),
+        "accounts_block": request.POST.get("accounts_block", "").strip(),
+        "property_cash": request.POST.get("property_cash", "").strip(),
+        "property_text": request.POST.get("property_text", "").strip(),
+        "appendix_keys": request.POST.getlist("appendix_keys"),
+    }
+    # пустой property_text → не переопределять (берём авто)
+    if not overrides["property_text"]:
+        overrides.pop("property_text")
+    sro_id = request.POST.get("sro_id") or None
+    response_id = request.POST.get("response_id") or None
+
+    try:
+        gen, warnings, creditors = generate_isk(
+            service, employee=employee, overrides=overrides, sro_id=sro_id,
+            response_id=response_id)
+    except IskGenerationError as e:
+        return render(request, "afd/_isk_result.html",
+                      {"service": service, "error": str(e)})
+    except Exception:
+        log.exception("isk_generate: ошибка генерации заявления")
+        return render(request, "afd/_isk_result.html",
+                      {"service": service, "error": "Внутренняя ошибка. См. логи."})
+    return render(request, "afd/_isk_result.html",
+                  {"service": service, "gen": gen, "warnings": warnings,
+                   "creditors_count": len(creditors)})
