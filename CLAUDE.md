@@ -204,6 +204,7 @@ gunzip -c backups/db-XXXX.sql.gz | docker compose -f <compose> --env-file <env> 
 - [`docs/kanban.md`](./docs/kanban.md) — канбаны: инбокс, передача услуги, права графика, DnD, карточки
 - [`docs/dashboard-widgets.md`](./docs/dashboard-widgets.md) — виджеты-счётчики дашборда (онлайн-сотрудники по heartbeat) + 🛑 гочча наследования `hx-target`
 - [`docs/leads-routing.md`](./docs/leads-routing.md) — ClientPhone + маршрутизация лидов
+- [`docs/client-dedup.md`](./docs/client-dedup.md) — дедуп клиентов (один телефон=один клиент), лайв-хинты ФИО/тел, нормализация +7 (XXX) XXX-XX-XX, единая кнопка «Сохранить», 🛑 гочча `<input type="date">` ISO (затирала даты)
 - `docs/PRODUCTION.md` — развёртывание prod на 45.90.35.187
 - `docs/DEV_MIGRATION.md` — перенос dev на новый сервер
 - `docs/legacy-quickstart.md` — старый гайд по запуску (частично устарел)
