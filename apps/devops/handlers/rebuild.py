@@ -48,6 +48,12 @@ def run_rebuild(params: dict) -> dict:
     log: list[str] = []
     result: dict = {}
 
+    def _fail(msg: str):
+        # При raise задача сохраняет ТОЛЬКО traceback — поэтому весь накопленный
+        # log кладём в сообщение исключения, иначе вывод сборки (с реальной
+        # причиной) теряется и приходится лезть по SSH.
+        raise RuntimeError(msg + "\n\n=== rebuild log ===\n" + "\n".join(log))
+
     if HOST_REPO_DIR == "/app":
         raise RuntimeError(
             "HOST_REPO_DIR не задан в окружении devops-runner — rebuild невозможен. "
@@ -63,21 +69,26 @@ def run_rebuild(params: dict) -> dict:
         rc, out = _run(["git", "checkout", branch], env=_GIT_ENV)
         log.append(f"git checkout {branch}: rc={rc}\n{out}")
         if rc != 0:
-            raise RuntimeError(f"git checkout {branch} failed")
+            _fail(f"git checkout {branch} failed")
     rc, out = _run(["git", "pull", "--ff-only"], env=_GIT_ENV)
     log.append(f"git pull: rc={rc}\n{out}")
     if rc != 0:
-        raise RuntimeError("git pull failed")
+        _fail("git pull failed")
     rc, head = _run(["git", "log", "-1", "--pretty=%h %s"], env=_GIT_ENV)
     log.append(f"HEAD: {head}")
     result["head"] = head
 
-    # 2. docker compose build
+    # 2. docker compose build (с ретраем — apt/сеть при сборке бывают флапают;
+    # тяжёлые слои типа libreoffice долго качаются. timeout 1500с < Celery 3600).
     log.append("\n=== Build ===")
-    rc, out = _compose("build", timeout=900)
-    log.append(f"compose build: rc={rc}\n{out[-3000:]}")
+    rc, out = _compose("build", timeout=1500)
+    log.append(f"compose build (попытка 1): rc={rc}\n{out[-3000:]}")
     if rc != 0:
-        raise RuntimeError("docker compose build failed")
+        log.append("compose build: повтор после ошибки…")
+        rc, out = _compose("build", timeout=1500)
+        log.append(f"compose build (попытка 2): rc={rc}\n{out[-3000:]}")
+    if rc != 0:
+        _fail("docker compose build failed (после 2 попыток)")
 
     # 3. Список сервисов → исключаем devops-runner/db/redis → up -d
     rc, services_out = _compose("config", "--services", timeout=30)
@@ -87,7 +98,7 @@ def run_rebuild(params: dict) -> dict:
     rc, out = _compose("up", "-d", "--no-deps", *to_up, timeout=300)
     log.append(f"compose up: rc={rc}\n{out[-2000:]}")
     if rc != 0:
-        raise RuntimeError("docker compose up failed")
+        _fail("docker compose up failed")
     result["recreated"] = to_up
 
     # 4. Healthcheck

@@ -46,7 +46,8 @@ def register_handler(action_type: str):
     return deco
 
 
-@shared_task(name="devops.run_agent_job", queue="devops")
+@shared_task(name="devops.run_agent_job", queue="devops",
+             time_limit=3600, soft_time_limit=3600 - 120)
 def run_agent_job(job_id: str) -> dict:
     """Главная точка входа: берёт job по id и вызывает соответствующий handler.
 
