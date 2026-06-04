@@ -112,7 +112,7 @@
         <div class="grid grid-cols-2 gap-3">
           <div>
             <label class="label"><span class="label-text">Дата рождения</span></label>
-            <input type="date" form="client-edit-form" name="birth_date" value="{{ form.birth_date.value|default:'' }}"
+            <input type="date" form="client-edit-form" name="birth_date" value="{{ form.birth_date.value|date:'Y-m-d' }}"
               class="input input-bordered w-full input-sm">
           </div>
           <div>
@@ -141,7 +141,7 @@
           </div>
           <div>
             <label class="label"><span class="label-text">Дата выдачи</span></label>
-            <input type="date" form="client-edit-form" name="passport_issued_date" value="{{ form.passport_issued_date.value|default:'' }}"
+            <input type="date" form="client-edit-form" name="passport_issued_date" value="{{ form.passport_issued_date.value|date:'Y-m-d' }}"
               class="input input-bordered w-full input-sm">
           </div>
         </div>
