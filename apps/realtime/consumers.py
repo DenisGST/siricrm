@@ -93,3 +93,11 @@ class NotificationsConsumer(AsyncWebsocketConsumer):
 
     async def notify(self, event):
         await self.send(text_data=event["html"])
+
+    async def client_list_bump(self, event):
+        # Невидимый маркер для JS-обработчика в dashboard.html: пришло новое
+        # сообщение в чате клиента — пусть фронт переподтянет список (если
+        # активна дефолтная сортировка и нет поиска).
+        await self.send(
+            text_data=f'<div data-client-list-bump="{event["client_id"]}" style="display:none"></div>'
+        )

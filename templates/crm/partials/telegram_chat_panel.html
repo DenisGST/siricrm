@@ -323,6 +323,35 @@
     var scrollReady = false;
     setTimeout(function () { scrollReady = true; }, 300);
 
+    // Если последняя страница неполная (остаток < per_page) и контента мало,
+    // в контейнере не появляется скролл → событие 'scroll' никогда не сработает
+    // и пользователь не сможет дотянуть предыдущие страницы. Догружаем сразу.
+    async function fillUntilScrollable() {
+      var attempts = 0;
+      while (attempts < 20 && container.scrollHeight <= container.clientHeight + 4) {
+        var prevPage = list.dataset.prevPage;
+        if (!prevPage) break;
+        attempts++;
+        try {
+          var resp = await fetch(
+            "{% url 'telegram_chat_for_client' client.id %}?page=" + prevPage,
+            { headers: { "HX-Request": "true" } }
+          );
+          if (!resp.ok) break;
+          var html = await resp.text();
+          var tmp = document.createElement("div");
+          tmp.innerHTML = html;
+          while (tmp.lastChild) {
+            list.insertBefore(tmp.lastChild, list.firstChild);
+          }
+          var newPrev = parseInt(prevPage) - 1;
+          list.dataset.prevPage = newPrev > 0 ? newPrev.toString() : "";
+          scrollBottom();
+        } catch (e) { break; }
+      }
+    }
+    setTimeout(fillUntilScrollable, 350);
+
     container.addEventListener(
       "scroll",
       async function () {

@@ -527,6 +527,32 @@ document.addEventListener('htmx:afterRequest', (event) => {
   }
 });
 
+// WS-сигнал «новое сообщение у клиента <id>» (см. push_chat_message): если
+// левый список клиентов в чат-панели загружен и активна дефолтная сортировка
+// без поиска — переподтянуть его, чтобы карточка с новым сообщением всплыла
+// наверх. Дебаунс 400мс на случай очереди сообщений.
+(function () {
+  var _bumpTimer = null;
+  document.body.addEventListener('htmx:wsAfterMessage', function (e) {
+    var data = e && e.detail && e.detail.message;
+    if (typeof data !== 'string' || data.indexOf('data-client-list-bump') === -1) return;
+    var list = document.getElementById('telegram-clients-list');
+    if (!list || !list.dataset.loaded) return;
+    var sort = (document.getElementById('telegram-sort') || {}).value || '-last_message_at';
+    var q = (document.getElementById('telegram-search') || {}).value || '';
+    if (sort !== '-last_message_at' || q.trim() !== '') return;
+    clearTimeout(_bumpTimer);
+    _bumpTimer = setTimeout(function () {
+      var scope = (document.getElementById('telegram-scope') || {}).value || 'mine';
+      if (window.htmx) {
+        htmx.ajax('GET',
+          '/telegram/clients/?scope=' + encodeURIComponent(scope),
+          { target: '#telegram-clients-list', swap: 'innerHTML' });
+      }
+    }, 400);
+  });
+})();
+
   function showToast(message, type = 'info') {
     const container = document.getElementById('toast-container');
     if (!container) return;

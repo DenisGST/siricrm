@@ -75,6 +75,14 @@ def push_chat_message(msg: Message):
         },
     )
 
+    # Сигнал «у клиента <id> новое сообщение» — всем онлайн-сотрудникам, чтобы
+    # их левый список клиентов в чат-панели переподтянулся (карточка всплывёт
+    # наверх) если sort=default и нет поиска. См. dashboard.html listener.
+    async_to_sync(channel_layer.group_send)(
+        "all_employees_notifications",
+        {"type": "client_list_bump", "client_id": str(msg.client_id)},
+    )
+
 def push_client_toast(client: Client, text: str, level: str = "info"):
     """
     Показать тост всем сотрудникам, закреплённым за клиентом.
