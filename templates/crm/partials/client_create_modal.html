@@ -16,6 +16,29 @@
         <div class="alert alert-error text-sm py-2">{{ form.non_field_errors }}</div>
       {% endif %}
 
+      {% if form.phone_conflict %}
+        <div class="alert alert-error text-sm py-2 flex items-center justify-between gap-2">
+          <span>📵 Телефон уже у клиента «{{ form.phone_conflict.last_name }} {{ form.phone_conflict.first_name }}» — дубликат создавать нельзя.</span>
+          <button type="button" class="btn btn-xs"
+                  hx-get="{% url 'client_edit' form.phone_conflict.id %}"
+                  hx-target="body" hx-swap="beforeend"
+                  hx-on::after-request="document.getElementById('client-create-modal')?.remove(); document.getElementById('client-edit-modal')?.showModal()">Открыть карточку</button>
+        </div>
+      {% endif %}
+
+      {# Лайв-подсказки дедупа всплывают хинтом ПОД полем (см. #dedup-fio / #dedup-phone). #}
+      <style>
+        .dedup-hint { position: absolute; left: 0; right: 0; top: 100%; z-index: 60; }
+        .dedup-pop { margin-top: 2px; background: oklch(var(--b1)); border: 1px solid oklch(var(--bc)/0.25);
+                     border-radius: 8px; box-shadow: 0 8px 20px rgba(0,0,0,0.14); max-height: 200px;
+                     overflow-y: auto; padding: 4px; font-size: 12px; }
+        .dedup-pop--error { border-color: #ef4444; color: #b91c1c; }
+        .dedup-pop__title { font-size: 11px; opacity: 0.6; padding: 2px 6px; }
+        .dedup-row { display: flex; gap: 8px; align-items: center; width: 100%; text-align: left;
+                     padding: 4px 6px; border-radius: 6px; cursor: pointer; }
+        .dedup-row:hover { background: oklch(var(--b2)); }
+      </style>
+
       <!-- Табы -->
       <div role="tablist" class="tabs tabs-bordered">
 
@@ -23,33 +46,44 @@
         <div role="tabpanel" class="tab-content pt-4 space-y-3">
 
           <!-- ФИО -->
-          <div class="grid grid-cols-3 gap-3">
+          <div class="grid grid-cols-3 gap-3" style="position:relative">
+            <div id="dedup-fio" class="dedup-hint"></div>
             <div class="form-control">
               <label class="label py-1"><span class="label-text text-xs">Фамилия</span></label>
               <input type="text" name="last_name" value="{{ form.last_name.value|default:'' }}"
-                class="input input-bordered input-sm w-full" placeholder="Иванов">
+                class="input input-bordered input-sm w-full" placeholder="Иванов"
+                hx-get="{% url 'client_dedup_check' %}" hx-trigger="keyup changed delay:300ms, change"
+                hx-swap="none" hx-include="closest form">
               {% if form.last_name.errors %}<span class="text-error text-xs">{{ form.last_name.errors.0 }}</span>{% endif %}
             </div>
             <div class="form-control">
               <label class="label py-1"><span class="label-text text-xs">Имя *</span></label>
               <input type="text" name="first_name" value="{{ form.first_name.value|default:'' }}"
-                class="input input-bordered input-sm w-full" placeholder="Иван" required>
+                class="input input-bordered input-sm w-full" placeholder="Иван" required
+                hx-get="{% url 'client_dedup_check' %}" hx-trigger="keyup changed delay:300ms, change"
+                hx-swap="none" hx-include="closest form">
               {% if form.first_name.errors %}<span class="text-error text-xs">{{ form.first_name.errors.0 }}</span>{% endif %}
             </div>
             <div class="form-control">
               <label class="label py-1"><span class="label-text text-xs">Отчество</span></label>
               <input type="text" name="patronymic" value="{{ form.patronymic.value|default:'' }}"
-                class="input input-bordered input-sm w-full" placeholder="Иванович">
+                class="input input-bordered input-sm w-full" placeholder="Иванович"
+                hx-get="{% url 'client_dedup_check' %}" hx-trigger="keyup changed delay:300ms, change"
+                hx-swap="none" hx-include="closest form">
             </div>
           </div>
 
           <!-- Контакты -->
           <div class="grid grid-cols-2 gap-3">
-            <div class="form-control">
+            <div class="form-control" style="position:relative">
               <label class="label py-1"><span class="label-text text-xs">Телефон</span></label>
               <input type="text" name="phone" value="{{ form.phone.value|default:'' }}"
-                class="input input-bordered input-sm w-full" placeholder="+7 900 123-45-67">
+                class="input input-bordered input-sm w-full" placeholder="+7 (900) 123-45-67"
+                onblur="formatPhoneField(this)"
+                hx-get="{% url 'client_dedup_check' %}" hx-trigger="keyup changed delay:300ms, change"
+                hx-swap="none" hx-include="closest form">
               {% if form.phone.errors %}<span class="text-error text-xs">{{ form.phone.errors.0 }}</span>{% endif %}
+              <div id="dedup-phone" class="dedup-hint"></div>
             </div>
             <div class="form-control">
               <label class="label py-1"><span class="label-text text-xs">Email</span></label>
@@ -164,7 +198,7 @@
 
       <div class="modal-action pt-2">
         <button type="button" class="btn btn-sm btn-ghost" onclick="this.closest('dialog').remove()">Отмена</button>
-        <button type="submit" class="btn btn-sm btn-primary">Создать</button>
+        <button type="submit" id="client-create-submit" class="btn btn-sm btn-primary">Создать</button>
       </div>
     </form>
   </div>

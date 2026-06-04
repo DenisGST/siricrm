@@ -1,0 +1,52 @@
+{% comment %}Лайв-хинты дедупа: oob-свапы в контейнеры рядом с полями ФИО и телефона.
+   Рендерим только тот контейнер, по которому пришёл ввод (fio_input/phone_input),
+   чтобы ввод телефона не затирал ФИО-хинт и наоборот. Кнопку «Создать» (oob)
+   трогаем только на форме создания (show_submit). Открытие карточки — удаление
+   create-модалки в after-request (в onclick отменялся бы ещё не ушедший hx-get).{% endcomment %}
+{% if fio_input %}
+<div id="dedup-fio" hx-swap-oob="true" class="dedup-hint">
+  {% if fio_matches %}
+  <div class="dedup-pop">
+    <div class="dedup-pop__title">Похожие клиенты ({{ fio_matches|length }}):</div>
+    {% for d in fio_matches %}
+      <button type="button" class="dedup-row"
+              hx-get="{% url 'client_edit' d.id %}" hx-target="body" hx-swap="beforeend"
+              hx-on::after-request="document.getElementById('client-create-modal')?.remove(); document.getElementById('client-edit-modal')?.showModal()">
+        <span class="font-medium truncate">{{ d.last_name }} {{ d.first_name }} {{ d.patronymic }}</span>
+        {% if d.phone %}<span class="opacity-60 whitespace-nowrap">{{ d.phone }}</span>{% endif %}
+      </button>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>
+{% endif %}
+
+{% if phone_input %}
+<div id="dedup-phone" hx-swap-oob="true" class="dedup-hint">
+  {% if phone_conflict %}
+    <div class="dedup-pop dedup-pop--error">
+      <div class="px-1 py-0.5">📵 Номер уже у «{{ phone_conflict.last_name }} {{ phone_conflict.first_name }}» — создать нельзя.</div>
+      <button type="button" class="dedup-row"
+              hx-get="{% url 'client_edit' phone_conflict.id %}" hx-target="body" hx-swap="beforeend"
+              hx-on::after-request="document.getElementById('client-create-modal')?.remove(); document.getElementById('client-edit-modal')?.showModal()">Открыть карточку</button>
+    </div>
+  {% elif phone_matches %}
+    <div class="dedup-pop">
+      <div class="dedup-pop__title">Похожие номера ({{ phone_matches|length }}):</div>
+      {% for d in phone_matches %}
+        <button type="button" class="dedup-row"
+                hx-get="{% url 'client_edit' d.id %}" hx-target="body" hx-swap="beforeend"
+                hx-on::after-request="document.getElementById('client-create-modal')?.remove(); document.getElementById('client-edit-modal')?.showModal()">
+          <span class="opacity-60 whitespace-nowrap">{{ d.phone }}</span>
+          <span class="font-medium truncate">{{ d.last_name }} {{ d.first_name }}</span>
+        </button>
+      {% endfor %}
+    </div>
+  {% endif %}
+</div>
+{% endif %}
+
+{% if show_submit %}
+<button type="submit" id="client-create-submit" hx-swap-oob="true"
+        class="btn btn-sm btn-primary"{% if phone_conflict %} disabled{% endif %}>Создать</button>
+{% endif %}

@@ -59,11 +59,15 @@
         hx-swap="outerHTML"
         class="flex flex-wrap gap-2 items-end pt-2 border-t border-base-300">
     {% csrf_token %}
-    <div class="form-control">
+    <div class="form-control" style="position:relative">
       <label class="label py-0"><span class="label-text text-xs">Номер</span></label>
       <input type="text" name="phone" required
-             placeholder="+7 999 123-45-67"
-             class="input input-bordered input-xs w-44">
+             placeholder="+7 (999) 123-45-67"
+             class="input input-bordered input-xs w-44"
+             onblur="formatPhoneField(this)"
+             hx-get="{% url 'client_dedup_check' %}" hx-trigger="keyup changed delay:300ms, change"
+             hx-swap="none" hx-vals='{"exclude": "{{ client.id }}"}' hx-include="this">
+      <div id="dedup-phone" class="dedup-hint dedup-hint--up"></div>
     </div>
     <div class="form-control">
       <label class="label py-0"><span class="label-text text-xs">Назначение</span></label>

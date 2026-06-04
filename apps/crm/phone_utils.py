@@ -30,6 +30,15 @@ def normalize_phone(raw) -> str:
     return ""
 
 
+def format_phone(raw) -> str:
+    """Красивый вид «+7 (XXX) XXX-XX-XX». Невалидное/пустое — вернуть как ввели
+    (не теряем то, что набрал пользователь)."""
+    d = normalize_phone(raw)
+    if not d:
+        return str(raw or "").strip()
+    return f"+7 ({d[1:4]}) {d[4:7]}-{d[7:9]}-{d[9:11]}"
+
+
 def find_client_by_phone(
     phone: str, purposes: Iterable[str] | None = None
 ) -> Client | None:
@@ -80,7 +89,7 @@ def sync_client_phone_cache(client: Client, save: bool = True) -> None:
     wa = client.phones.filter(purpose="whatsapp", is_active=True).first()
 
     changed: list[str] = []
-    new_phone = ("+" + primary.phone) if primary else ""
+    new_phone = format_phone(primary.phone) if primary else ""
     if (client.phone or "") != new_phone:
         client.phone = new_phone or None
         changed.append("phone")

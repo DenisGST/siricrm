@@ -679,11 +679,83 @@ def kanban_column(request, status):
 
 
 @login_required
+def client_dedup_check(request):
+    """Лайв-проверка дублей для модалки создания клиента (по мере ввода).
+
+    Телефон — блокирующий сигнал (один номер = один клиент): возвращаем
+    конфликт + oob-свап кнопки «Создать» в disabled. ФИО — информационно:
+    похожие клиенты по первым буквам (двойники с разными телефонами норм)."""
+    last = (request.GET.get("last_name") or "").strip()
+    first = (request.GET.get("first_name") or "").strip()
+    patr = (request.GET.get("patronymic") or "").strip()
+    raw_phone = (request.GET.get("phone") or "").strip()
+    # exclude — id клиента, которого исключаем из результатов (форма редактирования:
+    # не показываем самого клиента и не считаем его телефон конфликтом).
+    exclude = (request.GET.get("exclude") or "").strip()
+
+    # Какой контейнер перерисовывать — по НАЛИЧИЮ параметра в запросе (не по
+    # содержимому): иначе на создании очистка телефона не сбросила бы старый
+    # баннер. Создание шлёт всю форму (оба есть); редактирование — точечно.
+    fio_input = any(k in request.GET for k in ("last_name", "first_name", "patronymic"))
+    phone_input = "phone" in request.GET
+
+    def _excl(qs):
+        return qs.exclude(pk=exclude) if exclude else qs
+
+    # ФИО — похожие по первым буквам (любое поле от 3 символов), информационно.
+    fio_matches = []
+    if len(last) >= 3 or len(first) >= 3 or len(patr) >= 3:
+        qs = Client.objects.all()
+        if last:
+            qs = qs.filter(last_name__istartswith=last)
+        if first:
+            qs = qs.filter(first_name__istartswith=first)
+        if patr:
+            qs = qs.filter(patronymic__istartswith=patr)
+        fio_matches = list(_excl(qs).order_by("last_name", "first_name")[:8])
+
+    # Телефон: от 3 цифр — частичные совпадения (информационно); полный валидный
+    # номер, совпавший с ДРУГИМ клиентом — конфликт (блок кнопки «Создать»).
+    digits = "".join(ch for ch in raw_phone if ch.isdigit())
+    phone_conflict = None
+    phone_matches = []
+    if len(digits) >= 3:
+        norm = normalize_phone(raw_phone)
+        if norm:
+            cp_qs = ClientPhone.objects.filter(phone=norm, is_active=True).select_related("client")
+            if exclude:
+                cp_qs = cp_qs.exclude(client_id=exclude)
+            cp = cp_qs.first()
+            phone_conflict = cp.client if cp else \
+                _excl(Client.objects.filter(phone__contains=norm[1:])).first()
+        if phone_conflict is None:
+            core = digits[-7:] if len(digits) > 7 else digits
+            phone_matches = list(
+                _excl(Client.objects.filter(phone__contains=core)
+                      .exclude(phone="").exclude(phone__isnull=True))
+                .order_by("last_name", "first_name")[:8]
+            )
+
+    return render(request, "crm/partials/client_dedup_check.html", {
+        "fio_input": fio_input,
+        "phone_input": phone_input,
+        "fio_matches": fio_matches,
+        "phone_conflict": phone_conflict,
+        "phone_matches": phone_matches,
+        "show_submit": not exclude,
+    })
+
+
+@login_required
 def client_create(request):
     if request.method == "POST":
         form = ClientForm(request.POST)
         if form.is_valid():
             client = form.save()
+            # Форма пишет только Client.phone (кэш) — заводим ClientPhone(primary),
+            # чтобы дедуп по телефону работал и для вручную созданных клиентов.
+            if client.phone:
+                add_client_phone(client, client.phone, "primary")
 
             if request.headers.get("HX-Request"):
                 # Если запрос из таба "Адреса" — открыть edit-модалку с адресной секцией
@@ -1143,7 +1215,7 @@ def client_edit(request, client_id):
 
 
 from .models import ClientPhone  # noqa: E402
-from .phone_utils import add_client_phone, normalize_phone, sync_client_phone_cache  # noqa: E402
+from .phone_utils import add_client_phone, normalize_phone, sync_client_phone_cache, find_client_by_phone  # noqa: E402
 
 
 def _render_phones_block(request, client):
@@ -1178,6 +1250,16 @@ def client_phone_add(request, client_id):
             "phones": client.phones.order_by("purpose", "phone"),
             "purpose_choices": ClientPhone.PURPOSE_CHOICES,
             "error": f"Неверный номер: {raw}",
+        })
+    # Дедуп: номер не должен принадлежать ДРУГОМУ клиенту ни в каком назначении.
+    other = find_client_by_phone(phone)
+    if other is not None and other.pk != client.pk:
+        fio = f"{other.last_name} {other.first_name}".strip() or "без ФИО"
+        return render(request, "crm/partials/client_phones_block.html", {
+            "client": client,
+            "phones": client.phones.order_by("purpose", "phone"),
+            "purpose_choices": ClientPhone.PURPOSE_CHOICES,
+            "error": f"+{phone} уже у клиента «{fio}» — дубликат номера запрещён.",
         })
     obj = add_client_phone(client, phone, purpose)
     if obj is None:
