@@ -71,6 +71,13 @@ def _get_or_create_wa_client(phone: str, profile_name: str = "") -> tuple[Client
 
     # whatsapp_phone в legacy-поле — unique=True, ставим только если свободен.
     legacy_wa = phone if not Client.objects.filter(whatsapp_phone=phone).exists() else None
+    now = timezone.now()
+    # Если WA не прислал имени профиля — даём осмысленный суффикс
+    # «4147 03.06» (последние 4 цифры номера + дата) в last_name, чтобы
+    # десятки автосозданных лидов можно было различать в списке и поиске.
+    if not first and not last:
+        first = "WhatsApp"
+        last = f"{phone[-4:]} {now.strftime('%d.%m')}"
     client = Client.objects.create(
         first_name=first or "WhatsApp",
         last_name=last,
