@@ -30,7 +30,7 @@
 - 1msg шлёт **flat-формат**: `{"messages":[{id, from, body, type, fromMe, time, chatId, senderName, caption, quotedMsgId}], "ack":[{id, status: sent|delivered|read|failed, error}], "instanceId"}`. Также поддерживается Meta-style `entry → changes → value → messages/statuses/contacts` (на случай переключения 1msg на passthrough).
 - **Входящие медиа:** 1msg даёт прямой URL в `message.body` (`https://1msg-ru.hb.ru-msk.vkcloud-storage.ru/...`). `_extract_media_url_and_name` → `_download_wa_media_to_s3` качает через requests, льёт в S3 (`prefix='whatsapp/incoming'`), создаёт `StoredFile(bubble_id='wamedia_<wamid>')`, привязывает `Message.file`. Best-effort — при недоступности CDN ставится текстовый плейсхолдер «(медиа)», обработка не падает.
 - **Дедуп** через `Message.whatsapp_message_id`+`channel='whatsapp'`. Незнакомый номер → автосоздание Client(status='lead') + `route_new_lead("WhatsApp", ...)`.
-- Ack-статусы (`sent/delivered/read`) обновляют `Message.is_sent/is_delivered/is_read` + push в WS через `push_message_status`.
+- Ack-статусы (`sent/delivered/read`) обновляют `Message.is_sent/is_delivered/is_read` + push в WS через `push_message_status`. 🛑 Извлекать flat-ключ **`ack`** (не только Meta-style `statuses`) — иначе delivered/read никогда не проставятся (баг до 05.06.2026). Галочки в чате — `telegram_message.html`. См. память chat-message-status-ticks.
 
 ## Исходящие медиа: data:URI base64 в payload `body`
 
