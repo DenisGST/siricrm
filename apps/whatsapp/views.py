@@ -438,6 +438,10 @@ def _handle_status_update(status: dict):
     if state in {"read", "3"} and not msg.is_read:
         msg.is_read = True
         updated.append("is_read")
+    if state in {"failed", "error", "-1"} and not msg.is_failed:
+        msg.is_failed = True
+        msg.error_text = (status.get("error") or "Сообщение не доставлено")[:500]
+        updated += ["is_failed", "error_text"]
 
     if updated:
         msg.save(update_fields=updated)

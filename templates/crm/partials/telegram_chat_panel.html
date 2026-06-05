@@ -535,7 +535,10 @@
         if (!badge) return;
         badge.classList.remove("text-gray-400", "animate-pulse", "text-green-500");
         badge.style.fontWeight = "";
-        if (data.is_read) {
+        if (data.is_failed) {
+          badge.textContent = "✗ не доставлено"; badge.style.color = "#dc2626"; badge.style.fontWeight = "700";
+          badge.title = "Не доставлено" + (data.error_text ? ": " + data.error_text : "");
+        } else if (data.is_read) {
           badge.textContent = "✓✓"; badge.style.color = "#2563eb"; badge.style.fontWeight = "700"; badge.title = "Прочитано";
         } else if (data.is_delivered) {
           badge.textContent = "✓✓"; badge.style.color = "#9ca3af"; badge.title = "Доставлено";

@@ -792,6 +792,8 @@ class Message(TimeStampedModel):
     sent_at = models.DateTimeField(null=True, blank=True)
     is_delivered = models.BooleanField(default=False)
     delivered_at = models.DateTimeField(null=True, blank=True)
+    is_failed = models.BooleanField(default=False, verbose_name='Ошибка доставки')
+    error_text = models.CharField(max_length=500, blank=True, default='', verbose_name='Текст ошибки')
 
     reactions = models.JSONField(
         default=dict,

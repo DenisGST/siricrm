@@ -254,10 +254,16 @@ async def start_userbot():
     # доставить пропущенные во время рестарта сообщения через эти же хендлеры.
     async def _process_raw_event(event):
         """Обработка прочтений и реакций."""
-        from telethon.tl.types import UpdateReadHistoryInbox, UpdateMessageReactions, ReactionEmoji
+        from telethon.tl.types import (
+            UpdateReadHistoryInbox, UpdateReadHistoryOutbox,
+            UpdateMessageReactions, ReactionEmoji,
+        )
 
-        # ── Прочтения ──
-        if isinstance(event, UpdateReadHistoryInbox):
+        # ── Прочтения исходящих клиентом ──
+        # Outbox = клиент прочитал НАШИ исходящие (нужно для галочки «прочитано»).
+        # Inbox = мы прочитали входящие (оставлено для совместимости — тоже метит
+        # исходящие как прочитанные по max_id, исторически так работало).
+        if isinstance(event, (UpdateReadHistoryInbox, UpdateReadHistoryOutbox)):
             try:
                 peer = event.peer
                 max_id = event.max_id

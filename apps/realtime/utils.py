@@ -177,5 +177,7 @@ def push_message_status(msg: Message):
             "is_sent": msg.is_sent,
             "is_delivered": msg.is_delivered,
             "is_read": msg.is_read,
+            "is_failed": msg.is_failed,
+            "error_text": msg.error_text or "",
         },
     )
