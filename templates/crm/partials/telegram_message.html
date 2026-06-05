@@ -134,8 +134,12 @@
   <div class="chat-footer text-[10px] text-base-content/60 flex items-center gap-1 flex-wrap">
     {{ msg.telegram_date|default:msg.created_at|date:"d.m.Y H:i" }}
     {% if msg.direction == "outgoing" %}
-      {% if msg.is_sent %}
-        <span class="msg-status text-green-500" title="Отправлено">✓</span>
+      {% if msg.is_read %}
+        <span class="msg-status" style="color:#2563eb;font-weight:700" title="Прочитано">✓✓</span>
+      {% elif msg.is_delivered %}
+        <span class="msg-status" style="color:#9ca3af" title="Доставлено">✓✓</span>
+      {% elif msg.is_sent %}
+        <span class="msg-status" style="color:#9ca3af" title="Отправлено">✓</span>
       {% else %}
         <span class="msg-status text-gray-400 animate-pulse" title="Отправляется">⏳</span>
       {% endif %}

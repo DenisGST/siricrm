@@ -34,6 +34,8 @@ class TelegramChatConsumer(AsyncWebsocketConsumer):
             "type": "chat_message_status",
             "message_id": event["message_id"],
             "is_sent": event["is_sent"],
+            "is_delivered": event.get("is_delivered", False),
+            "is_read": event.get("is_read", False),
         }))
 
     async def chat_message_reactions(self, event):

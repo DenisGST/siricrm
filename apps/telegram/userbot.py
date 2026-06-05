@@ -287,10 +287,10 @@ async def start_userbot():
                         ).order_by("-telegram_message_id")[:updated]
                     )
 
+                    # Живое обновление галочки «прочитано» в открытом чате.
+                    from apps.realtime.utils import push_message_status
                     for msg in messages:
-                        if msg.direction == "incoming":
-                            from apps.realtime.utils import push_chat_message
-                            await sync_to_async(push_chat_message)(msg)
+                        await sync_to_async(push_message_status)(msg)
 
             except Exception as e:
                 from django.db import connection

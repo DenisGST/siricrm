@@ -239,6 +239,9 @@ def whatsapp_webhook(request, secret: str = ""):
                 value = (change.get("value") or {})
                 messages.extend(value.get("messages") or [])
                 statuses.extend(value.get("statuses") or [])
+                # 1msg.io шлёт ack-статусы (sent/delivered/read) ключом "ack",
+                # а не "statuses" — без этого прочтения/доставка не обновлялись.
+                statuses.extend(value.get("ack") or [])
                 for c in value.get("contacts") or []:
                     wa_id = c.get("wa_id") or c.get("waId")
                     if wa_id:
@@ -248,6 +251,9 @@ def whatsapp_webhook(request, secret: str = ""):
             messages.extend(data["messages"])
         if isinstance(data.get("statuses"), list):
             statuses.extend(data["statuses"])
+        # 1msg.io flat-формат: {"ack":[{"id":..,"status":"read"}], "instanceId":..}
+        if isinstance(data.get("ack"), list):
+            statuses.extend(data["ack"])
         # одиночное событие
         if "from" in data and "id" in data:
             messages.append(data)

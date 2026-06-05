@@ -175,5 +175,7 @@ def push_message_status(msg: Message):
             "type": "chat_message_status",
             "message_id": str(msg.id),
             "is_sent": msg.is_sent,
+            "is_delivered": msg.is_delivered,
+            "is_read": msg.is_read,
         },
     )
