@@ -110,7 +110,7 @@ def _creditor_from_entry(name_id_field, name_field, entry):
 
 
 def resolve_creditors(at):
-    """Список кредиторов с реквизитами (банки+МФО+коммуналка+суд+штрафы+прочее).
+    """Список кредиторов с реквизитами (банки+МФО+маркетплейсы+коммуналка+суд+штрафы+прочее).
 
     at — результат answers_by_type(response).
     Каждый элемент: name, ogrn, inn, address, has_requisites, amount(Decimal),
@@ -137,6 +137,17 @@ def resolve_creditors(at):
                      date=fmt_date(e.get("date_taken")),
                      overdue=(e.get("overdue") == "yes"), kind="mfo")
             out.append(c)
+
+    for e in (at.get("marketplace_debts", {}) or {}).get("entries", []):
+        item = (e.get("item") or "").strip()
+        basis = "договора купли-продажи товара в рассрочку"
+        if item:
+            basis += f" ({item})"
+        out.append({"name": e.get("marketplace") or "—", "ogrn": "", "inn": "",
+                    "address": "", "has_requisites": False, "le_id": "",
+                    "amount": parse_money(e.get("amount")),
+                    "basis": basis, "date": "",
+                    "overdue": True, "kind": "marketplace"})
 
     for e in (at.get("utility_debts", {}) or {}).get("entries", []):
         out.append({"name": e.get("org_name") or "—", "ogrn": "", "inn": "",
