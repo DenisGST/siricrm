@@ -431,6 +431,21 @@ def _extract_answer(post, q):
                 "pledged", "in_marriage", "auction", "comment",
             ]})
         return {"has_assets": has_assets, "entries": entries}
+    if qt == "marketplace_debts":
+        indices = set()
+        for k in post:
+            m = re.match(rf"^{re.escape(key)}_mp(\d+)_", k)
+            if m:
+                indices.add(int(m.group(1)))
+        entries = []
+        for i in sorted(indices):
+            p = f"{key}_mp{i}_"
+            entries.append({
+                "marketplace": (post.get(f"{p}marketplace") or "").strip(),
+                "item":        (post.get(f"{p}item")        or "").strip(),
+                "amount":      (post.get(f"{p}amount")      or "").strip(),
+            })
+        return {"entries": entries}
     if qt == "utility_debts":
         indices = set()
         for k in post:

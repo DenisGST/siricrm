@@ -1920,6 +1920,40 @@ function mfoInitAll() {
   });
 }
 
+// ── Кредиты/рассрочки на маркетплейсах (marketplace_debts) ───────────────────
+
+function _mpEntryHtml(key, i) {
+  var n = function(f) { return key + '_mp' + i + '_' + f; };
+  return '<div class="mp-entry rounded-lg mb-2"'
+    +' style="border:1px solid #e2e8f0;background:#f8fafc;"'
+    +' data-index="'+i+'" data-mp-key="'+key+'">'
+    +'<div class="flex items-center justify-between px-3 py-1.5"'
+    +' style="border-bottom:1px solid #e2e8f0;background:#f1f5f9;border-radius:8px 8px 0 0;">'
+    +'<span class="text-xs font-semibold" style="color:#64748b;">Маркетплейс</span>'
+    +'<button type="button" onclick="mpRemoveEntry(this)"'
+    +' class="btn btn-ghost btn-xs" style="color:#ef4444;padding:2px 6px;">✕</button></div>'
+    +'<div class="p-3 grid gap-2" style="grid-template-columns:2fr 3fr 1fr;">'
+    +'<div><div class="text-xs mb-1" style="color:#94a3b8;">Наименование маркетплейса</div>'
+    +'<input type="text" name="'+n('marketplace')+'" class="input input-bordered input-sm w-full"></div>'
+    +'<div><div class="text-xs mb-1" style="color:#94a3b8;">Что приобреталось</div>'
+    +'<input type="text" name="'+n('item')+'" class="input input-bordered input-sm w-full"></div>'
+    +'<div><div class="text-xs mb-1" style="color:#94a3b8;">Сумма долга</div>'
+    +'<input type="number" name="'+n('amount')+'" class="input input-bordered input-sm w-full" step="1" min="0"></div>'
+    +'</div></div>';
+}
+
+function mpAddEntry(key) {
+  var list = document.getElementById('mp-list-' + key);
+  if (!list) return;
+  var i = list.querySelectorAll('.mp-entry').length;
+  list.insertAdjacentHTML('beforeend', _mpEntryHtml(key, i));
+}
+
+function mpRemoveEntry(btn) {
+  var entry = btn.closest('.mp-entry');
+  if (entry) entry.remove();
+}
+
 // ── Коммунальные платежи (utility_debts) ─────────────────────────────────────
 
 function _utilEntryHtml(key, i) {
