@@ -50,6 +50,7 @@ INSTALLED_APPS = [
     "apps.bubble_import",
     "apps.arbitr",
     "apps.afd",
+    "apps.scans",
 
     # django-rules: object-level permissions (apps/<app>/rules.py авто-импортируются)
     "rules.apps.AutodiscoverRulesConfig",
@@ -247,6 +248,19 @@ PUBLIC_BASE_URL = config("PUBLIC_BASE_URL", default="https://crmsiri.ru")
 # Куда слать алёрты при капче / других интерактивных ошибках парсера.
 # Пока — один MAX chat_id админа; позже разнесём по Employee.max_chat_id.
 ARBITR_CAPTCHA_NOTIFY_MAX_CHAT_ID = config("ARBITR_CAPTCHA_NOTIFY_MAX_CHAT_ID", default="")
+
+# --- Мониторинг доступности (apps.core.tasks.monitor_health) ---
+# Кросс-серверно: dev мониторит прод, прод мониторит dev. Пусто → выключено.
+HEALTH_MONITOR_TARGET_URL = config("HEALTH_MONITOR_TARGET_URL", default="")
+HEALTH_MONITOR_LABEL = config("HEALTH_MONITOR_LABEL", default="")
+# Опциональный Host-заголовок (если бьём по IP/внутреннему адресу).
+HEALTH_MONITOR_HOST = config("HEALTH_MONITOR_HOST", default="")
+HEALTH_MONITOR_FAIL_THRESHOLD = config("HEALTH_MONITOR_FAIL_THRESHOLD", default=2, cast=int)
+# Куда слать алёрты. MAX по умолчанию переиспользует chat арбитра.
+HEALTH_ALERT_MAX_CHAT_ID = (
+    config("HEALTH_ALERT_MAX_CHAT_ID", default="") or ARBITR_CAPTCHA_NOTIFY_MAX_CHAT_ID
+)
+HEALTH_ALERT_TELEGRAM_CHAT_ID = config("HEALTH_ALERT_TELEGRAM_CHAT_ID", default="")
 # Headless по умолчанию. Для локальной отладки парсера выставить ARBITR_HEADLESS=false.
 ARBITR_HEADLESS = config("ARBITR_HEADLESS", default="true").lower() != "false"
 
