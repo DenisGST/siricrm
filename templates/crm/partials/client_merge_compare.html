@@ -1,0 +1,96 @@
+{# Шаг 2: сравнение Клиент1 ↔ Клиент2 + выбор «что в итоге» #}
+<form id="client-merge-form"
+      hx-post="{% url 'client_merge_execute' c1.id %}"
+      hx-target="#merge-compare" hx-swap="innerHTML">
+  {% csrf_token %}
+  <input type="hidden" name="other" value="{{ c2.id }}">
+
+  {# Какая карточка остаётся #}
+  <div class="rounded-lg border p-2 mb-3" style="border-color:var(--ms-border-light)">
+    <div class="text-xs opacity-60 mb-1">Какую карточку ОСТАВИТЬ (вторая будет удалена):</div>
+    <div class="flex flex-wrap gap-4 text-sm">
+      <label class="flex items-center gap-1 cursor-pointer">
+        <input type="radio" name="survivor" value="c1" class="radio" checked>
+        <span>Клиент 1 — <b>{{ c1.last_name }} {{ c1.first_name }}</b> {% if c1.phone %}<span class="opacity-60">· {{ c1.phone }}</span>{% endif %}</span>
+      </label>
+      <label class="flex items-center gap-1 cursor-pointer">
+        <input type="radio" name="survivor" value="c2" class="radio">
+        <span>Клиент 2 — <b>{{ c2.last_name }} {{ c2.first_name }}</b> {% if c2.phone %}<span class="opacity-60">· {{ c2.phone }}</span>{% endif %}</span>
+      </label>
+    </div>
+  </div>
+
+  {% if dup_services %}
+  <div class="alert alert-info text-xs py-2 mb-2">
+    ⚠ У обеих карточек есть одинаковые услуги: <b>{{ dup_services|join:", " }}</b>.
+    При «Объединить» они НЕ схлопываются — на карточке будет по две таких услуги
+    (лишнюю можно удалить вручную позже).
+  </div>
+  {% endif %}
+
+  <div class="overflow-x-auto" style="max-height:48vh">
+    <table class="table table-xs">
+      <thead class="sticky top-0 bg-base-100 z-10">
+        <tr>
+          <th>Поле</th>
+          <th>Клиент 1</th>
+          <th>Клиент 2</th>
+          <th class="text-center">Что в итоге</th>
+        </tr>
+      </thead>
+      <tbody>
+        {# ── Одиночные поля ── #}
+        {% for f in scalars %}
+          {% if f.v1 or f.v2 %}
+          <tr {% if f.differ %}style="background:#fef3c7"{% endif %}>
+            <td class="opacity-70">{{ f.label }}</td>
+            <td>{{ f.v1|default:"—" }}</td>
+            <td>{{ f.v2|default:"—" }}</td>
+            <td class="text-center whitespace-nowrap">
+              <label class="inline-flex items-center gap-0.5 mr-1 cursor-pointer" title="Взять у Клиента 1">
+                <input type="radio" name="f_{{ f.name }}" value="c1" class="radio" {% if f.default == 'c1' %}checked{% endif %}>
+                <span class="text-[10px]">К1</span>
+              </label>
+              <label class="inline-flex items-center gap-0.5 cursor-pointer" title="Взять у Клиента 2">
+                <input type="radio" name="f_{{ f.name }}" value="c2" class="radio" {% if f.default == 'c2' %}checked{% endif %}>
+                <span class="text-[10px]">К2</span>
+              </label>
+            </td>
+          </tr>
+          {% endif %}
+        {% endfor %}
+
+        {# ── Коллекции ── #}
+        <tr><td colspan="4" class="bg-base-200 font-semibold text-xs">Данные (коллекции)</td></tr>
+        {% for col in collections %}
+        <tr>
+          <td class="opacity-70">{{ col.label }}</td>
+          <td>{{ col.n1 }}</td>
+          <td>{{ col.n2 }}</td>
+          <td class="text-center whitespace-nowrap">
+            <label class="inline-flex items-center gap-0.5 mr-1 cursor-pointer" title="Только данные Клиента 1">
+              <input type="radio" name="col_{{ col.key }}" value="c1" class="radio"><span class="text-[10px]">К1</span>
+            </label>
+            <label class="inline-flex items-center gap-0.5 mr-1 cursor-pointer" title="Только данные Клиента 2">
+              <input type="radio" name="col_{{ col.key }}" value="c2" class="radio"><span class="text-[10px]">К2</span>
+            </label>
+            <label class="inline-flex items-center gap-0.5 cursor-pointer" title="Объединить (обе)">
+              <input type="radio" name="col_{{ col.key }}" value="both" class="radio" checked><span class="text-[10px]">Обе</span>
+            </label>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="modal-action mt-3">
+    <span class="text-xs text-error mr-auto self-center">⚠ Действие необратимо</span>
+    <button type="button" class="btn btn-sm btn-ghost"
+            onclick="document.getElementById('client-merge-modal').remove()">Отмена</button>
+    <button type="submit" class="btn btn-sm btn-error"
+            hx-confirm="Объединить карточки? Вторая будет удалена безвозвратно.">
+      🔀 Объединить
+    </button>
+  </div>
+</form>

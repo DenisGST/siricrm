@@ -3,9 +3,12 @@ from django.core.paginator import Paginator
 from django.shortcuts import render, get_object_or_404, redirect
 from django.core.cache import cache
 from django.contrib.auth.decorators import login_required
-from django.http import HttpResponse, HttpResponseBadRequest, JsonResponse
+from django.http import HttpResponse, HttpResponseBadRequest, HttpResponseForbidden, JsonResponse
 from django.views.decorators.http import require_POST
 from django.template.loader import render_to_string
+import logging
+
+logger = logging.getLogger(__name__)
 
 from apps.crm.models import *
 from django.db import models, transaction
@@ -1309,36 +1312,6 @@ def client_phone_set_purpose(request, phone_id):
 
 
 @login_required
-def client_merge_search(request):
-    """HTMX: search clients to merge with (excludes the source client)."""
-    source_id = request.GET.get("source")
-    query = request.GET.get("merge_q", "").strip()
-
-    clients = Client.objects.none()
-    if query and len(query) >= 2:
-        clients = (
-            Client.objects
-            .filter(
-                Q(first_name__icontains=query)
-                | Q(last_name__icontains=query)
-                | Q(patronymic__icontains=query)
-                | Q(phone__icontains=query)
-                | Q(phones__phone__icontains=query)
-                | Q(username__icontains=query)
-            )
-            .exclude(pk=source_id)
-            .distinct()
-            .order_by("last_name", "first_name")[:20]
-        )
-
-    return render(request, "crm/partials/client_merge_results.html", {
-        "clients": clients,
-        "source_id": source_id,
-        "query": query,
-    })
-
-
-@login_required
 @require_POST
 def message_react(request, msg_id):
     """Поставить реакцию на сообщение (Telegram или MAX)."""
@@ -1362,78 +1335,6 @@ def message_react(request, msg_id):
 
     send_reaction_task.delay(str(msg.id), emoji)
     return HttpResponse(status=204)
-
-
-@login_required
-@require_POST
-def client_merge(request, client_id):
-    """Merge target client into source (client_id).
-    All messages, services and employees from target are moved/merged into source.
-    Target client is then deleted.
-    """
-    source = get_object_or_404(Client, pk=client_id)
-    target_id = request.POST.get("target_id")
-    target = get_object_or_404(Client, pk=target_id)
-
-    with transaction.atomic():
-        # Clear unique fields on target FIRST to avoid constraint violations
-        if target.telegram_id:
-            target_tg_id = target.telegram_id
-            target.telegram_id = None
-            target.save(update_fields=["telegram_id"])
-            if not source.telegram_id:
-                source.telegram_id = target_tg_id
-
-        if target.max_chat_id:
-            target_max_id = target.max_chat_id
-            target.max_chat_id = None
-            target.save(update_fields=["max_chat_id"])
-            if not source.max_chat_id:
-                source.max_chat_id = target_max_id
-
-        # Fill in missing contact info from target
-        for field in ("first_name", "phone", "email", "username", "last_name", "patronymic",
-                      "birth_date", "birth_place", "passport_series", "passport_number",
-                      "passport_issued_by", "passport_issued_date", "passport_division_code",
-                      "inn", "snils", "notes"):
-            if not getattr(source, field) and getattr(target, field):
-                setattr(source, field, getattr(target, field))
-
-        source.save()
-
-        # Move messages
-        Message.objects.filter(client=target).update(client=source)
-
-        # Move services
-        Service.objects.filter(client=target).update(client=source)
-
-        # Merge employees M2M
-        for ce in target.client_employees.all():
-            ClientEmployee.objects.get_or_create(
-                client=source, employee=ce.employee,
-                defaults={"messenger_status": ce.messenger_status},
-            )
-
-        # Delete duplicate
-        target.delete()
-
-    # Re-render the chat panel with the updated source client
-    qs = (
-        Message.objects
-        .filter(client=source)
-        .select_related("employee", "employee__user", "file", "reply_to", "reply_to__client")
-        .order_by("telegram_date", "id")
-    )
-    paginator = Paginator(qs, MESSAGES_PER_PAGE)
-    page_number = paginator.num_pages or 1
-    page_obj = paginator.get_page(page_number)
-
-    return render(request, "crm/partials/telegram_chat_panel.html", {
-        "client": source,
-        "messages": page_obj.object_list,
-        "page_obj": page_obj,
-        "merge_success": True,
-    })
 
 
 # ─── Адреса клиента ───
@@ -2744,3 +2645,123 @@ def service_employee_toggle(request, pk):
         "service": service,
         "states": states,
     })
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# Объединение карточек-дублей (право can_merge_clients)
+# ─────────────────────────────────────────────────────────────────────────
+from apps.core.permissions import can_merge_clients as _can_merge_clients  # noqa: E402
+from apps.crm import client_merge as _cm  # noqa: E402
+
+
+def _merge_guard(request):
+    return _can_merge_clients(request.user)
+
+
+@login_required
+def client_merge_modal(request, client_id):
+    """Шаг 1: модалка объединения — поиск второй карточки."""
+    if not _merge_guard(request):
+        return HttpResponseForbidden("Нет доступа к объединению клиентов")
+    client = get_object_or_404(Client, pk=client_id)
+    return render(request, "crm/partials/client_merge_modal.html", {"client": client})
+
+
+@login_required
+def client_merge_search(request, client_id):
+    """Кандидаты для объединения (поиск по ФИО/телефону), кроме самой карточки."""
+    if not _merge_guard(request):
+        return HttpResponseForbidden("Нет доступа")
+    q = (request.GET.get("q") or "").strip()
+    results = []
+    if len(q) >= 3:
+        digits = "".join(ch for ch in q if ch.isdigit())
+        qs = Client.objects.exclude(pk=client_id)
+        if digits and len(digits) >= 3:
+            core = digits[-7:] if len(digits) > 7 else digits
+            ids = set(ClientPhone.objects.filter(phone__contains=core)
+                      .values_list("client_id", flat=True))
+            qs = qs.filter(Q(pk__in=ids) | Q(phone__contains=core))
+        else:
+            parts = q.split()
+            for p in parts:
+                qs = qs.filter(Q(last_name__icontains=p) | Q(first_name__icontains=p)
+                               | Q(patronymic__icontains=p))
+        results = list(qs.order_by("last_name", "first_name")[:12])
+    return render(request, "crm/partials/client_merge_candidates.html", {
+        "client_id": client_id, "results": results, "q": q,
+    })
+
+
+@login_required
+def client_merge_compare(request, client_id):
+    """Шаг 2: таблица сравнения Клиент1 (текущий) ↔ Клиент2 (выбранный)."""
+    if not _merge_guard(request):
+        return HttpResponseForbidden("Нет доступа")
+    c1 = get_object_or_404(Client, pk=client_id)
+    other_id = (request.GET.get("other") or "").strip()
+    c2 = get_object_or_404(Client, pk=other_id)
+    if str(c1.id) == str(c2.id):
+        return HttpResponseBadRequest("Нельзя объединить карточку саму с собой")
+    data = _cm.compare_clients(c1, c2)
+    return render(request, "crm/partials/client_merge_compare.html", {
+        "c1": c1, "c2": c2,
+        "scalars": data["scalars"],
+        "collections": data["collections"],
+        "dup_services": data["dup_services"],
+    })
+
+
+@login_required
+@require_POST
+def client_merge_execute(request, client_id):
+    """Выполнить объединение по выбору пользователя."""
+    if not _merge_guard(request):
+        return HttpResponseForbidden("Нет доступа")
+    c1 = get_object_or_404(Client, pk=client_id)
+    c2 = get_object_or_404(Client, pk=(request.POST.get("other") or "").strip())
+    if str(c1.id) == str(c2.id):
+        return HttpResponseBadRequest("Нельзя объединить карточку саму с собой")
+
+    # Кто выживает: 'c1' (по умолчанию) или 'c2'
+    keep = request.POST.get("survivor") or "c1"
+    survivor, other = (c1, c2) if keep == "c1" else (c2, c1)
+
+    # Одиночные поля: для каждого поля выбран 'c1'|'c2'. Берём значение OTHER,
+    # если выбран столбец, противоположный survivor'у.
+    survivor_col = keep  # 'c1' или 'c2'
+    scalar_take_other = set()
+    for name, _ in _cm.SCALAR_FIELDS:
+        choice = request.POST.get(f"f_{name}") or "c1"
+        if choice != survivor_col:
+            scalar_take_other.add(name)
+
+    # Коллекции: выбор 'c1'|'c2'|'both' → 'survivor'|'other'|'both'
+    collection_actions = {}
+    for key, _, _ in _cm.COLLECTIONS:
+        choice = request.POST.get(f"col_{key}") or "both"
+        if choice == "both":
+            collection_actions[key] = "both"
+        elif choice == survivor_col:
+            collection_actions[key] = "survivor"
+        else:
+            collection_actions[key] = "other"
+
+    try:
+        _cm.merge_clients(survivor, other,
+                          scalar_take_other=scalar_take_other,
+                          collection_actions=collection_actions)
+    except Exception as e:
+        logger.exception("Ошибка объединения клиентов %s ← %s", survivor.id, other.id)
+        return HttpResponse(
+            f'<div class="alert alert-error text-sm">Ошибка объединения: {e}</div>',
+            status=200)
+
+    fio = f"{survivor.last_name} {survivor.first_name}".strip()
+    return HttpResponse(
+        "<script>"
+        "document.getElementById('client-merge-modal')?.remove();"
+        "document.getElementById('client-edit-modal')?.remove();"
+        f"window.showToast && showToast('Карточки объединены → {fio}','success');"
+        "htmx.trigger(document.body,'kanbanRefresh');"
+        "</script>")

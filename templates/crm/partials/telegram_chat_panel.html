@@ -1,4 +1,4 @@
-{% load static icons %}
+{% load static icons permissions_tags %}
 <!-- /var/www/projects/siricrm/templates/crm/partials/telegram_chat_panel.html -->
 <div id="telegram-chat-panel-root" class="relative flex flex-col h-full">
   <!-- шапка -->
@@ -33,16 +33,16 @@
     </div>
 
     <div class="flex items-center gap-2">
-      {% if merge_success %}
-        <span class="text-xs text-success font-medium">✅ Объединено</span>
-      {% endif %}
+      {% if user|can_merge_clients %}
       <button
-        onclick="document.getElementById('client-merge-modal').showModal(); document.getElementById('merge-search-input').focus()"
+        hx-get="{% url 'client_merge_modal' client.id %}"
+        hx-target="body" hx-swap="beforeend"
         class="btn btn-ghost btn-sm gap-1 text-gray-500 hover:text-warning"
         title="Объединить с другим клиентом"
       >
         {% icon "merge" size=16 %} <span class="text-xs">Объединить</span>
       </button>
+      {% endif %}
       <button
         id="btn-import-history"
         onclick="startImportHistory('{{ client.id }}')"
@@ -53,8 +53,6 @@
       </button>
     </div>
   </div>
-
-  {% include "crm/partials/client_merge_modal.html" %}
 
   <!-- поиск по сообщениям -->
   <div class="px-3 shrink-0" style="border-bottom:1px solid #eee;padding-top:3px;padding-bottom:3px;">

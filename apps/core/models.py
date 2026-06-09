@@ -204,6 +204,11 @@ class Employee(models.Model):
                   "«Входящие сканы». Можно задать один и тот же сканер "
                   "нескольким сотрудникам.",
     )
+    can_merge_clients = models.BooleanField(
+        "Объединение клиентов", default=False,
+        help_text="Доступ к кнопке «Объединить» в карточке клиента — "
+                  "самостоятельное слияние карточек-дублей.",
+    )
     bubble_id = models.CharField(
         "Bubble ID", max_length=64, blank=True, null=True, unique=True,
         help_text="ID записи User в исходной CRM на bubble.io",
