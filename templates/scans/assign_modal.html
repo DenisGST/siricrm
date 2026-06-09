@@ -60,6 +60,22 @@
       document.getElementById('scan-client-box').classList.remove('hidden');
       document.getElementById('scan-targets').innerHTML = '';
     };
+    // Контрагент (typeahead в форме корреспонденции — грузится внутрь #scan-targets).
+    window.pickScanCounterparty = function (id, label) {
+      var hid = document.getElementById('scan-cp-id');
+      if (!hid) return;
+      hid.value = id;
+      document.getElementById('scan-cp-label').textContent = label;
+      document.getElementById('scan-cp-picked').classList.remove('hidden');
+      document.getElementById('scan-cp-box').classList.add('hidden');
+    };
+    window.resetScanCounterparty = function () {
+      var hid = document.getElementById('scan-cp-id');
+      if (!hid) return;
+      hid.value = '';
+      document.getElementById('scan-cp-picked').classList.add('hidden');
+      document.getElementById('scan-cp-box').classList.remove('hidden');
+    };
   })();
   </script>
 </dialog>

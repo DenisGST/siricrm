@@ -1,19 +1,32 @@
 <div id="scans-list"
      hx-get="{% url 'scans:list' %}"
      hx-trigger="scansChanged from:body"
+     hx-vals='{"q": "{{ q|escapejs }}", "source": "{{ source }}", "archive": "{% if archive %}1{% endif %}"}'
      hx-target="#scans-list" hx-swap="outerHTML">
+
+  <div class="text-xs text-base-content/50 mb-2">
+    {% if archive %}Архив отклонённых{% else %}Непривязанных{% endif %}: {{ total }}
+    {% if truncated %}· показаны первые {{ shown }} — уточните поиск{% endif %}
+  </div>
+
   {% if scans %}
   <div class="grid gap-4" style="grid-template-columns:repeat(auto-fill,minmax(320px,1fr))">
     {% for scan in scans %}
     <div class="card bg-base-100 shadow border border-base-300">
       <div class="card-body p-3">
         <div class="flex items-start justify-between gap-2">
-          <div class="min-w-0">
-            <div class="font-medium text-sm truncate" title="{{ scan.filename }}">{{ scan.filename }}</div>
-            <div class="text-xs text-base-content/50">
-              {{ scan.received_at|date:"d.m.Y H:i" }}
-              · {{ scan.get_source_display }}
-              {% if scan.source_meta %}· {{ scan.source_meta }}{% endif %}
+          <div class="flex items-start gap-2 min-w-0">
+            {% if not archive %}
+            <input type="checkbox" name="ids" value="{{ scan.id }}" class="checkbox checkbox-sm mt-1"
+                   title="Выбрать для пакетной привязки">
+            {% endif %}
+            <div class="min-w-0">
+              <div class="font-medium text-sm truncate" title="{{ scan.filename }}">{{ scan.filename }}</div>
+              <div class="text-xs text-base-content/50">
+                {{ scan.received_at|date:"d.m.Y H:i" }} · {{ scan.get_source_display }}
+                {% if scan.source_meta %}· {{ scan.source_meta }}{% endif %}
+                {% if archive and scan.handled_by %}· отклонил {{ scan.handled_by.user.last_name }} {{ scan.handled_at|date:"d.m H:i" }}{% endif %}
+              </div>
             </div>
           </div>
           <span class="badge badge-ghost badge-sm">{{ scan.size|filesizeformat }}</span>
@@ -21,29 +34,32 @@
 
         {% if scan.stored_file %}
         <a href="{% url 'files:stored_download' scan.stored_file.id %}?inline=1" target="_blank"
-           class="block mt-2 border border-base-300 rounded overflow-hidden bg-base-200"
-           style="height:220px">
+           class="block mt-2 border border-base-300 rounded overflow-hidden bg-base-200" style="height:220px">
           <iframe src="{% url 'files:stored_download' scan.stored_file.id %}?inline=1"
                   class="w-full h-full pointer-events-none" loading="lazy"></iframe>
         </a>
+        {% else %}
+        <div class="mt-2 text-xs text-base-content/40 italic">файл удалён из хранилища</div>
         {% endif %}
 
+        {% if not archive %}
         <div class="card-actions justify-end mt-2">
           <button class="btn btn-xs btn-ghost text-error"
                   hx-post="{% url 'scans:discard' scan.id %}"
-                  hx-confirm="Отклонить скан «{{ scan.filename }}»? Он исчезнет из лотка."
-                  hx-target="#scans-list" hx-swap="outerHTML">Отклонить</button>
+                  hx-confirm="Отклонить скан «{{ scan.filename }}»? Файл будет удалён из хранилища."
+                  hx-swap="none">Отклонить</button>
           <button class="btn btn-xs btn-primary"
                   hx-get="{% url 'scans:assign_modal' scan.id %}"
                   hx-target="body" hx-swap="beforeend">Привязать к клиенту</button>
         </div>
+        {% endif %}
       </div>
     </div>
     {% endfor %}
   </div>
   {% else %}
   <div class="text-center text-base-content/50 py-12">
-    Лоток пуст — новых сканов нет.
+    {% if archive %}Архив пуст.{% else %}Лоток пуст — новых сканов нет.{% endif %}
   </div>
   {% endif %}
 </div>

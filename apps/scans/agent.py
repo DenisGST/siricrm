@@ -81,4 +81,19 @@ def agent_intake(request):
         source=IncomingScan.SOURCE_AGENT,
         source_meta=(request.POST.get("device") or "")[:255],
     )
+    _notify_new_scan(filename)
     return JsonResponse({"id": str(scan.pk), "filename": filename}, status=201)
+
+
+def _notify_new_scan(filename: str):
+    """Тост сотрудникам с доступом к лотку — пришёл новый скан."""
+    try:
+        from apps.core.models import Employee
+        from apps.realtime.utils import push_toast
+        handlers = (Employee.objects.filter(can_handle_scans=True, user__is_active=True)
+                    .select_related("user"))
+        for emp in handlers:
+            if emp.user_id:
+                push_toast(emp.user, f"🖨️ Новый скан: {filename}", level="info")
+    except Exception:
+        pass

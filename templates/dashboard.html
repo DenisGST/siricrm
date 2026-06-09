@@ -169,11 +169,25 @@
         {% endif %}
         {% for item in items %}
           {% if item.use_htmx %}
+            {% if item.url == '/scans/' %}
+            {# Счётчик непривязанных сканов — поллинг + обновление на scansChanged #}
+            <div class="indicator">
+              <span id="scan-badge" class="indicator-item badge badge-error badge-xs"
+                    hx-get="{% url 'scans:pending_count' %}"
+                    hx-trigger="load, every 30s, scansChanged from:body"></span>
+              <a href="#" title="{{ item.name }}"
+                 class="sidebar-item {% if section == 'CRM' %}si-sect-crm{% elif section == 'Администрирование' %}si-sect-admin{% else %}si-sect-top{% endif %}"
+                 hx-get="{{ item.url }}" hx-target="#content-area" hx-swap="innerHTML">
+                {% sidebar_icon item.icon size=22 %}
+              </a>
+            </div>
+            {% else %}
             <a href="#" title="{{ item.name }}"
                class="sidebar-item {% if section == 'CRM' %}si-sect-crm{% elif section == 'Администрирование' %}si-sect-admin{% else %}si-sect-top{% endif %}"
                hx-get="{{ item.url }}" hx-target="#content-area" hx-swap="innerHTML">
               {% sidebar_icon item.icon size=22 %}
             </a>
+            {% endif %}
           {% else %}
             <a href="{{ item.url }}" title="{{ item.name }}"
                class="sidebar-item {% if section == 'CRM' %}si-sect-crm{% elif section == 'Администрирование' %}si-sect-admin{% else %}si-sect-top{% endif %}"
@@ -2513,6 +2527,8 @@ function initMsSearch() {
   }
   #idle-warning::backdrop { background: rgba(0,0,0,0.35); }
   #idle-locked::backdrop  { background: rgba(0,0,0,0.6); }
+  /* Бейдж непривязанных сканов — скрыт, когда счётчик пуст (0). */
+  #scan-badge:empty { display: none; }
 </style>
 
 <dialog id="idle-warning">

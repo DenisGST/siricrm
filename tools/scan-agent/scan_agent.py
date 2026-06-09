@@ -42,7 +42,7 @@ log = logging.getLogger("scan-agent")
 
 # Отметка сборки — видна в логе при старте. Если в логе старая дата —
 # запущен старый процесс (нужно полностью перезапустить агент, а не «Сохранить»).
-AGENT_BUILD = "2026-06-08 (polling + tray + done-retention)"
+AGENT_BUILD = "2026-06-09 (polling + tray + done-retention + log-menu)"
 
 # Какие расширения заливаем (сканеры обычно дают PDF, иногда TIFF/JPG).
 ALLOWED_EXT = {".pdf", ".tif", ".tiff", ".jpg", ".jpeg", ".png"}

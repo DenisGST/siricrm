@@ -5,6 +5,7 @@
   {% endfor %}
 </select>
 
+{% if not batch %}
 <label class="label py-1 mt-2"><span class="label-text">Имя файла</span></label>
 <input type="text" name="name" value="{{ scan.filename|default:'' }}"
        class="input input-bordered input-sm w-full" placeholder="Имя файла">
@@ -32,12 +33,18 @@
   {% endif %}
 
   <label class="label py-1 mt-1"><span class="label-text">Контрагент (от кого письмо)</span></label>
-  <select name="counterparty_id" class="select select-bordered select-sm w-full">
-    <option value="">— не указан —</option>
-    {% for le in counterparties %}
-    <option value="{{ le.id }}">{{ le.name }}</option>
-    {% endfor %}
-  </select>
+  <input type="hidden" name="counterparty_id" id="scan-cp-id">
+  <div id="scan-cp-picked" class="hidden alert py-1 px-3 text-sm mb-1">
+    <span id="scan-cp-label"></span>
+    <button type="button" class="btn btn-xs btn-ghost ml-auto" onclick="window.resetScanCounterparty()">изменить</button>
+  </div>
+  <div id="scan-cp-box">
+    <input type="text" placeholder="Поиск контрагента (банк/МФО/госорган)…"
+           class="input input-bordered input-sm w-full" autocomplete="off" name="cp_q"
+           hx-get="{% url 'scans:counterparty_search' %}" hx-trigger="keyup changed delay:300ms"
+           hx-target="#scan-cp-results">
+    <div id="scan-cp-results" class="mt-1"></div>
+  </div>
 
   <label class="label py-1 mt-1"><span class="label-text">Тип письма</span></label>
   <input type="text" name="subject_type" class="input input-bordered input-sm w-full"
@@ -46,3 +53,4 @@
   <label class="label py-1 mt-1"><span class="label-text">Дата документа</span></label>
   <input type="date" name="doc_date" class="input input-bordered input-sm w-full">
 </div>
+{% endif %}
