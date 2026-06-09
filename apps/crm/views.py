@@ -1874,17 +1874,25 @@ def service_edit(request, pk=None):
                             employee=emp,
                         )
 
-            # Сохраняем личный статус сотрудника
+            # Сохраняем личный статус сотрудника.
+            # 🛑 Меняем ТОЛЬКО когда emp_status явно выбран (непустой и валидный).
+            # Пустое значение приходит, когда выпадашка «Мой статус» отфильтровалась
+            # в пусто (личный статус услуги не совпал с выбранным общим статусом —
+            # частый рассинхрон после передач). Раньше это МОЛЧА обнуляло личный
+            # статус → услуга пропадала из «Моего канбана» при любом сохранении
+            # (в т.ч. при оформлении договора). Пустое = «не трогать».
             emp_status_id = request.POST.get("emp_status")
-            if emp and svc_new.pk:
-                state, _ = ServiceEmployeeState.objects.get_or_create(
-                    service=svc_new, employee=emp,
-                )
-                new_status = ServiceEmployeeStatus.objects.filter(pk=emp_status_id, employee=emp).first() if emp_status_id else None
-                if state.status != new_status:
-                    state.status     = new_status
-                    state.updated_by = emp
-                    state.save(update_fields=["status", "updated_by", "updated_at"])
+            if emp and svc_new.pk and emp_status_id:
+                new_status = ServiceEmployeeStatus.objects.filter(
+                    pk=emp_status_id, employee=emp).first()
+                if new_status:
+                    state, _ = ServiceEmployeeState.objects.get_or_create(
+                        service=svc_new, employee=emp,
+                    )
+                    if state.status != new_status:
+                        state.status     = new_status
+                        state.updated_by = emp
+                        state.save(update_fields=["status", "updated_by", "updated_at"])
 
             resp = HttpResponse("")
             resp["HX-Trigger"] = '{"serviceChanged": "", "kanbanRefresh": ""}'
