@@ -271,6 +271,9 @@ MONITOR_BOT_POLL = config("MONITOR_BOT_POLL", default=False, cast=bool)
 # Адрес DevOps-агента прода + его токен (dev дёргает status/daily_stats).
 PROD_AGENT_URL = config("PROD_AGENT_URL", default="https://siricrm.ru")
 DEVOPS_AGENT_TOKEN_PROD = config("DEVOPS_AGENT_TOKEN_PROD", default="")
+# Кому разрешён бот (через запятую). Пусто → берётся HEALTH_ALERT_TELEGRAM_CHAT_ID
+# (только Каныгин). Fail-closed: если и там пусто — бот не отвечает никому.
+MONITOR_BOT_ALLOWED_CHAT_IDS = config("MONITOR_BOT_ALLOWED_CHAT_IDS", default="")
 # Headless по умолчанию. Для локальной отладки парсера выставить ARBITR_HEADLESS=false.
 ARBITR_HEADLESS = config("ARBITR_HEADLESS", default="true").lower() != "false"
 

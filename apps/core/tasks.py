@@ -192,14 +192,30 @@ def _send_prod_report(chat_id: str, action: str, wait_text: str):
         _tg_api("sendMessage", {"chat_id": chat_id, "text": f"❌ Не удалось получить данные: {err}"})
 
 
-def _handle_monitor_update(upd: dict, allowed: str):
+def _monitor_allowed_ids() -> set:
+    """Множество chat_id, которым разрешён бот. Fail-closed: если ничего не
+    задано — пустое множество (бот не отвечает НИКОМУ).
+
+    Источник — MONITOR_BOT_ALLOWED_CHAT_IDS (через запятую); если пусто,
+    берём единственный HEALTH_ALERT_TELEGRAM_CHAT_ID (тот же Каныгин)."""
+    raw = (getattr(settings, "MONITOR_BOT_ALLOWED_CHAT_IDS", "") or "").strip()
+    if not raw:
+        raw = (getattr(settings, "HEALTH_ALERT_TELEGRAM_CHAT_ID", "") or "").strip()
+    return {x.strip() for x in raw.replace(";", ",").split(",") if x.strip()}
+
+
+def _handle_monitor_update(upd: dict, allowed: set):
     cb = upd.get("callback_query")
     if cb:
-        _tg_api("answerCallbackQuery", {"callback_query_id": cb.get("id"), "text": "Собираю…"})
         chat_id = str((cb.get("message") or {}).get("chat", {}).get("id")
                       or (cb.get("from") or {}).get("id") or "")
-        if allowed and chat_id != allowed:
+        if chat_id not in allowed:
+            logger.warning("monitor bot: callback от неавторизованного chat_id=%s — отказ", chat_id)
+            _tg_api("answerCallbackQuery", {"callback_query_id": cb.get("id"),
+                                            "text": "⛔ Доступ только администратору",
+                                            "show_alert": True})
             return
+        _tg_api("answerCallbackQuery", {"callback_query_id": cb.get("id"), "text": "Собираю…"})
         data = cb.get("data")
         if data == "prod_status":
             _send_prod_report(chat_id, "status", "🖥 Собираю статус прода…")
@@ -210,14 +226,17 @@ def _handle_monitor_update(upd: dict, allowed: str):
     msg = upd.get("message")
     if msg:
         chat_id = str(msg.get("chat", {}).get("id") or "")
-        if allowed and chat_id != allowed:
+        if chat_id not in allowed:
+            logger.warning("monitor bot: сообщение от неавторизованного chat_id=%s — отказ", chat_id)
+            _tg_api("sendMessage", {"chat_id": chat_id,
+                                    "text": "⛔ Бот доступен только администратору."})
             return
         _tg_api("sendMessage", {"chat_id": chat_id,
                                 "text": "Мониторинг прод-сервера — выберите отчёт:",
                                 "reply_markup": _MON_KEYBOARD})
 
 
-def _poll_monitor_once(token: str, allowed: str):
+def _poll_monitor_once(token: str, allowed: set):
     params = {"timeout": 20, "allowed_updates": _json.dumps(["message", "callback_query"])}
     offset = cache.get(_MON_OFFSET_KEY)
     if offset is not None:
@@ -242,8 +261,9 @@ def poll_monitor_bot():
     if not getattr(settings, "MONITOR_BOT_POLL", False):
         return
     token = (getattr(settings, "TELEGRAM_BOT_TOKEN", "") or "").strip()
-    allowed = str(getattr(settings, "HEALTH_ALERT_TELEGRAM_CHAT_ID", "") or "").strip()
-    if not token:
+    allowed = _monitor_allowed_ids()
+    if not token or not allowed:
+        # Нет токена или некому отвечать (fail-closed) — не поллим.
         return
     # SETNX-лок: один long-poll за раз (иначе параллельные getUpdates → 409).
     if not cache.add(_MON_LOCK_KEY, "1", 28):
