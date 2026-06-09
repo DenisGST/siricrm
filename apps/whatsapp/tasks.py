@@ -36,6 +36,29 @@ def _client_whatsapp_phone(client) -> str:
     return ""
 
 
+# ─── приём входящих (вынесено из ASGI-обработчика вебхука) ───────────────────
+
+@shared_task
+def process_incoming_wa_message(message: dict, contacts: dict = None):
+    """Обработать один входящий WA-message в фоне (скачать медиа в S3,
+    создать Message, распределить лид, WS-push). Идемпотентно по wamid."""
+    from apps.whatsapp.processing import handle_incoming_message
+    try:
+        handle_incoming_message(message, contacts or {})
+    except Exception:
+        logger.exception("WA: process_incoming_wa_message failed")
+
+
+@shared_task
+def process_wa_status(status: dict):
+    """Обработать один ack-статус (sent/delivered/read/failed) в фоне."""
+    from apps.whatsapp.processing import handle_status_update
+    try:
+        handle_status_update(status)
+    except Exception:
+        logger.exception("WA: process_wa_status failed")
+
+
 @shared_task(bind=True, max_retries=3, default_retry_delay=10)
 def send_whatsapp_message_task(self, message_id: str):
     try:

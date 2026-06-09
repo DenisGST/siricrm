@@ -7,8 +7,9 @@
 `apps/whatsapp/` — тонкий слой над общими `Client/Message/StoredFile`:
 - `config.py` — env-обёртка (`INSTANCE_ID`, `API_TOKEN=JWT`, `API_BASE`, `TEST_MODE`, `ALLOWED_PHONES`, `WEBHOOK_SECRET`) + `is_configured()` / `is_phone_allowed()`.
 - `sender.py` — HTTP-клиент к 1msg + `download_media` для входящих.
-- `tasks.py` — Celery `send_whatsapp_message_task(message_id)` с retry×3.
-- `views.py` — webhook + media-прокси `wa_file_proxy`.
+- `tasks.py` — Celery: исходящие `send_whatsapp_message_task(message_id)` (retry×3) + приём входящих `process_incoming_wa_message(message, contacts)` / `process_wa_status(status)`.
+- `processing.py` — обработчики входящих/статусов (`handle_incoming_message`/`handle_status_update` + helpers). 🛑 **Вынесено из webhook в Celery** после инцидента 09.06.2026: тяжёлая работа (download_media + S3 + lead-routing) в ASGI-обработчике исчерпывала sync-threadpool daphne и вешала прод. Дедуп по `whatsapp_message_id` — внутри обработчика, повторная доставка/постановка безопасны.
+- `views.py` — webhook (**только парсит payload и ставит таски, сразу 200**) + media-прокси `wa_file_proxy`.
 - `middleware.py` — `WAFileProxyHeaderStripMiddleware` (см. ниже).
 - `urls.py` — `/webhook/whatsapp/[<secret>/]` + `/wa/file/<uuid:file_id>/`.
 
