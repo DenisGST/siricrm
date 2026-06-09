@@ -363,9 +363,15 @@ def download_stored_file(request, file_id):
     inline = request.GET.get("inline") == "1"
     kwargs = {"expiration": 300}
     if inline and _preview_type(stored.filename, stored.content_type):
+        # Тип для inline-показа: берём сохранённый, но если он отсутствует или
+        # «application/octet-stream» (так шлёт scan-agent), угадываем по имени —
+        # иначе браузер получит octet-stream и СКАЧАЕТ вместо предпросмотра.
+        ctype = (stored.content_type or "").lower()
+        if not ctype or ctype == "application/octet-stream":
+            ctype = mimetypes.guess_type(stored.filename or "")[0] or None
         kwargs.update(
             inline=True,
-            content_type=stored.content_type or None,
+            content_type=ctype,
             filename=stored.filename or None,
         )
     url = get_presigned_url(stored.bucket, stored.key, **kwargs)

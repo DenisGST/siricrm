@@ -56,11 +56,11 @@ def agent_intake(request):
         return JsonResponse({"error": "file_too_large"}, status=413)
 
     filename = upload.name or "scan.pdf"
-    content_type = (
-        upload.content_type
-        or mimetypes.guess_type(filename)[0]
-        or "application/octet-stream"
-    )
+    # scan-agent шлёт файл как application/octet-stream — в этом случае (и при
+    # пустом типе) угадываем по расширению, иначе превью скачивается вместо показа.
+    content_type = (upload.content_type or "").lower()
+    if not content_type or content_type == "application/octet-stream":
+        content_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
     file_bytes = upload.read()
 
     try:
