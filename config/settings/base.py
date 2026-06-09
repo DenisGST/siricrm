@@ -228,6 +228,9 @@ CELERY_TASK_ROUTES = {
 TELEGRAM_API_ID = config("TELEGRAM_API_ID", default="")
 TELEGRAM_API_HASH = config("TELEGRAM_API_HASH", default="")
 TELEGRAM_PHONE = config("TELEGRAM_PHONE", default="")
+# Токен leads-бота (@Sirius_system_bot). Раньше читался только в leads_bot.py
+# через decouple; вынесли в settings — нужен health-монитору для TG-алёртов.
+TELEGRAM_BOT_TOKEN = config("TELEGRAM_BOT_TOKEN", default="")
 
 # --- DaData ---
 DADATA_API_KEY = config("DADATA_API_KEY", default="")
