@@ -11,6 +11,19 @@ from apps.maxchat.sender import send_max_message
 logger = logging.getLogger(__name__)
 
 
+# ─── приём входящих (вынесено из ASGI-обработчика вебхука) ───────────────────
+
+@shared_task
+def process_incoming_max_event(data: dict):
+    """Обработать один входящий webhook-payload MAX в фоне (скачать вложения
+    в S3, создать Message, WS-push). Идемпотентно по max_message_id."""
+    from apps.maxchat.processing import handle_max_event
+    try:
+        handle_max_event(data)
+    except Exception:
+        logger.exception("MAX: process_incoming_max_event failed")
+
+
 @shared_task(bind=True, max_retries=3, default_retry_delay=10)
 def send_max_message_task(self, message_id: str):
     try:
