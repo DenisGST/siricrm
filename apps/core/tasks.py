@@ -118,3 +118,137 @@ def monitor_health():
             f"Время: {now} (МСК)\n"
             f"URL: {url}"
         )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Telegram-бот мониторинга: кнопки «Статус прод» / «Статистика».
+# Поллер живёт на dev (MONITOR_BOT_POLL=true), отвечает только авторизованному
+# чату (HEALTH_ALERT_TELEGRAM_CHAT_ID). Данные прода берёт через прод
+# DevOps-агент (status / daily_stats) — работает даже если прод-web завис.
+# ─────────────────────────────────────────────────────────────────────────────
+import json as _json
+import time as _time
+
+_MON_OFFSET_KEY = "monitor_bot:offset"
+_MON_LOCK_KEY = "monitor_bot:lock"
+_MON_KEYBOARD = {
+    "inline_keyboard": [
+        [{"text": "🖥 Статус прода", "callback_data": "prod_status"}],
+        [{"text": "📊 Статистика за сутки", "callback_data": "prod_stats"}],
+    ]
+}
+
+
+def _tg_api(method: str, payload: dict):
+    token = (getattr(settings, "TELEGRAM_BOT_TOKEN", "") or "").strip()
+    if not token:
+        return None
+    try:
+        return requests.post(
+            f"https://api.telegram.org/bot{token}/{method}", json=payload, timeout=20,
+        )
+    except Exception:
+        logger.exception("monitor bot: TG %s failed", method)
+        return None
+
+
+def _call_prod_agent(action: str, params: dict = None, timeout: int = 45):
+    """POST job в прод DevOps-агент и ждём результат. → (ok, output, error)."""
+    base = (getattr(settings, "PROD_AGENT_URL", "") or "").rstrip("/")
+    token = (getattr(settings, "DEVOPS_AGENT_TOKEN_PROD", "") or "").strip()
+    if not base or not token:
+        return False, None, "PROD_AGENT_URL / DEVOPS_AGENT_TOKEN_PROD не заданы"
+    hdr = {"Authorization": f"Bearer {token}"}
+    try:
+        r = requests.post(f"{base}/devops/agent/jobs/", headers=hdr,
+                          json={"action_type": action, "params": params or {}}, timeout=20)
+    except requests.RequestException as e:
+        return False, None, f"прод недоступен ({e.__class__.__name__})"
+    if r.status_code >= 400:
+        return False, None, f"HTTP {r.status_code}"
+    job_id = (r.json() or {}).get("id")
+    if not job_id:
+        return False, None, "агент не вернул id задачи"
+    for _ in range(max(1, timeout // 2)):
+        _time.sleep(2)
+        try:
+            jr = requests.get(f"{base}/devops/agent/jobs/{job_id}/", headers=hdr, timeout=15).json()
+        except requests.RequestException:
+            continue
+        if jr.get("status") == "done":
+            return True, (jr.get("output") or "(пусто)"), None
+        if jr.get("status") == "failed":
+            return False, None, (jr.get("output") or "задача упала")
+    return False, None, "таймаут ожидания агента"
+
+
+def _send_prod_report(chat_id: str, action: str, wait_text: str):
+    _tg_api("sendMessage", {"chat_id": chat_id, "text": wait_text})
+    ok, out, err = _call_prod_agent(action)
+    if ok:
+        _tg_api("sendMessage", {"chat_id": chat_id, "text": f"<pre>{out[:3900]}</pre>",
+                                "parse_mode": "HTML"})
+    else:
+        _tg_api("sendMessage", {"chat_id": chat_id, "text": f"❌ Не удалось получить данные: {err}"})
+
+
+def _handle_monitor_update(upd: dict, allowed: str):
+    cb = upd.get("callback_query")
+    if cb:
+        _tg_api("answerCallbackQuery", {"callback_query_id": cb.get("id"), "text": "Собираю…"})
+        chat_id = str((cb.get("message") or {}).get("chat", {}).get("id")
+                      or (cb.get("from") or {}).get("id") or "")
+        if allowed and chat_id != allowed:
+            return
+        data = cb.get("data")
+        if data == "prod_status":
+            _send_prod_report(chat_id, "status", "🖥 Собираю статус прода…")
+        elif data == "prod_stats":
+            _send_prod_report(chat_id, "daily_stats", "📊 Считаю статистику за сутки…")
+        return
+
+    msg = upd.get("message")
+    if msg:
+        chat_id = str(msg.get("chat", {}).get("id") or "")
+        if allowed and chat_id != allowed:
+            return
+        _tg_api("sendMessage", {"chat_id": chat_id,
+                                "text": "Мониторинг прод-сервера — выберите отчёт:",
+                                "reply_markup": _MON_KEYBOARD})
+
+
+def _poll_monitor_once(token: str, allowed: str):
+    params = {"timeout": 20, "allowed_updates": _json.dumps(["message", "callback_query"])}
+    offset = cache.get(_MON_OFFSET_KEY)
+    if offset is not None:
+        params["offset"] = offset
+    try:
+        resp = requests.get(f"https://api.telegram.org/bot{token}/getUpdates",
+                            params=params, timeout=30)
+        updates = (resp.json() or {}).get("result", [])
+    except Exception:
+        logger.exception("monitor bot: getUpdates failed")
+        return
+    for upd in updates:
+        cache.set(_MON_OFFSET_KEY, upd["update_id"] + 1, 3600)
+        try:
+            _handle_monitor_update(upd, allowed)
+        except Exception:
+            logger.exception("monitor bot: handle update failed")
+
+
+@shared_task
+def poll_monitor_bot():
+    if not getattr(settings, "MONITOR_BOT_POLL", False):
+        return
+    token = (getattr(settings, "TELEGRAM_BOT_TOKEN", "") or "").strip()
+    allowed = str(getattr(settings, "HEALTH_ALERT_TELEGRAM_CHAT_ID", "") or "").strip()
+    if not token:
+        return
+    # SETNX-лок: один long-poll за раз (иначе параллельные getUpdates → 409).
+    if not cache.add(_MON_LOCK_KEY, "1", 28):
+        return
+    try:
+        _poll_monitor_once(token, allowed)
+    finally:
+        cache.delete(_MON_LOCK_KEY)

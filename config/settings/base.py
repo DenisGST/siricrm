@@ -264,6 +264,13 @@ HEALTH_ALERT_MAX_CHAT_ID = (
     config("HEALTH_ALERT_MAX_CHAT_ID", default="") or ARBITR_CAPTCHA_NOTIFY_MAX_CHAT_ID
 )
 HEALTH_ALERT_TELEGRAM_CHAT_ID = config("HEALTH_ALERT_TELEGRAM_CHAT_ID", default="")
+
+# --- Telegram-бот мониторинга (кнопки «Статус прод»/«Статистика») ---
+# Поллер getUpdates крутится там, где MONITOR_BOT_POLL=true (на dev).
+MONITOR_BOT_POLL = config("MONITOR_BOT_POLL", default=False, cast=bool)
+# Адрес DevOps-агента прода + его токен (dev дёргает status/daily_stats).
+PROD_AGENT_URL = config("PROD_AGENT_URL", default="https://siricrm.ru")
+DEVOPS_AGENT_TOKEN_PROD = config("DEVOPS_AGENT_TOKEN_PROD", default="")
 # Headless по умолчанию. Для локальной отладки парсера выставить ARBITR_HEADLESS=false.
 ARBITR_HEADLESS = config("ARBITR_HEADLESS", default="true").lower() != "false"
 

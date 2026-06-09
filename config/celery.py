@@ -31,6 +31,12 @@ app.conf.beat_schedule = {
         'task': 'apps.core.tasks.monitor_health',
         'schedule': 60,
     },
+    # Telegram-бот мониторинга (кнопки): long-poll getUpdates. No-op, если
+    # MONITOR_BOT_POLL=false (т.е. везде, кроме dev).
+    'poll-monitor-bot': {
+        'task': 'apps.core.tasks.poll_monitor_bot',
+        'schedule': 15,
+    },
     'mark-overdue-charges-daily': {
         'task': 'apps.finance.tasks.mark_overdue_charges',
         'schedule': crontab(hour=3, minute=0),
