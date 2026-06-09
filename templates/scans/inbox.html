@@ -23,11 +23,23 @@
            class="input input-bordered input-sm" style="max-width:240px"
            hx-get="{% url 'scans:list' %}" hx-trigger="keyup changed delay:400ms, search"
            hx-target="#scans-list" hx-swap="outerHTML"
-           hx-include="#scans-inbox [name=source], #scans-inbox [name=archive]">
+           hx-include="#scans-inbox [name=scanner], #scans-inbox [name=source], #scans-inbox [name=archive]">
+    <select name="scanner" class="select select-bordered select-sm" title="Чей сканер показывать"
+            hx-get="{% url 'scans:list' %}" hx-trigger="change"
+            hx-target="#scans-list" hx-swap="outerHTML"
+            hx-include="#scans-inbox [name=q], #scans-inbox [name=source], #scans-inbox [name=archive]">
+      <option value="{{ all_scanners }}" {% if selected_scanner == all_scanners %}selected{% endif %}>Все сканеры</option>
+      {% for sc in scanners %}
+      <option value="{{ sc.value }}" {% if selected_scanner == sc.value %}selected{% endif %}>🖨️ {{ sc.label }}</option>
+      {% endfor %}
+      {% if has_unlabeled %}
+      <option value="" {% if selected_scanner == '' %}selected{% endif %}>Без метки / ручные</option>
+      {% endif %}
+    </select>
     <select name="source" class="select select-bordered select-sm"
             hx-get="{% url 'scans:list' %}" hx-trigger="change"
             hx-target="#scans-list" hx-swap="outerHTML"
-            hx-include="#scans-inbox [name=q], #scans-inbox [name=archive]">
+            hx-include="#scans-inbox [name=q], #scans-inbox [name=scanner], #scans-inbox [name=archive]">
       <option value="">Все источники</option>
       <option value="agent"  {% if source == 'agent' %}selected{% endif %}>Сканер</option>
       <option value="manual" {% if source == 'manual' %}selected{% endif %}>Загрузка вручную</option>
@@ -36,7 +48,7 @@
       <input type="checkbox" name="archive" value="1" class="checkbox checkbox-sm" {% if archive %}checked{% endif %}
              hx-get="{% url 'scans:list' %}" hx-trigger="change"
              hx-target="#scans-list" hx-swap="outerHTML"
-             hx-include="#scans-inbox [name=q], #scans-inbox [name=source]">
+             hx-include="#scans-inbox [name=q], #scans-inbox [name=scanner], #scans-inbox [name=source]">
       <span>Архив отклонённых</span>
     </label>
     <div class="ml-auto flex items-center gap-2">

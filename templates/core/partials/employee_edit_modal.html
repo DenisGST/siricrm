@@ -137,6 +137,18 @@
         {% endif %}
       </div>
 
+      <label for="emp-scanner" class="block mt-2">
+        <span class="label-text text-xs">Имя сканера (метка устройства scan-agent)</span>
+        <input type="text" id="emp-scanner" name="scanner_name"
+               value="{{ form.scanner_name.value|default:'' }}"
+               placeholder="например, scanner-sekretar"
+               class="input input-bordered input-sm w-full max-w-xs">
+        <span class="block text-[11px] text-base-content/50 mt-0.5">
+          Сканы с этой меткой по умолчанию видны сотруднику в «Входящих сканах».
+          Должно совпадать с <code>device</code> в config.ini его scan-agent.
+        </span>
+      </label>
+
       {% if form.errors and not form.non_field_errors %}
         <div class="alert alert-error text-sm">{{ form.errors }}</div>
       {% endif %}

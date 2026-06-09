@@ -1,7 +1,7 @@
 <div id="scans-list"
      hx-get="{% url 'scans:list' %}"
      hx-trigger="scansChanged from:body"
-     hx-vals='{"q": "{{ q|escapejs }}", "source": "{{ source }}", "archive": "{% if archive %}1{% endif %}"}'
+     hx-vals='{"q": "{{ q|escapejs }}", "source": "{{ source }}", "scanner": "{{ selected_scanner|escapejs }}", "archive": "{% if archive %}1{% endif %}"}'
      hx-target="#scans-list" hx-swap="outerHTML">
 
   <div class="text-xs text-base-content/50 mb-2">

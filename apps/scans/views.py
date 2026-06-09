@@ -43,19 +43,57 @@ def _pending_qs():
     return _scan_qs(IncomingScan.STATUS_PENDING)
 
 
+ALL_SCANNERS = "__all__"
+
+
+def _scanner_options():
+    """Список сканеров для выпадашки: метки, реально встречающиеся среди
+    непривязанных сканов ∪ назначенные сотрудникам (scanner_name).
+    Метка снабжается ФИО владельцев — чтобы юрист понимал «чей это сканер»."""
+    from apps.core.models import Employee
+    present = set(
+        IncomingScan.objects.filter(status=IncomingScan.STATUS_PENDING)
+        .exclude(source_meta="").values_list("source_meta", flat=True)
+    )
+    assigned = {}
+    for e in (Employee.objects.filter(can_handle_scans=True, user__is_active=True)
+              .exclude(scanner_name="").select_related("user")):
+        who = f"{e.user.last_name} {e.user.first_name}".strip() or e.user.get_username()
+        assigned.setdefault(e.scanner_name, []).append(who)
+    opts = []
+    for name in sorted(present | set(assigned.keys())):
+        who = ", ".join(assigned.get(name, []))
+        opts.append({"value": name, "label": f"{name} — {who}" if who else name})
+    return opts
+
+
 def _list_ctx(request):
-    """Контекст ленты с фильтрами/пагинацией/архивом для GET-запроса."""
+    """Контекст ленты: фильтры, выбор сканера, архив, пагинация."""
+    emp = get_employee(request.user)
     archive = request.GET.get("archive") == "1"
     q = request.GET.get("q", "")
     source = request.GET.get("source", "")
     status = IncomingScan.STATUS_DISCARDED if archive else IncomingScan.STATUS_PENDING
+
+    # Выбранный сканер: явный параметр имеет приоритет; при первом заходе
+    # (параметра нет) — по умолчанию свой сканер сотрудника, иначе «все».
+    sel = request.GET.get("scanner")
+    if sel is None:
+        sel = (emp.scanner_name if emp and emp.scanner_name else ALL_SCANNERS)
+
     qs = _scan_qs(status, q=q, source=source)
+    if sel != ALL_SCANNERS:
+        qs = qs.filter(source_meta=sel)  # sel="" → сканы без метки (ручные/старые)
     total = qs.count()
     scans = list(qs[:PAGE_SIZE])
+    has_unlabeled = (IncomingScan.objects
+                     .filter(status=status, source_meta="").exists())
     return {
         "scans": scans, "archive": archive, "q": q, "source": source,
         "total": total, "shown": len(scans), "page_size": PAGE_SIZE,
         "truncated": total > PAGE_SIZE,
+        "scanners": _scanner_options(), "selected_scanner": sel,
+        "all_scanners": ALL_SCANNERS, "has_unlabeled": has_unlabeled,
     }
 
 
@@ -101,10 +139,15 @@ def scan_list(request):
 
 @login_required
 def pending_count(request):
-    """Счётчик непривязанных сканов — для бейджа в меню (HTMX-поллинг)."""
+    """Счётчик непривязанных сканов для бейджа: по СВОЕМУ сканеру сотрудника
+    (если задан), иначе по всем. HTMX-поллинг."""
     if not can_handle_scans(request.user):
         return HttpResponse("")
-    n = _scan_qs(IncomingScan.STATUS_PENDING).count()
+    emp = get_employee(request.user)
+    qs = _scan_qs(IncomingScan.STATUS_PENDING)
+    if emp and emp.scanner_name:
+        qs = qs.filter(source_meta=emp.scanner_name)
+    n = qs.count()
     # Пустой ответ прячет бейдж (CSS :empty), число — показывает.
     return HttpResponse(str(n) if n else "")
 
@@ -116,6 +159,9 @@ def pending_count(request):
 def manual_upload(request):
     if (resp := _require_scans(request)) is not None:
         return resp
+    emp = get_employee(request.user)
+    # Ручная загрузка помечается сканером загрузившего — чтобы попала в его вид.
+    meta = (emp.scanner_name if emp and emp.scanner_name else "")
     for f in request.FILES.getlist("files"):
         content_type = (
             f.content_type or mimetypes.guess_type(f.name)[0]
@@ -136,7 +182,7 @@ def manual_upload(request):
         IncomingScan.objects.create(
             stored_file=stored, filename=f.name,
             size=len(file_bytes), content_type=content_type,
-            source=IncomingScan.SOURCE_MANUAL,
+            source=IncomingScan.SOURCE_MANUAL, source_meta=meta,
         )
     return render(request, "scans/partials/scan_list.html", _list_ctx(request))
 

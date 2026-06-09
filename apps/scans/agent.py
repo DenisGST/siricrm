@@ -75,24 +75,29 @@ def agent_intake(request):
         bucket=bucket, key=key, filename=filename,
         content_type=content_type, size=len(file_bytes),
     )
+    device = (request.POST.get("device") or "")[:255]
     scan = IncomingScan.objects.create(
         stored_file=stored, filename=filename,
         size=len(file_bytes), content_type=content_type,
         source=IncomingScan.SOURCE_AGENT,
-        source_meta=(request.POST.get("device") or "")[:255],
+        source_meta=device,
     )
-    _notify_new_scan(filename)
+    _notify_new_scan(filename, device)
     return JsonResponse({"id": str(scan.pk), "filename": filename}, status=201)
 
 
-def _notify_new_scan(filename: str):
-    """Тост сотрудникам с доступом к лотку — пришёл новый скан."""
+def _notify_new_scan(filename: str, device: str = ""):
+    """Тост о новом скане — сотрудникам, чей scanner_name совпал с device
+    (т.е. «их» сканер). Если совпадений нет — всем обработчикам, чтобы скан
+    не потерялся."""
     try:
         from apps.core.models import Employee
         from apps.realtime.utils import push_toast
-        handlers = (Employee.objects.filter(can_handle_scans=True, user__is_active=True)
-                    .select_related("user"))
-        for emp in handlers:
+        base = Employee.objects.filter(can_handle_scans=True, user__is_active=True)
+        targets = base.filter(scanner_name=device) if device else base.none()
+        if not targets.exists():
+            targets = base
+        for emp in targets.select_related("user"):
             if emp.user_id:
                 push_toast(emp.user, f"🖨️ Новый скан: {filename}", level="info")
     except Exception:

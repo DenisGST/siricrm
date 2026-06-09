@@ -197,6 +197,13 @@ class Employee(models.Model):
         help_text="Доступ к лотку «Входящие сканы»: видеть присланные со "
                   "сканера документы и привязывать их к клиентам.",
     )
+    scanner_name = models.CharField(
+        "Имя сканера", max_length=100, blank=True, default="",
+        help_text="Метка устройства (device) из scan-agent. Сканы с этой "
+                  "меткой по умолчанию показываются этому сотруднику в лотке "
+                  "«Входящие сканы». Можно задать один и тот же сканер "
+                  "нескольким сотрудникам.",
+    )
     bubble_id = models.CharField(
         "Bubble ID", max_length=64, blank=True, null=True, unique=True,
         help_text="ID записи User в исходной CRM на bubble.io",

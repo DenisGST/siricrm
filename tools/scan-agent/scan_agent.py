@@ -42,7 +42,7 @@ log = logging.getLogger("scan-agent")
 
 # Отметка сборки — видна в логе при старте. Если в логе старая дата —
 # запущен старый процесс (нужно полностью перезапустить агент, а не «Сохранить»).
-AGENT_BUILD = "2026-06-09 (polling + tray + done-retention + log-menu)"
+AGENT_BUILD = "2026-06-09b (polling + tray + done-retention + log-menu + device-required)"
 
 # Какие расширения заливаем (сканеры обычно дают PDF, иногда TIFF/JPG).
 ALLOWED_EXT = {".pdf", ".tif", ".tiff", ".jpg", ".jpeg", ".png"}
@@ -52,14 +52,15 @@ CONFIG_FIELDS = [
     ("watch_dir", ""),
     ("intake_url", "https://siricrm.ru/scans/agent/intake/"),
     ("token", ""),
-    ("device", "office-mfu"),
+    ("device", ""),       # имя сканера — ОБЯЗАТЕЛЬНО (= Employee.scanner_name в CRM)
     ("done_dir", ""),
     ("done_retention_days", "3"),
     ("settle_seconds", "3"),
     ("poll_interval", "5"),
     ("verify_tls", "true"),
 ]
-REQUIRED = ("watch_dir", "intake_url", "token")
+# device обязателен: по нему CRM определяет, кому из сотрудников показывать скан.
+REQUIRED = ("watch_dir", "intake_url", "token", "device")
 
 
 # ── Конфиг ──────────────────────────────────────────────────────────────────
@@ -410,7 +411,7 @@ def open_settings_window(agent: ScanAgent):
         ("watch_dir", "Папка сканера (SMB/локальная)", False),
         ("intake_url", "Адрес приёма CRM", False),
         ("token", "Токен (SCAN_AGENT_TOKEN)", True),
-        ("device", "Метка устройства", False),
+        ("device", "Имя сканера (обязательно, = в карточке сотрудника)", False),
         ("done_dir", "Папка для залитых (необязательно)", False),
         ("done_retention_days", "Хранить залитые, дней (0 — не чистить)", False),
         ("settle_seconds", "Пауза стабилизации, сек", False),
