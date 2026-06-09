@@ -1,0 +1,21 @@
+<div class="p-4" id="scans-inbox">
+  <div class="flex items-center justify-between mb-4">
+    <h2 class="text-xl font-bold">🖨️ Входящие сканы</h2>
+    <form hx-post="{% url 'scans:manual_upload' %}"
+          hx-target="#scans-list" hx-swap="outerHTML"
+          hx-encoding="multipart/form-data"
+          class="flex items-center gap-2">
+      <input type="file" name="files" multiple accept="application/pdf,image/*"
+             class="file-input file-input-bordered file-input-sm" required>
+      <button type="submit" class="btn btn-sm btn-primary">Загрузить</button>
+    </form>
+  </div>
+
+  <p class="text-xs text-base-content/60 mb-3">
+    Сюда попадают документы, присланные со сканера офиса. Откройте скан,
+    проверьте его и привяжите к клиенту (в папку файлов и при необходимости —
+    в корреспонденцию). Можно также загрузить файл вручную.
+  </p>
+
+  {% include "scans/partials/scan_list.html" %}
+</div>

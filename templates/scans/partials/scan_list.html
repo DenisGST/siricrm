@@ -1,0 +1,49 @@
+<div id="scans-list"
+     hx-get="{% url 'scans:list' %}"
+     hx-trigger="scansChanged from:body"
+     hx-target="#scans-list" hx-swap="outerHTML">
+  {% if scans %}
+  <div class="grid gap-4" style="grid-template-columns:repeat(auto-fill,minmax(320px,1fr))">
+    {% for scan in scans %}
+    <div class="card bg-base-100 shadow border border-base-300">
+      <div class="card-body p-3">
+        <div class="flex items-start justify-between gap-2">
+          <div class="min-w-0">
+            <div class="font-medium text-sm truncate" title="{{ scan.filename }}">{{ scan.filename }}</div>
+            <div class="text-xs text-base-content/50">
+              {{ scan.received_at|date:"d.m.Y H:i" }}
+              · {{ scan.get_source_display }}
+              {% if scan.source_meta %}· {{ scan.source_meta }}{% endif %}
+            </div>
+          </div>
+          <span class="badge badge-ghost badge-sm">{{ scan.size|filesizeformat }}</span>
+        </div>
+
+        {% if scan.stored_file %}
+        <a href="{% url 'files:stored_download' scan.stored_file.id %}?inline=1" target="_blank"
+           class="block mt-2 border border-base-300 rounded overflow-hidden bg-base-200"
+           style="height:220px">
+          <iframe src="{% url 'files:stored_download' scan.stored_file.id %}?inline=1"
+                  class="w-full h-full pointer-events-none" loading="lazy"></iframe>
+        </a>
+        {% endif %}
+
+        <div class="card-actions justify-end mt-2">
+          <button class="btn btn-xs btn-ghost text-error"
+                  hx-post="{% url 'scans:discard' scan.id %}"
+                  hx-confirm="Отклонить скан «{{ scan.filename }}»? Он исчезнет из лотка."
+                  hx-target="#scans-list" hx-swap="outerHTML">Отклонить</button>
+          <button class="btn btn-xs btn-primary"
+                  hx-get="{% url 'scans:assign_modal' scan.id %}"
+                  hx-target="body" hx-swap="beforeend">Привязать к клиенту</button>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="text-center text-base-content/50 py-12">
+    Лоток пуст — новых сканов нет.
+  </div>
+  {% endif %}
+</div>

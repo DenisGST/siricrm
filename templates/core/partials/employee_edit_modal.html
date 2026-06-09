@@ -113,6 +113,13 @@
                  class="toggle toggle-info toggle-sm">
           <span class="label-text text-xs">Принимать лиды из Telegram</span>
         </label>
+        <label for="emp-scans" class="cursor-pointer flex items-center gap-2"
+               title="Доступ к лотку «Входящие сканы»: видеть присланные со сканера документы и привязывать их к клиентам.">
+          <input type="checkbox" id="emp-scans" name="can_handle_scans"
+                 {% if form.can_handle_scans.value %}checked{% endif %}
+                 class="toggle toggle-info toggle-sm">
+          <span class="label-text text-xs">Обработка входящих сканов</span>
+        </label>
         <label for="emp-dismissed" class="cursor-pointer flex items-center gap-2">
           <input type="checkbox" id="emp-dismissed" name="is_dismissed"
                  {% if form.is_dismissed.value %}checked{% endif %}

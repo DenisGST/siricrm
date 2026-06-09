@@ -192,6 +192,11 @@ class Employee(models.Model):
         help_text="Заявки с лендингов через @Sirius_system_bot будут "
                   "попадать в «Мой канбан» в колонку «Лиды из Telegram».",
     )
+    can_handle_scans = models.BooleanField(
+        "Обработка входящих сканов", default=False,
+        help_text="Доступ к лотку «Входящие сканы»: видеть присланные со "
+                  "сканера документы и привязывать их к клиентам.",
+    )
     bubble_id = models.CharField(
         "Bubble ID", max_length=64, blank=True, null=True, unique=True,
         help_text="ID записи User в исходной CRM на bubble.io",

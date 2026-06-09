@@ -1,0 +1,6 @@
+requests>=2.31
+watchdog>=3.0
+# Трей-иконка и её отрисовка (не нужны в headless-режиме --no-tray).
+# tkinter — из стандартной библиотеки Python (на Windows ставится вместе с Python).
+pystray>=0.19
+Pillow>=10.0
