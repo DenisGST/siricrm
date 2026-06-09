@@ -82,14 +82,19 @@ def _worktime_block(day_start, now):
     for emp_id, events in per_emp.items():
         total = 0.0
         open_start = None
+        first = True
         for action, ts in events:
             if action == "login":
-                if open_start is None:
+                if open_start is None:        # повторный login (мультивкладка) — игнор
                     open_start = ts
             else:  # logout
-                start = open_start if open_start is not None else day_start
-                total += (ts - start).total_seconds()
-                open_start = None
+                if open_start is not None:    # закрываем открытую сессию
+                    total += (ts - open_start).total_seconds()
+                    open_start = None
+                elif first:                   # вошёл до полуночи → с начала суток
+                    total += (ts - day_start).total_seconds()
+                # повторный logout без открытой сессии — игнор
+            first = False
         if open_start is not None:  # сессия не закрыта logout'ом
             if emp_id in online_ids:
                 end = now  # реально ещё онлайн
