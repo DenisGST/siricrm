@@ -38,4 +38,5 @@
 Левый список чат-модалки — свой поиск/скоуп: `telegram_clients_list` (`name="q"` в `#telegram-search`), подсветка через `window._activeTelegramClientId`, **`?pin_client_id=<uuid>`** гарантирует попадание клиента в page=1 (для `openTelegramChatModalForClient`). Подробно — `docs/ui-conventions.md` (чат-модалка).
 
 ## Поиск в канбане услуг / моём канбане
-`services_kanban_column` / `my_kanban_column` — свои `q`-фильтры по тому же принципу (без `cid`).
+- **Канбан услуг** (`services_kanban_column`) — колонки включают `#flt-q` и фильтруют по `q` (без `cid`).
+- 🛑 **«Мой канбан» (`my_kanban_column`) `#flt-q` НЕ включает** (убрано 09.06.2026). Раньше включал → при просмотре чужого канбана (`?viewed_employee=`) стале-значение `#flt-q` (в т.ч. от `pickClientForKanbanFilter` при клике в глобальном поиске) фильтровало канбан сотрудника В НОЛЬ. Бэкенд при этом исправен — проблема была только в утечке чужого поля. Своего поля поиска у «Моего канбана» нет.
