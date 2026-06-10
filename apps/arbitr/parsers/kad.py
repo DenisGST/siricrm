@@ -273,16 +273,75 @@ class KadSession:
         self._raise_if_captcha()
         self._close_promo_popup()
 
-    def _wait_search_loaded(self, max_s: int = 25) -> None:
-        """После клика «Найти» ждёт пока скроется .b-case-loading."""
+    def _submit_search_form(self, query: str) -> None:
+        """Заполнить поле «По делу» и отправить форму поиска (новый kad-UI).
+
+        Алгоритм (kad ~июнь 2026):
+          1. Поле — tag-input компонент: input внутри `#sug-cases.b-selected-tags`.
+          2. После send_keys k.A. через 1-2с показывает suggester `#b-suggest`
+             с `<li class="active">`. Клик по нему фиксирует tag.
+          3. Если suggester не появился (например, ничего не нашлось)
+             делаем `blur()` — это всё равно материализует tag.
+          4. Submit — клик по обёртке `#b-form-submit` (НЕ по вложенной
+             `<button alt="Найти">` — на ней kad-handler НЕ навешан).
+
+        Раньше работало просто `send_keys → click [alt="Найти"]`, но kad
+        переделал UI на tag-input + delegate-handler на родительский div.
+        """
         from selenium.webdriver.common.by import By  # noqa: WPS433
+        from selenium.webdriver.support import expected_conditions as EC  # noqa: WPS433
+        from selenium.common.exceptions import (  # noqa: WPS433
+            NoSuchElementException, TimeoutException,
+        )
+
+        inp = self._wait.until(
+            EC.presence_of_element_located(
+                (By.CSS_SELECTOR, '[placeholder="например, А50-5568/08"]'),
+            ),
+        )
+        inp.click()
+        inp.clear()
+        inp.send_keys(query)
+        time.sleep(1.5)
+
+        # Suggester `#b-suggest li.active a` — если появился, кликаем его
+        # (это «правильный» путь у kad). Иначе fallback: JS blur.
+        try:
+            sug = self.driver.find_element(
+                By.CSS_SELECTOR, '#b-suggest li.active a',
+            )
+            sug.click()
+            time.sleep(0.5)
+        except NoSuchElementException:
+            self.driver.execute_script("arguments[0].blur();", inp)
+            time.sleep(0.5)
+
+        try:
+            self.driver.find_element(By.CSS_SELECTOR, '#b-form-submit').click()
+        except NoSuchElementException as exc:
+            raise KadParserError(
+                "kad: нет #b-form-submit (kad сменил UI)",
+            ) from exc
+
+    def _wait_search_loaded(self, max_s: int = 25) -> None:
+        """После клика «Найти» ждёт пока скроется .b-case-loading.
+
+        Проверка через computed-style (`getComputedStyle().display`), а не
+        inline-атрибут: kad может скрывать loader CSS-классом или родителем
+        без inline `style="display: none"` — и старый CSS-селектор
+        `.b-case-loading:not([style*="display: none"])` тогда всегда true.
+        """
         for _ in range(max_s):
             time.sleep(1)
-            loading = self.driver.find_elements(
-                By.CSS_SELECTOR,
-                '.b-case-loading:not([style*="display: none"])',
+            still_visible = self.driver.execute_script(
+                """
+                return Array.from(document.querySelectorAll('.b-case-loading'))
+                    .some(function(el){
+                        return window.getComputedStyle(el).display !== 'none';
+                    });
+                """
             )
-            if not loading:
+            if not still_visible:
                 return
         logger.warning("kad: .b-case-loading не скрылся за %ds", max_s)
 
@@ -307,26 +366,11 @@ class KadSession:
         # Реальное наличие дела не важно — kad ставит куки на сам факт
         # отправки поиска.
         try:
-            inp = self._wait.until(
-                EC.presence_of_element_located(
-                    (By.CSS_SELECTOR, '[placeholder="например, А50-5568/08"]'),
-                ),
-            )
+            self._submit_search_form("А00-0000/2000")
         except TimeoutException as exc:
             self._raise_if_captcha()
             raise KadParserError(
                 "kad: не нашли поле ввода для прогрева сессии",
-            ) from exc
-
-        # Шлём заведомо несуществующий номер — нам не нужны результаты.
-        inp.clear()
-        inp.send_keys("А00-0000/2000")
-        time.sleep(1)
-        try:
-            self.driver.find_element(By.CSS_SELECTOR, '[alt="Найти"]').click()
-        except NoSuchElementException as exc:
-            raise KadParserError(
-                "kad: нет кнопки «Найти» во время прогрева",
             ) from exc
 
         self._wait_search_loaded()
@@ -363,25 +407,12 @@ class KadSession:
         driver = self.driver
 
         try:
-            inp = self._wait.until(
-                EC.presence_of_element_located(
-                    (By.CSS_SELECTOR, '[placeholder="например, А50-5568/08"]'),
-                ),
-            )
+            self._submit_search_form(fio_or_case)
         except TimeoutException as exc:
             self._raise_if_captcha()
             raise KadParserError(
                 "Не нашёл поле ввода номера дела/сторон на главной kad",
             ) from exc
-
-        inp.clear()
-        inp.send_keys(fio_or_case)
-        time.sleep(1)
-
-        try:
-            driver.find_element(By.CSS_SELECTOR, '[alt="Найти"]').click()
-        except NoSuchElementException as exc:
-            raise KadParserError("Не нашёл кнопку «Найти»") from exc
         logger.info("kad: search submitted q=%r", fio_or_case)
 
         # AJAX-поиск на kad нередко занимает 10-15 секунд.
