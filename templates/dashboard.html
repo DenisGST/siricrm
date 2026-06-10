@@ -405,6 +405,8 @@
 <form id="kanban-filter-form"
       class="kanban-filters-popover hidden"
       onchange="document.body.dispatchEvent(new CustomEvent('kanbanRefresh'))">
+  {# «Только этот клиент» из главного поиска — точный фильтр по id (см. pickExactClientForKanban) #}
+  <input type="hidden" id="flt-cid" name="cid">
   <div class="flex items-center justify-between mb-3">
     <h3 class="text-sm font-semibold">Фильтры</h3>
     <button type="button" class="btn btn-xs btn-ghost btn-circle"
@@ -417,7 +419,7 @@
       <input id="flt-q" type="search" name="q"
              placeholder="Иванов, +7 999..., 79991234567"
              class="input input-bordered input-sm"
-             oninput="clearTimeout(window._fltQTimer); window._fltQTimer=setTimeout(function(){document.body.dispatchEvent(new CustomEvent('kanbanRefresh'))}, 400);">
+             oninput="(function(el){var c=document.getElementById('flt-cid'); if(c) c.value='';})(this); clearTimeout(window._fltQTimer); window._fltQTimer=setTimeout(function(){document.body.dispatchEvent(new CustomEvent('kanbanRefresh'))}, 400);">
     </label>
     <label class="form-control w-full">
       <span class="label label-text !text-xs !py-0 !pb-1 opacity-70">Закреплён за</span>
@@ -652,6 +654,10 @@ document.addEventListener('htmx:afterRequest', (event) => {
     const form = document.getElementById('kanban-filter-form');
     if (!form) return;
     form.reset();
+    // Явно гасим точный фильтр по id и поиск (form.reset не всегда сбрасывает
+    // программно выставленные значения скрытых полей).
+    const cid = document.getElementById('flt-cid'); if (cid) cid.value = '';
+    const q = document.getElementById('flt-q');     if (q) q.value = '';
     const inl = document.getElementById('kanban-emp-filter');
     if (inl) inl.value = '';
     document.body.dispatchEvent(new CustomEvent('kanbanRefresh'));
@@ -738,7 +744,20 @@ document.addEventListener('htmx:afterRequest', (event) => {
   function pickClientForKanbanFilter(fio) {
     const input = document.getElementById('flt-q');
     if (!input) return;
+    const cid = document.getElementById('flt-cid');
+    if (cid) cid.value = '';        // похожие → снимаем точный фильтр по id
     input.value = fio;
+    document.body.dispatchEvent(new CustomEvent('kanbanRefresh'));
+    updateKanbanFiltersIndicator();
+  }
+
+  // «Только этот клиент» из главного поиска — точный фильтр канбана по id.
+  function pickExactClientForKanban(cid) {
+    const cidInput = document.getElementById('flt-cid');
+    const q = document.getElementById('flt-q');
+    if (!cidInput) return;
+    if (q) q.value = '';            // точный → убираем фильтр по ФИО
+    cidInput.value = cid;
     document.body.dispatchEvent(new CustomEvent('kanbanRefresh'));
     updateKanbanFiltersIndicator();
   }

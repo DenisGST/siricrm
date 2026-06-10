@@ -11,7 +11,7 @@
              title="У вас нет доступа к информации"
              onclick="globalSearchNoAccess()"
            {% else %}
-             title="Кликни — закрепить ФИО в фильтре канбана"
+             title="Клик — показать в канбане ПОХОЖИХ по ФИО (для точного клиента — кнопка-мишень справа)"
              onclick="pickClientForKanbanFilter('{{ c.last_name }} {{ c.first_name }}'); closeGlobalSearch();"
            {% endif %}>
         {% icon "user" size=14 %}
@@ -26,30 +26,33 @@
         </span>
         {% if not c.no_access %}
         <span class="gs-actions" onclick="event.stopPropagation()">
-          <button type="button" class="gs-act" title="Чат"
+          <button type="button" class="gs-act gs-emoji" title="Показать ТОЛЬКО этого клиента в канбане (точно, без тёзок)"
+                  style="font-size:14px;line-height:1"
+                  onclick="pickExactClientForKanban('{{ c.id }}'); closeGlobalSearch();">🎯</button>
+          <button type="button" class="gs-act" title="Чат" style="--gs-hc:#22c55e"
                   onclick="openTelegramChatModalForClient('{{ c.id }}'); closeGlobalSearch();">
             {% icon "message-square" size=15 %}
           </button>
-          <button type="button" class="gs-act" title="Финансы и начисления"
+          <button type="button" class="gs-act" title="Финансы и начисления" style="--gs-hc:#f59e0b"
                   hx-get="{% url 'finance:finance_modal' c.id %}"
                   hx-target="body" hx-swap="beforeend"
                   onclick="closeGlobalSearch()">
             {% icon "wallet" size=15 %}
           </button>
-          <button type="button" class="gs-act" title="Файлы клиента"
+          <button type="button" class="gs-act" title="Файлы клиента" style="--gs-hc:#3b82f6"
                   hx-get="{% url 'files:manager' c.id %}"
                   hx-target="body" hx-swap="beforeend"
                   onclick="closeGlobalSearch()">
             {% icon "folder" size=15 %}
           </button>
-          <button type="button" class="gs-act" title="Карточка и события"
+          <button type="button" class="gs-act" title="Карточка и события" style="--gs-hc:#8b5cf6"
                   hx-get="{% url 'client_events_modal' c.id %}"
                   hx-target="body" hx-swap="beforeend"
                   onclick="closeGlobalSearch()">
             {% icon "history" size=15 %}
           </button>
           {% if c.phone %}
-          <a class="gs-act" href="tel:{{ c.phone }}" title="Позвонить: {{ c.phone }}">
+          <a class="gs-act" href="tel:{{ c.phone }}" title="Позвонить: {{ c.phone }}" style="--gs-hc:#14b8a6">
             {% icon "phone" size=15 %}
           </a>
           {% endif %}

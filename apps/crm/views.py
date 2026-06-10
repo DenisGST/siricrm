@@ -597,9 +597,14 @@ def kanban_column(request, status):
     created_from = request.GET.get("created_from") or ""
     created_to   = request.GET.get("created_to") or ""
     q            = (request.GET.get("q") or "").strip()
+    cid          = (request.GET.get("cid") or "").strip()
 
     qs = Client.objects.visible_to(request.user).filter(status=status)
-    if q:
+    if cid:
+        # «Только этот клиент» из главного поиска — точная фильтрация по id
+        # (иначе у клиента без фамилии фильтр по ФИО показывал всех тёзок).
+        qs = qs.filter(pk=cid)
+    elif q:
         # Разбиваем «Каныгин Денис» на слова — каждое слово должно
         # совпасть с одним из полей (AND по словам, OR по полям).
         for word in q.split():

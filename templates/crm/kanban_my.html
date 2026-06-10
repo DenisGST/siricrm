@@ -92,7 +92,6 @@
              class="space-y-2 min-h-[50px] kanban-col-body"
              hx-get="{% url 'my_kanban_column' st.id %}{% if viewed_emp_id %}?viewed_employee={{ viewed_emp_id }}{% endif %}"
              hx-trigger="load, serviceChanged from:body, kanbanRefresh from:body"
-             hx-include="#flt-q"
              hx-target="#my-kanban-{{ st.id }}"
              hx-swap="innerHTML">
         </div>
