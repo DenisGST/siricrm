@@ -1,24 +1,27 @@
 {# Компактная плашка дела для левого sidebar'а — chat-style item.        #}
-{# Клик → HTMX-swap в #case-pane + push URL в браузере.                 #}
+{# Active-state переключается JS (см. dashboard.html), потому что HTMX  #}
+{# свапит только #case-pane — sidebar не перерендеривается → серверного #}
+{# `selected_case_id` хватает только для первого захода.                  #}
+{% with svc=case.service %}
 <a href="?case={{ case.id }}"
+   data-case-id="{{ case.id }}"
    hx-get="{% url 'arbitr:case_detail' case.id %}"
    hx-target="#case-pane"
    hx-swap="innerHTML"
    hx-push-url="?case={{ case.id }}"
-   class="block px-3 py-2 border-l-2 transition-colors
-          {% if case.id|stringformat:'s' == selected_case_id %}
-            border-primary bg-primary/10
-          {% else %}
-            border-transparent hover:bg-base-200
-          {% endif %}">
+   class="arbitr-side-item block px-3 py-2 border-b border-base-200 border-l-4 border-l-transparent hover:bg-base-200
+          {% if case.id|stringformat:'s' == selected_case_id %} is-active{% endif %}">
   <div class="text-sm font-medium truncate">
-    {% if case.service.client_id %}
-      {{ case.service.client.last_name }} {{ case.service.client.first_name|first }}.{% if case.service.client.patronymic %} {{ case.service.client.patronymic|first }}.{% endif %}
+    {% if svc.client_id %}
+      {{ svc.client.last_name }} {{ svc.client.first_name|first }}.{% if svc.client.patronymic %} {{ svc.client.patronymic|first }}.{% endif %}
     {% else %}—{% endif %}
   </div>
+  {% if svc.region %}
+    <div class="text-xs opacity-60 truncate">📍 {{ svc.region.name }}</div>
+  {% endif %}
   <div class="text-xs opacity-70 truncate font-mono">
     {% if case.case_number %}{{ case.case_number }}
-    {% elif case.status == 'searching' and case.search_hits %}🎯 кандидат(ы): {{ case.search_hits|length }}
+    {% elif case.status == 'searching' and case.search_hits %}🎯 найдено дел: {{ case.search_hits|length }}
     {% elif case.status == 'searching' %}🔍 ищем…
     {% else %}—{% endif %}
   </div>
@@ -39,3 +42,4 @@
     </div>
   </div>
 </a>
+{% endwith %}

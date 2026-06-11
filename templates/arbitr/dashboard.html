@@ -7,36 +7,69 @@
 {# панель выбранного дела. Inline-style вместо arbitrary tailwind         #}
 {# `grid-cols-[320px_1fr]` / `h-[calc(...)]` — таких классов нет в       #}
 {# pre-compiled tailwind.css (см. CLAUDE.md «гайдлайны кода»).            #}
+
+<style>
+  /* Active-state переключается JS (delegated click handler ниже),       */
+  /* потому что HTMX свапит ТОЛЬКО #case-pane, а sidebar не              */
+  /* перерендеривается — server-side `{% if selected_case_id %}` хватает */
+  /* только для первого захода.                                          */
+  .arbitr-side-item.is-active {
+    background: rgb(from var(--p, #0284c7) r g b / 0.10);
+    border-left-color: var(--p, #0284c7);
+  }
+  .arbitr-side-item.is-active .text-sm {
+    color: var(--p, #0284c7);
+  }
+  /* Аккордеон <details> — chevron в <summary>. */
+  .arbitr-section > summary {
+    list-style: none;
+    cursor: pointer;
+    user-select: none;
+  }
+  .arbitr-section > summary::-webkit-details-marker { display: none; }
+  .arbitr-section > summary .chevron::before { content: "−"; display: inline-block; width: 1em; }
+  .arbitr-section:not([open]) > summary .chevron::before { content: "+"; }
+</style>
+
 <div style="display:grid; grid-template-columns:320px 1fr; height:calc(100vh - 4rem);">
 
   {# ═══════════════ Sidebar — список клиентов/дел ═══════════════ #}
   <aside class="border-r border-base-300 bg-base-100 overflow-y-auto">
 
     {% if searching %}
-    <div class="sticky top-0 z-10 bg-base-200/80 backdrop-blur px-3 py-1.5 text-xs font-semibold opacity-80 border-b border-base-300">
-      🔍 Поиск дела ({{ searching|length }})
-    </div>
-    {% for case in searching %}
-      {% include "arbitr/partials/_sidebar_item.html" with case=case %}
-    {% endfor %}
+    <details class="arbitr-section" open>
+      <summary class="sticky top-0 z-10 bg-base-200/95 backdrop-blur px-3 py-1.5 text-xs font-semibold opacity-80 border-b border-base-300 flex items-center gap-1">
+        <span class="chevron"></span>
+        <span>🔍 Поиск дела ({{ searching|length }})</span>
+      </summary>
+      {% for case in searching %}
+        {% include "arbitr/partials/_sidebar_item.html" with case=case %}
+      {% endfor %}
+    </details>
     {% endif %}
 
     {% if monitoring %}
-    <div class="sticky top-0 z-10 bg-base-200/80 backdrop-blur px-3 py-1.5 text-xs font-semibold opacity-80 border-b border-base-300">
-      📋 Мониторинг ({{ monitoring|length }})
-    </div>
-    {% for case in monitoring %}
-      {% include "arbitr/partials/_sidebar_item.html" with case=case %}
-    {% endfor %}
+    <details class="arbitr-section" open>
+      <summary class="sticky top-0 z-10 bg-base-200/95 backdrop-blur px-3 py-1.5 text-xs font-semibold opacity-80 border-b border-base-300 flex items-center gap-1">
+        <span class="chevron"></span>
+        <span>📋 Мониторинг ({{ monitoring|length }})</span>
+      </summary>
+      {% for case in monitoring %}
+        {% include "arbitr/partials/_sidebar_item.html" with case=case %}
+      {% endfor %}
+    </details>
     {% endif %}
 
     {% if paused %}
-    <div class="sticky top-0 z-10 bg-base-200/80 backdrop-blur px-3 py-1.5 text-xs font-semibold opacity-60 border-b border-base-300">
-      ⏸ Приостановленные ({{ paused|length }})
-    </div>
-    {% for case in paused %}
-      {% include "arbitr/partials/_sidebar_item.html" with case=case %}
-    {% endfor %}
+    <details class="arbitr-section">
+      <summary class="sticky top-0 z-10 bg-base-200/95 backdrop-blur px-3 py-1.5 text-xs font-semibold opacity-60 border-b border-base-300 flex items-center gap-1">
+        <span class="chevron"></span>
+        <span>⏸ Приостановленные ({{ paused|length }})</span>
+      </summary>
+      {% for case in paused %}
+        {% include "arbitr/partials/_sidebar_item.html" with case=case %}
+      {% endfor %}
+    </details>
     {% endif %}
 
     {% if not searching and not monitoring and not paused %}
@@ -62,4 +95,16 @@
   </main>
 
 </div>
+
+<script>
+  // Delegated click handler — переключает .is-active между плашками
+  // sidebar'а при любом клике (включая инициирующие HTMX-swap).
+  document.addEventListener("click", function (e) {
+    var item = e.target.closest && e.target.closest(".arbitr-side-item");
+    if (!item) return;
+    document.querySelectorAll(".arbitr-side-item.is-active")
+      .forEach(function (el) { el.classList.remove("is-active"); });
+    item.classList.add("is-active");
+  });
+</script>
 {% endblock %}

@@ -130,7 +130,9 @@ def _annotate_cases(qs):
     """Подмешивает к queryset'у case-список счётчики (events, attachments,
     last_log_state) — чтобы UI не делал N+1."""
     return (
-        qs.select_related("service__client", "started_by__user")
+        qs.select_related(
+            "service__client", "service__region", "started_by__user",
+        )
         .annotate(
             events_count=Count("events", distinct=True),
             attachments_count=Count(
