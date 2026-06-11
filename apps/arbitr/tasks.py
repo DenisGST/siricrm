@@ -289,9 +289,18 @@ def _parse_one(kad: KadSession, case: ArbitrCase) -> str:
     duration_ms = int((time.monotonic() - started) * 1000)
     persisted = _persist_case_info(case, info)
 
+    # Снимок cookies main-сессии — нужны download-сессии чтобы kad её
+    # «доверял» без повторного поиска (а search в download_mode сломан
+    # из-за PDF prefs).
+    try:
+        source_cookies = kad.driver.get_cookies()
+    except Exception:
+        source_cookies = []
+
     # Скачиваем PDF'ы новых вложений в S3 (best-effort: ошибка отдельного
-    # документа не валит обработку дела целиком).
-    downloaded = _download_new_attachments(kad, case)
+    # документа не валит обработку дела целиком). ОТДЕЛЬНАЯ download-сессия
+    # — её Chrome имеет PDF prefs, которые ломают search-flow в main.
+    downloaded = _download_new_attachments(case, source_cookies=source_cookies)
 
     _log_check(
         case, ArbitrCheckLog.STATE_OK, duration_ms=duration_ms,
@@ -315,8 +324,15 @@ def _parse_one(kad: KadSession, case: ArbitrCase) -> str:
     return "ok"
 
 
-def _download_new_attachments(kad: KadSession, case: ArbitrCase) -> dict:
+def _download_new_attachments(
+    case: ArbitrCase, *, source_cookies: list,
+) -> dict:
     """Качает все ArbitrAttachment этого дела без stored_file → S3.
+
+    Открывает ОТДЕЛЬНУЮ download-сессию (Chrome с PDF prefs) — этой сессии
+    нельзя делать search/parse (PDF prefs ломают anti-bot), но качать PDF
+    можно. Cookies от main-сессии прокидываем чтобы kad доверял нам без
+    повторного UI-поиска.
 
     Best-effort: ошибки скачивания отдельного файла логируем и идём дальше.
     Captcha — поднимаем выше (KadCaptchaRequired), пусть batch остановится.
@@ -326,62 +342,88 @@ def _download_new_attachments(kad: KadSession, case: ArbitrCase) -> dict:
     from apps.files.s3_utils import upload_file_to_s3
 
     stats = {"ok": 0, "failed": 0, "locked": 0, "skipped": 0}
-    qs = ArbitrAttachment.objects.filter(
-        event__case=case, stored_file__isnull=True,
-    ).select_related("event")
-    for att in qs:
-        if att.is_locked:
-            stats["locked"] += 1
-            continue
-        if not att.kad_url:
-            stats["skipped"] += 1
-            continue
+    qs_list = list(
+        ArbitrAttachment.objects.filter(
+            event__case=case, stored_file__isnull=True,
+        ).select_related("event")
+    )
+    if not qs_list:
+        return stats
+
+    # Открываем ОТДЕЛЬНУЮ Chrome-сессию с PDF prefs.
+    with KadSession(download_mode=True) as dl:
+        if source_cookies:
+            dl.load_kad_cookies(source_cookies)
+        # Активируем kad-trust открытием карточки. В download_mode warmup-
+        # поиск сломан (PDF prefs детектятся anti-bot'ом), но с cookies
+        # main-сессии прямой GET карточки работает.
+        dl.driver.get(case.kad_url)
+        time.sleep(3)
         try:
-            content, content_type = kad.download_pdf(
-                att.kad_url, referer=case.kad_url,
-            )
+            dl._raise_if_captcha()  # noqa: SLF001
         except KadCaptchaRequired:
-            # пробрасываем — пусть оборачивающий код вызовет alert
+            send_captcha_alert(case, page_url=case.kad_url)
             raise
-        except Exception as exc:  # noqa: BLE001
-            logger.warning(
-                "kad: PDF не скачался (att=%s url=%s): %s",
-                att.id, att.kad_url, exc,
+
+        for att in qs_list:
+            if att.is_locked:
+                stats["locked"] += 1
+                continue
+            if not att.kad_url:
+                stats["skipped"] += 1
+                continue
+            try:
+                content, content_type = dl.download_pdf(
+                    att.kad_url, referer=case.kad_url,
+                )
+            except KadCaptchaRequired:
+                raise
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(
+                    "kad: PDF не скачался (att=%s url=%s): %s",
+                    att.id, att.kad_url, exc,
+                )
+                stats["failed"] += 1
+                continue
+
+            # Имя для S3 + StoredFile. Если kad name пустой — используем att.id.
+            ext = "pdf"
+            if "pdf" not in content_type.lower():
+                if ".pdf" in att.kad_url.lower():
+                    ext = "pdf"
+                else:
+                    ext = "bin"
+            safe_name = (att.name or f"document-{att.id}").strip()
+            if not safe_name.lower().endswith(f".{ext}"):
+                safe_name = f"{safe_name}.{ext}"
+            # StoredFile.filename = CharField(max_length=255). У kad заголовки
+            # документов бывают по 300+ символов («[Подписано] Отложить
+            # судебное разбирательство (ст.157, 158, 225_15 АПК)»+.pdf).
+            if len(safe_name) > 250:
+                head = safe_name[: 250 - len(ext) - 4]
+                safe_name = f"{head}….{ext}"
+
+            try:
+                bucket, key = upload_file_to_s3(
+                    content,
+                    prefix=f"arbitr/{case.id}",
+                    filename=safe_name,
+                    content_type=content_type,
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.exception(
+                    "kad: S3 upload failed for att %s: %s", att.id, exc,
+                )
+                stats["failed"] += 1
+                continue
+
+            stored = StoredFile.objects.create(
+                bucket=bucket, key=key, filename=safe_name,
+                content_type=content_type, size=len(content),
             )
-            stats["failed"] += 1
-            continue
-
-        # Имя для S3 + StoredFile. Если kad name пустой — используем att.id.
-        ext = "pdf"
-        if "pdf" not in content_type.lower():
-            # Попробуем угадать по url — обычно kad даёт ?key=<doc>.pdf
-            if ".pdf" in att.kad_url.lower():
-                ext = "pdf"
-            else:
-                ext = "bin"
-        safe_name = (att.name or f"document-{att.id}").strip()
-        if not safe_name.lower().endswith(f".{ext}"):
-            safe_name = f"{safe_name}.{ext}"
-
-        try:
-            bucket, key = upload_file_to_s3(
-                content,
-                prefix=f"arbitr/{case.id}",
-                filename=safe_name,
-                content_type=content_type,
-            )
-        except Exception as exc:  # noqa: BLE001
-            logger.exception("kad: S3 upload failed for att %s: %s", att.id, exc)
-            stats["failed"] += 1
-            continue
-
-        stored = StoredFile.objects.create(
-            bucket=bucket, key=key, filename=safe_name,
-            content_type=content_type, size=len(content),
-        )
-        att.stored_file = stored
-        att.save(update_fields=["stored_file"])
-        stats["ok"] += 1
+            att.stored_file = stored
+            att.save(update_fields=["stored_file"])
+            stats["ok"] += 1
 
     return stats
 
