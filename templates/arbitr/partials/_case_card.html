@@ -54,7 +54,7 @@
       </div>
       <ul class="text-sm space-y-1.5">
         {% for hit in case.search_hits %}
-        <li class="grid grid-cols-[auto_1fr_auto] items-center gap-x-3 gap-y-0.5">
+        <li class="items-center gap-x-3 gap-y-0.5" style="display:grid; grid-template-columns:auto 1fr auto;">
           <span class="font-mono font-semibold">{{ hit.case_number }}</span>
           <span class="text-xs opacity-70 truncate">{{ hit.court_name }}</span>
           <a href="{{ hit.kad_url }}" target="_blank" rel="noopener noreferrer"

@@ -4,8 +4,10 @@
 
 {% block content %}
 {# Split-layout (chat-style): слева — список дел по клиентам, справа —    #}
-{# панель выбранного дела. Левый сайдбар: 320px; правая часть растягивается. #}
-<div class="grid grid-cols-[320px_1fr] h-[calc(100vh-4rem)]">
+{# панель выбранного дела. Inline-style вместо arbitrary tailwind         #}
+{# `grid-cols-[320px_1fr]` / `h-[calc(...)]` — таких классов нет в       #}
+{# pre-compiled tailwind.css (см. CLAUDE.md «гайдлайны кода»).            #}
+<div style="display:grid; grid-template-columns:320px 1fr; height:calc(100vh - 4rem);">
 
   {# ═══════════════ Sidebar — список клиентов/дел ═══════════════ #}
   <aside class="border-r border-base-300 bg-base-100 overflow-y-auto">
