@@ -38,9 +38,11 @@
 
     {% if searching %}
     <details class="arbitr-section" open>
-      <summary class="sticky top-0 z-10 bg-base-200/95 backdrop-blur px-3 py-1.5 text-xs font-semibold opacity-80 border-b border-base-300 flex items-center gap-1">
+      <summary class="sticky top-0 z-10 px-3 py-2.5 text-sm font-bold flex items-center gap-2"
+               style="background:#fef3c7; color:#78350f; border-bottom:1px solid #fcd34d;">
         <span class="chevron"></span>
-        <span>🔍 Поиск дела ({{ searching|length }})</span>
+        <span>🔍 Поиск дела</span>
+        <span class="badge badge-sm" style="background:#f59e0b; color:#fff; border-color:#f59e0b;">{{ searching|length }}</span>
       </summary>
       {% for case in searching %}
         {% include "arbitr/partials/_sidebar_item.html" with case=case %}
@@ -50,9 +52,11 @@
 
     {% if monitoring %}
     <details class="arbitr-section" open>
-      <summary class="sticky top-0 z-10 bg-base-200/95 backdrop-blur px-3 py-1.5 text-xs font-semibold opacity-80 border-b border-base-300 flex items-center gap-1">
+      <summary class="sticky top-0 z-10 px-3 py-2.5 text-sm font-bold flex items-center gap-2"
+               style="background:var(--ms-blue-light); color:var(--ms-blue); border-bottom:1px solid #93c5fd;">
         <span class="chevron"></span>
-        <span>📋 Мониторинг ({{ monitoring|length }})</span>
+        <span>📋 Мониторинг</span>
+        <span class="badge badge-sm" style="background:var(--ms-blue); color:#fff; border-color:var(--ms-blue);">{{ monitoring|length }}</span>
       </summary>
       {% for case in monitoring %}
         {% include "arbitr/partials/_sidebar_item.html" with case=case %}
@@ -62,9 +66,11 @@
 
     {% if paused %}
     <details class="arbitr-section">
-      <summary class="sticky top-0 z-10 bg-base-200/95 backdrop-blur px-3 py-1.5 text-xs font-semibold opacity-60 border-b border-base-300 flex items-center gap-1">
+      <summary class="sticky top-0 z-10 px-3 py-2.5 text-sm font-bold flex items-center gap-2"
+               style="background:#e5e7eb; color:#4b5563; border-bottom:1px solid #d1d5db;">
         <span class="chevron"></span>
-        <span>⏸ Приостановленные ({{ paused|length }})</span>
+        <span>⏸ Приостановленные</span>
+        <span class="badge badge-sm" style="background:#9ca3af; color:#fff; border-color:#9ca3af;">{{ paused|length }}</span>
       </summary>
       {% for case in paused %}
         {% include "arbitr/partials/_sidebar_item.html" with case=case %}
