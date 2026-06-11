@@ -11,7 +11,7 @@
 <style>
   /* Active-state переключается JS (delegated click handler ниже),       */
   /* потому что HTMX свапит ТОЛЬКО #case-pane, а sidebar не              */
-  /* перерендеривается — server-side `{% if selected_case_id %}` хватает */
+  /* перерендеривается — server-side selected_case_id хватает только    */
   /* только для первого захода.                                          */
   .arbitr-side-item.is-active {
     background: rgb(from var(--p, #0284c7) r g b / 0.10);
