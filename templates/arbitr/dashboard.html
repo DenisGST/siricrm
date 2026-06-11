@@ -13,12 +13,12 @@
   /* потому что HTMX свапит ТОЛЬКО #case-pane, а sidebar не              */
   /* перерендеривается — server-side selected_case_id хватает только    */
   /* только для первого захода.                                          */
+  /* Стиль один в один как .tg-client-item.active в chat-модалке         */
+  /* (см. static/css/style.css строка 739) — голубой фон + 3px полоска   */
+  /* var(--ms-blue). !important чтобы перекрыть tailwind hover.          */
   .arbitr-side-item.is-active {
-    background: rgb(from var(--p, #0284c7) r g b / 0.10);
-    border-left-color: var(--p, #0284c7);
-  }
-  .arbitr-side-item.is-active .text-sm {
-    color: var(--p, #0284c7);
+    background-color: var(--ms-blue-light) !important;
+    border-left: 3px solid var(--ms-blue) !important;
   }
   /* Аккордеон <details> — chevron в <summary>. */
   .arbitr-section > summary {

@@ -9,7 +9,7 @@
    hx-target="#case-pane"
    hx-swap="innerHTML"
    hx-push-url="?case={{ case.id }}"
-   class="arbitr-side-item block px-3 py-2 border-b border-base-200 border-l-4 border-l-transparent hover:bg-base-200
+   class="arbitr-side-item block px-3 py-2 border-b border-base-200 hover:bg-base-200
           {% if case.id|stringformat:'s' == selected_case_id %} is-active{% endif %}">
   <div class="text-sm font-medium truncate">
     {% if svc.client_id %}
