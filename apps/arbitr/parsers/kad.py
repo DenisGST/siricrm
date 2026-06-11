@@ -333,30 +333,44 @@ class KadSession:
         self._raise_if_captcha()
         self._close_promo_popup()
 
-    def _submit_search_form(self, query: str) -> None:
-        """Заполнить поле «По делу» и отправить форму.
+    # На главной kad НЕСКОЛЬКО полей фильтра — каждое для своего scope:
+    FIELD_PARTY = 'textarea[placeholder="название, ИНН или ОГРН"]'
+    FIELD_CASE_NUMBER = 'input[placeholder="например, А50-5568/08"]'
+    FIELD_COURT = 'input[placeholder="название суда"]'
+    FIELD_JUDGE = 'input[placeholder="фамилия судьи"]'
 
-        Baseline-flow: `send_keys → click [alt="Найти"]`. Работает «само по себе»
-        когда Chrome не triggers kad-anti-bot (см. download_mode prefs).
+    def _submit_search_form(
+        self, query: str, *, field: str = FIELD_PARTY,
+    ) -> None:
+        """Заполнить указанное поле фильтра и отправить форму.
+
+        Baseline-flow: `send_keys → click [alt="Найти"]`. Работает когда
+        Chrome не triggers kad-anti-bot (см. download_mode PDF prefs).
+
+        По умолчанию — поле «Участник дела» (textarea), для поиска по ФИО /
+        названию ЮЛ / ИНН / ОГРН. Для поиска по номеру дела передавать
+        `field=KadSession.FIELD_CASE_NUMBER`.
         """
         from selenium.webdriver.common.by import By  # noqa: WPS433
         from selenium.webdriver.support import expected_conditions as EC  # noqa: WPS433
         from selenium.common.exceptions import NoSuchElementException  # noqa: WPS433
 
         inp = self._wait.until(
-            EC.presence_of_element_located(
-                (By.CSS_SELECTOR, '[placeholder="например, А50-5568/08"]'),
-            ),
+            EC.presence_of_element_located((By.CSS_SELECTOR, field)),
         )
         inp.clear()
         inp.send_keys(query)
         time.sleep(1)
         try:
-            self.driver.find_element(By.CSS_SELECTOR, '[alt="Найти"]').click()
+            btn = self.driver.find_element(By.CSS_SELECTOR, '[alt="Найти"]')
         except NoSuchElementException as exc:
             raise KadParserError(
                 'kad: нет кнопки [alt="Найти"]',
             ) from exc
+        # JS-click обходит ElementClickInterceptedException — при вводе
+        # в поле «Участник» kad показывает suggester-dropdown, который
+        # перекрывает кнопку «Найти» поверх z-index.
+        self.driver.execute_script('arguments[0].click();', btn)
 
     def _wait_search_loaded(self, max_s: int = 25) -> None:
         """После клика «Найти» ждёт пока скроется .b-case-loading.
@@ -401,7 +415,9 @@ class KadSession:
         # Реальное наличие дела не важно — kad ставит куки на сам факт
         # отправки поиска.
         try:
-            self._submit_search_form("А00-0000/2000")
+            # Поле Участник: dummy запрос — kad ставит cookies/state
+            # на сам факт submit, наличие результатов не важно.
+            self._submit_search_form("Иванов Иван Иванович")
         except TimeoutException as exc:
             self._raise_if_captcha()
             raise KadParserError(
