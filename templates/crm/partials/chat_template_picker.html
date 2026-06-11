@@ -1,0 +1,128 @@
+<dialog id="chat-tpl-modal" class="modal" data-initial="{{ initial }}">
+  <div class="modal-box w-full max-w-xl">
+    <div class="flex justify-between items-center mb-3">
+      <h3 class="font-bold text-base">Шаблоны сообщений</h3>
+      <button class="btn btn-sm btn-ghost" onclick="this.closest('dialog').remove()">✕</button>
+    </div>
+
+    {% if channels %}
+    {{ tpl_fields|json_script:"ctpl-data" }}
+
+    {# Табы каналов #}
+    <div role="tablist" class="tabs tabs-boxed mb-3">
+      {% for ch in channels %}
+      <button type="button" role="tab" class="tab ctpl-tab" data-ch="{{ ch.key }}"
+              data-color="{{ ch.color }}">{{ ch.label }}</button>
+      {% endfor %}
+    </div>
+
+    <form id="ctpl-form"
+          hx-post="{% url 'chat_send_template' client.id %}"
+          hx-target="#telegram-messages-list" hx-swap="beforeend"
+          hx-on::after-request="if(event.detail.successful){this.closest('dialog').remove();var c=document.getElementById('telegram-messages-container');if(c)c.scrollTop=c.scrollHeight;}">
+      {% csrf_token %}
+      <input type="hidden" name="channel" id="ctpl-channel" value="">
+      <input type="hidden" name="template_id" id="ctpl-template-id" value="">
+
+      {# Select шаблона по каждому каналу (показывается активный) #}
+      {% for ch in channels %}
+      <div class="ctpl-pane" data-ch="{{ ch.key }}">
+        <label class="label py-1"><span class="label-text">Шаблон · {{ ch.label }}</span></label>
+        <select class="select select-bordered select-sm w-full ctpl-select" data-ch="{{ ch.key }}">
+          <option value="">— выберите шаблон —</option>
+          {% for it in ch.items %}
+          <option value="{{ it.id }}">{{ it.name }}</option>
+          {% endfor %}
+        </select>
+        {% if not ch.items %}
+        <div class="text-xs text-base-content/50 mt-1">
+          {% if ch.key == 'whatsapp' %}Нет одобренных WhatsApp-шаблонов.{% else %}Нет шаблонов для этого канала — заведите в «Справочники → Шаблоны».{% endif %}
+        </div>
+        {% endif %}
+      </div>
+      {% endfor %}
+
+      {# Настройки выбранного шаблона — рендерятся JS #}
+      <div id="ctpl-settings" class="mt-3"></div>
+
+      <div class="modal-action">
+        <button type="submit" id="ctpl-send" class="btn btn-sm btn-success" disabled>Отправить</button>
+        <button type="button" class="btn btn-sm" onclick="this.closest('dialog').remove()">Закрыть</button>
+      </div>
+    </form>
+    {% else %}
+    <div class="alert alert-warning text-sm">У клиента нет доступных каналов для отправки.</div>
+    {% endif %}
+  </div>
+  <form method="dialog" class="modal-backdrop">
+    <button onclick="this.closest('dialog').remove()">close</button>
+  </form>
+
+  <script>
+  (function(){
+    var dlg = document.getElementById('chat-tpl-modal');
+    if (!dlg) return;
+    var dataEl = document.getElementById('ctpl-data');
+    var DATA = dataEl ? JSON.parse(dataEl.textContent) : {};
+    var channelInput = document.getElementById('ctpl-channel');
+    var tplInput = document.getElementById('ctpl-template-id');
+    var settings = document.getElementById('ctpl-settings');
+    var sendBtn = document.getElementById('ctpl-send');
+
+    function esc(s){ return (s==null?'':String(s)).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+
+    function updateSend(){ if(sendBtn) sendBtn.disabled = !tplInput.value; }
+
+    function renderSettings(tid){
+      tplInput.value = tid || '';
+      settings.innerHTML = '';
+      var f = tid ? DATA[tid] : null;
+      if(f){
+        if(f.is_wa){
+          var h = '<div class="text-xs whitespace-pre-line bg-base-200 rounded p-2 mb-2">'+esc(f.preview)+'</div>';
+          (f.params||[]).forEach(function(p){
+            h += '<div class="mb-1"><label class="text-xs text-base-content/70">Переменная №'+p.n+
+                 (p.hint?(' — напр. «'+esc(p.hint)+'»'):'')+'</label>'+
+                 '<input name="param" value="'+esc(p.default)+'" placeholder="'+esc(p.hint)+
+                 '" class="input input-bordered input-sm w-full" required></div>';
+          });
+          settings.innerHTML = h;
+        } else {
+          settings.innerHTML = '<label class="label py-1"><span class="label-text">Текст (можно отредактировать)</span></label>'+
+            '<textarea name="text" rows="5" class="textarea textarea-bordered textarea-sm w-full" required>'+esc(f.rendered)+'</textarea>';
+        }
+      }
+      updateSend();
+    }
+
+    function showTab(ch){
+      if(!channelInput) return;
+      channelInput.value = ch;
+      tplInput.value = '';
+      dlg.querySelectorAll('.ctpl-tab').forEach(function(b){
+        var on = b.getAttribute('data-ch')===ch;
+        b.classList.toggle('tab-active', on);
+        b.style.background = on ? b.getAttribute('data-color') : '';
+        b.style.color = on ? '#fff' : '';
+      });
+      dlg.querySelectorAll('.ctpl-pane').forEach(function(p){
+        p.style.display = (p.getAttribute('data-ch')===ch) ? '' : 'none';
+      });
+      dlg.querySelectorAll('.ctpl-select').forEach(function(s){ if(s.getAttribute('data-ch')!==ch) s.value=''; });
+      settings.innerHTML = '';
+      updateSend();
+    }
+
+    dlg.querySelectorAll('.ctpl-tab').forEach(function(b){
+      b.addEventListener('click', function(){ showTab(b.getAttribute('data-ch')); });
+    });
+    dlg.querySelectorAll('.ctpl-select').forEach(function(s){
+      s.addEventListener('change', function(){ renderSettings(s.value); });
+    });
+
+    var initial = dlg.getAttribute('data-initial') || '';
+    if(initial) showTab(initial);
+    if(dlg.showModal) dlg.showModal();
+  })();
+  </script>
+</dialog>

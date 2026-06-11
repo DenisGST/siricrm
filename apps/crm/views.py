@@ -268,28 +268,76 @@ def _render_wa_template_body(body: str, params: list) -> str:
     return re.sub(r"{{\s*(\d+)\s*}}", repl, body or "")
 
 
+def _render_crm_template(body: str, client, employee) -> str:
+    """Отрендерить тело TG/MAX-шаблона с CRM-плейсхолдерами
+    ({{ client.first_name }} и т.п.). Шаблоны заводят доверенные сотрудники."""
+    from django.template import Template, Context
+    try:
+        return Template(body or "").render(Context({"client": client, "employee": employee}))
+    except Exception:
+        return body or ""
+
+
 @login_required
 def whatsapp_template_picker(request, client_id):
-    """Модалка выбора WhatsApp-шаблона для отправки вне 24-часового окна."""
-    client = get_object_or_404(Client, pk=client_id)
-    templates = _approved_wa_templates()
-    # Подготовим для каждого список переменных {{N}} + автоподстановку имени.
+    """Единая модалка шаблонов для всех каналов (Telegram / MAX / WhatsApp).
+
+    Табы = каналы (только доступные клиенту). В каждом — select шаблонов;
+    при выборе показываются «настройки»: для WA — поля переменных {{N}}
+    (approved-шаблоны, sendTemplate), для TG/MAX — редактируемый текст
+    (обычное сообщение с подставленными CRM-плейсхолдерами).
+    """
     import re
-    items = []
-    for t in templates:
-        nums = sorted({int(n) for n in re.findall(r"{{\s*(\d+)\s*}}", t.body or "")})
-        schema = t.whatsapp_params_schema or []
-        params = []
-        for i, n in enumerate(nums):
-            hint = ""
-            if i < len(schema) and isinstance(schema[i], dict):
-                hint = schema[i].get("example", "")
-            # авто-подстановка имени клиента в первую переменную
-            default = client.first_name if (i == 0 and client.first_name) else ""
-            params.append({"n": n, "hint": hint, "default": default})
-        items.append({"tpl": t, "params": params})
-    return render(request, "crm/partials/whatsapp_template_picker.html", {
-        "client": client, "items": items,
+    from apps.crm.models import MessageTemplate
+
+    client = get_object_or_404(Client, pk=client_id)
+    try:
+        employee = Employee.objects.get(user=request.user)
+    except Employee.DoesNotExist:
+        employee = None
+
+    channels = []
+    if client.telegram_id:
+        channels.append({"key": "telegram", "label": "Telegram", "color": "#0078d4", "items": []})
+    if client.max_chat_id:
+        channels.append({"key": "max", "label": "MAX", "color": "#8764b8", "items": []})
+    if client.whatsapp_phone or client.phone:
+        channels.append({"key": "whatsapp", "label": "WhatsApp", "color": "#22c55e", "items": []})
+
+    tpl_qs = MessageTemplate.objects.filter(is_active=True).order_by("name")
+    tpl_fields = {}  # tpl_id -> {is_wa, params, rendered, preview}
+    for ch in channels:
+        key = ch["key"]
+        for t in tpl_qs:
+            if key not in (t.channels or []):
+                continue
+            if key == "whatsapp" and t.whatsapp_meta_status != "approved":
+                continue
+            tid = str(t.id)
+            ch["items"].append({"id": tid, "name": t.name})
+            if tid in tpl_fields:
+                continue
+            if key == "whatsapp":
+                nums = sorted({int(n) for n in re.findall(r"{{\s*(\d+)\s*}}", t.body or "")})
+                schema = t.whatsapp_params_schema or []
+                params = []
+                for i, n in enumerate(nums):
+                    hint = schema[i].get("example", "") if i < len(schema) and isinstance(schema[i], dict) else ""
+                    default = client.first_name if (i == 0 and client.first_name) else ""
+                    params.append({"n": n, "hint": hint, "default": default})
+                tpl_fields[tid] = {"is_wa": True, "params": params, "rendered": "", "preview": t.body}
+            else:
+                rendered = _render_crm_template(t.body, client, employee)
+                tpl_fields[tid] = {"is_wa": False, "params": [], "rendered": rendered, "preview": rendered}
+
+    initial = request.GET.get("channel") or ""
+    keys = [c["key"] for c in channels]
+    if initial not in keys:
+        initial = keys[0] if keys else ""
+
+    return render(request, "crm/partials/chat_template_picker.html", {
+        "client": client, "channels": channels, "initial": initial,
+        "tpl_fields": tpl_fields,
     })
 
 
@@ -347,6 +395,84 @@ def whatsapp_send_template(request, client_id):
 
 
 @login_required
+@require_POST
+def chat_send_template(request, client_id):
+    """Единая отправка шаблона по выбранному каналу из общей модалки.
+
+    WhatsApp → approved WABA-шаблон (sendTemplate, вне 24ч-окна).
+    Telegram / MAX → обычное сообщение с финальным текстом (оператор мог
+    отредактировать в модалке)."""
+    from apps.crm.models import MessageTemplate
+
+    client = get_object_or_404(Client, pk=client_id)
+    channel = request.POST.get("channel")
+    if channel not in ("telegram", "max", "whatsapp"):
+        return HttpResponseBadRequest("Неизвестный канал")
+
+    try:
+        employee = Employee.objects.get(user=request.user)
+    except Employee.DoesNotExist:
+        employee = None
+
+    # WhatsApp — через approved-шаблон (sendTemplate)
+    if channel == "whatsapp":
+        from apps.whatsapp.tasks import send_whatsapp_template_task
+        tpl = get_object_or_404(MessageTemplate, pk=request.POST.get("template_id"))
+        if tpl.whatsapp_meta_status != "approved":
+            return HttpResponseBadRequest("Шаблон не одобрен Meta")
+        params = [p.strip() for p in request.POST.getlist("param")]
+        rendered = _render_wa_template_body(tpl.body, params)
+        client.last_message_at = timezone.now()
+        client.save(update_fields=["last_message_at"])
+        msg = Message.objects.create(
+            client=client, employee=employee, content=rendered,
+            direction="outgoing", channel="whatsapp", message_type="text",
+            telegram_date=timezone.now(), is_sent=False,
+            message_template=tpl, template_params=params,
+        )
+        send_whatsapp_template_task.delay(str(msg.id))
+
+    # Telegram / MAX — обычный текст
+    else:
+        text = (request.POST.get("text") or "").strip()
+        if not text:
+            return HttpResponseBadRequest("Пустой текст")
+        if channel == "telegram" and not client.telegram_id:
+            return HttpResponseBadRequest("У клиента нет Telegram")
+        if channel == "max" and not client.max_chat_id:
+            return HttpResponseBadRequest("У клиента нет MAX")
+        tpl = MessageTemplate.objects.filter(pk=request.POST.get("template_id")).first()
+        client.last_message_at = timezone.now()
+        client.save(update_fields=["last_message_at"])
+        msg = Message.objects.create(
+            client=client, employee=employee, content=text,
+            direction="outgoing", channel=channel, message_type="text",
+            telegram_date=timezone.now(), is_sent=False, message_template=tpl,
+        )
+        if channel == "telegram":
+            from apps.crm.tasks import send_telegram_message_task
+            send_telegram_message_task.delay(str(msg.id))
+        else:
+            from apps.maxchat.tasks import send_max_message_task
+            send_max_message_task.delay(str(msg.id))
+
+    if employee:
+        ClientEmployee.objects.update_or_create(
+            client=client, employee=employee,
+            defaults={"messenger_status": "waiting", "status_changed_at": timezone.now()},
+        )
+        from apps.realtime.utils import push_messenger_status_update
+        push_messenger_status_update(client)
+
+    html = render_to_string(
+        "crm/partials/telegram_message.html", {"msg": msg}, request=request,
+    )
+    resp = HttpResponse(html)
+    resp["HX-Trigger"] = "messengerStatusChanged"
+    return resp
+
+
+@login_required
 def telegram_chat_for_client(request, client_id):
     client = get_object_or_404(Client, pk=client_id)
     search_q = (request.GET.get("q") or "").strip()
@@ -383,11 +509,37 @@ def telegram_chat_for_client(request, client_id):
     except Employee.DoesNotExist:
         pass
 
+    # Канал отправки по Enter = канал последнего входящего (по нему пришло
+    # последнее сообщение), затем последнего вообще; только среди доступных.
+    avail = []
+    if client.telegram_id:
+        avail.append("telegram")
+    if client.max_chat_id:
+        avail.append("max")
+    if client.whatsapp_phone or client.phone:
+        avail.append("whatsapp")
+    last_in = (
+        Message.objects.filter(client=client, direction="incoming")
+        .order_by("-telegram_date", "-id").values_list("channel", flat=True).first()
+    )
+    last_any = (
+        Message.objects.filter(client=client)
+        .order_by("-telegram_date", "-id").values_list("channel", flat=True).first()
+    )
+    default_channel = ""
+    for cand in (last_in, last_any):
+        if cand in avail:
+            default_channel = cand
+            break
+    if not default_channel and avail:
+        default_channel = avail[0]
+
     return render(
         request,
         "crm/partials/telegram_chat_panel.html",
         {"client": client, "page_obj": page_obj, "messages": page_obj.object_list,
-         "search_q": search_q, "messenger_status": messenger_status},
+         "search_q": search_q, "messenger_status": messenger_status,
+         "default_channel": default_channel},
     )
 
 
