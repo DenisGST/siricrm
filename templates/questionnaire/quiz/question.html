@@ -221,6 +221,9 @@
     {% elif q.question_type == "property_assets" %}
       {% include "questionnaire/quiz/partials/property_assets.html" with key=key ans=ans %}
 
+    {% elif q.question_type == "marketplace_debts" %}
+      {% include "questionnaire/quiz/partials/marketplace_debts.html" with key=key ans=ans %}
+
     {% elif q.question_type == "utility_debts" %}
       {% include "questionnaire/quiz/partials/utility_debts.html" with key=key ans=ans %}
 

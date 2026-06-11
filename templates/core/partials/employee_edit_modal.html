@@ -113,6 +113,13 @@
                  class="toggle toggle-info toggle-sm">
           <span class="label-text text-xs">Принимать лиды из Telegram</span>
         </label>
+        <label for="emp-scans" class="cursor-pointer flex items-center gap-2"
+               title="Доступ к лотку «Входящие сканы»: видеть присланные со сканера документы и привязывать их к клиентам.">
+          <input type="checkbox" id="emp-scans" name="can_handle_scans"
+                 {% if form.can_handle_scans.value %}checked{% endif %}
+                 class="toggle toggle-info toggle-sm">
+          <span class="label-text text-xs">Обработка входящих сканов</span>
+        </label>
         <label for="emp-dismissed" class="cursor-pointer flex items-center gap-2">
           <input type="checkbox" id="emp-dismissed" name="is_dismissed"
                  {% if form.is_dismissed.value %}checked{% endif %}
@@ -129,6 +136,18 @@
         </label>
         {% endif %}
       </div>
+
+      <label for="emp-scanner" class="block mt-2">
+        <span class="label-text text-xs">Имя сканера (метка устройства scan-agent)</span>
+        <input type="text" id="emp-scanner" name="scanner_name"
+               value="{{ form.scanner_name.value|default:'' }}"
+               placeholder="например, scanner-sekretar"
+               class="input input-bordered input-sm w-full max-w-xs">
+        <span class="block text-[11px] text-base-content/50 mt-0.5">
+          Сканы с этой меткой по умолчанию видны сотруднику в «Входящих сканах».
+          Должно совпадать с <code>device</code> в config.ini его scan-agent.
+        </span>
+      </label>
 
       {% if form.errors and not form.non_field_errors %}
         <div class="alert alert-error text-sm">{{ form.errors }}</div>

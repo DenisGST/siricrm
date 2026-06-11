@@ -141,6 +141,20 @@
     })();
   </script>
 
+  <script>
+    // Форматирование телефона в «+7 (XXX) XXX-XX-XX» (8→7, 10 цифр→+7).
+    // Навешивается на поля телефона через onblur="formatPhoneField(this)".
+    // Серверная нормализация (ClientForm.clean_phone / sync) — основная гарантия.
+    window.formatPhoneField = function (el) {
+      if (!el) return;
+      var d = (el.value || '').replace(/\D/g, '');
+      if (d.length === 11 && d[0] === '8') d = '7' + d.slice(1);
+      if (d.length === 10) d = '7' + d;
+      if (d.length !== 11 || d[0] !== '7') return;  // не РФ-номер/неполный — оставляем как ввели
+      el.value = '+7 (' + d.slice(1, 4) + ') ' + d.slice(4, 7) + '-' + d.slice(7, 9) + '-' + d.slice(9, 11);
+    };
+  </script>
+
 <div class="app-layout">
   <!-- Узкий иконочный сайдбар -->
   <nav id="sidebar">
@@ -155,11 +169,25 @@
         {% endif %}
         {% for item in items %}
           {% if item.use_htmx %}
+            {% if item.url == '/scans/' %}
+            {# Счётчик непривязанных сканов — поллинг + обновление на scansChanged #}
+            <div class="indicator">
+              <span id="scan-badge" class="indicator-item badge badge-error badge-xs"
+                    hx-get="{% url 'scans:pending_count' %}"
+                    hx-trigger="load, every 30s, scansChanged from:body"></span>
+              <a href="#" title="{{ item.name }}"
+                 class="sidebar-item {% if section == 'CRM' %}si-sect-crm{% elif section == 'Администрирование' %}si-sect-admin{% else %}si-sect-top{% endif %}"
+                 hx-get="{{ item.url }}" hx-target="#content-area" hx-swap="innerHTML">
+                {% sidebar_icon item.icon size=22 %}
+              </a>
+            </div>
+            {% else %}
             <a href="#" title="{{ item.name }}"
                class="sidebar-item {% if section == 'CRM' %}si-sect-crm{% elif section == 'Администрирование' %}si-sect-admin{% else %}si-sect-top{% endif %}"
                hx-get="{{ item.url }}" hx-target="#content-area" hx-swap="innerHTML">
               {% sidebar_icon item.icon size=22 %}
             </a>
+            {% endif %}
           {% else %}
             <a href="{{ item.url }}" title="{{ item.name }}"
                class="sidebar-item {% if section == 'CRM' %}si-sect-crm{% elif section == 'Администрирование' %}si-sect-admin{% else %}si-sect-top{% endif %}"
@@ -377,6 +405,8 @@
 <form id="kanban-filter-form"
       class="kanban-filters-popover hidden"
       onchange="document.body.dispatchEvent(new CustomEvent('kanbanRefresh'))">
+  {# «Только этот клиент» из главного поиска — точный фильтр по id (см. pickExactClientForKanban) #}
+  <input type="hidden" id="flt-cid" name="cid">
   <div class="flex items-center justify-between mb-3">
     <h3 class="text-sm font-semibold">Фильтры</h3>
     <button type="button" class="btn btn-xs btn-ghost btn-circle"
@@ -389,7 +419,7 @@
       <input id="flt-q" type="search" name="q"
              placeholder="Иванов, +7 999..., 79991234567"
              class="input input-bordered input-sm"
-             oninput="clearTimeout(window._fltQTimer); window._fltQTimer=setTimeout(function(){document.body.dispatchEvent(new CustomEvent('kanbanRefresh'))}, 400);">
+             oninput="(function(el){var c=document.getElementById('flt-cid'); if(c) c.value='';})(this); clearTimeout(window._fltQTimer); window._fltQTimer=setTimeout(function(){document.body.dispatchEvent(new CustomEvent('kanbanRefresh'))}, 400);">
     </label>
     <label class="form-control w-full">
       <span class="label label-text !text-xs !py-0 !pb-1 opacity-70">Закреплён за</span>
@@ -527,6 +557,32 @@ document.addEventListener('htmx:afterRequest', (event) => {
   }
 });
 
+// WS-сигнал «новое сообщение у клиента <id>» (см. push_chat_message): если
+// левый список клиентов в чат-панели загружен и активна дефолтная сортировка
+// без поиска — переподтянуть его, чтобы карточка с новым сообщением всплыла
+// наверх. Дебаунс 400мс на случай очереди сообщений.
+(function () {
+  var _bumpTimer = null;
+  document.body.addEventListener('htmx:wsAfterMessage', function (e) {
+    var data = e && e.detail && e.detail.message;
+    if (typeof data !== 'string' || data.indexOf('data-client-list-bump') === -1) return;
+    var list = document.getElementById('telegram-clients-list');
+    if (!list || !list.dataset.loaded) return;
+    var sort = (document.getElementById('telegram-sort') || {}).value || '-last_message_at';
+    var q = (document.getElementById('telegram-search') || {}).value || '';
+    if (sort !== '-last_message_at' || q.trim() !== '') return;
+    clearTimeout(_bumpTimer);
+    _bumpTimer = setTimeout(function () {
+      var scope = (document.getElementById('telegram-scope') || {}).value || 'mine';
+      if (window.htmx) {
+        htmx.ajax('GET',
+          '/telegram/clients/?scope=' + encodeURIComponent(scope),
+          { target: '#telegram-clients-list', swap: 'innerHTML' });
+      }
+    }, 400);
+  });
+})();
+
   function showToast(message, type = 'info') {
     const container = document.getElementById('toast-container');
     if (!container) return;
@@ -598,6 +654,10 @@ document.addEventListener('htmx:afterRequest', (event) => {
     const form = document.getElementById('kanban-filter-form');
     if (!form) return;
     form.reset();
+    // Явно гасим точный фильтр по id и поиск (form.reset не всегда сбрасывает
+    // программно выставленные значения скрытых полей).
+    const cid = document.getElementById('flt-cid'); if (cid) cid.value = '';
+    const q = document.getElementById('flt-q');     if (q) q.value = '';
     const inl = document.getElementById('kanban-emp-filter');
     if (inl) inl.value = '';
     document.body.dispatchEvent(new CustomEvent('kanbanRefresh'));
@@ -684,7 +744,20 @@ document.addEventListener('htmx:afterRequest', (event) => {
   function pickClientForKanbanFilter(fio) {
     const input = document.getElementById('flt-q');
     if (!input) return;
+    const cid = document.getElementById('flt-cid');
+    if (cid) cid.value = '';        // похожие → снимаем точный фильтр по id
     input.value = fio;
+    document.body.dispatchEvent(new CustomEvent('kanbanRefresh'));
+    updateKanbanFiltersIndicator();
+  }
+
+  // «Только этот клиент» из главного поиска — точный фильтр канбана по id.
+  function pickExactClientForKanban(cid) {
+    const cidInput = document.getElementById('flt-cid');
+    const q = document.getElementById('flt-q');
+    if (!cidInput) return;
+    if (q) q.value = '';            // точный → убираем фильтр по ФИО
+    cidInput.value = cid;
     document.body.dispatchEvent(new CustomEvent('kanbanRefresh'));
     updateKanbanFiltersIndicator();
   }
@@ -1880,6 +1953,40 @@ function mfoInitAll() {
   });
 }
 
+// ── Кредиты/рассрочки на маркетплейсах (marketplace_debts) ───────────────────
+
+function _mpEntryHtml(key, i) {
+  var n = function(f) { return key + '_mp' + i + '_' + f; };
+  return '<div class="mp-entry rounded-lg mb-2"'
+    +' style="border:1px solid #e2e8f0;background:#f8fafc;"'
+    +' data-index="'+i+'" data-mp-key="'+key+'">'
+    +'<div class="flex items-center justify-between px-3 py-1.5"'
+    +' style="border-bottom:1px solid #e2e8f0;background:#f1f5f9;border-radius:8px 8px 0 0;">'
+    +'<span class="text-xs font-semibold" style="color:#64748b;">Маркетплейс</span>'
+    +'<button type="button" onclick="mpRemoveEntry(this)"'
+    +' class="btn btn-ghost btn-xs" style="color:#ef4444;padding:2px 6px;">✕</button></div>'
+    +'<div class="p-3 grid gap-2" style="grid-template-columns:2fr 3fr 1fr;">'
+    +'<div><div class="text-xs mb-1" style="color:#94a3b8;">Наименование маркетплейса</div>'
+    +'<input type="text" name="'+n('marketplace')+'" class="input input-bordered input-sm w-full"></div>'
+    +'<div><div class="text-xs mb-1" style="color:#94a3b8;">Что приобреталось</div>'
+    +'<input type="text" name="'+n('item')+'" class="input input-bordered input-sm w-full"></div>'
+    +'<div><div class="text-xs mb-1" style="color:#94a3b8;">Сумма долга</div>'
+    +'<input type="number" name="'+n('amount')+'" class="input input-bordered input-sm w-full" step="1" min="0"></div>'
+    +'</div></div>';
+}
+
+function mpAddEntry(key) {
+  var list = document.getElementById('mp-list-' + key);
+  if (!list) return;
+  var i = list.querySelectorAll('.mp-entry').length;
+  list.insertAdjacentHTML('beforeend', _mpEntryHtml(key, i));
+}
+
+function mpRemoveEntry(btn) {
+  var entry = btn.closest('.mp-entry');
+  if (entry) entry.remove();
+}
+
 // ── Коммунальные платежи (utility_debts) ─────────────────────────────────────
 
 function _utilEntryHtml(key, i) {
@@ -2439,6 +2546,8 @@ function initMsSearch() {
   }
   #idle-warning::backdrop { background: rgba(0,0,0,0.35); }
   #idle-locked::backdrop  { background: rgba(0,0,0,0.6); }
+  /* Бейдж непривязанных сканов — скрыт, когда счётчик пуст (0). */
+  #scan-badge:empty { display: none; }
 </style>
 
 <dialog id="idle-warning">

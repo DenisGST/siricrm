@@ -1,0 +1,56 @@
+<label class="label py-1"><span class="label-text">Папка клиента</span></label>
+<select name="folder_id" class="select select-bordered select-sm w-full" required>
+  {% for f in folders %}
+  <option value="{{ f.id }}" {% if f.id == default_folder_id %}selected{% endif %}>{{ f.indent }}{{ f.name }}</option>
+  {% endfor %}
+</select>
+
+{% if not batch %}
+<label class="label py-1 mt-2"><span class="label-text">Имя файла</span></label>
+<input type="text" name="name" value="{{ scan.filename|default:'' }}"
+       class="input input-bordered input-sm w-full" placeholder="Имя файла">
+
+<div class="divider my-2"></div>
+
+<label class="label cursor-pointer justify-start gap-2 py-1">
+  <input type="checkbox" name="make_correspondence" class="checkbox checkbox-sm"
+         onchange="document.getElementById('scan-corr-fields').classList.toggle('hidden', !this.checked)">
+  <span class="label-text">Завести запись входящей корреспонденции</span>
+</label>
+
+<div id="scan-corr-fields" class="hidden mt-1 pl-1 border-l-2 border-base-300">
+  {% if services %}
+  <label class="label py-1"><span class="label-text">Услуга (по которой переписка)</span></label>
+  <select name="service_id" class="select select-bordered select-sm w-full">
+    {% for s in services %}
+    <option value="{{ s.id }}">{{ s.name }}{% if s.numb_dogovor %} · № {{ s.numb_dogovor }}{% endif %}</option>
+    {% endfor %}
+  </select>
+  {% else %}
+  <div class="alert alert-warning text-xs py-1 px-2">
+    У клиента нет услуг — корреспонденцию привязать не к чему. Снимите галочку.
+  </div>
+  {% endif %}
+
+  <label class="label py-1 mt-1"><span class="label-text">Контрагент (от кого письмо)</span></label>
+  <input type="hidden" name="counterparty_id" id="scan-cp-id">
+  <div id="scan-cp-picked" class="hidden alert py-1 px-3 text-sm mb-1">
+    <span id="scan-cp-label"></span>
+    <button type="button" class="btn btn-xs btn-ghost ml-auto" onclick="window.resetScanCounterparty()">изменить</button>
+  </div>
+  <div id="scan-cp-box">
+    <input type="text" placeholder="Поиск контрагента (банк/МФО/госорган)…"
+           class="input input-bordered input-sm w-full" autocomplete="off" name="cp_q"
+           hx-get="{% url 'scans:counterparty_search' %}" hx-trigger="keyup changed delay:300ms"
+           hx-target="#scan-cp-results">
+    <div id="scan-cp-results" class="mt-1"></div>
+  </div>
+
+  <label class="label py-1 mt-1"><span class="label-text">Тип письма</span></label>
+  <input type="text" name="subject_type" class="input input-bordered input-sm w-full"
+         placeholder="Например, «Ответ из Росреестра»">
+
+  <label class="label py-1 mt-1"><span class="label-text">Дата документа</span></label>
+  <input type="date" name="doc_date" class="input input-bordered input-sm w-full">
+</div>
+{% endif %}

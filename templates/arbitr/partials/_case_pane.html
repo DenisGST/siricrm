@@ -1,18 +1,13 @@
-{% extends "arbitr/_layout.html" %}
 {% load humanize %}
-{% block title %}{{ case.case_number|default:"Дело" }} · Арбитраж{% endblock %}
+{# Правая панель split-layout'а: детали выбранного дела.                  #}
+{# Включается из dashboard.html (если есть selected_pane) и swap'ается   #}
+{# HTMX'ом при клике на элемент sidebar'а.                                #}
+<div class="p-4 md:p-6 space-y-4 max-w-5xl">
 
-{% block content %}
-<div class="container mx-auto p-4 md:p-6 max-w-6xl space-y-6">
-
-  <div class="text-sm">
-    <a href="{% url 'arbitr:dashboard' %}" class="link link-hover">← Все дела</a>
-  </div>
-
-  {# ═══════════════ Карточка дела (HTMX-swap при ручном запуске) ═══════════════ #}
+  {# Карточка дела (заголовок + метрики + «Парсить сейчас»). #}
   {% include "arbitr/partials/_case_card.html" with case=case %}
 
-  {# ═══════════════ Найденные кандидаты (Этап 1) ═══════════════ #}
+  {# ─── Этап 1: найденные кандидаты ─── #}
   {% if case.status == 'searching' and case.search_hits %}
   <section class="card bg-base-100 shadow-sm border border-warning/30">
     <div class="card-body p-4 gap-3">
@@ -23,36 +18,32 @@
         {% endif %}
       </div>
       <p class="text-xs opacity-60">
-        Парсер нашёл дела по ФИО клиента. Подтверди какое из них «своё» —
-        дело перейдёт в этап 2 (мониторинг карточки).
+        Парсер нашёл дела по ФИО клиента. Проверь и подтверди «своё» — дело перейдёт в этап 2.
       </p>
       <ul class="divide-y divide-base-200">
         {% for hit in case.search_hits %}
         <li class="py-3 flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
           <div class="min-w-0 flex-1">
-            <div class="font-mono font-semibold">{{ hit.case_number }}</div>
+            <div class="flex items-center gap-2">
+              <span class="font-mono font-semibold">{{ hit.case_number }}</span>
+              <a href="{{ hit.kad_url }}" target="_blank" rel="noopener noreferrer"
+                 class="link link-xs link-primary">kad ↗</a>
+            </div>
             <div class="text-xs opacity-70">{{ hit.court_name }}</div>
             {% if hit.filed_at %}
-              <div class="text-xs opacity-60">подан {{ hit.filed_at }}</div>
+              <div class="text-xs opacity-60">подано {{ hit.filed_at }}</div>
             {% endif %}
             {% if hit.parties %}
               <div class="text-xs opacity-60 mt-1">
-                <span class="opacity-50">стороны:</span>
-                {{ hit.parties|join:", "|truncatechars:200 }}
+                <span class="opacity-50">стороны:</span> {{ hit.parties|join:", "|truncatechars:200 }}
               </div>
             {% endif %}
-            <a href="{{ hit.kad_url }}" target="_blank" rel="noopener"
-               class="link link-xs link-primary mt-1 inline-block">
-              открыть в kad ↗
-            </a>
           </div>
           <form method="post"
                 action="{% url 'arbitr:case_confirm_hit' case.id forloop.counter0 %}"
                 class="shrink-0">
             {% csrf_token %}
-            <button type="submit" class="btn btn-success btn-sm">
-              ✓ Это моё дело
-            </button>
+            <button type="submit" class="btn btn-success btn-sm">✓ Это моё дело</button>
           </form>
         </li>
         {% endfor %}
@@ -66,13 +57,13 @@
       <p class="text-sm opacity-60">
         Парсер ещё не находил совпадений по ФИО клиента
         {% if case.last_check_at %}(последняя проверка {{ case.last_check_at|naturaltime }}){% endif %}.
-        Запусти «Парсить сейчас» в карточке выше или дождись следующей итерации.
+        Запусти «Парсить сейчас» в карточке выше.
       </p>
     </div>
   </section>
   {% endif %}
 
-  {# ═══════════════ Шапка дела на kad ═══════════════ #}
+  {# ─── Этап 2: шапка kad ─── #}
   {% if case.kad_url %}
   <section class="card bg-base-100 shadow-sm">
     <div class="card-body p-4 gap-2">
@@ -80,7 +71,7 @@
       <div class="grid md:grid-cols-2 gap-2 text-sm">
         <div>
           <span class="opacity-60">Ссылка на kad:</span>
-          <a href="{{ case.kad_url }}" target="_blank" rel="noopener"
+          <a href="{{ case.kad_url }}" target="_blank" rel="noopener noreferrer"
              class="link link-primary break-all">{{ case.kad_url }}</a>
         </div>
         {% if case.court_name %}
@@ -91,15 +82,12 @@
         {% endif %}
       </div>
 
-      {# Инстанции — массив dict'ов из парсера (см. KadCaseInfo.instances). #}
       {% if case.instances %}
       <div class="mt-2">
         <div class="text-xs opacity-60 mb-1">Инстанции ({{ case.instances|length }})</div>
         <div class="overflow-x-auto">
           <table class="table table-zebra table-xs">
-            <thead><tr>
-              <th>Тип</th><th>№</th><th>Суд</th><th>Судья</th>
-            </tr></thead>
+            <thead><tr><th>Тип</th><th>№</th><th>Суд</th><th>Судья</th></tr></thead>
             <tbody>
               {% for inst in case.instances %}
               <tr>
@@ -118,7 +106,8 @@
   </section>
   {% endif %}
 
-  {# ═══════════════ Хронология событий ═══════════════ #}
+  {# ─── Хронология ─── #}
+  {% if case.kad_url %}
   <section class="card bg-base-100 shadow-sm">
     <div class="card-body p-4 gap-3">
       <div class="flex items-center justify-between">
@@ -130,7 +119,7 @@
       {% else %}
         <ul class="divide-y divide-base-200">
           {% for ev in events %}
-          <li class="py-2 grid grid-cols-[8rem_1fr] gap-3 text-sm">
+          <li class="py-2 gap-3 text-sm" style="display:grid; grid-template-columns:8rem 1fr;">
             <div class="font-mono text-xs opacity-70">
               {% if ev.event_date %}{{ ev.event_date|date:"d.m.Y" }}{% else %}—{% endif %}<br>
               <span class="opacity-50">{{ ev.kind }}</span>
@@ -144,7 +133,7 @@
                 {% if atts %}
                 <div class="mt-1 flex flex-wrap gap-1">
                   {% for a in atts %}
-                    <a href="{{ a.kad_url }}" target="_blank" rel="noopener"
+                    <a href="{{ a.kad_url }}" target="_blank" rel="noopener noreferrer"
                        class="badge badge-outline badge-sm {% if a.is_locked %}badge-warning{% endif %}"
                        title="{% if a.is_locked %}Закрытый документ (доступ по ЭЦП){% else %}{{ a.name }}{% endif %}">
                       📎 {{ a.name|default:"документ"|truncatechars:60 }}
@@ -163,14 +152,13 @@
       {% endif %}
     </div>
   </section>
+  {% endif %}
 
-  {# ═══════════════ Лог проверок (HTMX-партиал) ═══════════════ #}
+  {# ─── Лог проверок ─── #}
   <section class="card bg-base-100 shadow-sm">
     <div class="card-body p-4 gap-3">
       <h2 class="card-title text-base">📜 Лог проверок (последние 50)</h2>
       {% include "arbitr/partials/_case_log.html" with case=case logs=logs poll_active=poll_active %}
     </div>
   </section>
-
 </div>
-{% endblock %}

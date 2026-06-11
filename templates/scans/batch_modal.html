@@ -1,0 +1,62 @@
+<dialog id="scan-batch-modal" class="modal modal-open">
+  <div class="modal-box max-w-2xl">
+    <div class="flex items-center justify-between mb-3">
+      <h3 class="font-bold text-lg">Привязать выбранные сканы ({{ scans|length }})</h3>
+      <button type="button" class="btn btn-sm btn-circle btn-ghost"
+              onclick="this.closest('dialog').remove()">✕</button>
+    </div>
+    <div class="text-xs text-base-content/60 mb-3 max-h-24 overflow-y-auto">
+      {% for s in scans %}📄 {{ s.filename }}{% if not forloop.last %}<br>{% endif %}{% endfor %}
+    </div>
+
+    <form hx-post="{% url 'scans:batch_assign' %}"
+          hx-on::after-request="if(event.detail.successful && event.detail.xhr.status===204){ this.closest('dialog').remove(); window.showToast && showToast('Привязано сканов: {{ scans|length }}'); }">
+      <input type="hidden" name="ids" value="{{ ids }}">
+
+      <label class="label py-1"><span class="label-text">Клиент (все сканы — одному)</span></label>
+      <input type="hidden" name="client_id" id="batch-client-id" required>
+      <div id="batch-client-picked" class="hidden alert alert-success py-1 px-3 text-sm mb-1">
+        <span id="batch-client-label"></span>
+        <button type="button" class="btn btn-xs btn-ghost ml-auto" onclick="window.resetBatchClient()">изменить</button>
+      </div>
+      <div id="batch-client-box">
+        <input type="text" placeholder="Фамилия, имя или телефон…"
+               class="input input-bordered input-sm w-full" autocomplete="off" name="q"
+               hx-get="{% url 'scans:client_search' %}" hx-trigger="keyup changed delay:300ms"
+               hx-target="#batch-client-results">
+        <div id="batch-client-results" class="mt-1"></div>
+      </div>
+
+      <div id="batch-targets" class="mt-3"></div>
+
+      <div class="modal-action">
+        <button type="submit" class="btn btn-primary btn-sm">Привязать все</button>
+        <button type="button" class="btn btn-sm" onclick="this.closest('dialog').remove()">Отмена</button>
+      </div>
+    </form>
+  </div>
+  <form method="dialog" class="modal-backdrop">
+    <button onclick="this.closest('dialog').remove()">close</button>
+  </form>
+
+  {% comment %} IIFE: переопределяем pickScanClient на batch-вариант (модалки не открыты одновременно) {% endcomment %}
+  <script>
+  (function () {
+    window.pickScanClient = function (id, label) {
+      document.getElementById('batch-client-id').value = id;
+      document.getElementById('batch-client-label').textContent = label;
+      document.getElementById('batch-client-picked').classList.remove('hidden');
+      document.getElementById('batch-client-box').classList.add('hidden');
+      htmx.ajax('GET', '{% url 'scans:client_targets' %}', {
+        target: '#batch-targets', values: { client_id: id, batch: '1' },
+      });
+    };
+    window.resetBatchClient = function () {
+      document.getElementById('batch-client-id').value = '';
+      document.getElementById('batch-client-picked').classList.add('hidden');
+      document.getElementById('batch-client-box').classList.remove('hidden');
+      document.getElementById('batch-targets').innerHTML = '';
+    };
+  })();
+  </script>
+</dialog>

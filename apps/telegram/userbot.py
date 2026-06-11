@@ -254,10 +254,16 @@ async def start_userbot():
     # доставить пропущенные во время рестарта сообщения через эти же хендлеры.
     async def _process_raw_event(event):
         """Обработка прочтений и реакций."""
-        from telethon.tl.types import UpdateReadHistoryInbox, UpdateMessageReactions, ReactionEmoji
+        from telethon.tl.types import (
+            UpdateReadHistoryInbox, UpdateReadHistoryOutbox,
+            UpdateMessageReactions, ReactionEmoji,
+        )
 
-        # ── Прочтения ──
-        if isinstance(event, UpdateReadHistoryInbox):
+        # ── Прочтения исходящих клиентом ──
+        # Outbox = клиент прочитал НАШИ исходящие (нужно для галочки «прочитано»).
+        # Inbox = мы прочитали входящие (оставлено для совместимости — тоже метит
+        # исходящие как прочитанные по max_id, исторически так работало).
+        if isinstance(event, (UpdateReadHistoryInbox, UpdateReadHistoryOutbox)):
             try:
                 peer = event.peer
                 max_id = event.max_id
@@ -287,10 +293,10 @@ async def start_userbot():
                         ).order_by("-telegram_message_id")[:updated]
                     )
 
+                    # Живое обновление галочки «прочитано» в открытом чате.
+                    from apps.realtime.utils import push_message_status
                     for msg in messages:
-                        if msg.direction == "incoming":
-                            from apps.realtime.utils import push_chat_message
-                            await sync_to_async(push_chat_message)(msg)
+                        await sync_to_async(push_message_status)(msg)
 
             except Exception as e:
                 from django.db import connection

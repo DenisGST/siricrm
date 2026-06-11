@@ -77,7 +77,7 @@ class EmployeeFullEditForm(forms.ModelForm):
         model = Employee
         fields = [
             "department", "role", "dashboard_config",
-            "has_messenger_access", "accept_telegram_leads", "is_owner",
+            "has_messenger_access", "accept_telegram_leads", "can_handle_scans", "scanner_name", "is_owner",
             "patronymic",
             "phone_mobile", "phone_internal",
             "services_allowed",
@@ -282,7 +282,7 @@ class MessageTemplateForm(forms.ModelForm):
         model = MessageTemplate
         fields = [
             "name", "body", "channels", "is_active",
-            "whatsapp_category", "whatsapp_language",
+            "whatsapp_template_name", "whatsapp_category", "whatsapp_language",
             "whatsapp_meta_id", "whatsapp_meta_status", "whatsapp_meta_rejection",
         ]
         widgets = {

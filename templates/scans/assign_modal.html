@@ -1,0 +1,81 @@
+<dialog id="scan-assign-modal" class="modal modal-open">
+  <div class="modal-box max-w-2xl">
+    <div class="flex items-center justify-between mb-3">
+      <h3 class="font-bold text-lg">Привязать скан к клиенту</h3>
+      <button type="button" class="btn btn-sm btn-circle btn-ghost"
+              onclick="this.closest('dialog').remove()">✕</button>
+    </div>
+
+    <div class="text-sm text-base-content/70 mb-3 truncate" title="{{ scan.filename }}">
+      📄 {{ scan.filename }} · {{ scan.size|filesizeformat }}
+    </div>
+
+    <form hx-post="{% url 'scans:assign' scan.id %}"
+          hx-on::after-request="if(event.detail.successful && event.detail.xhr.status===204){ this.closest('dialog').remove(); window.showToast && showToast('Скан привязан к клиенту'); }">
+
+      <!-- Поиск клиента -->
+      <label class="label py-1"><span class="label-text">Клиент</span></label>
+      <input type="hidden" name="client_id" id="scan-client-id" required>
+      <div id="scan-client-picked" class="hidden alert alert-success py-1 px-3 text-sm mb-1">
+        <span id="scan-client-label"></span>
+        <button type="button" class="btn btn-xs btn-ghost ml-auto"
+                onclick="window.resetScanClient()">изменить</button>
+      </div>
+      <div id="scan-client-box">
+        <input type="text" placeholder="Фамилия, имя или телефон…"
+               class="input input-bordered input-sm w-full"
+               hx-get="{% url 'scans:client_search' %}" hx-trigger="keyup changed delay:300ms"
+               hx-target="#scan-client-results" name="q" autocomplete="off">
+        <div id="scan-client-results" class="mt-1"></div>
+      </div>
+
+      <!-- Папка + корреспонденция (грузятся после выбора клиента) -->
+      <div id="scan-targets" class="mt-3"></div>
+
+      <div class="modal-action">
+        <button type="submit" class="btn btn-primary btn-sm">Привязать</button>
+        <button type="button" class="btn btn-sm" onclick="this.closest('dialog').remove()">Отмена</button>
+      </div>
+    </form>
+  </div>
+  <form method="dialog" class="modal-backdrop">
+    <button onclick="this.closest('dialog').remove()">close</button>
+  </form>
+
+  {% comment %} IIFE — иначе при повторном открытии модалки top-level const падают «already declared» {% endcomment %}
+  <script>
+  (function () {
+    window.pickScanClient = function (id, label) {
+      document.getElementById('scan-client-id').value = id;
+      document.getElementById('scan-client-label').textContent = label;
+      document.getElementById('scan-client-picked').classList.remove('hidden');
+      document.getElementById('scan-client-box').classList.add('hidden');
+      htmx.ajax('GET', '{% url 'scans:client_targets' %}', {
+        target: '#scan-targets', values: { client_id: id },
+      });
+    };
+    window.resetScanClient = function () {
+      document.getElementById('scan-client-id').value = '';
+      document.getElementById('scan-client-picked').classList.add('hidden');
+      document.getElementById('scan-client-box').classList.remove('hidden');
+      document.getElementById('scan-targets').innerHTML = '';
+    };
+    // Контрагент (typeahead в форме корреспонденции — грузится внутрь #scan-targets).
+    window.pickScanCounterparty = function (id, label) {
+      var hid = document.getElementById('scan-cp-id');
+      if (!hid) return;
+      hid.value = id;
+      document.getElementById('scan-cp-label').textContent = label;
+      document.getElementById('scan-cp-picked').classList.remove('hidden');
+      document.getElementById('scan-cp-box').classList.add('hidden');
+    };
+    window.resetScanCounterparty = function () {
+      var hid = document.getElementById('scan-cp-id');
+      if (!hid) return;
+      hid.value = '';
+      document.getElementById('scan-cp-picked').classList.add('hidden');
+      document.getElementById('scan-cp-box').classList.remove('hidden');
+    };
+  })();
+  </script>
+</dialog>

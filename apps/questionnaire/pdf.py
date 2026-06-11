@@ -275,6 +275,16 @@ def _render_answer(q, ans, st):
                     rows.append(("Комментарий", e["comment"]))
                 items += _mini_table(rows, st)
 
+    elif qt == "marketplace_debts":
+        entries = ans.get("entries") or []
+        if not entries:
+            items.append(p("—"))
+        else:
+            rows = [("Маркетплейс", "Что приобреталось", "Сумма")]
+            for e in entries:
+                rows.append((e.get("marketplace") or "—", e.get("item") or "—", e.get("amount") or "—"))
+            items.append(_wide_table(rows, st))
+
     elif qt == "utility_debts":
         entries = ans.get("entries") or []
         if not entries:

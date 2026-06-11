@@ -23,6 +23,7 @@ class ClientForm(forms.ModelForm):
             "passport_number",
             "passport_issued_by",
             "passport_issued_date",
+            "passport_division_code",
             "inn",
             "snils",
             "status",
@@ -32,6 +33,38 @@ class ClientForm(forms.ModelForm):
             "birth_date": forms.DateInput(attrs={"type": "date", "class": "input input-bordered w-full"}),
             "passport_issued_date": forms.DateInput(attrs={"type": "date", "class": "input input-bordered w-full"}),
         }
+
+    # Выставляется при конфликте телефона — модалка показывает баннер
+    # со ссылкой «открыть существующего».
+    phone_conflict = None
+
+    def clean_phone(self):
+        """Дедуп: не даём создать/сохранить клиента с телефоном, который уже
+        принадлежит ДРУГОМУ клиенту (по ClientPhone либо legacy Client.phone)."""
+        raw = (self.cleaned_data.get("phone") or "").strip()
+        if not raw:
+            return raw
+        from .phone_utils import normalize_phone, find_client_by_phone, format_phone
+        norm = normalize_phone(raw)
+        if not norm:
+            return raw  # невалидный формат не блокируем — сохраняем как ввели
+        self_pk = getattr(self.instance, "pk", None)
+        conflict = find_client_by_phone(norm)
+        if conflict is None or conflict.pk == self_pk:
+            # fallback на legacy Client.phone без ClientPhone (ручные клиенты,
+            # созданные после backfill crm.0065) — сравниваем по 10 цифрам.
+            qs = Client.objects.filter(phone__contains=norm[1:])
+            if self_pk:
+                qs = qs.exclude(pk=self_pk)
+            conflict = qs.first()
+        if conflict is not None and conflict.pk != self_pk:
+            self.phone_conflict = conflict
+            fio = f"{conflict.last_name} {conflict.first_name}".strip() or "без ФИО"
+            raise forms.ValidationError(
+                f"Телефон уже у клиента «{fio}» — дубликат создавать нельзя, "
+                f"откройте существующего."
+            )
+        return format_phone(raw)  # храним в виде +7 (XXX) XXX-XX-XX
 
 
 class LegalEntityForm(forms.ModelForm):

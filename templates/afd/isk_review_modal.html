@@ -1,0 +1,177 @@
+<dialog id="afd-isk-modal" class="modal modal-open">
+  <div class="modal-box max-w-4xl">
+    <div id="afd-isk-body">
+      <div class="flex items-center justify-between mb-3">
+        <h3 class="font-bold text-lg">Заявление о банкротстве</h3>
+        <button type="button" class="btn btn-sm btn-circle btn-ghost"
+                onclick="this.closest('dialog').remove()">✕</button>
+      </div>
+      <p class="text-sm text-base-content/70 mb-3">
+        {{ client.last_name }} {{ client.first_name }} {{ client.patronymic }}
+        {% if service.region %}· {{ service.region.court_name }}{% endif %}
+      </p>
+
+      <form hx-post="{% url 'afd:isk_generate' service.id %}"
+            hx-target="#afd-isk-body" hx-swap="innerHTML"
+            hx-indicator="#afd-isk-ind">
+
+        <!-- 1) Выбор анкеты -->
+        <div class="mb-3">
+          <label class="label py-1"><span class="label-text">Анкета (источник данных)</span></label>
+          {% if responses %}
+          <select name="response_id" class="select select-bordered select-sm w-full"
+                  hx-get="{% url 'afd:isk_creditors' service.id %}"
+                  hx-target="#afd-isk-creditors" hx-swap="innerHTML" hx-trigger="change">
+            {% for r in responses %}
+            <option value="{{ r.id }}" {% if r.id|stringformat:'s' == chosen_id %}selected{% endif %}>
+              {{ r.template.title|default:"Анкета" }} · {{ r.updated_at|date:"d.m.Y H:i" }}
+              {% if r.is_complete %}· завершена{% else %}· черновик{% endif %}
+            </option>
+            {% endfor %}
+          </select>
+          {% else %}
+          <div class="alert alert-warning text-sm py-2">У услуги нет заполненных анкет — кредиторы не подтянутся.</div>
+          {% endif %}
+        </div>
+
+        <!-- Кредиторы (обновляются при смене анкеты) -->
+        <div id="afd-isk-creditors" class="mb-3">
+          {% include "afd/_isk_creditors.html" %}
+        </div>
+
+        <!-- 2) СРО (typeahead по первым буквам) -->
+        <div class="mb-3">
+          <label class="label py-1"><span class="label-text">СРО (финансовый управляющий) *</span></label>
+          <div class="relative">
+            <input type="hidden" name="sro_id" id="isk-sro-id" required>
+            <input type="text" id="isk-sro-input" autocomplete="off"
+                   class="input input-bordered input-sm w-full"
+                   placeholder="Начните вводить название СРО…"
+                   oninput="iskSroSearch(this.value)" onfocus="iskSroSearch(this.value)">
+            <div id="isk-sro-list"
+                 class="absolute z-[10000] left-0 right-0 bg-base-100 border border-base-300 rounded shadow-lg max-h-52 overflow-y-auto hidden"></div>
+          </div>
+          <div id="isk-sro-chosen" class="text-xs text-success mt-1 hidden"></div>
+        </div>
+
+        <!-- 3) Место работы (DaData) + дозаполнение -->
+        <div class="grid grid-cols-2 gap-3 mb-3">
+          <div class="relative">
+            <label class="label py-1"><span class="label-text">Место работы (DaData)</span></label>
+            <input type="text" name="employer" id="isk-employer" autocomplete="off"
+                   class="input input-bordered input-sm w-full" placeholder="Начните вводить организацию…"
+                   oninput="iskEmployerSearch(this.value)">
+            <div id="isk-employer-list"
+                 class="absolute z-[10000] left-0 right-0 bg-base-100 border border-base-300 rounded shadow-lg max-h-52 overflow-y-auto hidden"></div>
+          </div>
+          <div>
+            <label class="label py-1"><span class="label-text">Прежняя фамилия (если менялась)</span></label>
+            <input type="text" name="former_name" class="input input-bordered input-sm w-full">
+          </div>
+          <div class="col-span-2">
+            <label class="label py-1"><span class="label-text">Открытые счета должника (для текста заявления)</span></label>
+            <textarea name="accounts_block" rows="2" class="textarea textarea-bordered textarea-sm w-full"
+                      placeholder="в ПАО «Сбербанк»: 1) №…; 2) №…; в АО «ТБанк»: …"></textarea>
+          </div>
+          <div>
+            <label class="label py-1"><span class="label-text">Наличные / ценное имущество (Опись, разд. VI)</span></label>
+            <input type="text" name="property_cash" class="input input-bordered input-sm w-full" placeholder="напр.: наличные 12 000 руб.">
+          </div>
+        </div>
+
+        <!-- Приложения -->
+        <div class="mb-2">
+          <div class="font-semibold text-sm mb-1">Приложения (опись)</div>
+          <div class="grid grid-cols-2 gap-x-4 gap-y-1 max-h-40 overflow-y-auto border border-base-300 rounded p-2">
+            {% for a in appendix %}
+            <label class="label cursor-pointer justify-start gap-2 py-0">
+              <input type="checkbox" name="appendix_keys" value="{{ a.key }}" class="checkbox checkbox-xs" {% if a.checked %}checked{% endif %}>
+              <span class="label-text text-xs">{{ a.label }}{% if a.auto %} <span class="text-success">(авто)</span>{% endif %}</span>
+            </label>
+            {% endfor %}
+          </div>
+        </div>
+
+        <div class="modal-action">
+          <button type="submit" class="btn btn-primary btn-sm">
+            <span id="afd-isk-ind" class="loading loading-spinner loading-xs htmx-indicator"></span>
+            Сформировать заявление
+          </button>
+          <button type="button" class="btn btn-sm" onclick="this.closest('dialog').remove()">Закрыть</button>
+        </div>
+      </form>
+    </div>
+  </div>
+  <form method="dialog" class="modal-backdrop">
+    <button onclick="this.closest('dialog').remove()">close</button>
+  </form>
+
+  <script>
+  (function(){
+    var DADATA_TOKEN = "{{ dadata_api_key }}";
+    var sroT=null, empT=null;
+
+    function box(id){ return document.getElementById(id); }
+    function hide(id){ var b=box(id); if(b){ b.classList.add('hidden'); } }
+    function item(html){ var d=document.createElement('div'); d.className='px-2 py-1 cursor-pointer hover:bg-base-200 text-xs'; d.innerHTML=html; return d; }
+
+    // ── СРО: поиск по справочнику ЮЛ (ref-search?type=sro) ──
+    window.iskSroSearch=function(q){
+      clearTimeout(sroT);
+      if((q||'').trim().length<2){ hide('isk-sro-list'); return; }
+      sroT=setTimeout(function(){
+        fetch('/questionnaire/ref-search/?type=sro&q='+encodeURIComponent(q),{credentials:'same-origin'})
+          .then(function(r){return r.json();})
+          .then(function(d){
+            var list=box('isk-sro-list'); list.innerHTML='';
+            if(!d.results||!d.results.length){ hide('isk-sro-list'); return; }
+            d.results.forEach(function(o){
+              var el=item(o.label);
+              el.onclick=function(){
+                box('isk-sro-id').value=o.id;
+                box('isk-sro-input').value=o.label;
+                var ch=box('isk-sro-chosen'); ch.textContent='Выбрано: '+o.label; ch.classList.remove('hidden');
+                hide('isk-sro-list');
+              };
+              list.appendChild(el);
+            });
+            list.classList.remove('hidden');
+          }).catch(function(){ hide('isk-sro-list'); });
+      },250);
+    };
+
+    // ── Место работы: DaData party suggest ──
+    window.iskEmployerSearch=function(q){
+      clearTimeout(empT);
+      if(!DADATA_TOKEN || (q||'').trim().length<2){ hide('isk-employer-list'); return; }
+      empT=setTimeout(function(){
+        fetch('https://suggestions.dadata.ru/suggestions/api/4_1/rs/suggest/party',{
+          method:'POST',
+          headers:{'Content-Type':'application/json','Accept':'application/json','Authorization':'Token '+DADATA_TOKEN},
+          body:JSON.stringify({query:q,count:7})
+        }).then(function(r){return r.json();}).then(function(d){
+          var list=box('isk-employer-list'); list.innerHTML='';
+          if(!d.suggestions||!d.suggestions.length){ hide('isk-employer-list'); return; }
+          d.suggestions.forEach(function(s){
+            var dd=s.data, inn=(dd.inn||'');
+            var el=item('<div style="font-weight:500">'+s.value+'</div><div style="opacity:.6">ИНН '+inn+(dd.address&&dd.address.value?(' · '+dd.address.value):'')+'</div>');
+            el.onclick=function(){ box('isk-employer').value=s.value; hide('isk-employer-list'); };
+            list.appendChild(el);
+          });
+          list.classList.remove('hidden');
+        }).catch(function(){ hide('isk-employer-list'); });
+      },250);
+    };
+
+    // скрыть выпадашки по клику вне
+    document.addEventListener('mousedown', function(e){
+      ['isk-sro-list','isk-employer-list'].forEach(function(id){
+        var b=box(id); if(b && !b.classList.contains('hidden')){
+          var inp = b.previousElementSibling;
+          if(!b.contains(e.target) && e.target!==inp){ b.classList.add('hidden'); }
+        }
+      });
+    });
+  })();
+  </script>
+</dialog>

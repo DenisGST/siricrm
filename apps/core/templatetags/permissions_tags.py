@@ -18,3 +18,8 @@ def can_view_all_clients(user):
 @register.filter
 def is_management(user):
     return permissions.is_management(user)
+
+
+@register.filter
+def can_merge_clients(user):
+    return permissions.can_merge_clients(user)

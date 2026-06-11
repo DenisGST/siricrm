@@ -20,6 +20,7 @@ QUESTION_TYPES = [
     ("marital_status",     "Семейное положение"),
     ("bank_debts",         "Долги перед банками"),
     ("mfo_debts",          "Долги перед МФО"),
+    ("marketplace_debts",  "Кредиты/рассрочки на маркетплейсах"),
     ("property_assets",    "Имущество в собственности"),
     ("utility_debts",      "Коммунальные платежи"),
     ("fine_debts",         "Штрафы"),

@@ -8,8 +8,9 @@ MAX — отечественный мессенджер от VK (бывшая Ma
 
 `apps/maxchat/` — минималистичный слой над общими `Client/Message/StoredFile`:
 - `sender.py` — HTTP-клиент к MAX Bot API (отправка текста + медиа).
-- `tasks.py` — Celery `send_max_message_task(message_id)` с retry×3.
-- `views.py` — webhook на приём входящих + ack-статусов.
+- `tasks.py` — Celery: исходящие `send_max_message_task(message_id)` (retry×3) + приём входящих `process_incoming_max_event(data)`.
+- `processing.py` — обработчик входящих `handle_max_event(data)`. 🛑 **Вынесено из webhook в Celery** (как WhatsApp, см. [[wa-webhook-async-incident]]): скачивание вложений из CDN (`requests.get`) + S3 в ASGI-обработчике вешало daphne. Дедуп по `max_message_id` — внутри.
+- `views.py` — webhook (**только парсит JSON и ставит таску, сразу 200**). **MAX Bot API НЕ присылает боту статусы доставки/прочтения** → у исходящих MAX-сообщений доступно только «отправлено» (✓), без «доставлено/прочитано». См. [[chat-message-status-ticks]].
 - `urls.py` — `/max/webhook/`.
 - **Нет своих моделей и миграций**.
 

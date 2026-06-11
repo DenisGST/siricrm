@@ -90,6 +90,29 @@ def can_view_all_clients(user) -> bool:
     return False
 
 
+def can_handle_scans(user) -> bool:
+    """Доступ к лотку «Входящие сканы»: superuser, admin/head_dep
+    (is_references_access) или сотрудник с ``Employee.can_handle_scans``."""
+    if not user or not user.is_authenticated:
+        return False
+    if is_references_access(user):
+        return True
+    emp = get_employee(user)
+    return bool(emp and getattr(emp, "can_handle_scans", False))
+
+
+def can_merge_clients(user) -> bool:
+    """Доступ к объединению карточек клиентов: superuser, Owner (is_owner)
+    или сотрудник с ``Employee.can_merge_clients``."""
+    if not user or not user.is_authenticated:
+        return False
+    if is_superuser(user):
+        return True
+    emp = get_employee(user)
+    return bool(emp and (getattr(emp, "is_owner", False)
+                         or getattr(emp, "can_merge_clients", False)))
+
+
 # ─── Декораторы для Django view-функций ──────────────────────
 def _make_require(predicate, message):
     def decorator(view_func):
@@ -108,6 +131,12 @@ require_references_access = _make_require(
     is_references_access, "Нет доступа к справочникам"
 )
 require_management = _make_require(is_management, "Нет доступа")
+require_can_handle_scans = _make_require(
+    can_handle_scans, "Нет доступа к входящим сканам"
+)
+require_can_merge_clients = _make_require(
+    can_merge_clients, "Нет доступа к объединению клиентов"
+)
 
 
 # ─── DRF permission-классы ───────────────────────────────────

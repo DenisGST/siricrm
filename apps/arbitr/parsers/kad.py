@@ -133,17 +133,31 @@ class KadSession:
     cookies между запросами, что критично для прохождения проверок kad.
     """
 
-    def __init__(self, headless: Optional[bool] = None):
+    def __init__(
+        self,
+        headless: Optional[bool] = None,
+        *,
+        download_mode: bool = False,
+    ):
+        """
+        download_mode=True → Chrome с PDF-prefs (`always_open_pdf_externally`).
+            Использовать ТОЛЬКО для download_pdf — в обычной сессии эти
+            prefs ломают search на kad (anti-bot детектит отсутствие PDF
+            Viewer plugin в navigator.plugins → click «Найти» игнорируется).
+        download_mode=False (default) → чистый baseline Chrome → search/parse.
+        """
         self.headless = settings.ARBITR_HEADLESS if headless is None else headless
+        self.download_mode = download_mode
         self.driver = None
         self._wait = None
         # Флаг «прогретой» сессии. Прямой GET /Card/<uuid> даёт капчу,
         # но если до того в этой же Chrome-сессии прошёл поиск через UI —
         # переход на карточку работает. Прогреваем 1 раз на сессию.
         self._warmed = False
-        # Папка для download'ов PDF. Каждый Chrome-инстанс — своя tmp-папка,
-        # чтобы не пересекаться при параллельных воркерах.
-        self._download_dir = tempfile.mkdtemp(prefix="arbitr_dl_")
+        # Папка для download'ов PDF — нужна только в download_mode.
+        self._download_dir = (
+            tempfile.mkdtemp(prefix="arbitr_dl_") if download_mode else ""
+        )
 
     def __enter__(self) -> "KadSession":
         # Ленивые импорты — selenium есть только в arbitr-runner.
@@ -173,20 +187,24 @@ class KadSession:
             "AppleWebKit/537.36 (KHTML, like Gecko) "
             "Chrome/120.0.0.0 Safari/537.36"
         )
-        # Скачивание PDF: kad защищён DDoS-Guard'ом (GET /Kad/PdfDocument/
-        # отдаёт обфусцированный JS-challenge, через requests не пройти).
-        # Поэтому качаем самим Chrome'ом: navigate → JS отрабатывает →
-        # POST форму → редирект → PDF. always_open_pdf_externally=True
-        # заставляет Chrome скачивать PDF на диск, а не открывать в PDF.js.
-        opts.add_experimental_option("prefs", {
-            "plugins.always_open_pdf_externally": True,
-            "download.default_directory": self._download_dir,
-            "download.prompt_for_download": False,
-            "download.directory_upgrade": True,
-            "safebrowsing.enabled": False,
-        })
+        # PDF-prefs включаются ТОЛЬКО в download_mode. В обычной search/parse-
+        # сессии `plugins.always_open_pdf_externally=True` ломает поиск:
+        # kad-anti-bot читает navigator.plugins, не видит PDF Viewer → считает
+        # клиента ботом → click «Найти» молча игнорируется (диагноз получен
+        # эмпирически 11.06.2026 пошаговым isolating'ом prefs).
+        if self.download_mode:
+            opts.add_experimental_option("prefs", {
+                "plugins.always_open_pdf_externally": True,
+                "download.default_directory": self._download_dir,
+                "download.prompt_for_download": False,
+                "download.directory_upgrade": True,
+                "safebrowsing.enabled": False,
+            })
 
-        logger.info("kad: starting Chrome (headless=%s)", self.headless)
+        logger.info(
+            "kad: starting Chrome (headless=%s download_mode=%s)",
+            self.headless, self.download_mode,
+        )
         self.driver = webdriver.Chrome(options=opts)
 
         # selenium-stealth подменяет navigator/webgl-fingerprint.
@@ -202,15 +220,17 @@ class KadSession:
         )
 
         self._wait = WebDriverWait(self.driver, WAIT_TIMEOUT_S)
-        # Дублируем download path через CDP — Chrome experimental prefs
-        # не всегда срабатывают при automation-флагах.
-        try:
-            self.driver.execute_cdp_cmd("Page.setDownloadBehavior", {
-                "behavior": "allow",
-                "downloadPath": self._download_dir,
-            })
-        except Exception as exc:  # noqa: BLE001 — non-fatal
-            logger.debug("CDP setDownloadBehavior failed: %s", exc)
+        # Дублируем download path через CDP — только в download_mode.
+        # В обычной сессии этот CDP-вызов тоже подмешивает «automation»-флаг
+        # в Chrome (теоретически — kad на это может реагировать).
+        if self.download_mode:
+            try:
+                self.driver.execute_cdp_cmd("Page.setDownloadBehavior", {
+                    "behavior": "allow",
+                    "downloadPath": self._download_dir,
+                })
+            except Exception as exc:  # noqa: BLE001 — non-fatal
+                logger.debug("CDP setDownloadBehavior failed: %s", exc)
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
@@ -219,13 +239,53 @@ class KadSession:
                 self.driver.quit()
         finally:
             self.driver = None
-            try:
-                shutil.rmtree(self._download_dir, ignore_errors=True)
-            except Exception:
-                pass
+            if self._download_dir:
+                try:
+                    shutil.rmtree(self._download_dir, ignore_errors=True)
+                except Exception:
+                    pass
         return False
 
     # ---------- внутренние ----------
+
+    def load_kad_cookies(self, cookies: list) -> None:
+        """Загружает cookies kad в текущую Chrome-сессию.
+
+        Используется чтобы download-сессия (с PDF prefs) переняла auth
+        от main-сессии (которая уже прогрелась через поиск). После этого
+        прямой GET /Card/<uuid> в download-сессии работает без капчи.
+
+        Принимает формат `driver.get_cookies()` (list[dict]).
+        """
+        if not cookies:
+            return
+        # add_cookie работает только когда уже открыт страница того же домена.
+        self.driver.get(KAD_BASE_URL)
+        time.sleep(1)
+        for c in cookies:
+            ck = {
+                "name": c["name"],
+                "value": c["value"],
+                "path": c.get("path", "/"),
+            }
+            if "domain" in c:
+                ck["domain"] = c["domain"]
+            if c.get("expiry"):
+                try:
+                    ck["expiry"] = int(c["expiry"])
+                except (TypeError, ValueError):
+                    pass
+            if c.get("secure") is True:
+                ck["secure"] = True
+            if c.get("httpOnly") is True:
+                ck["httpOnly"] = True
+            if c.get("sameSite") in ("Strict", "Lax", "None"):
+                ck["sameSite"] = c["sameSite"]
+            try:
+                self.driver.add_cookie(ck)
+            except Exception as exc:  # noqa: BLE001
+                logger.debug("kad: skip cookie %s: %s", c.get("name"), exc)
+        logger.info("kad: loaded %d cookies into download session", len(cookies))
 
     def _is_captcha_page(self) -> bool:
         try:
@@ -273,16 +333,64 @@ class KadSession:
         self._raise_if_captcha()
         self._close_promo_popup()
 
-    def _wait_search_loaded(self, max_s: int = 25) -> None:
-        """После клика «Найти» ждёт пока скроется .b-case-loading."""
+    # На главной kad НЕСКОЛЬКО полей фильтра — каждое для своего scope:
+    FIELD_PARTY = 'textarea[placeholder="название, ИНН или ОГРН"]'
+    FIELD_CASE_NUMBER = 'input[placeholder="например, А50-5568/08"]'
+    FIELD_COURT = 'input[placeholder="название суда"]'
+    FIELD_JUDGE = 'input[placeholder="фамилия судьи"]'
+
+    def _submit_search_form(
+        self, query: str, *, field: str = FIELD_PARTY,
+    ) -> None:
+        """Заполнить указанное поле фильтра и отправить форму.
+
+        Baseline-flow: `send_keys → click [alt="Найти"]`. Работает когда
+        Chrome не triggers kad-anti-bot (см. download_mode PDF prefs).
+
+        По умолчанию — поле «Участник дела» (textarea), для поиска по ФИО /
+        названию ЮЛ / ИНН / ОГРН. Для поиска по номеру дела передавать
+        `field=KadSession.FIELD_CASE_NUMBER`.
+        """
         from selenium.webdriver.common.by import By  # noqa: WPS433
+        from selenium.webdriver.support import expected_conditions as EC  # noqa: WPS433
+        from selenium.common.exceptions import NoSuchElementException  # noqa: WPS433
+
+        inp = self._wait.until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, field)),
+        )
+        inp.clear()
+        inp.send_keys(query)
+        time.sleep(1)
+        try:
+            btn = self.driver.find_element(By.CSS_SELECTOR, '[alt="Найти"]')
+        except NoSuchElementException as exc:
+            raise KadParserError(
+                'kad: нет кнопки [alt="Найти"]',
+            ) from exc
+        # JS-click обходит ElementClickInterceptedException — при вводе
+        # в поле «Участник» kad показывает suggester-dropdown, который
+        # перекрывает кнопку «Найти» поверх z-index.
+        self.driver.execute_script('arguments[0].click();', btn)
+
+    def _wait_search_loaded(self, max_s: int = 25) -> None:
+        """После клика «Найти» ждёт пока скроется .b-case-loading.
+
+        Проверка через computed-style (`getComputedStyle().display`), а не
+        inline-атрибут: kad может скрывать loader CSS-классом или родителем
+        без inline `style="display: none"` — и старый CSS-селектор
+        `.b-case-loading:not([style*="display: none"])` тогда всегда true.
+        """
         for _ in range(max_s):
             time.sleep(1)
-            loading = self.driver.find_elements(
-                By.CSS_SELECTOR,
-                '.b-case-loading:not([style*="display: none"])',
+            still_visible = self.driver.execute_script(
+                """
+                return Array.from(document.querySelectorAll('.b-case-loading'))
+                    .some(function(el){
+                        return window.getComputedStyle(el).display !== 'none';
+                    });
+                """
             )
-            if not loading:
+            if not still_visible:
                 return
         logger.warning("kad: .b-case-loading не скрылся за %ds", max_s)
 
@@ -307,26 +415,13 @@ class KadSession:
         # Реальное наличие дела не важно — kad ставит куки на сам факт
         # отправки поиска.
         try:
-            inp = self._wait.until(
-                EC.presence_of_element_located(
-                    (By.CSS_SELECTOR, '[placeholder="например, А50-5568/08"]'),
-                ),
-            )
+            # Поле Участник: dummy запрос — kad ставит cookies/state
+            # на сам факт submit, наличие результатов не важно.
+            self._submit_search_form("Иванов Иван Иванович")
         except TimeoutException as exc:
             self._raise_if_captcha()
             raise KadParserError(
                 "kad: не нашли поле ввода для прогрева сессии",
-            ) from exc
-
-        # Шлём заведомо несуществующий номер — нам не нужны результаты.
-        inp.clear()
-        inp.send_keys("А00-0000/2000")
-        time.sleep(1)
-        try:
-            self.driver.find_element(By.CSS_SELECTOR, '[alt="Найти"]').click()
-        except NoSuchElementException as exc:
-            raise KadParserError(
-                "kad: нет кнопки «Найти» во время прогрева",
             ) from exc
 
         self._wait_search_loaded()
@@ -363,25 +458,12 @@ class KadSession:
         driver = self.driver
 
         try:
-            inp = self._wait.until(
-                EC.presence_of_element_located(
-                    (By.CSS_SELECTOR, '[placeholder="например, А50-5568/08"]'),
-                ),
-            )
+            self._submit_search_form(fio_or_case)
         except TimeoutException as exc:
             self._raise_if_captcha()
             raise KadParserError(
                 "Не нашёл поле ввода номера дела/сторон на главной kad",
             ) from exc
-
-        inp.clear()
-        inp.send_keys(fio_or_case)
-        time.sleep(1)
-
-        try:
-            driver.find_element(By.CSS_SELECTOR, '[alt="Найти"]').click()
-        except NoSuchElementException as exc:
-            raise KadParserError("Не нашёл кнопку «Найти»") from exc
         logger.info("kad: search submitted q=%r", fio_or_case)
 
         # AJAX-поиск на kad нередко занимает 10-15 секунд.
@@ -818,21 +900,26 @@ class KadSession:
     def download_pdf(
         self, url: str, timeout: int = 60, *, referer: str = "",
     ) -> tuple[bytes, str]:
-        """Скачивает PDF kad через ту же Chrome-сессию.
+        """Скачивает PDF kad через эту Chrome-сессию.
 
-        kad даёт PDF только если запрос идёт ВНУТРИ существующей session-
-        сессии (cookies + JS-state от загруженной карточки). Прямой
-        navigate на /Kad/PdfDocument/... → ПравоКапча.
+        Требует `KadSession(download_mode=True)` — иначе PDF откроется в
+        PDF.js viewer'е, а не скачается на диск. Также требует чтобы перед
+        вызовом сессия уже была «доверенной» kad — либо через `_warm_up()`
+        (search-flow, но он сломан в download_mode из-за PDF prefs),
+        либо через `load_kad_cookies(...)` из main-сессии (правильный путь).
 
-        Решение: если открыта страница карточки (referer задан), открываем
-        PDF в новой вкладке через window.open — Chrome скачивает PDF
-        (always_open_pdf_externally=True), потом вкладку закрываем.
-        Если карточка не открыта — открываем её сначала.
+        Карточка дела (`referer`) откроется перед скачиванием — kad даёт
+        PDF только когда запрос идёт ВНУТРИ существующей session-сессии
+        (cookies + JS-state от загруженной карточки). Прямой navigate на
+        /Kad/PdfDocument/... → ПравоКапча.
 
         Возвращает (content_bytes, 'application/pdf').
         """
-        if not self._warmed:
-            self._warm_up()
+        if not self.download_mode:
+            raise KadParserError(
+                "download_pdf требует KadSession(download_mode=True) — "
+                "иначе Chrome открывает PDF в viewer'е вместо скачивания"
+            )
 
         # Карточка дела ОБЯЗАТЕЛЬНА для прохождения kad-защиты PDF.
         if not referer:

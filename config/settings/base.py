@@ -50,6 +50,7 @@ INSTALLED_APPS = [
     "apps.bubble_import",
     "apps.arbitr",
     "apps.afd",
+    "apps.scans",
 
     # django-rules: object-level permissions (apps/<app>/rules.py авто-импортируются)
     "rules.apps.AutodiscoverRulesConfig",
@@ -227,6 +228,9 @@ CELERY_TASK_ROUTES = {
 TELEGRAM_API_ID = config("TELEGRAM_API_ID", default="")
 TELEGRAM_API_HASH = config("TELEGRAM_API_HASH", default="")
 TELEGRAM_PHONE = config("TELEGRAM_PHONE", default="")
+# Токен leads-бота (@Sirius_system_bot). Раньше читался только в leads_bot.py
+# через decouple; вынесли в settings — нужен health-монитору для TG-алёртов.
+TELEGRAM_BOT_TOKEN = config("TELEGRAM_BOT_TOKEN", default="")
 
 # --- DaData ---
 DADATA_API_KEY = config("DADATA_API_KEY", default="")
@@ -247,6 +251,29 @@ PUBLIC_BASE_URL = config("PUBLIC_BASE_URL", default="https://crmsiri.ru")
 # Куда слать алёрты при капче / других интерактивных ошибках парсера.
 # Пока — один MAX chat_id админа; позже разнесём по Employee.max_chat_id.
 ARBITR_CAPTCHA_NOTIFY_MAX_CHAT_ID = config("ARBITR_CAPTCHA_NOTIFY_MAX_CHAT_ID", default="")
+
+# --- Мониторинг доступности (apps.core.tasks.monitor_health) ---
+# Кросс-серверно: dev мониторит прод, прод мониторит dev. Пусто → выключено.
+HEALTH_MONITOR_TARGET_URL = config("HEALTH_MONITOR_TARGET_URL", default="")
+HEALTH_MONITOR_LABEL = config("HEALTH_MONITOR_LABEL", default="")
+# Опциональный Host-заголовок (если бьём по IP/внутреннему адресу).
+HEALTH_MONITOR_HOST = config("HEALTH_MONITOR_HOST", default="")
+HEALTH_MONITOR_FAIL_THRESHOLD = config("HEALTH_MONITOR_FAIL_THRESHOLD", default=2, cast=int)
+# Куда слать алёрты. MAX по умолчанию переиспользует chat арбитра.
+HEALTH_ALERT_MAX_CHAT_ID = (
+    config("HEALTH_ALERT_MAX_CHAT_ID", default="") or ARBITR_CAPTCHA_NOTIFY_MAX_CHAT_ID
+)
+HEALTH_ALERT_TELEGRAM_CHAT_ID = config("HEALTH_ALERT_TELEGRAM_CHAT_ID", default="")
+
+# --- Telegram-бот мониторинга (кнопки «Статус прод»/«Статистика») ---
+# Поллер getUpdates крутится там, где MONITOR_BOT_POLL=true (на dev).
+MONITOR_BOT_POLL = config("MONITOR_BOT_POLL", default=False, cast=bool)
+# Адрес DevOps-агента прода + его токен (dev дёргает status/daily_stats).
+PROD_AGENT_URL = config("PROD_AGENT_URL", default="https://siricrm.ru")
+DEVOPS_AGENT_TOKEN_PROD = config("DEVOPS_AGENT_TOKEN_PROD", default="")
+# Кому разрешён бот (через запятую). Пусто → берётся HEALTH_ALERT_TELEGRAM_CHAT_ID
+# (только Каныгин). Fail-closed: если и там пусто — бот не отвечает никому.
+MONITOR_BOT_ALLOWED_CHAT_IDS = config("MONITOR_BOT_ALLOWED_CHAT_IDS", default="")
 # Headless по умолчанию. Для локальной отладки парсера выставить ARBITR_HEADLESS=false.
 ARBITR_HEADLESS = config("ARBITR_HEADLESS", default="true").lower() != "false"
 

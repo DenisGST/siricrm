@@ -418,11 +418,26 @@ img.emoji {
   background: transparent;
   border-radius: 5px;
   cursor: pointer;
-  color: var(--ms-text-tertiary);
+  color: #94a3b8;            /* по умолчанию — серый */
+  transition: color .12s, background .12s, filter .12s, opacity .12s;
 }
 .global-search-item .gs-act:hover {
   background: var(--ms-bg, #eef1f4);
-  color: var(--ms-blue);
+  color: var(--gs-hc, var(--ms-blue));   /* при наведении — свой цвет кнопки */
+}
+/* svg получает цвет прямо (см. `.global-search-item svg` выше) — на hover
+   перекрываем его цветом кнопки, иначе иконка остаётся серой. */
+.global-search-item .gs-act:hover svg {
+  color: var(--gs-hc, var(--ms-blue));
+}
+/* эмодзи-кнопки (🎯) — серые через grayscale, на hover становятся цветными */
+.global-search-item .gs-act.gs-emoji {
+  filter: grayscale(1);
+  opacity: .5;
+}
+.global-search-item .gs-act.gs-emoji:hover {
+  filter: none;
+  opacity: 1;
 }
 .global-search-empty {
   padding: 12px;

@@ -25,6 +25,11 @@ API_TOKEN = config("WHATSAPP_API_TOKEN", default="")
 PHONE = config("WHATSAPP_PHONE", default="")
 API_BASE = config("WHATSAPP_API_BASE", default="https://api.1msg.io")
 
+# Namespace WABA-шаблонов (общий для всех шаблонов инстанса). Нужен для
+# sendTemplate. Стабилен в рамках одного WABA; если пусто — берётся из
+# первого шаблона через sender.get_namespace().
+NAMESPACE = config("WHATSAPP_NAMESPACE", default="991ceaad_9bf3_4128_b815_54d706ed24a4")
+
 # Защита от случайной массовой отправки на боевой номер при разработке.
 TEST_MODE = config("WHATSAPP_TEST_MODE", default=True, cast=bool)
 ALLOWED_PHONES = _csv_to_set(config("WHATSAPP_ALLOWED_PHONES", default=""))

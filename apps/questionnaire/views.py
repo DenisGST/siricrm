@@ -431,6 +431,21 @@ def _extract_answer(post, q):
                 "pledged", "in_marriage", "auction", "comment",
             ]})
         return {"has_assets": has_assets, "entries": entries}
+    if qt == "marketplace_debts":
+        indices = set()
+        for k in post:
+            m = re.match(rf"^{re.escape(key)}_mp(\d+)_", k)
+            if m:
+                indices.add(int(m.group(1)))
+        entries = []
+        for i in sorted(indices):
+            p = f"{key}_mp{i}_"
+            entries.append({
+                "marketplace": (post.get(f"{p}marketplace") or "").strip(),
+                "item":        (post.get(f"{p}item")        or "").strip(),
+                "amount":      (post.get(f"{p}amount")      or "").strip(),
+            })
+        return {"entries": entries}
     if qt == "utility_debts":
         indices = set()
         for k in post:
@@ -575,6 +590,17 @@ def ref_search(request):
             qs = LegalEntity.objects.filter(kind=mfo_kind) if mfo_kind else LegalEntity.objects.all()
             items = qs.filter(name__icontains=q).order_by("name")[:15]
             results = [{"id": str(i.pk), "label": i.name} for i in items]
+        elif rtype == "sro":
+            sro_kind = LegalEntityKind.objects.filter(
+                Q(name__icontains="СРО") | Q(short_name__icontains="СРО")
+            ).first()
+            qs = LegalEntity.objects.filter(kind=sro_kind) if sro_kind else LegalEntity.objects.all()
+            items = qs.filter(
+                Q(name__icontains=q) | Q(short_name__icontains=q)
+            ).order_by("name")[:15]
+            results = [{"id": str(i.pk),
+                        "label": i.name + (f" (ИНН {i.inn})" if i.inn else "")}
+                       for i in items]
     from django.http import JsonResponse
     return JsonResponse({"results": results})
 

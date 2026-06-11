@@ -1,0 +1,19 @@
+{% if query|length >= 2 %}
+  {% if clients %}
+    <ul class="menu bg-base-100 border border-base-300 rounded-box shadow-lg max-h-60 overflow-y-auto p-1">
+      {% for c in clients %}
+      <li>
+        <a class="text-sm" onclick="window.pickScanClient('{{ c.id }}', '{{ c.last_name }} {{ c.first_name }} {{ c.patronymic }}'.trim().replace(/\s+/g,' '))">
+          <span class="font-semibold">{{ c.last_name }} {{ c.first_name }}{% if c.patronymic %} {{ c.patronymic }}{% endif %}</span>
+          {% if c.phone %}<span class="text-xs text-base-content/60">· {{ c.phone }}</span>{% endif %}
+          {% if c.username %}<span class="text-xs text-base-content/60">· @{{ c.username }}</span>{% endif %}
+        </a>
+      </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <div class="text-xs text-base-content/60 p-2">Ничего не найдено</div>
+  {% endif %}
+{% else %}
+  <div class="text-xs text-base-content/60 p-2">Введите 2 и более символов…</div>
+{% endif %}

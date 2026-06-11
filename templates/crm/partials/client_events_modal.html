@@ -197,6 +197,13 @@
   </form>
 
   <script>
+  {% comment %}IIFE обязателен: модалка открывается в SPA многократно без
+     перезагрузки, и HTMX каждый раз заново исполняет этот <script>. Без обёртки
+     top-level `const _typeInput…` со второго открытия падали с «already declared»
+     → скрипт обрывался → дефолтный type_code не проставлялся → POST с пустым
+     type_code → 400 «entry_kind и type_code обязательны» (со второго раза/после
+     F5 «вбивалось»). Функции для inline-onclick экспортируются на window в конце.{% endcomment %}
+  (function() {
     // Карта всех активных типов (code → name) — для подстановки имени при
     // prefill из chip стандартного действия (его код может быть не-manual,
     // т.е. отсутствовать в списке комбобокса).
@@ -374,5 +381,15 @@
       };
       requestAnimationFrame(() => requestAnimationFrame(scrollToBottom));
     })();
+
+    // Экспорт на window: эти функции вызываются из inline-атрибутов (onclick /
+    // hx-on) самой модалки и из _log_entry_row.html (prefillLogAdd /
+    // scrollToLogEntry). Переприсваивание при каждом открытии безопасно.
+    Object.assign(window, {
+      setLogKind, resetLogFilter, scrollToLogEntry,
+      setLogAddKind, setLogAddType, prefillLogAdd,
+      clearLogAddParent, resetLogAddForm,
+    });
+  })();
   </script>
 </dialog>

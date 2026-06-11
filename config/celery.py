@@ -25,6 +25,18 @@ app.conf.beat_schedule = {
         'task': 'apps.crm.tasks.sync_employee_status',
         'schedule': 60,
     },
+    # Внешний мониторинг доступности другого окружения (dev↔prod).
+    # No-op там, где не задан HEALTH_MONITOR_TARGET_URL.
+    'monitor-health': {
+        'task': 'apps.core.tasks.monitor_health',
+        'schedule': 60,
+    },
+    # Telegram-бот мониторинга (кнопки): long-poll getUpdates. No-op, если
+    # MONITOR_BOT_POLL=false (т.е. везде, кроме dev).
+    'poll-monitor-bot': {
+        'task': 'apps.core.tasks.poll_monitor_bot',
+        'schedule': 15,
+    },
     'mark-overdue-charges-daily': {
         'task': 'apps.finance.tasks.mark_overdue_charges',
         'schedule': crontab(hour=3, minute=0),

@@ -781,6 +781,106 @@ def reference_message_template_delete(request, pk):
     return HttpResponse(headers={"HX-Trigger": "reloadMessageTemplates"})
 
 
+# Соответствие статусов Meta/1msg → наши WA_STATUS_CHOICES.
+_WA_META_STATUS_MAP = {
+    "approved": "approved",
+    "rejected": "rejected",
+    "disabled": "rejected",
+    "deleted": "rejected",
+    "pending": "pending",
+    "submitted": "pending",
+    "created": "pending",
+    "in_appeal": "pending",
+    "pending_deletion": "pending",
+    "flagged": "approved",
+    "paused": "approved",
+    "limit_exceeded": "approved",
+}
+
+
+@user_passes_test(is_references_access)
+@require_POST
+def reference_message_template_submit_wa(request, pk):
+    """Отправить WA-шаблон на модерацию Meta через 1msg ``addTemplate``."""
+    import re
+    from apps.crm.models import MessageTemplate
+    from apps.whatsapp.sender import create_whatsapp_template
+
+    obj = get_object_or_404(MessageTemplate, pk=pk)
+    if not obj.is_for_whatsapp:
+        return HttpResponse("Не WhatsApp-шаблон", status=400)
+    if not obj.whatsapp_category:
+        return HttpResponse("Не указана категория WA", status=400)
+
+    # Имя для Meta: латиница+подчёркивания. Если не задано — генерируем.
+    name = (obj.whatsapp_template_name or "").strip().lower()
+    name = re.sub(r"[^a-z0-9_]", "", name)
+    if not name:
+        name = "tpl_" + str(obj.id).replace("-", "")[:12]
+
+    # Примеры значений для {{N}} (Meta требует, если в тексте есть переменные).
+    nums = sorted({int(n) for n in re.findall(r"{{\s*(\d+)\s*}}", obj.body)})
+    example = None
+    if nums:
+        schema = obj.whatsapp_params_schema or []
+        example = []
+        for i in range(len(nums)):
+            ex = ""
+            if i < len(schema) and isinstance(schema[i], dict):
+                ex = schema[i].get("example", "")
+            example.append(ex or "пример")
+
+    ok, data, err = create_whatsapp_template(
+        name=name,
+        body_text=obj.body,
+        category=obj.whatsapp_category,
+        language_code=obj.whatsapp_language or "ru",
+        body_example=example,
+    )
+
+    if ok:
+        obj.whatsapp_template_name = name
+        obj.whatsapp_meta_id = (data.get("id") or "") or obj.whatsapp_meta_id
+        obj.whatsapp_meta_status = "pending"
+        obj.whatsapp_meta_rejection = ""
+        obj.save(update_fields=[
+            "whatsapp_template_name", "whatsapp_meta_id",
+            "whatsapp_meta_status", "whatsapp_meta_rejection",
+        ])
+    else:
+        obj.whatsapp_meta_rejection = (err or "")[:5000]
+        obj.save(update_fields=["whatsapp_meta_rejection"])
+
+    return HttpResponse(headers={"HX-Trigger": "reloadMessageTemplates"})
+
+
+@user_passes_test(is_references_access)
+@require_POST
+def reference_message_templates_sync_wa(request):
+    """Подтянуть актуальные статусы модерации всех WA-шаблонов из Meta."""
+    from apps.crm.models import MessageTemplate
+    from apps.whatsapp.sender import list_whatsapp_templates
+
+    ok, templates, err = list_whatsapp_templates()
+    if not ok:
+        return HttpResponse(f"Ошибка синка: {err}", status=502)
+
+    by_name = {t.get("name"): t for t in templates if t.get("name")}
+    qs = MessageTemplate.objects.exclude(whatsapp_template_name="")
+    for obj in qs:
+        t = by_name.get(obj.whatsapp_template_name)
+        if not t:
+            continue
+        st = (t.get("status") or "").lower()
+        obj.whatsapp_meta_status = _WA_META_STATUS_MAP.get(st, obj.whatsapp_meta_status)
+        obj.whatsapp_meta_id = t.get("id") or obj.whatsapp_meta_id
+        obj.whatsapp_meta_rejection = t.get("rejected_reason") or ""
+        obj.save(update_fields=[
+            "whatsapp_meta_status", "whatsapp_meta_id", "whatsapp_meta_rejection",
+        ])
+    return HttpResponse(headers={"HX-Trigger": "reloadMessageTemplates"})
+
+
 # ─── Справочник: Типы событий клиента (EventType) ────────────────────────
 @user_passes_test(is_references_access)
 def references_event_types(request):

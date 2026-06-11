@@ -1,4 +1,4 @@
-{% load icons crm_tags rules %}
+{% load icons crm_tags rules permissions_tags %}
 {% has_perm 'crm.edit_client' user client as can_edit_client %}
 <div class="card bg-base-100 shadow-sm cursor-pointer kanban-card"
      draggable="true"
@@ -164,6 +164,20 @@
       >
         {% icon "file-text" size=18 %}
       </button>
+      {% if user|can_merge_clients %}
+      <button
+        type="button"
+        class="kanban-action-btn text-base-content/50 hover:text-warning"
+        hx-get="{% url 'client_merge_modal' client.id %}"
+        hx-target="body"
+        hx-swap="beforeend"
+        title="Объединить дубли"
+        onclick="event.stopPropagation()"
+        hx-on:click="event.stopPropagation()"
+      >
+        {% icon "merge" size=18 %}
+      </button>
+      {% endif %}
       {% if can_edit_client %}
       <button
         type="button"

@@ -59,6 +59,15 @@
       <div id="wa-block" class="border rounded-md p-3 bg-base-200/40" style="display:none;">
         <div class="font-semibold text-sm mb-2">Параметры WhatsApp Business</div>
 
+        <div class="mb-2">
+          <label class="label py-1"><span class="label-text">Имя шаблона в Meta</span></label>
+          <input type="text" name="whatsapp_template_name" value="{{ form.whatsapp_template_name.value|default:'' }}"
+                 class="input input-bordered input-sm w-full" placeholder="напр. first_contact_intro">
+          <div class="text-xs text-base-content/60 mt-1">
+            Только латиница, цифры и подчёркивания. Если пусто — сгенерируется автоматически.
+          </div>
+        </div>
+
         <div class="grid grid-cols-2 gap-3">
           <div>
             <label class="label py-1"><span class="label-text">Категория Meta</span></label>
@@ -104,8 +113,10 @@
         </div>
 
         <div class="text-xs text-base-content/60 mt-2">
-          Отправка на модерацию Meta появится после внедрения интеграции 1msg.io.
-          Сейчас поля можно заполнять вручную, если шаблон уже одобрен на стороне Meta.
+          Сохраните шаблон, затем в списке нажмите <b>«↗ В Meta»</b> — он уйдёт на модерацию
+          через 1msg.io (статус станет «на модерации»). Кнопка <b>«⟳ Синк WA-статусов»</b>
+          подтянет результат модерации (одобрен/отклонён). Поля ID/статус можно править вручную,
+          если шаблон уже одобрен на стороне Meta.
         </div>
       </div>
 

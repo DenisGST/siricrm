@@ -14,11 +14,18 @@
         <code>{% verbatim %}{{2}}{% endverbatim %}</code>.
       </div>
     </div>
-    <button class="btn btn-primary btn-sm"
-            hx-get="{% url 'core:reference_message_template_add' %}"
-            hx-target="body" hx-swap="beforeend">
-      + Добавить
-    </button>
+    <div class="flex gap-2">
+      <button class="btn btn-ghost btn-sm"
+              hx-post="{% url 'core:reference_message_templates_sync_wa' %}"
+              title="Подтянуть статусы модерации WhatsApp-шаблонов из Meta">
+        ⟳ Синк WA-статусов
+      </button>
+      <button class="btn btn-primary btn-sm"
+              hx-get="{% url 'core:reference_message_template_add' %}"
+              hx-target="body" hx-swap="beforeend">
+        + Добавить
+      </button>
+    </div>
   </div>
 
   <div class="overflow-x-auto">
@@ -66,7 +73,13 @@
               <span class="badge badge-ghost badge-xs">неактивен</span>
             {% endif %}
           </td>
-          <td class="text-right">
+          <td class="text-right whitespace-nowrap">
+            {% if it.is_for_whatsapp and it.whatsapp_meta_status != 'approved' %}
+            <button class="btn btn-xs btn-success btn-outline"
+                    hx-post="{% url 'core:reference_message_template_submit_wa' it.pk %}"
+                    hx-confirm="Отправить шаблон «{{ it.name }}» на модерацию Meta?"
+                    title="Создать/отправить шаблон в Meta через 1msg">↗ В Meta</button>
+            {% endif %}
             <button class="btn btn-xs btn-outline"
                     hx-get="{% url 'core:reference_message_template_edit' it.pk %}"
                     hx-target="body" hx-swap="beforeend">Изменить</button>

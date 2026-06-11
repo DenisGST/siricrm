@@ -36,6 +36,37 @@ async def get_telegram_client():
     return client
 
 
+async def _resolve_peer(client, telegram_id: int, username: str = None):
+    """Надёжно получить input-entity получателя.
+
+    Telethon кэширует access_hash в сессии. Если пользователь не в кэше
+    (userbot его «не видел»), ``PeerUser(id)`` падает с
+    «Could not find the input entity for PeerUser». Пробуем по очереди:
+    1) по id из кэша сессии;
+    2) по @username (ResolveUsername — работает без предыдущего контакта);
+    3) подтянуть диалоги (наполняет кэш access_hash) и повторить по id.
+    """
+    # 1) кэш сессии по id
+    try:
+        return await client.get_input_entity(PeerUser(telegram_id))
+    except (ValueError, TypeError):
+        pass
+    # 2) по username — резолв через API, не требует прошлого контакта
+    if username:
+        try:
+            return await client.get_input_entity(username.lstrip("@"))
+        except (ValueError, TypeError):
+            logger.warning("TG resolve: username @%s не разрезолвился", username)
+    # 3) наполнить кэш диалогами и повторить
+    try:
+        await client.get_dialogs(limit=200)
+        return await client.get_input_entity(PeerUser(telegram_id))
+    except (ValueError, TypeError):
+        pass
+    # 4) последняя попытка — прямой резолв по id (бросит исключение наружу)
+    return await client.get_input_entity(telegram_id)
+
+
 async def send_telegram_message(
     telegram_id: int,
     text: str = None,
@@ -45,6 +76,7 @@ async def send_telegram_message(
     message_type: str = "text",
     parse_mode: str = 'html',
     reply_to_msg_id: int = None,
+    username: str = None,
 ) -> dict:
     """
     Отправка сообщения через userbot с поддержкой медиа
@@ -67,7 +99,7 @@ async def send_telegram_message(
         # Создаём новый клиент для текущего event loop
         client = await get_telegram_client()
 
-        peer = PeerUser(telegram_id)
+        peer = await _resolve_peer(client, telegram_id, username)
 
         # Отправка текстового сообщения
         if message_type == "text" or (not file_path and not file_bytes):

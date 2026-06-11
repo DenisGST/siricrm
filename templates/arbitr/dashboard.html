@@ -1,68 +1,116 @@
 {% extends "arbitr/_layout.html" %}
+{% load humanize %}
 {% block title %}Арбитраж · мониторинг{% endblock %}
 
 {% block content %}
-<div class="container mx-auto p-4 md:p-6 max-w-6xl space-y-8">
+{# Split-layout (chat-style): слева — список дел по клиентам, справа —    #}
+{# панель выбранного дела. Inline-style вместо arbitrary tailwind         #}
+{# `grid-cols-[320px_1fr]` / `h-[calc(...)]` — таких классов нет в       #}
+{# pre-compiled tailwind.css (см. CLAUDE.md «гайдлайны кода»).            #}
 
-  <div>
-    <h1 class="text-2xl font-bold flex items-center gap-2">⚖ Арбитражные дела</h1>
-    <p class="text-sm opacity-60">
-      Окно автоматической работы парсера — 18:00–08:00 МСК. Ручной запуск через
-      кнопку «Парсить сейчас» работает в любое время.
-    </p>
-  </div>
+<style>
+  /* Active-state переключается JS (delegated click handler ниже),       */
+  /* потому что HTMX свапит ТОЛЬКО #case-pane, а sidebar не              */
+  /* перерендеривается — server-side selected_case_id хватает только    */
+  /* только для первого захода.                                          */
+  /* Стиль один в один как .tg-client-item.active в chat-модалке         */
+  /* (см. static/css/style.css строка 739) — голубой фон + 3px полоска   */
+  /* var(--ms-blue). !important чтобы перекрыть tailwind hover.          */
+  .arbitr-side-item.is-active {
+    background-color: var(--ms-blue-light) !important;
+    border-left: 3px solid var(--ms-blue) !important;
+  }
+  /* Аккордеон <details> — chevron в <summary>. */
+  .arbitr-section > summary {
+    list-style: none;
+    cursor: pointer;
+    user-select: none;
+  }
+  .arbitr-section > summary::-webkit-details-marker { display: none; }
+  .arbitr-section > summary .chevron::before { content: "−"; display: inline-block; width: 1em; }
+  .arbitr-section:not([open]) > summary .chevron::before { content: "+"; }
+</style>
 
-  {# ═══════════════ ЭТАП 1 ═══════════════ #}
-  <section>
-    <div class="flex items-center justify-between mb-2">
-      <h2 class="text-lg font-semibold">🔍 Этап 1 — поиск дела по ФИО клиента</h2>
-      <div class="text-sm opacity-60">{{ searching|length }}</div>
+<div style="display:grid; grid-template-columns:320px 1fr; height:calc(100vh - 4rem);">
+
+  {# ═══════════════ Sidebar — список клиентов/дел ═══════════════ #}
+  <aside class="border-r border-base-300 bg-base-100 overflow-y-auto">
+
+    {% if searching %}
+    <details class="arbitr-section" open>
+      <summary class="sticky top-0 z-10 px-3 py-2.5 text-sm font-bold flex items-center gap-2"
+               style="background:#fef3c7; color:#78350f; border-bottom:1px solid #fcd34d;">
+        <span class="chevron"></span>
+        <span>🔍 Поиск дела</span>
+        <span class="badge badge-sm" style="background:#f59e0b; color:#fff; border-color:#f59e0b;">{{ searching|length }}</span>
+      </summary>
+      {% for case in searching %}
+        {% include "arbitr/partials/_sidebar_item.html" with case=case %}
+      {% endfor %}
+    </details>
+    {% endif %}
+
+    {% if monitoring %}
+    <details class="arbitr-section" open>
+      <summary class="sticky top-0 z-10 px-3 py-2.5 text-sm font-bold flex items-center gap-2"
+               style="background:var(--ms-blue-light); color:var(--ms-blue); border-bottom:1px solid #93c5fd;">
+        <span class="chevron"></span>
+        <span>📋 Мониторинг</span>
+        <span class="badge badge-sm" style="background:var(--ms-blue); color:#fff; border-color:var(--ms-blue);">{{ monitoring|length }}</span>
+      </summary>
+      {% for case in monitoring %}
+        {% include "arbitr/partials/_sidebar_item.html" with case=case %}
+      {% endfor %}
+    </details>
+    {% endif %}
+
+    {% if paused %}
+    <details class="arbitr-section">
+      <summary class="sticky top-0 z-10 px-3 py-2.5 text-sm font-bold flex items-center gap-2"
+               style="background:#e5e7eb; color:#4b5563; border-bottom:1px solid #d1d5db;">
+        <span class="chevron"></span>
+        <span>⏸ Приостановленные</span>
+        <span class="badge badge-sm" style="background:#9ca3af; color:#fff; border-color:#9ca3af;">{{ paused|length }}</span>
+      </summary>
+      {% for case in paused %}
+        {% include "arbitr/partials/_sidebar_item.html" with case=case %}
+      {% endfor %}
+    </details>
+    {% endif %}
+
+    {% if not searching and not monitoring and not paused %}
+    <div class="p-6 text-sm opacity-60 text-center">
+      Нет ни одного дела на мониторинге.
     </div>
-    <p class="text-xs opacity-60 mb-3">
-      Услуга «БФЛ» с галкой «иск отправлен в суд» — парсер ищет на kad.arbitr.ru
-      карточку клиента по ФИО + региону (код суда, например А12).
-    </p>
-    {% if not searching %}
-      <div class="text-sm opacity-50">Нет дел в поиске.</div>
+    {% endif %}
+  </aside>
+
+  {# ═══════════════ Main pane — детали выбранного дела ═══════════════ #}
+  <main id="case-pane" class="overflow-y-auto bg-base-200">
+    {% if selected_pane %}
+      {% include "arbitr/partials/_case_pane.html" with case=selected_pane.case events=selected_pane.events logs=selected_pane.logs poll_active=selected_pane.poll_active %}
     {% else %}
-      <div class="grid gap-3">
-        {% for case in searching %}{% include "arbitr/partials/_case_card.html" with case=case %}{% endfor %}
+      <div class="h-full flex flex-col items-center justify-center text-center p-8 gap-2 opacity-60">
+        <div class="text-4xl">⚖</div>
+        <div class="text-lg font-semibold">Выберите дело слева</div>
+        <div class="text-sm">
+          На карточке справа — найденные кандидаты (этап 1), либо хронология дела и документы (этап 2).
+        </div>
       </div>
     {% endif %}
-  </section>
-
-  {# ═══════════════ ЭТАП 2 ═══════════════ #}
-  <section>
-    <div class="flex items-center justify-between mb-2">
-      <h2 class="text-lg font-semibold">📋 Этап 2 — мониторинг карточки дела</h2>
-      <div class="text-sm opacity-60">{{ monitoring|length }}</div>
-    </div>
-    <p class="text-xs opacity-60 mb-3">
-      Дело уже найдено и подтверждено — парсер регулярно открывает карточку и
-      собирает новые события (ходатайства, определения, расписания заседаний) +
-      документы.
-    </p>
-    {% if not monitoring %}
-      <div class="text-sm opacity-50">Нет дел в мониторинге.</div>
-    {% else %}
-      <div class="grid gap-3">
-        {% for case in monitoring %}{% include "arbitr/partials/_case_card.html" with case=case %}{% endfor %}
-      </div>
-    {% endif %}
-  </section>
-
-  {# ═══════════════ Завершённые / приостановленные ═══════════════ #}
-  {% if paused %}
-  <section>
-    <div class="flex items-center justify-between mb-2">
-      <h2 class="text-lg font-semibold opacity-60">⏸ Приостановленные / завершённые</h2>
-      <div class="text-sm opacity-60">{{ paused|length }}</div>
-    </div>
-    <div class="grid gap-3 opacity-80">
-      {% for case in paused %}{% include "arbitr/partials/_case_card.html" with case=case %}{% endfor %}
-    </div>
-  </section>
-  {% endif %}
+  </main>
 
 </div>
+
+<script>
+  // Delegated click handler — переключает .is-active между плашками
+  // sidebar'а при любом клике (включая инициирующие HTMX-swap).
+  document.addEventListener("click", function (e) {
+    var item = e.target.closest && e.target.closest(".arbitr-side-item");
+    if (!item) return;
+    document.querySelectorAll(".arbitr-side-item.is-active")
+      .forEach(function (el) { el.classList.remove("is-active"); });
+    item.classList.add("is-active");
+  });
+</script>
 {% endblock %}

@@ -7,8 +7,9 @@
 `apps/whatsapp/` — тонкий слой над общими `Client/Message/StoredFile`:
 - `config.py` — env-обёртка (`INSTANCE_ID`, `API_TOKEN=JWT`, `API_BASE`, `TEST_MODE`, `ALLOWED_PHONES`, `WEBHOOK_SECRET`) + `is_configured()` / `is_phone_allowed()`.
 - `sender.py` — HTTP-клиент к 1msg + `download_media` для входящих.
-- `tasks.py` — Celery `send_whatsapp_message_task(message_id)` с retry×3.
-- `views.py` — webhook + media-прокси `wa_file_proxy`.
+- `tasks.py` — Celery: исходящие `send_whatsapp_message_task(message_id)` (retry×3) + приём входящих `process_incoming_wa_message(message, contacts)` / `process_wa_status(status)`.
+- `processing.py` — обработчики входящих/статусов (`handle_incoming_message`/`handle_status_update` + helpers). 🛑 **Вынесено из webhook в Celery** после инцидента 09.06.2026: тяжёлая работа (download_media + S3 + lead-routing) в ASGI-обработчике исчерпывала sync-threadpool daphne и вешала прод. Дедуп по `whatsapp_message_id` — внутри обработчика, повторная доставка/постановка безопасны.
+- `views.py` — webhook (**только парсит payload и ставит таски, сразу 200**) + media-прокси `wa_file_proxy`.
 - `middleware.py` — `WAFileProxyHeaderStripMiddleware` (см. ниже).
 - `urls.py` — `/webhook/whatsapp/[<secret>/]` + `/wa/file/<uuid:file_id>/`.
 
@@ -30,7 +31,7 @@
 - 1msg шлёт **flat-формат**: `{"messages":[{id, from, body, type, fromMe, time, chatId, senderName, caption, quotedMsgId}], "ack":[{id, status: sent|delivered|read|failed, error}], "instanceId"}`. Также поддерживается Meta-style `entry → changes → value → messages/statuses/contacts` (на случай переключения 1msg на passthrough).
 - **Входящие медиа:** 1msg даёт прямой URL в `message.body` (`https://1msg-ru.hb.ru-msk.vkcloud-storage.ru/...`). `_extract_media_url_and_name` → `_download_wa_media_to_s3` качает через requests, льёт в S3 (`prefix='whatsapp/incoming'`), создаёт `StoredFile(bubble_id='wamedia_<wamid>')`, привязывает `Message.file`. Best-effort — при недоступности CDN ставится текстовый плейсхолдер «(медиа)», обработка не падает.
 - **Дедуп** через `Message.whatsapp_message_id`+`channel='whatsapp'`. Незнакомый номер → автосоздание Client(status='lead') + `route_new_lead("WhatsApp", ...)`.
-- Ack-статусы (`sent/delivered/read`) обновляют `Message.is_sent/is_delivered/is_read` + push в WS через `push_message_status`.
+- Ack-статусы (`sent/delivered/read`) обновляют `Message.is_sent/is_delivered/is_read` + push в WS через `push_message_status`. 🛑 Извлекать flat-ключ **`ack`** (не только Meta-style `statuses`) — иначе delivered/read никогда не проставятся (баг до 05.06.2026). Галочки в чате — `telegram_message.html`. См. память chat-message-status-ticks.
 
 ## Исходящие медиа: data:URI base64 в payload `body`
 
@@ -89,6 +90,37 @@ PUBLIC_BASE_URL=https://siricrm.ru       # prod; dev — https://crmsiri.ru
 ## UI кнопка отправки
 
 В `templates/crm/partials/telegram_chat_panel.html` кнопка `#btn-send-whatsapp` рядом с Telegram/MAX. JS-обработчик `htmx:afterRequest` должен проверять `btn.id === "btn-send-whatsapp"` наравне с TG/MAX — иначе после отправки **форма не очищается** и ответный partial не вставляется в ленту (пользователь видит «отправлено», но текст остаётся в textarea).
+
+## WABA-шаблоны (sendTemplate) — отправка вне 24-часового окна
+
+Вне 24ч-окна обслуживания (клиент не писал >24ч) Meta блокирует free-form: ack
+приходит `status=failed`, `error="This message was not delivered to maintain
+healthy ecosystem engagement."`. Отправлять можно **только approved-шаблоны**.
+
+- **Namespace** WABA общий для инстанса: `config.NAMESPACE`
+  (`991ceaad_9bf3_4128_b815_54d706ed24a4`, env `WHATSAPP_NAMESPACE`).
+- **sender.py:** `send_whatsapp_template(phone, template_name, body_params, language_code)`
+  (1msg `POST /sendTemplate`: `{phone, namespace, template:<name>, language:{policy:deterministic,code}, params:[{type:body,parameters:[{type:text,text}]}]}`);
+  `create_whatsapp_template(name, body_text, category, language, body_example)` (`POST /addTemplate` — на модерацию Meta); `list_whatsapp_templates()` (синк статусов).
+  🛑 `sendTemplate` принимает **имя** шаблона (`template`), не Meta-id.
+- **Модель `MessageTemplate`** (apps/crm): `whatsapp_template_name` (латинское имя в Meta),
+  `whatsapp_meta_status` (draft/pending/approved/rejected), `whatsapp_category`,
+  `whatsapp_params_schema`. `Message.message_template` + `Message.template_params` —
+  привязка отправленного шаблона. Таск `send_whatsapp_template_task` (шлёт только при `status=approved`).
+- **UI справочников** (`/`→Справочники→Шаблоны): кнопка «↗ В Meta» (`reference_message_template_submit_wa`) → addTemplate, «⟳ Синк WA-статусов» (`reference_message_templates_sync_wa`) → подтянуть результат модерации.
+- **UI чата:** кнопка «📋 Шаблон» рядом с WhatsApp → `whatsapp_template_picker` (модалка с approved-шаблонами + поля переменных, имя клиента в {{1}} автоподставляется) → `whatsapp_send_template`. Плюс **авто-подсказка**: при ack `failed` с «ecosystem engagement» под пузырём появляется кнопка «Окно 24ч закрыто — отправить шаблон» (JS `suggestWaTemplate`).
+- Базовые 4 шаблона: `first_contact_intro`, `reactivation_no_reply` (MARKETING), `payment_reminder`, `document_request` (UTILITY).
+
+## Выбор номера для исходящего + резолв (баг-фиксы 11.06.2026)
+
+- **WA-номер исходящего** (`tasks._client_whatsapp_phone`) теперь берётся в порядке:
+  (1) номер последнего входящего WA (`_last_inbound_wa_phone` — `chatId/author` из `raw_payload`),
+  (2) ClientPhone purpose `whatsapp`, (3) `primary`, (4) legacy. Причина: у клиента
+  бывает несколько номеров (отдельный для TG), а WhatsApp живёт только на том, с
+  которого идёт диалог — иначе Meta «Message undeliverable» (кейс Кирилла Мишичева:
+  писал с 79648851455, отвечали на primary 79055043411 без WhatsApp).
+- **Входящий WA тегает номер отправителя как `whatsapp`** и для существующего клиента
+  (`processing._get_or_create_wa_client`) — самоисцеление для будущих диалогов.
 
 ## Сервисные curl-команды
 

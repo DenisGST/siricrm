@@ -287,6 +287,15 @@
 
               <button type="button"
                       class="btn btn-sm btn-outline w-full mt-2"
+                      hx-get="{% url 'afd:isk_review' service.id %}"
+                      hx-target="body" hx-swap="beforeend"
+                      hx-on::after-request="document.getElementById('afd-isk-modal')?.showModal()"
+                      title="Сформировать заявление о банкротстве и приложения">
+                ⚖ Сформировать заявление о банкротстве
+              </button>
+
+              <button type="button"
+                      class="btn btn-sm btn-outline w-full mt-2"
                       hx-get="{% url 'service_transfer_modal' service.id %}"
                       hx-target="body" hx-swap="beforeend"
                       title="Передать услугу в работу отдела или сотрудника">

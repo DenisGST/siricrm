@@ -86,6 +86,7 @@ class Client(TimeStampedModel):
     passport_number = models.CharField(max_length=6, blank=True, verbose_name='Номер паспорта')
     passport_issued_by = models.CharField(max_length=500, blank=True, verbose_name='Кем выдан')
     passport_issued_date = models.DateField(null=True, blank=True, verbose_name='Дата выдачи')
+    passport_division_code = models.CharField(max_length=7, blank=True, verbose_name='Код подразделения')
     # Документы
     inn = models.CharField(max_length=12, blank=True, verbose_name='ИНН')
     snils = models.CharField(max_length=14, blank=True, verbose_name='СНИЛС')
@@ -791,12 +792,31 @@ class Message(TimeStampedModel):
     sent_at = models.DateTimeField(null=True, blank=True)
     is_delivered = models.BooleanField(default=False)
     delivered_at = models.DateTimeField(null=True, blank=True)
+    is_failed = models.BooleanField(default=False, verbose_name='Ошибка доставки')
+    error_text = models.CharField(max_length=500, blank=True, default='', verbose_name='Текст ошибки')
 
     reactions = models.JSONField(
         default=dict,
         blank=True,
         verbose_name="Реакции",
         help_text='Реакции на сообщение, например: {"👍": 3, "❤️": 1}',
+    )
+
+    # WhatsApp WABA-шаблон (отправка вне 24-часового окна через sendTemplate).
+    # Для обычных free-form сообщений оба поля пустые.
+    message_template = models.ForeignKey(
+        "MessageTemplate",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="messages",
+        verbose_name="Шаблон",
+    )
+    template_params = models.JSONField(
+        default=list,
+        blank=True,
+        verbose_name="Параметры шаблона",
+        help_text="Значения {{1}}, {{2}}… по порядку, переданные в sendTemplate.",
     )
 
     def __str__(self):
@@ -1420,6 +1440,11 @@ class MessageTemplate(models.Model):
     is_active = models.BooleanField('Активен', default=True)
 
     # WhatsApp Business-specific
+    whatsapp_template_name = models.CharField(
+        'Имя шаблона в Meta', max_length=200, blank=True, default='',
+        help_text='Латиница + подчёркивания (например, first_contact_intro). '
+                  'Используется в sendTemplate. Если пусто — генерируется из названия.',
+    )
     whatsapp_meta_id = models.CharField(
         'Meta template ID', max_length=200, blank=True, default='',
     )

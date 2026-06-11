@@ -151,6 +151,45 @@ def _disk_info() -> dict:
     }
 
 
+def _system_mem() -> dict:
+    """Память хоста из /proc/meminfo (kB → GB)."""
+    try:
+        info = {}
+        with open("/proc/meminfo") as fh:
+            for line in fh:
+                k, _, rest = line.partition(":")
+                info[k.strip()] = int(rest.split()[0])  # kB
+        total = info.get("MemTotal", 0) / 2**20
+        avail = info.get("MemAvailable", 0) / 2**20
+        used = total - avail
+        return {
+            "total_gb": round(total, 1), "used_gb": round(used, 1),
+            "avail_gb": round(avail, 1),
+            "used_pct": round(used / total * 100) if total else 0,
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+
+def _docker_stats() -> dict:
+    """Снимок CPU/RAM по контейнерам через `docker stats --no-stream`.
+    Возвращает {name: {cpu, mem}}; пусто при ошибке/таймауте."""
+    out = _run(
+        ["docker", "stats", "--no-stream", "--format",
+         "{{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.MemPerc}}"],
+        timeout=20, stdout_only=True,
+    )
+    stats = {}
+    if not out or out.startswith("<"):
+        return stats
+    for line in out.splitlines():
+        parts = line.split("\t")
+        if len(parts) >= 4 and parts[0].startswith("siricrm"):
+            stats[parts[0]] = {"cpu": parts[1].strip(),
+                               "mem": parts[2].strip(), "mem_pct": parts[3].strip()}
+    return stats
+
+
 def _versions() -> dict:
     return {
         "python": sys.version.split()[0],
@@ -165,6 +204,8 @@ def run_status(params: dict) -> dict:
     containers = _containers_info()
     migrations = _migrations_info()
     disk = _disk_info()
+    mem = _system_mem()
+    cstats = _docker_stats()
     versions = _versions()
 
     sync = ""
@@ -188,11 +229,19 @@ def run_status(params: dict) -> dict:
         else:
             extra = f" [{c['health']}]" if c.get("health") else ""
             extra += f" ⟳{c['restarts']}" if c.get("restarts") else ""
+            st = cstats.get(c["name"])
+            if st:
+                extra += f"  cpu {st['cpu']}, mem {st['mem']}"
             output_lines.append(f"  {c['name']:<25} {c['status']}{extra}")
+    mem_line = (
+        f"Память:   {mem['used_gb']}G / {mem['total_gb']}G ({mem['used_pct']}%)"
+        if "error" not in mem else f"Память:   <{mem['error']}>"
+    )
     output_lines.extend([
         "",
         f"Миграции: применено={migrations.get('applied', '?')} ждут={migrations.get('pending', '?')}",
         f"Диск:     {disk['used_gb']}G / {disk['total_gb']}G ({disk['used_pct']}%)",
+        mem_line,
         f"Версии:   Python {versions['python']}, Django {versions['django']}, env={versions['env']}",
     ])
 
@@ -208,6 +257,8 @@ def run_status(params: dict) -> dict:
             "containers_ok": (total > 0 and running == total),
             "migrations": migrations,
             "disk": disk,
+            "mem": mem,
+            "container_stats": cstats,
             "versions": versions,
         },
     }

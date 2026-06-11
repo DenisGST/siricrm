@@ -220,7 +220,12 @@ def send_max_message(
         return False, None, "Invalid JSON from MAX"
 
     message = data.get("message") or data
-    message_id = message.get("id") or message.get("mid") or data.get("id")
+    # MAX кладёт id отправленного сообщения в message.body.mid (а не message.id).
+    message_id = (
+        message.get("id") or message.get("mid")
+        or (message.get("body") or {}).get("mid")
+        or data.get("id")
+    )
 
     if not message_id:
         if resp.status_code < 400:

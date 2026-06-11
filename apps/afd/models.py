@@ -146,3 +146,101 @@ class GeneratedDocument(models.Model):
 
     def __str__(self):
         return self.title or f"Документ {self.id}"
+
+
+class IskTemplate(models.Model):
+    """Шаблон заявления о банкротстве — секционный (см. IskSection).
+
+    Можно несколько вариантов (например «с имуществом» / «без имущества»).
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField("Название", max_length=255)
+    is_default = models.BooleanField("По умолчанию", default=False)
+    is_active = models.BooleanField("Активен", default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Шаблон заявления (иск)"
+        verbose_name_plural = "Шаблоны заявлений (иски)"
+        ordering = ["-is_default", "name"]
+
+    def __str__(self):
+        return self.name
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        if self.is_default:
+            IskTemplate.objects.exclude(pk=self.pk).filter(is_default=True).update(
+                is_default=False
+            )
+
+    @classmethod
+    def get_default(cls):
+        return (
+            cls.objects.filter(is_active=True, is_default=True).first()
+            or cls.objects.filter(is_active=True).first()
+        )
+
+
+class IskSection(models.Model):
+    """Смысловой раздел заявления. Редактируется в UI (добавить/удалить/двигать).
+
+    body — текст с плейсхолдерами вида {key} (включая вычисляемые: {debts_list},
+    {creditors_block}, {sum_total}, {petition_sro}, {appendix_list} и т.д.).
+    block_type — семантический ярлык (для группировки/особого рендера).
+    include_condition — ключ флага в контексте; если задан и флаг ложный —
+    раздел не включается (для условных разделов: имущество/семья/сделки).
+    """
+    BLOCK_TEXT = "text"
+    BLOCK_COURT_HEADER = "court_header"
+    BLOCK_CREDITORS_HEADER = "creditors_header"
+    BLOCK_DEBTS_LIST = "debts_list"
+    BLOCK_PETITION = "petition"
+    BLOCK_APPENDIX_LIST = "appendix_list"
+    BLOCK_CHOICES = [
+        (BLOCK_TEXT, "Текст"),
+        (BLOCK_COURT_HEADER, "Шапка (суд + должник)"),
+        (BLOCK_CREDITORS_HEADER, "Блок кредиторов (реквизиты)"),
+        (BLOCK_DEBTS_LIST, "Перечень задолженностей"),
+        (BLOCK_PETITION, "Просительная часть"),
+        (BLOCK_APPENDIX_LIST, "Перечень приложений"),
+    ]
+
+    ALIGN_CHOICES = [("left", "Слева"), ("center", "По центру"),
+                     ("both", "По ширине"), ("right", "Справа")]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    template = models.ForeignKey(
+        IskTemplate, on_delete=models.CASCADE, related_name="sections",
+        verbose_name="Шаблон",
+    )
+    order = models.PositiveIntegerField("Порядок", default=0)
+    key = models.CharField("Ключ", max_length=64, blank=True)
+    title = models.CharField("Заголовок раздела", max_length=255, blank=True)
+    body = models.TextField(
+        "Текст (с плейсхолдерами {…})", blank=True,
+        help_text="Плейсхолдеры {…} подставляются из данных. Вычисляемые: "
+                  "{debts_list} {creditors_block} {sum_total} {sum_overdue} "
+                  "{overdue_pct} {petition_sro} {appendix_list}",
+    )
+    block_type = models.CharField(
+        "Тип блока", max_length=32, choices=BLOCK_CHOICES, default=BLOCK_TEXT,
+    )
+    align = models.CharField("Выравнивание", max_length=8, choices=ALIGN_CHOICES, default="both")
+    bold = models.BooleanField("Жирный", default=False)
+    is_optional = models.BooleanField("Опциональный", default=False)
+    include_condition = models.CharField(
+        "Условие включения (ключ флага)", max_length=64, blank=True,
+        help_text="Если задан — раздел включается только когда флаг истинный "
+                  "(напр. has_property, has_income, is_married, has_sold_assets).",
+    )
+    is_active = models.BooleanField("Активен", default=True)
+
+    class Meta:
+        verbose_name = "Раздел заявления"
+        verbose_name_plural = "Разделы заявления"
+        ordering = ["template", "order"]
+
+    def __str__(self):
+        return f"{self.order:02d} · {self.title or self.get_block_type_display()}"

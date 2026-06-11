@@ -1,5 +1,6 @@
 """Регистрация handlers (импорт триггерит @register_handler)."""
 from . import backup  # noqa: F401
+from . import daily_stats  # noqa: F401
 from . import deploy  # noqa: F401
 from . import disk_usage  # noqa: F401
 from . import dumpdata_tables  # noqa: F401

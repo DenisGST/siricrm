@@ -1,5 +1,5 @@
 from apps.core.models import MenuItem, DashboardConfig
-from apps.core.permissions import is_references_access
+from apps.core.permissions import is_references_access, can_handle_scans
 
 
 def sidebar_menu(request):
@@ -26,8 +26,14 @@ def sidebar_menu(request):
     if not is_elevated:
         items = items.filter(requires_elevated=False)
 
+    # «Входящие сканы» (/scans/) — отдельный флаг can_handle_scans, которого
+    # нет в модели MenuItem; пункт заведён без requires_elevated, поэтому
+    # вручную прячем его у тех, кому лоток не положен.
     sections = {}
+    show_scans = can_handle_scans(user)
     for item in items.order_by("section", "order"):
+        if item.url.startswith("/scans/") and not show_scans:
+            continue
         key = item.section or ""
         sections.setdefault(key, []).append(item)
 

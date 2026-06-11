@@ -1,0 +1,45 @@
+{# Компактная плашка дела для левого sidebar'а — chat-style item.        #}
+{# Active-state переключается JS (см. dashboard.html), потому что HTMX  #}
+{# свапит только #case-pane — sidebar не перерендеривается → серверного #}
+{# `selected_case_id` хватает только для первого захода.                  #}
+{% with svc=case.service %}
+<a href="?case={{ case.id }}"
+   data-case-id="{{ case.id }}"
+   hx-get="{% url 'arbitr:case_detail' case.id %}"
+   hx-target="#case-pane"
+   hx-swap="innerHTML"
+   hx-push-url="?case={{ case.id }}"
+   class="arbitr-side-item block px-3 py-2 border-b border-base-200 hover:bg-base-200
+          {% if case.id|stringformat:'s' == selected_case_id %} is-active{% endif %}">
+  <div class="text-sm font-medium truncate">
+    {% if svc.client_id %}
+      {{ svc.client.last_name }} {{ svc.client.first_name|first }}.{% if svc.client.patronymic %} {{ svc.client.patronymic|first }}.{% endif %}
+    {% else %}—{% endif %}
+  </div>
+  {% if svc.region %}
+    <div class="text-xs opacity-60 truncate">📍 {{ svc.region.name }}</div>
+  {% endif %}
+  <div class="text-xs opacity-70 truncate font-mono">
+    {% if case.case_number %}{{ case.case_number }}
+    {% elif case.status == 'searching' and case.search_hits %}🎯 найдено дел: {{ case.search_hits|length }}
+    {% elif case.status == 'searching' %}🔍 ищем…
+    {% else %}—{% endif %}
+  </div>
+  <div class="flex items-center justify-between mt-0.5">
+    <div class="text-xs opacity-50 truncate">
+      {% if case.last_check_at %}{{ case.last_check_at|date:"d.m H:i" }}{% else %}—{% endif %}
+    </div>
+    <div class="shrink-0">
+      {% if case.last_log_state == 'ok' %}
+        <span class="badge badge-success badge-xs">✓</span>
+      {% elif case.last_log_state == 'nothing' %}
+        <span class="badge badge-ghost badge-xs">—</span>
+      {% elif case.last_log_state == 'captcha' %}
+        <span class="badge badge-warning badge-xs">⚠</span>
+      {% elif case.last_log_state == 'error' %}
+        <span class="badge badge-error badge-xs">✗</span>
+      {% endif %}
+    </div>
+  </div>
+</a>
+{% endwith %}

@@ -3,9 +3,12 @@ from django.core.paginator import Paginator
 from django.shortcuts import render, get_object_or_404, redirect
 from django.core.cache import cache
 from django.contrib.auth.decorators import login_required
-from django.http import HttpResponse, HttpResponseBadRequest, JsonResponse
+from django.http import HttpResponse, HttpResponseBadRequest, HttpResponseForbidden, JsonResponse
 from django.views.decorators.http import require_POST
 from django.template.loader import render_to_string
+import logging
+
+logger = logging.getLogger(__name__)
 
 from apps.crm.models import *
 from django.db import models, transaction
@@ -245,6 +248,230 @@ def whatsapp_send_message(request, client_id):
     return resp
 
 
+def _approved_wa_templates():
+    """Активные WA-шаблоны, одобренные Meta."""
+    from apps.crm.models import MessageTemplate
+    qs = MessageTemplate.objects.filter(
+        is_active=True, whatsapp_meta_status="approved",
+    ).order_by("name")
+    return [t for t in qs if "whatsapp" in (t.channels or [])]
+
+
+def _render_wa_template_body(body: str, params: list) -> str:
+    """Подставить значения в {{1}}, {{2}}… по порядку (для показа в чате)."""
+    import re
+
+    def repl(m):
+        idx = int(m.group(1)) - 1
+        return params[idx] if 0 <= idx < len(params) else m.group(0)
+
+    return re.sub(r"{{\s*(\d+)\s*}}", repl, body or "")
+
+
+def _render_crm_template(body: str, client, employee) -> str:
+    """Отрендерить тело TG/MAX-шаблона с CRM-плейсхолдерами
+    ({{ client.first_name }} и т.п.). Шаблоны заводят доверенные сотрудники."""
+    from django.template import Template, Context
+    try:
+        return Template(body or "").render(Context({"client": client, "employee": employee}))
+    except Exception:
+        return body or ""
+
+
+@login_required
+def whatsapp_template_picker(request, client_id):
+    """Единая модалка шаблонов для всех каналов (Telegram / MAX / WhatsApp).
+
+    Табы = каналы (только доступные клиенту). В каждом — select шаблонов;
+    при выборе показываются «настройки»: для WA — поля переменных {{N}}
+    (approved-шаблоны, sendTemplate), для TG/MAX — редактируемый текст
+    (обычное сообщение с подставленными CRM-плейсхолдерами).
+    """
+    import re
+    from apps.crm.models import MessageTemplate
+
+    client = get_object_or_404(Client, pk=client_id)
+    try:
+        employee = Employee.objects.get(user=request.user)
+    except Employee.DoesNotExist:
+        employee = None
+
+    channels = []
+    if client.telegram_id:
+        channels.append({"key": "telegram", "label": "Telegram", "color": "#0078d4", "items": []})
+    if client.max_chat_id:
+        channels.append({"key": "max", "label": "MAX", "color": "#8764b8", "items": []})
+    if client.whatsapp_phone or client.phone:
+        channels.append({"key": "whatsapp", "label": "WhatsApp", "color": "#22c55e", "items": []})
+
+    tpl_qs = MessageTemplate.objects.filter(is_active=True).order_by("name")
+    tpl_fields = {}  # tpl_id -> {is_wa, params, rendered, preview}
+    for ch in channels:
+        key = ch["key"]
+        for t in tpl_qs:
+            if key not in (t.channels or []):
+                continue
+            if key == "whatsapp" and t.whatsapp_meta_status != "approved":
+                continue
+            tid = str(t.id)
+            ch["items"].append({"id": tid, "name": t.name})
+            if tid in tpl_fields:
+                continue
+            if key == "whatsapp":
+                nums = sorted({int(n) for n in re.findall(r"{{\s*(\d+)\s*}}", t.body or "")})
+                schema = t.whatsapp_params_schema or []
+                params = []
+                for i, n in enumerate(nums):
+                    hint = schema[i].get("example", "") if i < len(schema) and isinstance(schema[i], dict) else ""
+                    default = client.first_name if (i == 0 and client.first_name) else ""
+                    params.append({"n": n, "hint": hint, "default": default})
+                tpl_fields[tid] = {"is_wa": True, "params": params, "rendered": "", "preview": t.body}
+            else:
+                rendered = _render_crm_template(t.body, client, employee)
+                tpl_fields[tid] = {"is_wa": False, "params": [], "rendered": rendered, "preview": rendered}
+
+    initial = request.GET.get("channel") or ""
+    keys = [c["key"] for c in channels]
+    if initial not in keys:
+        initial = keys[0] if keys else ""
+
+    return render(request, "crm/partials/chat_template_picker.html", {
+        "client": client, "channels": channels, "initial": initial,
+        "tpl_fields": tpl_fields,
+    })
+
+
+@login_required
+@require_POST
+def whatsapp_send_template(request, client_id):
+    """Отправить одобренный WA-шаблон (sendTemplate) — работает вне окна 24ч."""
+    from apps.crm.models import MessageTemplate
+    from apps.whatsapp.tasks import send_whatsapp_template_task
+
+    client = get_object_or_404(Client, pk=client_id)
+    tpl = get_object_or_404(MessageTemplate, pk=request.POST.get("template_id"))
+    if tpl.whatsapp_meta_status != "approved":
+        return HttpResponseBadRequest("Шаблон не одобрен Meta")
+
+    params = [p.strip() for p in request.POST.getlist("param")]
+    rendered = _render_wa_template_body(tpl.body, params)
+
+    try:
+        employee = Employee.objects.get(user=request.user)
+    except Employee.DoesNotExist:
+        employee = None
+
+    client.last_message_at = timezone.now()
+    client.save(update_fields=["last_message_at"])
+
+    msg = Message.objects.create(
+        client=client,
+        employee=employee,
+        content=rendered,
+        direction="outgoing",
+        channel="whatsapp",
+        message_type="text",
+        telegram_date=timezone.now(),
+        is_sent=False,
+        message_template=tpl,
+        template_params=params,
+    )
+    send_whatsapp_template_task.delay(str(msg.id))
+
+    if employee:
+        ClientEmployee.objects.update_or_create(
+            client=client, employee=employee,
+            defaults={"messenger_status": "waiting", "status_changed_at": timezone.now()},
+        )
+        from apps.realtime.utils import push_messenger_status_update
+        push_messenger_status_update(client)
+
+    html = render_to_string(
+        "crm/partials/telegram_message.html", {"msg": msg}, request=request,
+    )
+    resp = HttpResponse(html)
+    resp["HX-Trigger"] = "messengerStatusChanged"
+    return resp
+
+
+@login_required
+@require_POST
+def chat_send_template(request, client_id):
+    """Единая отправка шаблона по выбранному каналу из общей модалки.
+
+    WhatsApp → approved WABA-шаблон (sendTemplate, вне 24ч-окна).
+    Telegram / MAX → обычное сообщение с финальным текстом (оператор мог
+    отредактировать в модалке)."""
+    from apps.crm.models import MessageTemplate
+
+    client = get_object_or_404(Client, pk=client_id)
+    channel = request.POST.get("channel")
+    if channel not in ("telegram", "max", "whatsapp"):
+        return HttpResponseBadRequest("Неизвестный канал")
+
+    try:
+        employee = Employee.objects.get(user=request.user)
+    except Employee.DoesNotExist:
+        employee = None
+
+    # WhatsApp — через approved-шаблон (sendTemplate)
+    if channel == "whatsapp":
+        from apps.whatsapp.tasks import send_whatsapp_template_task
+        tpl = get_object_or_404(MessageTemplate, pk=request.POST.get("template_id"))
+        if tpl.whatsapp_meta_status != "approved":
+            return HttpResponseBadRequest("Шаблон не одобрен Meta")
+        params = [p.strip() for p in request.POST.getlist("param")]
+        rendered = _render_wa_template_body(tpl.body, params)
+        client.last_message_at = timezone.now()
+        client.save(update_fields=["last_message_at"])
+        msg = Message.objects.create(
+            client=client, employee=employee, content=rendered,
+            direction="outgoing", channel="whatsapp", message_type="text",
+            telegram_date=timezone.now(), is_sent=False,
+            message_template=tpl, template_params=params,
+        )
+        send_whatsapp_template_task.delay(str(msg.id))
+
+    # Telegram / MAX — обычный текст
+    else:
+        text = (request.POST.get("text") or "").strip()
+        if not text:
+            return HttpResponseBadRequest("Пустой текст")
+        if channel == "telegram" and not client.telegram_id:
+            return HttpResponseBadRequest("У клиента нет Telegram")
+        if channel == "max" and not client.max_chat_id:
+            return HttpResponseBadRequest("У клиента нет MAX")
+        tpl = MessageTemplate.objects.filter(pk=request.POST.get("template_id")).first()
+        client.last_message_at = timezone.now()
+        client.save(update_fields=["last_message_at"])
+        msg = Message.objects.create(
+            client=client, employee=employee, content=text,
+            direction="outgoing", channel=channel, message_type="text",
+            telegram_date=timezone.now(), is_sent=False, message_template=tpl,
+        )
+        if channel == "telegram":
+            from apps.crm.tasks import send_telegram_message_task
+            send_telegram_message_task.delay(str(msg.id))
+        else:
+            from apps.maxchat.tasks import send_max_message_task
+            send_max_message_task.delay(str(msg.id))
+
+    if employee:
+        ClientEmployee.objects.update_or_create(
+            client=client, employee=employee,
+            defaults={"messenger_status": "waiting", "status_changed_at": timezone.now()},
+        )
+        from apps.realtime.utils import push_messenger_status_update
+        push_messenger_status_update(client)
+
+    html = render_to_string(
+        "crm/partials/telegram_message.html", {"msg": msg}, request=request,
+    )
+    resp = HttpResponse(html)
+    resp["HX-Trigger"] = "messengerStatusChanged"
+    return resp
+
+
 @login_required
 def telegram_chat_for_client(request, client_id):
     client = get_object_or_404(Client, pk=client_id)
@@ -282,11 +509,37 @@ def telegram_chat_for_client(request, client_id):
     except Employee.DoesNotExist:
         pass
 
+    # Канал отправки по Enter = канал последнего входящего (по нему пришло
+    # последнее сообщение), затем последнего вообще; только среди доступных.
+    avail = []
+    if client.telegram_id:
+        avail.append("telegram")
+    if client.max_chat_id:
+        avail.append("max")
+    if client.whatsapp_phone or client.phone:
+        avail.append("whatsapp")
+    last_in = (
+        Message.objects.filter(client=client, direction="incoming")
+        .order_by("-telegram_date", "-id").values_list("channel", flat=True).first()
+    )
+    last_any = (
+        Message.objects.filter(client=client)
+        .order_by("-telegram_date", "-id").values_list("channel", flat=True).first()
+    )
+    default_channel = ""
+    for cand in (last_in, last_any):
+        if cand in avail:
+            default_channel = cand
+            break
+    if not default_channel and avail:
+        default_channel = avail[0]
+
     return render(
         request,
         "crm/partials/telegram_chat_panel.html",
         {"client": client, "page_obj": page_obj, "messages": page_obj.object_list,
-         "search_q": search_q, "messenger_status": messenger_status},
+         "search_q": search_q, "messenger_status": messenger_status,
+         "default_channel": default_channel},
     )
 
 
@@ -594,9 +847,14 @@ def kanban_column(request, status):
     created_from = request.GET.get("created_from") or ""
     created_to   = request.GET.get("created_to") or ""
     q            = (request.GET.get("q") or "").strip()
+    cid          = (request.GET.get("cid") or "").strip()
 
     qs = Client.objects.visible_to(request.user).filter(status=status)
-    if q:
+    if cid:
+        # «Только этот клиент» из главного поиска — точная фильтрация по id
+        # (иначе у клиента без фамилии фильтр по ФИО показывал всех тёзок).
+        qs = qs.filter(pk=cid)
+    elif q:
         # Разбиваем «Каныгин Денис» на слова — каждое слово должно
         # совпасть с одним из полей (AND по словам, OR по полям).
         for word in q.split():
@@ -679,11 +937,83 @@ def kanban_column(request, status):
 
 
 @login_required
+def client_dedup_check(request):
+    """Лайв-проверка дублей для модалки создания клиента (по мере ввода).
+
+    Телефон — блокирующий сигнал (один номер = один клиент): возвращаем
+    конфликт + oob-свап кнопки «Создать» в disabled. ФИО — информационно:
+    похожие клиенты по первым буквам (двойники с разными телефонами норм)."""
+    last = (request.GET.get("last_name") or "").strip()
+    first = (request.GET.get("first_name") or "").strip()
+    patr = (request.GET.get("patronymic") or "").strip()
+    raw_phone = (request.GET.get("phone") or "").strip()
+    # exclude — id клиента, которого исключаем из результатов (форма редактирования:
+    # не показываем самого клиента и не считаем его телефон конфликтом).
+    exclude = (request.GET.get("exclude") or "").strip()
+
+    # Какой контейнер перерисовывать — по НАЛИЧИЮ параметра в запросе (не по
+    # содержимому): иначе на создании очистка телефона не сбросила бы старый
+    # баннер. Создание шлёт всю форму (оба есть); редактирование — точечно.
+    fio_input = any(k in request.GET for k in ("last_name", "first_name", "patronymic"))
+    phone_input = "phone" in request.GET
+
+    def _excl(qs):
+        return qs.exclude(pk=exclude) if exclude else qs
+
+    # ФИО — похожие по первым буквам (любое поле от 3 символов), информационно.
+    fio_matches = []
+    if len(last) >= 3 or len(first) >= 3 or len(patr) >= 3:
+        qs = Client.objects.all()
+        if last:
+            qs = qs.filter(last_name__istartswith=last)
+        if first:
+            qs = qs.filter(first_name__istartswith=first)
+        if patr:
+            qs = qs.filter(patronymic__istartswith=patr)
+        fio_matches = list(_excl(qs).order_by("last_name", "first_name")[:8])
+
+    # Телефон: от 3 цифр — частичные совпадения (информационно); полный валидный
+    # номер, совпавший с ДРУГИМ клиентом — конфликт (блок кнопки «Создать»).
+    digits = "".join(ch for ch in raw_phone if ch.isdigit())
+    phone_conflict = None
+    phone_matches = []
+    if len(digits) >= 3:
+        norm = normalize_phone(raw_phone)
+        if norm:
+            cp_qs = ClientPhone.objects.filter(phone=norm, is_active=True).select_related("client")
+            if exclude:
+                cp_qs = cp_qs.exclude(client_id=exclude)
+            cp = cp_qs.first()
+            phone_conflict = cp.client if cp else \
+                _excl(Client.objects.filter(phone__contains=norm[1:])).first()
+        if phone_conflict is None:
+            core = digits[-7:] if len(digits) > 7 else digits
+            phone_matches = list(
+                _excl(Client.objects.filter(phone__contains=core)
+                      .exclude(phone="").exclude(phone__isnull=True))
+                .order_by("last_name", "first_name")[:8]
+            )
+
+    return render(request, "crm/partials/client_dedup_check.html", {
+        "fio_input": fio_input,
+        "phone_input": phone_input,
+        "fio_matches": fio_matches,
+        "phone_conflict": phone_conflict,
+        "phone_matches": phone_matches,
+        "show_submit": not exclude,
+    })
+
+
+@login_required
 def client_create(request):
     if request.method == "POST":
         form = ClientForm(request.POST)
         if form.is_valid():
             client = form.save()
+            # Форма пишет только Client.phone (кэш) — заводим ClientPhone(primary),
+            # чтобы дедуп по телефону работал и для вручную созданных клиентов.
+            if client.phone:
+                add_client_phone(client, client.phone, "primary")
 
             if request.headers.get("HX-Request"):
                 # Если запрос из таба "Адреса" — открыть edit-модалку с адресной секцией
@@ -703,15 +1033,10 @@ def client_create(request):
             return redirect("clients_list")
 
         # Ошибки валидации — перерендерим модалку
-        if request.headers.get("HX-Request"):
-            return render(request, "crm/partials/client_create_modal.html", {"form": form})
-        return render(request, "crm/clients/form.html", {"form": form})
+        return render(request, "crm/partials/client_create_modal.html", {"form": form})
 
     form = ClientForm()
-
-    if request.headers.get("HX-Request"):
-        return render(request, "crm/partials/client_create_modal.html", {"form": form})
-    return render(request, "crm/clients/form.html", {"form": form})
+    return render(request, "crm/partials/client_create_modal.html", {"form": form})
 
 
 @login_required
@@ -1143,7 +1468,7 @@ def client_edit(request, client_id):
 
 
 from .models import ClientPhone  # noqa: E402
-from .phone_utils import add_client_phone, normalize_phone, sync_client_phone_cache  # noqa: E402
+from .phone_utils import add_client_phone, normalize_phone, sync_client_phone_cache, find_client_by_phone  # noqa: E402
 
 
 def _render_phones_block(request, client):
@@ -1178,6 +1503,16 @@ def client_phone_add(request, client_id):
             "phones": client.phones.order_by("purpose", "phone"),
             "purpose_choices": ClientPhone.PURPOSE_CHOICES,
             "error": f"Неверный номер: {raw}",
+        })
+    # Дедуп: номер не должен принадлежать ДРУГОМУ клиенту ни в каком назначении.
+    other = find_client_by_phone(phone)
+    if other is not None and other.pk != client.pk:
+        fio = f"{other.last_name} {other.first_name}".strip() or "без ФИО"
+        return render(request, "crm/partials/client_phones_block.html", {
+            "client": client,
+            "phones": client.phones.order_by("purpose", "phone"),
+            "purpose_choices": ClientPhone.PURPOSE_CHOICES,
+            "error": f"+{phone} уже у клиента «{fio}» — дубликат номера запрещён.",
         })
     obj = add_client_phone(client, phone, purpose)
     if obj is None:
@@ -1232,36 +1567,6 @@ def client_phone_set_purpose(request, phone_id):
 
 
 @login_required
-def client_merge_search(request):
-    """HTMX: search clients to merge with (excludes the source client)."""
-    source_id = request.GET.get("source")
-    query = request.GET.get("merge_q", "").strip()
-
-    clients = Client.objects.none()
-    if query and len(query) >= 2:
-        clients = (
-            Client.objects
-            .filter(
-                Q(first_name__icontains=query)
-                | Q(last_name__icontains=query)
-                | Q(patronymic__icontains=query)
-                | Q(phone__icontains=query)
-                | Q(phones__phone__icontains=query)
-                | Q(username__icontains=query)
-            )
-            .exclude(pk=source_id)
-            .distinct()
-            .order_by("last_name", "first_name")[:20]
-        )
-
-    return render(request, "crm/partials/client_merge_results.html", {
-        "clients": clients,
-        "source_id": source_id,
-        "query": query,
-    })
-
-
-@login_required
 @require_POST
 def message_react(request, msg_id):
     """Поставить реакцию на сообщение (Telegram или MAX)."""
@@ -1285,77 +1590,6 @@ def message_react(request, msg_id):
 
     send_reaction_task.delay(str(msg.id), emoji)
     return HttpResponse(status=204)
-
-
-@login_required
-@require_POST
-def client_merge(request, client_id):
-    """Merge target client into source (client_id).
-    All messages, services and employees from target are moved/merged into source.
-    Target client is then deleted.
-    """
-    source = get_object_or_404(Client, pk=client_id)
-    target_id = request.POST.get("target_id")
-    target = get_object_or_404(Client, pk=target_id)
-
-    with transaction.atomic():
-        # Clear unique fields on target FIRST to avoid constraint violations
-        if target.telegram_id:
-            target_tg_id = target.telegram_id
-            target.telegram_id = None
-            target.save(update_fields=["telegram_id"])
-            if not source.telegram_id:
-                source.telegram_id = target_tg_id
-
-        if target.max_chat_id:
-            target_max_id = target.max_chat_id
-            target.max_chat_id = None
-            target.save(update_fields=["max_chat_id"])
-            if not source.max_chat_id:
-                source.max_chat_id = target_max_id
-
-        # Fill in missing contact info from target
-        for field in ("first_name", "phone", "email", "username", "last_name", "patronymic",
-                      "birth_date", "birth_place", "passport_series", "passport_number",
-                      "passport_issued_by", "passport_issued_date", "inn", "snils", "notes"):
-            if not getattr(source, field) and getattr(target, field):
-                setattr(source, field, getattr(target, field))
-
-        source.save()
-
-        # Move messages
-        Message.objects.filter(client=target).update(client=source)
-
-        # Move services
-        Service.objects.filter(client=target).update(client=source)
-
-        # Merge employees M2M
-        for ce in target.client_employees.all():
-            ClientEmployee.objects.get_or_create(
-                client=source, employee=ce.employee,
-                defaults={"messenger_status": ce.messenger_status},
-            )
-
-        # Delete duplicate
-        target.delete()
-
-    # Re-render the chat panel with the updated source client
-    qs = (
-        Message.objects
-        .filter(client=source)
-        .select_related("employee", "employee__user", "file", "reply_to", "reply_to__client")
-        .order_by("telegram_date", "id")
-    )
-    paginator = Paginator(qs, MESSAGES_PER_PAGE)
-    page_number = paginator.num_pages or 1
-    page_obj = paginator.get_page(page_number)
-
-    return render(request, "crm/partials/telegram_chat_panel.html", {
-        "client": source,
-        "messages": page_obj.object_list,
-        "page_obj": page_obj,
-        "merge_success": True,
-    })
 
 
 # ─── Адреса клиента ───
@@ -1796,17 +2030,25 @@ def service_edit(request, pk=None):
                             employee=emp,
                         )
 
-            # Сохраняем личный статус сотрудника
+            # Сохраняем личный статус сотрудника.
+            # 🛑 Меняем ТОЛЬКО когда emp_status явно выбран (непустой и валидный).
+            # Пустое значение приходит, когда выпадашка «Мой статус» отфильтровалась
+            # в пусто (личный статус услуги не совпал с выбранным общим статусом —
+            # частый рассинхрон после передач). Раньше это МОЛЧА обнуляло личный
+            # статус → услуга пропадала из «Моего канбана» при любом сохранении
+            # (в т.ч. при оформлении договора). Пустое = «не трогать».
             emp_status_id = request.POST.get("emp_status")
-            if emp and svc_new.pk:
-                state, _ = ServiceEmployeeState.objects.get_or_create(
-                    service=svc_new, employee=emp,
-                )
-                new_status = ServiceEmployeeStatus.objects.filter(pk=emp_status_id, employee=emp).first() if emp_status_id else None
-                if state.status != new_status:
-                    state.status     = new_status
-                    state.updated_by = emp
-                    state.save(update_fields=["status", "updated_by", "updated_at"])
+            if emp and svc_new.pk and emp_status_id:
+                new_status = ServiceEmployeeStatus.objects.filter(
+                    pk=emp_status_id, employee=emp).first()
+                if new_status:
+                    state, _ = ServiceEmployeeState.objects.get_or_create(
+                        service=svc_new, employee=emp,
+                    )
+                    if state.status != new_status:
+                        state.status     = new_status
+                        state.updated_by = emp
+                        state.save(update_fields=["status", "updated_by", "updated_at"])
 
             resp = HttpResponse("")
             resp["HX-Trigger"] = '{"serviceChanged": "", "kanbanRefresh": ""}'
@@ -2658,3 +2900,123 @@ def service_employee_toggle(request, pk):
         "service": service,
         "states": states,
     })
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# Объединение карточек-дублей (право can_merge_clients)
+# ─────────────────────────────────────────────────────────────────────────
+from apps.core.permissions import can_merge_clients as _can_merge_clients  # noqa: E402
+from apps.crm import client_merge as _cm  # noqa: E402
+
+
+def _merge_guard(request):
+    return _can_merge_clients(request.user)
+
+
+@login_required
+def client_merge_modal(request, client_id):
+    """Шаг 1: модалка объединения — поиск второй карточки."""
+    if not _merge_guard(request):
+        return HttpResponseForbidden("Нет доступа к объединению клиентов")
+    client = get_object_or_404(Client, pk=client_id)
+    return render(request, "crm/partials/client_merge_modal.html", {"client": client})
+
+
+@login_required
+def client_merge_search(request, client_id):
+    """Кандидаты для объединения (поиск по ФИО/телефону), кроме самой карточки."""
+    if not _merge_guard(request):
+        return HttpResponseForbidden("Нет доступа")
+    q = (request.GET.get("q") or "").strip()
+    results = []
+    if len(q) >= 3:
+        digits = "".join(ch for ch in q if ch.isdigit())
+        qs = Client.objects.exclude(pk=client_id)
+        if digits and len(digits) >= 3:
+            core = digits[-7:] if len(digits) > 7 else digits
+            ids = set(ClientPhone.objects.filter(phone__contains=core)
+                      .values_list("client_id", flat=True))
+            qs = qs.filter(Q(pk__in=ids) | Q(phone__contains=core))
+        else:
+            parts = q.split()
+            for p in parts:
+                qs = qs.filter(Q(last_name__icontains=p) | Q(first_name__icontains=p)
+                               | Q(patronymic__icontains=p))
+        results = list(qs.order_by("last_name", "first_name")[:12])
+    return render(request, "crm/partials/client_merge_candidates.html", {
+        "client_id": client_id, "results": results, "q": q,
+    })
+
+
+@login_required
+def client_merge_compare(request, client_id):
+    """Шаг 2: таблица сравнения Клиент1 (текущий) ↔ Клиент2 (выбранный)."""
+    if not _merge_guard(request):
+        return HttpResponseForbidden("Нет доступа")
+    c1 = get_object_or_404(Client, pk=client_id)
+    other_id = (request.GET.get("other") or "").strip()
+    c2 = get_object_or_404(Client, pk=other_id)
+    if str(c1.id) == str(c2.id):
+        return HttpResponseBadRequest("Нельзя объединить карточку саму с собой")
+    data = _cm.compare_clients(c1, c2)
+    return render(request, "crm/partials/client_merge_compare.html", {
+        "c1": c1, "c2": c2,
+        "scalars": data["scalars"],
+        "collections": data["collections"],
+        "dup_services": data["dup_services"],
+    })
+
+
+@login_required
+@require_POST
+def client_merge_execute(request, client_id):
+    """Выполнить объединение по выбору пользователя."""
+    if not _merge_guard(request):
+        return HttpResponseForbidden("Нет доступа")
+    c1 = get_object_or_404(Client, pk=client_id)
+    c2 = get_object_or_404(Client, pk=(request.POST.get("other") or "").strip())
+    if str(c1.id) == str(c2.id):
+        return HttpResponseBadRequest("Нельзя объединить карточку саму с собой")
+
+    # Кто выживает: 'c1' (по умолчанию) или 'c2'
+    keep = request.POST.get("survivor") or "c1"
+    survivor, other = (c1, c2) if keep == "c1" else (c2, c1)
+
+    # Одиночные поля: для каждого поля выбран 'c1'|'c2'. Берём значение OTHER,
+    # если выбран столбец, противоположный survivor'у.
+    survivor_col = keep  # 'c1' или 'c2'
+    scalar_take_other = set()
+    for name, _ in _cm.SCALAR_FIELDS:
+        choice = request.POST.get(f"f_{name}") or "c1"
+        if choice != survivor_col:
+            scalar_take_other.add(name)
+
+    # Коллекции: выбор 'c1'|'c2'|'both' → 'survivor'|'other'|'both'
+    collection_actions = {}
+    for key, _, _ in _cm.COLLECTIONS:
+        choice = request.POST.get(f"col_{key}") or "both"
+        if choice == "both":
+            collection_actions[key] = "both"
+        elif choice == survivor_col:
+            collection_actions[key] = "survivor"
+        else:
+            collection_actions[key] = "other"
+
+    try:
+        _cm.merge_clients(survivor, other,
+                          scalar_take_other=scalar_take_other,
+                          collection_actions=collection_actions)
+    except Exception as e:
+        logger.exception("Ошибка объединения клиентов %s ← %s", survivor.id, other.id)
+        return HttpResponse(
+            f'<div class="alert alert-error text-sm">Ошибка объединения: {e}</div>',
+            status=200)
+
+    fio = f"{survivor.last_name} {survivor.first_name}".strip()
+    return HttpResponse(
+        "<script>"
+        "document.getElementById('client-merge-modal')?.remove();"
+        "document.getElementById('client-edit-modal')?.remove();"
+        f"window.showToast && showToast('Карточки объединены → {fio}','success');"
+        "htmx.trigger(document.body,'kanbanRefresh');"
+        "</script>")

@@ -1,4 +1,4 @@
-{% load static icons %}
+{% load static icons permissions_tags %}
 <!-- /var/www/projects/siricrm/templates/crm/partials/telegram_chat_panel.html -->
 <div id="telegram-chat-panel-root" class="relative flex flex-col h-full">
   <!-- шапка -->
@@ -33,16 +33,16 @@
     </div>
 
     <div class="flex items-center gap-2">
-      {% if merge_success %}
-        <span class="text-xs text-success font-medium">✅ Объединено</span>
-      {% endif %}
+      {% if user|can_merge_clients %}
       <button
-        onclick="document.getElementById('client-merge-modal').showModal(); document.getElementById('merge-search-input').focus()"
+        hx-get="{% url 'client_merge_modal' client.id %}"
+        hx-target="body" hx-swap="beforeend"
         class="btn btn-ghost btn-sm gap-1 text-gray-500 hover:text-warning"
         title="Объединить с другим клиентом"
       >
         {% icon "merge" size=16 %} <span class="text-xs">Объединить</span>
       </button>
+      {% endif %}
       <button
         id="btn-import-history"
         onclick="startImportHistory('{{ client.id }}')"
@@ -53,8 +53,6 @@
       </button>
     </div>
   </div>
-
-  {% include "crm/partials/client_merge_modal.html" %}
 
   <!-- поиск по сообщениям -->
   <div class="px-3 shrink-0" style="border-bottom:1px solid #eee;padding-top:3px;padding-bottom:3px;">
@@ -131,6 +129,7 @@
       id="telegram-send-form"
       class="space-y-2"
       enctype="multipart/form-data"
+      data-default-channel="{{ default_channel }}"
     >
     {# ── НОВОЕ: превью цитаты ── #}
     <div id="reply-preview-bar" class="hidden border border-base-300 rounded-lg px-3 py-2 bg-base-200 flex items-center justify-between gap-2 text-xs">
@@ -145,16 +144,68 @@
     </div>
     <input type="hidden" name="reply_to_id" id="reply-to-id" value="">
     {# ── / превью цитаты ── #}
-      <textarea
-        id="chat-textarea"
-        name="content"
-        rows="1"
-        class="w-full textarea textarea-bordered"
-        style="line-height:1.3; min-height:4.5rem; resize:vertical;"
-        placeholder="Напишите сообщение..."
-        spellcheck="true"
-        lang="ru"
-      ></textarea>
+      {# Поле ввода (85% ширины, прижато влево) + кнопки отправки столбиком справа #}
+      <div class="flex gap-2">
+        <div class="relative" style="width:85%">
+          {# Бэйдж на бордюре поля — канал отправки по Enter #}
+          <span id="enter-channel-name" class="badge badge-sm"
+                style="position:absolute;top:-9px;left:10px;z-index:2;border:none;color:#fff;{% if default_channel == 'telegram' %}background:#0078d4{% elif default_channel == 'max' %}background:#8764b8{% elif default_channel == 'whatsapp' %}background:#22c55e{% else %}background:#9ca3af{% endif %}">
+            {% if default_channel == 'telegram' %}Telegram{% elif default_channel == 'max' %}MAX{% elif default_channel == 'whatsapp' %}WhatsApp{% else %}нет канала{% endif %}
+          </span>
+          <textarea
+            id="chat-textarea"
+            name="content"
+            rows="1"
+            class="textarea textarea-bordered w-full"
+            style="line-height:1.3; min-height:4.5rem; resize:vertical;"
+            placeholder="Напишите сообщение..."
+            spellcheck="true"
+            lang="ru"
+          ></textarea>
+        </div>
+        <div class="flex flex-col gap-1 flex-1 min-w-0">
+          {% if client.telegram_id %}
+          <button
+            type="submit"
+            id="btn-send-telegram"
+            class="btn btn-primary btn-sm w-full"
+            hx-post="{% url 'telegram_send_message' client.id %}"
+            hx-encoding="multipart/form-data"
+            hx-swap="none"
+            disabled
+          >
+            Telegram
+          </button>
+          {% endif %}
+          {% if client.max_chat_id %}
+          <button
+            type="submit"
+            id="btn-send-max"
+            class="btn btn-sm btn-max-send w-full"
+            hx-post="{% url 'max_send_message' client.id %}"
+            hx-encoding="multipart/form-data"
+            hx-swap="none"
+            disabled
+          >
+            MAX
+          </button>
+          {% endif %}
+          {% if client.whatsapp_phone or client.phone %}
+          <button
+            type="submit"
+            id="btn-send-whatsapp"
+            class="btn btn-sm w-full bg-success/20 hover:bg-success/40 text-success border-success/40"
+            hx-post="{% url 'whatsapp_send_message' client.id %}"
+            hx-encoding="multipart/form-data"
+            hx-swap="none"
+            disabled
+            title="Отправить через WhatsApp (1msg.io)"
+          >
+            WhatsApp
+          </button>
+          {% endif %}
+        </div>
+      </div>
       <div id="emoji-quick-bar" class="hidden flex flex-wrap gap-1 py-1">
         <button type="button" class="eq" onclick="insertEmoji('😊')">😊</button>
         <button type="button" class="eq" onclick="insertEmoji('😂')">😂</button>
@@ -182,71 +233,39 @@
         <button type="button" class="eq" onclick="insertEmoji('💰')">💰</button>
       </div>
 
-      <div class="flex items-center gap-2">
-        <div class="flex items-center gap-2">
-          <label class="btn btn-sm gap-1 border border-blue-300 bg-blue-50 hover:bg-blue-100 text-blue-600" title="Прикрепить файл (фото, документ, аудио)">
-            <input type="file" name="file" id="chat-file-input" class="hidden">
-            {% icon "paperclip" size=16 %} <span class="text-xs font-normal">Файл</span>
-          </label>
-          <button type="button" id="btn-record" class="btn btn-sm gap-1 border border-rose-300 bg-rose-50 hover:bg-rose-100 text-rose-600" title="Записать голосовое сообщение">{% icon "mic" size=16 %} <span class="text-xs font-normal">Аудио</span></button>
-          <button type="button" id="btn-stop" class="btn btn-sm gap-1 border border-orange-300 bg-orange-50 hover:bg-orange-100 text-orange-600 hidden" title="Остановить запись">{% icon "x" size=16 %} <span class="text-xs font-normal">Стоп</span></button>
-          <button type="button" id="btn-cancel" class="btn btn-ghost btn-xs hidden" title="Отменить">Отмена</button>
-          <button type="button" id="btn-emoji-toggle" class="btn btn-sm gap-1 border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-600" title="Эмодзи" onclick="toggleEmojiBar()">{% icon "smile" size=16 %} <span class="text-xs font-normal">Эмодзи</span></button>
-        </div>
-
-        <div class="ml-auto flex items-center gap-2">
-          {% if client.telegram_id %}
-          <button
-            type="submit"
-            id="btn-send-telegram"
-            class="btn btn-primary btn-sm"
-            hx-post="{% url 'telegram_send_message' client.id %}"
-            hx-encoding="multipart/form-data"
-            hx-swap="none"
-            disabled
+      {# Левый ряд действий — прижат влево, уменьшен на 20% (zoom:0.8) #}
+      <div class="flex items-center gap-2" style="zoom:0.8;">
+        <label class="btn btn-sm gap-1 border border-blue-300 bg-blue-50 hover:bg-blue-100 text-blue-600" title="Прикрепить файл (фото, документ, аудио)">
+          <input type="file" name="file" id="chat-file-input" class="hidden">
+          {% icon "paperclip" size=16 %} <span class="text-xs font-normal">Файл</span>
+        </label>
+        <button type="button" id="btn-record" class="btn btn-sm gap-1 border border-rose-300 bg-rose-50 hover:bg-rose-100 text-rose-600" title="Записать голосовое сообщение">{% icon "mic" size=16 %} <span class="text-xs font-normal">Аудио</span></button>
+        <button type="button" id="btn-stop" class="btn btn-sm gap-1 border border-orange-300 bg-orange-50 hover:bg-orange-100 text-orange-600 hidden" title="Остановить запись">{% icon "x" size=16 %} <span class="text-xs font-normal">Стоп</span></button>
+        <button type="button" id="btn-cancel" class="btn btn-ghost btn-xs hidden" title="Отменить">Отмена</button>
+        <button type="button" id="btn-emoji-toggle" class="btn btn-sm gap-1 border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-600" title="Эмодзи" onclick="toggleEmojiBar()">{% icon "smile" size=16 %} <span class="text-xs font-normal">Эмодзи</span></button>
+        {% if client.telegram_id or client.max_chat_id or client.whatsapp_phone or client.phone %}
+        <button
+          type="button"
+          id="btn-wa-template"
+          class="btn btn-sm gap-1 bg-success/10 hover:bg-success/20 text-success border-success"
+          hx-get="{% url 'whatsapp_template_picker' client.id %}?channel={{ default_channel }}"
+          hx-target="body" hx-swap="beforeend"
+          title="Отправить шаблон (Telegram / MAX / WhatsApp)"
+        >
+          📋 <span class="text-xs font-normal">Шаблон</span>
+        </button>
+        {% endif %}
+        <span id="close-dialog-slot">
+          <button type="button"
+            class="btn btn-sm border-success bg-success/10 hover:bg-success/20 text-success"
+            hx-post="{% url 'close_dialog' client.id %}"
+            hx-target="#messenger-status-badge"
+            hx-swap="innerHTML"
+            title="Переключить статус диалога"
           >
-            Telegram
+            {% icon "check" size=18 %}
           </button>
-          {% endif %}
-          {% if client.max_chat_id %}
-          <button
-            type="submit"
-            id="btn-send-max"
-            class="btn btn-sm btn-max-send"
-            hx-post="{% url 'max_send_message' client.id %}"
-            hx-encoding="multipart/form-data"
-            hx-swap="none"
-            disabled
-          >
-            MAX
-          </button>
-          {% endif %}
-          {% if client.whatsapp_phone or client.phone %}
-          <button
-            type="submit"
-            id="btn-send-whatsapp"
-            class="btn btn-sm bg-success/20 hover:bg-success/40 text-success border-success/40"
-            hx-post="{% url 'whatsapp_send_message' client.id %}"
-            hx-encoding="multipart/form-data"
-            hx-swap="none"
-            disabled
-            title="Отправить через WhatsApp (1msg.io)"
-          >
-            WhatsApp
-          </button>
-          {% endif %}
-          <span id="close-dialog-slot">
-            <button type="button"
-              class="btn btn-sm border-success bg-success/10 hover:bg-success/20 text-success"
-              hx-post="{% url 'close_dialog' client.id %}"
-              hx-target="#messenger-status-badge"
-              hx-swap="innerHTML"
-              title="Переключить статус диалога"
-            >
-              {% icon "check" size=18 %}
-            </button>
-          </span>
-        </div>
+        </span>
       </div>
 
       <div id="telegram-file-preview" class="text-xs text-gray-500"></div>
@@ -293,6 +312,34 @@
 
     if (textarea) textarea.addEventListener("input", updateSendButtons); // ← ДОБАВЛЕНО
     updateSendButtons(); // ← начальное состояние (disabled)
+
+    // ── Отправка по Enter в канал по умолчанию ─────────────────────────────
+    // Enter — отправить; Shift+Enter / Ctrl+Enter — перенос строки.
+    function sendDefaultChannel() {
+      var ch = sendForm ? sendForm.getAttribute("data-default-channel") : "";
+      var map = {telegram: "btn-send-telegram", max: "btn-send-max", whatsapp: "btn-send-whatsapp"};
+      var btn = ch ? document.getElementById(map[ch]) : null;
+      // фолбэк — первая доступная кнопка отправки
+      if (!btn) btn = document.querySelector("#btn-send-telegram, #btn-send-max, #btn-send-whatsapp");
+      if (btn && !btn.disabled) btn.click();
+    }
+    if (textarea) {
+      textarea.addEventListener("keydown", function (e) {
+        if (e.key !== "Enter" || e.isComposing) return;   // не мешаем IME-набору
+        if (e.shiftKey) return;                            // Shift+Enter — перенос (нативно)
+        if (e.ctrlKey || e.metaKey) {                      // Ctrl+Enter — перенос вручную
+          e.preventDefault();
+          var s = this.selectionStart, en = this.selectionEnd;
+          this.value = this.value.slice(0, s) + "\n" + this.value.slice(en);
+          this.selectionStart = this.selectionEnd = s + 1;
+          updateSendButtons();
+          return;
+        }
+        // Обычный Enter — отправка
+        e.preventDefault();
+        sendDefaultChannel();
+      });
+    }
     // ───────────────────────────────────────────────────────────────────────
 
     function showCancelIfNeeded() {
@@ -322,6 +369,35 @@
     var loading = false;
     var scrollReady = false;
     setTimeout(function () { scrollReady = true; }, 300);
+
+    // Если последняя страница неполная (остаток < per_page) и контента мало,
+    // в контейнере не появляется скролл → событие 'scroll' никогда не сработает
+    // и пользователь не сможет дотянуть предыдущие страницы. Догружаем сразу.
+    async function fillUntilScrollable() {
+      var attempts = 0;
+      while (attempts < 20 && container.scrollHeight <= container.clientHeight + 4) {
+        var prevPage = list.dataset.prevPage;
+        if (!prevPage) break;
+        attempts++;
+        try {
+          var resp = await fetch(
+            "{% url 'telegram_chat_for_client' client.id %}?page=" + prevPage,
+            { headers: { "HX-Request": "true" } }
+          );
+          if (!resp.ok) break;
+          var html = await resp.text();
+          var tmp = document.createElement("div");
+          tmp.innerHTML = html;
+          while (tmp.lastChild) {
+            list.insertBefore(tmp.lastChild, list.firstChild);
+          }
+          var newPrev = parseInt(prevPage) - 1;
+          list.dataset.prevPage = newPrev > 0 ? newPrev.toString() : "";
+          scrollBottom();
+        } catch (e) { break; }
+      }
+    }
+    setTimeout(fillUntilScrollable, 350);
 
     container.addEventListener(
       "scroll",
@@ -492,6 +568,22 @@
 
     window.crmIsNearBottom = isNearBottom;
 
+    // Подсказка «отправить шаблон», когда исходящее WA отбито закрытым окном 24ч.
+    window.suggestWaTemplate = function(msgEl) {
+      if (!msgEl || msgEl.querySelector(".wa-tpl-suggest")) return;
+      var url = "/clients/{{ client.id }}/whatsapp/template/?channel=whatsapp";
+      var btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "wa-tpl-suggest btn btn-xs bg-success/10 text-success border-success mt-1";
+      btn.textContent = "📋 Окно 24ч закрыто — отправить шаблон";
+      btn.onclick = function() {
+        if (window.htmx) htmx.ajax("GET", url, {target: "body", swap: "beforeend"});
+      };
+      var footer = msgEl.querySelector(".msg-status");
+      var host = footer ? footer.parentElement : msgEl;
+      host.appendChild(btn);
+    };
+
     document.body.addEventListener("htmx:wsAfterMessage", function (evt) {
       var raw = evt.detail.message;
 
@@ -504,11 +596,22 @@
         if (!el) return;
         const badge = el.querySelector(".msg-status");
         if (!badge) return;
-        if (data.is_sent) {
-          badge.textContent = "✓";
-          badge.classList.remove("text-gray-400", "animate-pulse");
-          badge.classList.add("text-green-500");
-          badge.title = "Отправлено";
+        badge.classList.remove("text-gray-400", "animate-pulse", "text-green-500");
+        badge.style.fontWeight = "";
+        if (data.is_failed) {
+          badge.textContent = "✗ не доставлено"; badge.style.color = "#dc2626"; badge.style.fontWeight = "700";
+          badge.title = "Не доставлено" + (data.error_text ? ": " + data.error_text : "");
+          // Окно 24ч закрыто (Meta «healthy ecosystem engagement») → предложить шаблон
+          var errLow = (data.error_text || "").toLowerCase();
+          if (errLow.indexOf("ecosystem") !== -1 || errLow.indexOf("re-engagement") !== -1) {
+            window.suggestWaTemplate && window.suggestWaTemplate(el);
+          }
+        } else if (data.is_read) {
+          badge.textContent = "✓✓"; badge.style.color = "#2563eb"; badge.style.fontWeight = "700"; badge.title = "Прочитано";
+        } else if (data.is_delivered) {
+          badge.textContent = "✓✓"; badge.style.color = "#9ca3af"; badge.title = "Доставлено";
+        } else if (data.is_sent) {
+          badge.textContent = "✓"; badge.style.color = "#9ca3af"; badge.title = "Отправлено";
         }
         return;
       }
@@ -532,12 +635,36 @@
         // Звук
         var sound = document.getElementById("incoming-sound");
         if (sound) { sound.currentTime = 0; sound.play().catch(function(){}); }
+        // Обновляем канал по Enter = канал только что пришедшего сообщения
+        var inCh = null;
+        if (raw.indexOf('message-badge-telegram-in') !== -1) inCh = 'telegram';
+        else if (raw.indexOf('message-badge-max-in') !== -1) inCh = 'max';
+        else if (raw.indexOf('message-badge-whatsapp-in') !== -1) inCh = 'whatsapp';
+        if (inCh) setEnterChannel(inCh);
         // Скролл вниз (только если уже внизу или близко)
         if (isNearBottom(container)) {
           setTimeout(scrollBottom, 50);
         }
       }
     });
+
+    // Обновить бэйдж на бордюре поля и data-канал «отправка по Enter»
+    function setEnterChannel(ch) {
+      if (!sendForm) return;
+      sendForm.setAttribute("data-default-channel", ch);
+      var nameEl = document.getElementById("enter-channel-name");
+      if (!nameEl) return;
+      // [текст, фон] — непрозрачный цвет канала, белый текст
+      var meta = {
+        telegram: ["Telegram", "#0078d4"],
+        max:      ["MAX", "#8764b8"],
+        whatsapp: ["WhatsApp", "#22c55e"],
+      }[ch];
+      if (!meta) return;
+      nameEl.textContent = meta[0];
+      nameEl.style.background = meta[1];
+      nameEl.style.color = "#fff";
+    }
     
     // ── Reaction picker ────────────────────────────────────────────────────
     window.toggleReactionPicker = function(btn) {

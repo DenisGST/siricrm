@@ -1,0 +1,27 @@
+<div class="font-semibold text-sm mb-1">
+  Кредиторы (из анкеты): {{ creditors|length }}
+  {% if missing_count %}<span class="text-error">· без реквизитов: {{ missing_count }}</span>{% endif %}
+</div>
+{% if creditors %}
+<div class="overflow-x-auto max-h-44 overflow-y-auto border border-base-300 rounded">
+  <table class="table table-xs">
+    <thead><tr><th>Кредитор</th><th>Сумма</th><th>Реквизиты</th></tr></thead>
+    <tbody>
+      {% for c in creditors %}
+      <tr class="{% if c.kind in 'bank,mfo' and not c.has_requisites %}bg-error/10{% endif %}">
+        <td class="truncate max-w-xs">{{ c.name }}</td>
+        <td class="whitespace-nowrap">{{ c.amount|default:"—" }}</td>
+        <td>{% if c.has_requisites %}<span class="text-success">✓ ОГРН/адрес</span>
+            {% elif c.kind in 'bank,mfo' %}<span class="text-error">нет — добавьте в справочник ЮЛ</span>
+            {% else %}—{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% if missing_count %}
+<div class="text-xs text-warning mt-1">У части кредиторов нет реквизитов — заявление сформируется, но адреса/ОГРН будут пустыми. Добавьте их в справочник «Юр.лица».</div>
+{% endif %}
+{% else %}
+<div class="alert alert-warning text-sm">В выбранной анкете нет долгов. Перечень кредиторов будет пустым.</div>
+{% endif %}

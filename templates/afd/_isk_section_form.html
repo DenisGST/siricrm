@@ -1,0 +1,55 @@
+<dialog id="afd-isk-section-modal" class="modal modal-open">
+  <div class="modal-box max-w-3xl">
+    <h3 class="font-bold text-lg mb-3">
+      {% if obj %}Редактировать раздел{% else %}Новый раздел заявления{% endif %}
+    </h3>
+    <form hx-post="{% if obj %}{% url 'afd:isk_section_edit' obj.id %}{% else %}{% url 'afd:isk_section_create' %}{% endif %}"
+          hx-target="#afd-isk-section-modal" hx-swap="outerHTML"
+          hx-on::after-request="if(event.detail.successful && event.detail.xhr.status===204) this.closest('dialog').remove()">
+      {% if form.non_field_errors %}<div class="alert alert-error text-sm mb-2">{{ form.non_field_errors }}</div>{% endif %}
+
+      <div class="grid grid-cols-2 gap-3">
+        <div class="col-span-2">
+          <label class="label py-1"><span class="label-text">Заголовок раздела (необязательно)</span></label>
+          {{ form.title }}
+        </div>
+        <div>
+          <label class="label py-1"><span class="label-text">Тип блока</span></label>
+          {{ form.block_type }}
+        </div>
+        <div>
+          <label class="label py-1"><span class="label-text">Выравнивание</span></label>
+          {{ form.align }}
+        </div>
+        <div>
+          <label class="label py-1"><span class="label-text">Условие включения (ключ флага)</span></label>
+          {{ form.include_condition }}
+          <div class="text-[11px] text-base-content/50">has_property · is_married · has_accounts · has_sold_assets · has_children · has_passport</div>
+        </div>
+        <div class="flex items-end gap-4">
+          <label class="label cursor-pointer gap-2">{{ form.bold }} <span class="label-text">Жирный</span></label>
+          <label class="label cursor-pointer gap-2">{{ form.is_optional }} <span class="label-text">Опциональный</span></label>
+          <label class="label cursor-pointer gap-2">{{ form.is_active }} <span class="label-text">Активен</span></label>
+        </div>
+      </div>
+
+      <label class="label py-1 mt-2"><span class="label-text">Текст раздела (плейсхолдеры {…})</span></label>
+      {{ form.body }}
+      {% if form.body.errors %}<div class="text-error text-xs">{{ form.body.errors }}</div>{% endif %}
+      <div class="text-[11px] text-base-content/50 mt-1">
+        Плейсхолдеры: {debtor_full_prev} {inn} {snils} {birth_date} {birth_place} {reg_address}
+        {court_name} {court_address} {creditors_block} {ufns_name} {debts_list} {sum_total}
+        {sum_overdue} {overdue_pct} {income_text} {family_text} {property_text} {deals_text}
+        {accounts_block} {petition_sro} {appendix_list} {year} {debtor_short}
+      </div>
+
+      <div class="modal-action">
+        <button type="submit" class="btn btn-primary btn-sm">Сохранить</button>
+        <button type="button" class="btn btn-sm" onclick="this.closest('dialog').remove()">Отмена</button>
+      </div>
+    </form>
+  </div>
+  <form method="dialog" class="modal-backdrop">
+    <button onclick="this.closest('dialog').remove()">close</button>
+  </form>
+</dialog>
