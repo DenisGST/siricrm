@@ -45,6 +45,38 @@
       </div>
     </div>
 
+    {# Найденные кандидаты — для SEARCHING с непустым search_hits.        #}
+    {# Сразу видны атрибуты + ссылка на kad → можно проверить «то ли дело». #}
+    {% if case.status == 'searching' and case.search_hits %}
+    <div class="bg-warning/5 border border-warning/30 rounded-lg p-2.5 -mx-1">
+      <div class="text-xs opacity-60 mb-1.5">
+        🎯 Кандидаты ({{ case.search_hits|length }}) — проверь по ссылке и подтверди в «Подробно»
+      </div>
+      <ul class="text-sm space-y-1.5">
+        {% for hit in case.search_hits %}
+        <li class="grid grid-cols-[auto_1fr_auto] items-center gap-x-3 gap-y-0.5">
+          <span class="font-mono font-semibold">{{ hit.case_number }}</span>
+          <span class="text-xs opacity-70 truncate">{{ hit.court_name }}</span>
+          <a href="{{ hit.kad_url }}" target="_blank" rel="noopener noreferrer"
+             class="link link-primary text-xs whitespace-nowrap"
+             title="Открыть карточку дела на kad.arbitr.ru в новой вкладке">
+            kad ↗
+          </a>
+          {% if hit.filed_at %}
+            <span class="col-start-1 text-xs opacity-50">подано {{ hit.filed_at }}</span>
+          {% endif %}
+          {% if hit.parties %}
+            <span class="col-start-2 col-span-2 text-xs opacity-60 truncate"
+                  title="{{ hit.parties|join:', ' }}">
+              стороны: {{ hit.parties|join:", "|truncatechars:100 }}
+            </span>
+          {% endif %}
+        </li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+
     {# Сетка показателей #}
     <div class="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
       <div>
