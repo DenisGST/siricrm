@@ -802,6 +802,23 @@ class Message(TimeStampedModel):
         help_text='Реакции на сообщение, например: {"👍": 3, "❤️": 1}',
     )
 
+    # WhatsApp WABA-шаблон (отправка вне 24-часового окна через sendTemplate).
+    # Для обычных free-form сообщений оба поля пустые.
+    message_template = models.ForeignKey(
+        "MessageTemplate",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="messages",
+        verbose_name="Шаблон",
+    )
+    template_params = models.JSONField(
+        default=list,
+        blank=True,
+        verbose_name="Параметры шаблона",
+        help_text="Значения {{1}}, {{2}}… по порядку, переданные в sendTemplate.",
+    )
+
     def __str__(self):
         return f"Message from {self.employee} to {self.client} at {self.created_at}"
 
@@ -1423,6 +1440,11 @@ class MessageTemplate(models.Model):
     is_active = models.BooleanField('Активен', default=True)
 
     # WhatsApp Business-specific
+    whatsapp_template_name = models.CharField(
+        'Имя шаблона в Meta', max_length=200, blank=True, default='',
+        help_text='Латиница + подчёркивания (например, first_contact_intro). '
+                  'Используется в sendTemplate. Если пусто — генерируется из названия.',
+    )
     whatsapp_meta_id = models.CharField(
         'Meta template ID', max_length=200, blank=True, default='',
     )

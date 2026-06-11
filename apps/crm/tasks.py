@@ -135,6 +135,7 @@ def send_telegram_message_task(message_id):
             'telegram_id': message.client.telegram_id,
             'text': message.content,
             'message_type': message.message_type,
+            'username': message.client.username or None,
         }
         
         # Если есть файл, добавляем его

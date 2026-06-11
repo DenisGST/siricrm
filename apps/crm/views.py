@@ -248,6 +248,104 @@ def whatsapp_send_message(request, client_id):
     return resp
 
 
+def _approved_wa_templates():
+    """Активные WA-шаблоны, одобренные Meta."""
+    from apps.crm.models import MessageTemplate
+    qs = MessageTemplate.objects.filter(
+        is_active=True, whatsapp_meta_status="approved",
+    ).order_by("name")
+    return [t for t in qs if "whatsapp" in (t.channels or [])]
+
+
+def _render_wa_template_body(body: str, params: list) -> str:
+    """Подставить значения в {{1}}, {{2}}… по порядку (для показа в чате)."""
+    import re
+
+    def repl(m):
+        idx = int(m.group(1)) - 1
+        return params[idx] if 0 <= idx < len(params) else m.group(0)
+
+    return re.sub(r"{{\s*(\d+)\s*}}", repl, body or "")
+
+
+@login_required
+def whatsapp_template_picker(request, client_id):
+    """Модалка выбора WhatsApp-шаблона для отправки вне 24-часового окна."""
+    client = get_object_or_404(Client, pk=client_id)
+    templates = _approved_wa_templates()
+    # Подготовим для каждого список переменных {{N}} + автоподстановку имени.
+    import re
+    items = []
+    for t in templates:
+        nums = sorted({int(n) for n in re.findall(r"{{\s*(\d+)\s*}}", t.body or "")})
+        schema = t.whatsapp_params_schema or []
+        params = []
+        for i, n in enumerate(nums):
+            hint = ""
+            if i < len(schema) and isinstance(schema[i], dict):
+                hint = schema[i].get("example", "")
+            # авто-подстановка имени клиента в первую переменную
+            default = client.first_name if (i == 0 and client.first_name) else ""
+            params.append({"n": n, "hint": hint, "default": default})
+        items.append({"tpl": t, "params": params})
+    return render(request, "crm/partials/whatsapp_template_picker.html", {
+        "client": client, "items": items,
+    })
+
+
+@login_required
+@require_POST
+def whatsapp_send_template(request, client_id):
+    """Отправить одобренный WA-шаблон (sendTemplate) — работает вне окна 24ч."""
+    from apps.crm.models import MessageTemplate
+    from apps.whatsapp.tasks import send_whatsapp_template_task
+
+    client = get_object_or_404(Client, pk=client_id)
+    tpl = get_object_or_404(MessageTemplate, pk=request.POST.get("template_id"))
+    if tpl.whatsapp_meta_status != "approved":
+        return HttpResponseBadRequest("Шаблон не одобрен Meta")
+
+    params = [p.strip() for p in request.POST.getlist("param")]
+    rendered = _render_wa_template_body(tpl.body, params)
+
+    try:
+        employee = Employee.objects.get(user=request.user)
+    except Employee.DoesNotExist:
+        employee = None
+
+    client.last_message_at = timezone.now()
+    client.save(update_fields=["last_message_at"])
+
+    msg = Message.objects.create(
+        client=client,
+        employee=employee,
+        content=rendered,
+        direction="outgoing",
+        channel="whatsapp",
+        message_type="text",
+        telegram_date=timezone.now(),
+        is_sent=False,
+        message_template=tpl,
+        template_params=params,
+    )
+    send_whatsapp_template_task.delay(str(msg.id))
+
+    if employee:
+        ClientEmployee.objects.update_or_create(
+            client=client, employee=employee,
+            defaults={"messenger_status": "waiting", "status_changed_at": timezone.now()},
+        )
+        from apps.realtime.utils import push_messenger_status_update
+        push_messenger_status_update(client)
+
+    html = render_to_string(
+        "crm/partials/telegram_message.html", {"msg": msg}, request=request,
+    )
+    resp = HttpResponse(html)
+    resp["HX-Trigger"] = "messengerStatusChanged"
+    return resp
+
+
 @login_required
 def telegram_chat_for_client(request, client_id):
     client = get_object_or_404(Client, pk=client_id)

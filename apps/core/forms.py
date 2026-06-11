@@ -282,7 +282,7 @@ class MessageTemplateForm(forms.ModelForm):
         model = MessageTemplate
         fields = [
             "name", "body", "channels", "is_active",
-            "whatsapp_category", "whatsapp_language",
+            "whatsapp_template_name", "whatsapp_category", "whatsapp_language",
             "whatsapp_meta_id", "whatsapp_meta_status", "whatsapp_meta_rejection",
         ]
         widgets = {

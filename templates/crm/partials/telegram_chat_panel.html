@@ -232,6 +232,16 @@
           >
             WhatsApp
           </button>
+          <button
+            type="button"
+            id="btn-wa-template"
+            class="btn btn-sm bg-success/10 hover:bg-success/20 text-success border-success"
+            hx-get="{% url 'whatsapp_template_picker' client.id %}"
+            hx-target="body" hx-swap="beforeend"
+            title="Отправить одобренный WhatsApp-шаблон (вне 24-часового окна)"
+          >
+            📋 Шаблон
+          </button>
           {% endif %}
           <span id="close-dialog-slot">
             <button type="button"
@@ -519,6 +529,22 @@
 
     window.crmIsNearBottom = isNearBottom;
 
+    // Подсказка «отправить шаблон», когда исходящее WA отбито закрытым окном 24ч.
+    window.suggestWaTemplate = function(msgEl) {
+      if (!msgEl || msgEl.querySelector(".wa-tpl-suggest")) return;
+      var url = "/clients/{{ client.id }}/whatsapp/template/";
+      var btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "wa-tpl-suggest btn btn-xs bg-success/10 text-success border-success mt-1";
+      btn.textContent = "📋 Окно 24ч закрыто — отправить шаблон";
+      btn.onclick = function() {
+        if (window.htmx) htmx.ajax("GET", url, {target: "body", swap: "beforeend"});
+      };
+      var footer = msgEl.querySelector(".msg-status");
+      var host = footer ? footer.parentElement : msgEl;
+      host.appendChild(btn);
+    };
+
     document.body.addEventListener("htmx:wsAfterMessage", function (evt) {
       var raw = evt.detail.message;
 
@@ -536,6 +562,11 @@
         if (data.is_failed) {
           badge.textContent = "✗ не доставлено"; badge.style.color = "#dc2626"; badge.style.fontWeight = "700";
           badge.title = "Не доставлено" + (data.error_text ? ": " + data.error_text : "");
+          // Окно 24ч закрыто (Meta «healthy ecosystem engagement») → предложить шаблон
+          var errLow = (data.error_text || "").toLowerCase();
+          if (errLow.indexOf("ecosystem") !== -1 || errLow.indexOf("re-engagement") !== -1) {
+            window.suggestWaTemplate && window.suggestWaTemplate(el);
+          }
         } else if (data.is_read) {
           badge.textContent = "✓✓"; badge.style.color = "#2563eb"; badge.style.fontWeight = "700"; badge.title = "Прочитано";
         } else if (data.is_delivered) {

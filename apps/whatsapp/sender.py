@@ -118,6 +118,98 @@ def send_whatsapp_message(
     return ok, (data.get("id") if ok else None), err
 
 
+# ─── WABA-шаблоны (sendTemplate / addTemplate / list) ────────────────────────
+
+def send_whatsapp_template(
+    phone: str,
+    template_name: str,
+    body_params: Optional[list] = None,
+    language_code: str = "ru",
+    namespace: str = "",
+) -> Tuple[bool, Optional[str], Optional[str]]:
+    """Отправить approved WABA-шаблон через 1msg ``sendTemplate``.
+
+    Работает даже вне 24-часового окна (в отличие от free-form sendMessage).
+
+    Параметры:
+        phone — E.164 без «+».
+        template_name — имя шаблона в Meta (``MessageTemplate.whatsapp_meta_id``
+            хранит id, но 1msg sendTemplate принимает именно ``name``).
+        body_params — список строк для подстановки в {{1}}, {{2}}… по порядку.
+        language_code — код языка шаблона (``ru`` / ``en`` …).
+        namespace — namespace WABA (по умолчанию из config).
+
+    Возвращает ``(ok, wamid, err)``.
+    """
+    if not phone:
+        return False, None, "empty phone"
+    if not wa_conf.is_phone_allowed(phone):
+        logger.info("WA template: TEST_MODE skip phone=%s", phone)
+        return False, None, "test_mode_skip"
+
+    params = []
+    if body_params:
+        params.append({
+            "type": "body",
+            "parameters": [{"type": "text", "text": str(p)} for p in body_params],
+        })
+
+    payload = {
+        "phone": phone,
+        "namespace": namespace or wa_conf.NAMESPACE,
+        "template": template_name,
+        "language": {"policy": "deterministic", "code": language_code or "ru"},
+        "params": params,
+    }
+    ok, data, err = _post("sendTemplate", payload, timeout=45)
+    return ok, (data.get("id") if ok else None), err
+
+
+def create_whatsapp_template(
+    name: str,
+    body_text: str,
+    category: str,
+    language_code: str = "ru",
+    body_example: Optional[list] = None,
+    allow_category_change: bool = True,
+) -> Tuple[bool, dict, Optional[str]]:
+    """Создать (отправить на модерацию Meta) WABA-шаблон через ``addTemplate``.
+
+    ``body_text`` — текст с плейсхолдерами {{1}}, {{2}}…
+    ``body_example`` — список примеров значений переменных (требование Meta,
+    если в тексте есть {{N}}).
+    ``category`` — UTILITY / MARKETING / AUTHENTICATION.
+
+    Возвращает ``(ok, data, err)`` — в ``data`` обычно ``id`` нового шаблона.
+    """
+    component = {"type": "BODY", "text": body_text}
+    if body_example:
+        component["example"] = {"body_text": [[str(x) for x in body_example]]}
+    payload = {
+        "name": name,
+        "allow_category_change": allow_category_change,
+        "category": category,
+        "language": language_code or "ru",
+        "components": [component],
+    }
+    return _post("addTemplate", payload, timeout=45)
+
+
+def list_whatsapp_templates() -> Tuple[bool, list, Optional[str]]:
+    """Список всех WABA-шаблонов инстанса (для синка статусов модерации)."""
+    if not wa_conf.is_configured():
+        return False, [], "1msg не настроен"
+    url = f"{wa_conf.API_BASE}/{wa_conf.INSTANCE_ID}/templates?token={wa_conf.API_TOKEN}"
+    try:
+        r = requests.get(url, timeout=45)
+        r.raise_for_status()
+        data = r.json()
+    except (requests.RequestException, ValueError) as e:
+        logger.warning("WA list_templates failed: %s", e)
+        return False, [], str(e)
+    return True, (data.get("templates") or []), None
+
+
 def download_media(url: str, timeout: int = 60) -> Tuple[Optional[bytes], Optional[str], Optional[str]]:
     """Скачать входящий медиафайл по URL из webhook (1msg отдаёт прямую
     ссылку в поле ``body``). Возвращает ``(bytes, content_type, err)``."""

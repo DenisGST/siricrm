@@ -73,6 +73,8 @@ urlpatterns = [
     path('references/message-template/add/', views.reference_message_template_edit, name='reference_message_template_add'),
     path('references/message-template/<uuid:pk>/', views.reference_message_template_edit, name='reference_message_template_edit'),
     path('references/message-template/<uuid:pk>/delete/', views.reference_message_template_delete, name='reference_message_template_delete'),
+    path('references/message-template/<uuid:pk>/submit-wa/', views.reference_message_template_submit_wa, name='reference_message_template_submit_wa'),
+    path('references/message-templates/sync-wa/', views.reference_message_templates_sync_wa, name='reference_message_templates_sync_wa'),
 
     # Типы событий и действий (лог клиента)
     path('references/event-types/', views.references_event_types, name='references_event_types'),

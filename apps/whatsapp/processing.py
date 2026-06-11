@@ -56,6 +56,10 @@ def _get_or_create_wa_client(phone: str, profile_name: str = "") -> tuple[Client
     if client is not None:
         client.last_message_at = timezone.now()
         client.save(update_fields=["last_message_at"])
+        # Закрепляем номер отправителя как whatsapp — чтобы исходящие летели
+        # именно на тот номер, с которого клиент пишет (а не на абстрактный
+        # primary без WhatsApp). Идемпотентно, чужой номер не перехватит.
+        add_client_phone(client, phone, "whatsapp")
         return client, False
 
     first, last = "", ""

@@ -91,6 +91,37 @@ PUBLIC_BASE_URL=https://siricrm.ru       # prod; dev — https://crmsiri.ru
 
 В `templates/crm/partials/telegram_chat_panel.html` кнопка `#btn-send-whatsapp` рядом с Telegram/MAX. JS-обработчик `htmx:afterRequest` должен проверять `btn.id === "btn-send-whatsapp"` наравне с TG/MAX — иначе после отправки **форма не очищается** и ответный partial не вставляется в ленту (пользователь видит «отправлено», но текст остаётся в textarea).
 
+## WABA-шаблоны (sendTemplate) — отправка вне 24-часового окна
+
+Вне 24ч-окна обслуживания (клиент не писал >24ч) Meta блокирует free-form: ack
+приходит `status=failed`, `error="This message was not delivered to maintain
+healthy ecosystem engagement."`. Отправлять можно **только approved-шаблоны**.
+
+- **Namespace** WABA общий для инстанса: `config.NAMESPACE`
+  (`991ceaad_9bf3_4128_b815_54d706ed24a4`, env `WHATSAPP_NAMESPACE`).
+- **sender.py:** `send_whatsapp_template(phone, template_name, body_params, language_code)`
+  (1msg `POST /sendTemplate`: `{phone, namespace, template:<name>, language:{policy:deterministic,code}, params:[{type:body,parameters:[{type:text,text}]}]}`);
+  `create_whatsapp_template(name, body_text, category, language, body_example)` (`POST /addTemplate` — на модерацию Meta); `list_whatsapp_templates()` (синк статусов).
+  🛑 `sendTemplate` принимает **имя** шаблона (`template`), не Meta-id.
+- **Модель `MessageTemplate`** (apps/crm): `whatsapp_template_name` (латинское имя в Meta),
+  `whatsapp_meta_status` (draft/pending/approved/rejected), `whatsapp_category`,
+  `whatsapp_params_schema`. `Message.message_template` + `Message.template_params` —
+  привязка отправленного шаблона. Таск `send_whatsapp_template_task` (шлёт только при `status=approved`).
+- **UI справочников** (`/`→Справочники→Шаблоны): кнопка «↗ В Meta» (`reference_message_template_submit_wa`) → addTemplate, «⟳ Синк WA-статусов» (`reference_message_templates_sync_wa`) → подтянуть результат модерации.
+- **UI чата:** кнопка «📋 Шаблон» рядом с WhatsApp → `whatsapp_template_picker` (модалка с approved-шаблонами + поля переменных, имя клиента в {{1}} автоподставляется) → `whatsapp_send_template`. Плюс **авто-подсказка**: при ack `failed` с «ecosystem engagement» под пузырём появляется кнопка «Окно 24ч закрыто — отправить шаблон» (JS `suggestWaTemplate`).
+- Базовые 4 шаблона: `first_contact_intro`, `reactivation_no_reply` (MARKETING), `payment_reminder`, `document_request` (UTILITY).
+
+## Выбор номера для исходящего + резолв (баг-фиксы 11.06.2026)
+
+- **WA-номер исходящего** (`tasks._client_whatsapp_phone`) теперь берётся в порядке:
+  (1) номер последнего входящего WA (`_last_inbound_wa_phone` — `chatId/author` из `raw_payload`),
+  (2) ClientPhone purpose `whatsapp`, (3) `primary`, (4) legacy. Причина: у клиента
+  бывает несколько номеров (отдельный для TG), а WhatsApp живёт только на том, с
+  которого идёт диалог — иначе Meta «Message undeliverable» (кейс Кирилла Мишичева:
+  писал с 79648851455, отвечали на primary 79055043411 без WhatsApp).
+- **Входящий WA тегает номер отправителя как `whatsapp`** и для существующего клиента
+  (`processing._get_or_create_wa_client`) — самоисцеление для будущих диалогов.
+
 ## Сервисные curl-команды
 
 ```bash
