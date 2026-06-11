@@ -152,9 +152,26 @@ def _last_log_state(case: ArbitrCase) -> str:
     return last.state if last else ""
 
 
+def _case_pane_context(case):
+    case.next_check_at = _estimate_next_check_at(case)
+    case.last_log_state = _last_log_state(case)
+    events = (
+        case.events
+        .prefetch_related("attachments")
+        .order_by("-event_date", "-parsed_at")[:200]
+    )
+    logs = list(case.check_logs.all()[:50])
+    return {
+        "case": case,
+        "events": events,
+        "logs": logs,
+        "poll_active": _log_is_fresh(case),
+    }
+
+
 @login_required
 def dashboard(request):
-    """Сервисная страница: список дел в двух секциях — поиск и мониторинг."""
+    """Split-layout: слева список дел, справа панель выбранного дела."""
     if not is_admin(request.user):
         return HttpResponse("forbidden", status=403)
     searching = list(_annotate_cases(
@@ -169,43 +186,56 @@ def dashboard(request):
         )
     ).order_by("-updated_at")[:30])
 
-    # Для каждого case считаем next_check_at и last_log_state (через свойства
-    # модели не пробросить — annotation сложен; делаем в Python, так как
-    # данных немного).
     for case in searching + monitoring + paused:
         case.next_check_at = _estimate_next_check_at(case)
         case.last_log_state = _last_log_state(case)
+
+    # Если в URL ?case=<uuid> — сразу выбран и развёрнут.
+    selected_pane = None
+    selected_id = request.GET.get("case", "").strip()
+    if selected_id:
+        selected = next(
+            (c for c in searching + monitoring + paused if str(c.id) == selected_id),
+            None,
+        )
+        if selected is None:
+            try:
+                selected = _annotate_cases(ArbitrCase.objects.all()).get(pk=selected_id)
+                selected.next_check_at = _estimate_next_check_at(selected)
+                selected.last_log_state = _last_log_state(selected)
+            except (ArbitrCase.DoesNotExist, ValueError):
+                selected = None
+        if selected is not None:
+            selected_pane = _case_pane_context(selected)
 
     return render(request, "arbitr/dashboard.html", {
         "searching": searching,
         "monitoring": monitoring,
         "paused": paused,
+        "selected_pane": selected_pane,
+        "selected_case_id": selected_id if selected_pane else "",
     })
 
 
 @login_required
 def case_detail(request, case_id):
-    """Деталка дела: шапка + инстанции + события + лог."""
+    """Деталка дела.
+
+    HTMX (`HX-Request: true`) → партиал `_case_pane.html` для swap'а
+    в правую панель dashboard'а. Full-page (прямой URL) → редирект на
+    `/arbitr/?case=<uuid>` → dashboard сам встроит pane.
+    """
     if not is_admin(request.user):
         return HttpResponse("forbidden", status=403)
     case = get_object_or_404(
         _annotate_cases(ArbitrCase.objects.all()),
         pk=case_id,
     )
-    case.next_check_at = _estimate_next_check_at(case)
-    case.last_log_state = _last_log_state(case)
-    events = (
-        case.events
-        .prefetch_related("attachments")
-        .order_by("-event_date", "-parsed_at")[:200]
+    if not request.headers.get("HX-Request"):
+        return HttpResponseRedirect(f"/arbitr/?case={case.id}")
+    return render(
+        request, "arbitr/partials/_case_pane.html", _case_pane_context(case),
     )
-    logs = list(case.check_logs.all()[:50])
-    return render(request, "arbitr/case_detail.html", {
-        "case": case,
-        "events": events,
-        "logs": logs,
-        "poll_active": _log_is_fresh(case),
-    })
 
 
 @login_required
@@ -305,8 +335,9 @@ def case_confirm_hit(request, case_id, hit_index):
         notes=f"Сотрудник подтвердил дело {case_number} — переводим в MONITORING",
     )
     # После confirm весь блок страницы рендерится по-другому (нет
-    # «кандидатов», есть инстанции/события). Проще всего — full reload.
-    redirect_url = request.path.rsplit("/confirm-hit/", 1)[0] + "/"
+    # «кандидатов», есть инстанции/события). Перезагружаем dashboard с
+    # выбранным делом в URL — sidebar тоже обновится с новым статусом.
+    redirect_url = f"/arbitr/?case={case.id}"
     if request.headers.get("HX-Request"):
         response = HttpResponse(status=204)
         response["HX-Redirect"] = redirect_url

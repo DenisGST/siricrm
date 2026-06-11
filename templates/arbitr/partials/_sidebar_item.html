@@ -1,0 +1,41 @@
+{# Компактная плашка дела для левого sidebar'а — chat-style item.        #}
+{# Клик → HTMX-swap в #case-pane + push URL в браузере.                 #}
+<a href="?case={{ case.id }}"
+   hx-get="{% url 'arbitr:case_detail' case.id %}"
+   hx-target="#case-pane"
+   hx-swap="innerHTML"
+   hx-push-url="?case={{ case.id }}"
+   class="block px-3 py-2 border-l-2 transition-colors
+          {% if case.id|stringformat:'s' == selected_case_id %}
+            border-primary bg-primary/10
+          {% else %}
+            border-transparent hover:bg-base-200
+          {% endif %}">
+  <div class="text-sm font-medium truncate">
+    {% if case.service.client_id %}
+      {{ case.service.client.last_name }} {{ case.service.client.first_name|first }}.{% if case.service.client.patronymic %} {{ case.service.client.patronymic|first }}.{% endif %}
+    {% else %}—{% endif %}
+  </div>
+  <div class="text-xs opacity-70 truncate font-mono">
+    {% if case.case_number %}{{ case.case_number }}
+    {% elif case.status == 'searching' and case.search_hits %}🎯 кандидат(ы): {{ case.search_hits|length }}
+    {% elif case.status == 'searching' %}🔍 ищем…
+    {% else %}—{% endif %}
+  </div>
+  <div class="flex items-center justify-between mt-0.5">
+    <div class="text-xs opacity-50 truncate">
+      {% if case.last_check_at %}{{ case.last_check_at|date:"d.m H:i" }}{% else %}—{% endif %}
+    </div>
+    <div class="shrink-0">
+      {% if case.last_log_state == 'ok' %}
+        <span class="badge badge-success badge-xs">✓</span>
+      {% elif case.last_log_state == 'nothing' %}
+        <span class="badge badge-ghost badge-xs">—</span>
+      {% elif case.last_log_state == 'captcha' %}
+        <span class="badge badge-warning badge-xs">⚠</span>
+      {% elif case.last_log_state == 'error' %}
+        <span class="badge badge-error badge-xs">✗</span>
+      {% endif %}
+    </div>
+  </div>
+</a>

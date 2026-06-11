@@ -1,68 +1,63 @@
 {% extends "arbitr/_layout.html" %}
+{% load humanize %}
 {% block title %}Арбитраж · мониторинг{% endblock %}
 
 {% block content %}
-<div class="container mx-auto p-4 md:p-6 max-w-6xl space-y-8">
+{# Split-layout (chat-style): слева — список дел по клиентам, справа —    #}
+{# панель выбранного дела. Левый сайдбар: 320px; правая часть растягивается. #}
+<div class="grid grid-cols-[320px_1fr] h-[calc(100vh-4rem)]">
 
-  <div>
-    <h1 class="text-2xl font-bold flex items-center gap-2">⚖ Арбитражные дела</h1>
-    <p class="text-sm opacity-60">
-      Окно автоматической работы парсера — 18:00–08:00 МСК. Ручной запуск через
-      кнопку «Парсить сейчас» работает в любое время.
-    </p>
-  </div>
+  {# ═══════════════ Sidebar — список клиентов/дел ═══════════════ #}
+  <aside class="border-r border-base-300 bg-base-100 overflow-y-auto">
 
-  {# ═══════════════ ЭТАП 1 ═══════════════ #}
-  <section>
-    <div class="flex items-center justify-between mb-2">
-      <h2 class="text-lg font-semibold">🔍 Этап 1 — поиск дела по ФИО клиента</h2>
-      <div class="text-sm opacity-60">{{ searching|length }}</div>
+    {% if searching %}
+    <div class="sticky top-0 z-10 bg-base-200/80 backdrop-blur px-3 py-1.5 text-xs font-semibold opacity-80 border-b border-base-300">
+      🔍 Поиск дела ({{ searching|length }})
     </div>
-    <p class="text-xs opacity-60 mb-3">
-      Услуга «БФЛ» с галкой «иск отправлен в суд» — парсер ищет на kad.arbitr.ru
-      карточку клиента по ФИО + региону (код суда, например А12).
-    </p>
-    {% if not searching %}
-      <div class="text-sm opacity-50">Нет дел в поиске.</div>
+    {% for case in searching %}
+      {% include "arbitr/partials/_sidebar_item.html" with case=case %}
+    {% endfor %}
+    {% endif %}
+
+    {% if monitoring %}
+    <div class="sticky top-0 z-10 bg-base-200/80 backdrop-blur px-3 py-1.5 text-xs font-semibold opacity-80 border-b border-base-300">
+      📋 Мониторинг ({{ monitoring|length }})
+    </div>
+    {% for case in monitoring %}
+      {% include "arbitr/partials/_sidebar_item.html" with case=case %}
+    {% endfor %}
+    {% endif %}
+
+    {% if paused %}
+    <div class="sticky top-0 z-10 bg-base-200/80 backdrop-blur px-3 py-1.5 text-xs font-semibold opacity-60 border-b border-base-300">
+      ⏸ Приостановленные ({{ paused|length }})
+    </div>
+    {% for case in paused %}
+      {% include "arbitr/partials/_sidebar_item.html" with case=case %}
+    {% endfor %}
+    {% endif %}
+
+    {% if not searching and not monitoring and not paused %}
+    <div class="p-6 text-sm opacity-60 text-center">
+      Нет ни одного дела на мониторинге.
+    </div>
+    {% endif %}
+  </aside>
+
+  {# ═══════════════ Main pane — детали выбранного дела ═══════════════ #}
+  <main id="case-pane" class="overflow-y-auto bg-base-200">
+    {% if selected_pane %}
+      {% include "arbitr/partials/_case_pane.html" with case=selected_pane.case events=selected_pane.events logs=selected_pane.logs poll_active=selected_pane.poll_active %}
     {% else %}
-      <div class="grid gap-3">
-        {% for case in searching %}{% include "arbitr/partials/_case_card.html" with case=case %}{% endfor %}
+      <div class="h-full flex flex-col items-center justify-center text-center p-8 gap-2 opacity-60">
+        <div class="text-4xl">⚖</div>
+        <div class="text-lg font-semibold">Выберите дело слева</div>
+        <div class="text-sm">
+          На карточке справа — найденные кандидаты (этап 1), либо хронология дела и документы (этап 2).
+        </div>
       </div>
     {% endif %}
-  </section>
-
-  {# ═══════════════ ЭТАП 2 ═══════════════ #}
-  <section>
-    <div class="flex items-center justify-between mb-2">
-      <h2 class="text-lg font-semibold">📋 Этап 2 — мониторинг карточки дела</h2>
-      <div class="text-sm opacity-60">{{ monitoring|length }}</div>
-    </div>
-    <p class="text-xs opacity-60 mb-3">
-      Дело уже найдено и подтверждено — парсер регулярно открывает карточку и
-      собирает новые события (ходатайства, определения, расписания заседаний) +
-      документы.
-    </p>
-    {% if not monitoring %}
-      <div class="text-sm opacity-50">Нет дел в мониторинге.</div>
-    {% else %}
-      <div class="grid gap-3">
-        {% for case in monitoring %}{% include "arbitr/partials/_case_card.html" with case=case %}{% endfor %}
-      </div>
-    {% endif %}
-  </section>
-
-  {# ═══════════════ Завершённые / приостановленные ═══════════════ #}
-  {% if paused %}
-  <section>
-    <div class="flex items-center justify-between mb-2">
-      <h2 class="text-lg font-semibold opacity-60">⏸ Приостановленные / завершённые</h2>
-      <div class="text-sm opacity-60">{{ paused|length }}</div>
-    </div>
-    <div class="grid gap-3 opacity-80">
-      {% for case in paused %}{% include "arbitr/partials/_case_card.html" with case=case %}{% endfor %}
-    </div>
-  </section>
-  {% endif %}
+  </main>
 
 </div>
 {% endblock %}
