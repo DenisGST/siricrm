@@ -125,12 +125,12 @@ def _persist_case_info(case: ArbitrCase, info: KadCaseInfo) -> dict:
 def kad_monitor_pending():
     """Ищет дело на kad для каждого ArbitrCase в статусе 'searching'.
 
-    Один Playwright/Chromium на всю пачку — экономит cold-start и
-    переиспользует cloudflare-куки.
+    Один Chrome-инстанс на всю пачку — экономит cold-start и
+    переиспользует кадровые cookies. Окно работы НЕ применяем:
+    поиск по ФИО — лёгкая операция (~12с/дело), может работать
+    круглосуточно. Расписание задаётся в django-celery-beat
+    (`arbitr-kad-monitor-pending`).
     """
-    if not _in_work_window():
-        return {"skipped": "outside_work_window"}
-
     qs = ArbitrCase.objects.filter(
         status=ArbitrCase.STATUS_SEARCHING,
     ).select_related("service__client", "started_by__user")
