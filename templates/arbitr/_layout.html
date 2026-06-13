@@ -20,12 +20,34 @@
   </script>
 </head>
 <body class="min-h-screen bg-base-200">
-  <div class="navbar bg-base-100 shadow-sm sticky top-0 z-30">
-    <div class="container mx-auto max-w-6xl">
-      <a href="/dashboard/" class="btn btn-ghost text-lg">← SiriCRM</a>
-      <span class="ml-4 font-semibold">⚖ Арбитраж — мониторинг дел</span>
-      <div class="ml-auto text-sm opacity-60">{{ request.user.username }}</div>
+  <style>
+    /* Search dropdown: спрятан если #search-results пустой. Position'ится  */
+    /* относительно #arbitr-search-wrap (см. inline-style в navbar).        */
+    #search-results:empty { display: none; }
+    #search-results { position: absolute; top: 100%; left: 0; right: 0; z-index: 40; }
+  </style>
+  <div class="navbar bg-base-100 shadow-sm sticky top-0 z-30 gap-3 px-4">
+    {# Лого + надпись (слева, ссылка ведёт на главную SiriCRM). #}
+    <a href="/dashboard/" class="flex items-center gap-2 shrink-0">
+      <img src="{% static 'img/logo.png' %}" alt="SiriCRM" style="height:32px;">
+      <span class="font-semibold whitespace-nowrap">Сириус-CRM Мониторинг Дел</span>
+    </a>
+    {# Поиск (центр, растягивается). #}
+    <div id="arbitr-search-wrap" class="flex-1 max-w-2xl" style="position:relative;">
+      {% if request.user.is_authenticated %}
+      <input type="search" id="arbitr-search" autocomplete="off"
+             class="input input-bordered input-sm w-full"
+             placeholder="Поиск по ФИО, номеру дела или региону (от 2 символов)…"
+             hx-get="{% url 'arbitr:search' %}"
+             hx-trigger="input changed delay:300ms, focus"
+             hx-target="#search-results"
+             hx-swap="innerHTML"
+             name="q">
+      <div id="search-results"></div>
+      {% endif %}
     </div>
+    {# Имя пользователя (справа). #}
+    <div class="ml-auto text-sm opacity-70 shrink-0">{{ request.user.username }}</div>
   </div>
   {% block content %}{% endblock %}
 </body>
