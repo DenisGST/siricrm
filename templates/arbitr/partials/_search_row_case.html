@@ -1,0 +1,38 @@
+{# Строка результата поиска для ArbitrCase. Click-zone слева,           #}
+{# кнопки справа (через event.stopPropagation чтоб не триггерили click).#}
+{% with c=case.service.client %}
+<div class="flex items-center gap-2 px-3 py-2 border-b border-base-200 hover:bg-base-200">
+  {# Click-zone — грузит дело в #case-pane + закрывает dropdown #}
+  <a class="flex-1 min-w-0 cursor-pointer"
+     href="?case={{ case.id }}"
+     hx-get="{% url 'arbitr:case_detail' case.id %}"
+     hx-target="#case-pane"
+     hx-swap="innerHTML"
+     hx-push-url="?case={{ case.id }}"
+     hx-on::after-request="arbitrCloseSearch()">
+    <div class="text-sm font-medium truncate">
+      {{ c.last_name }} {{ c.first_name }}{% if c.patronymic %} {{ c.patronymic }}{% endif %}
+    </div>
+    <div class="text-xs opacity-70 truncate">
+      {% if case.service.region %}📍 {{ case.service.region.name }}{% endif %}
+      {% if case.case_number %} · <span class="font-mono">{{ case.case_number }}</span>{% endif %}
+    </div>
+  </a>
+  {# Кнопка пауза/возобновить #}
+  {% if case.status == 'paused' %}
+    <button class="btn btn-warning btn-xs shrink-0"
+            hx-post="{% url 'arbitr:case_toggle_pause' case.id %}"
+            hx-on:click="event.stopPropagation()"
+            title="Возобновить — дело снова попадёт в автомониторинг">
+      ▶ Возобновить
+    </button>
+  {% elif case.status == 'searching' or case.status == 'monitoring' %}
+    <button class="btn btn-ghost btn-xs shrink-0"
+            hx-post="{% url 'arbitr:case_toggle_pause' case.id %}"
+            hx-on:click="event.stopPropagation()"
+            title="Приостановить — автотаски пропустят дело">
+      ⏸ Пауза
+    </button>
+  {% endif %}
+</div>
+{% endwith %}

@@ -1,0 +1,47 @@
+{# HTMX-партиал для dropdown'а в шапке /arbitr/.                          #}
+{# Возвращается из arbitr:search ?q=<text>. Пустой ответ если q.length<2  #}
+{# (CSS-правило #search-results:empty { display: none; } прячет dropdown).#}
+
+{% if total %}
+<div class="bg-base-100 border border-base-300 shadow-lg rounded-b overflow-y-auto"
+     style="max-height:70vh;">
+
+  {% if searching %}
+  <div class="sticky top-0 z-10 px-3 py-1.5 text-xs font-bold"
+       style="background:#fef3c7; color:#78350f; border-bottom:1px solid #fcd34d;">
+    🔍 В поиске ({{ searching|length }})
+  </div>
+  {% for case in searching %}
+    {% include "arbitr/partials/_search_row_case.html" with case=case %}
+  {% endfor %}
+  {% endif %}
+
+  {% if monitoring %}
+  <div class="sticky top-0 z-10 px-3 py-1.5 text-xs font-bold"
+       style="background:var(--ms-blue-light); color:var(--ms-blue); border-bottom:1px solid #93c5fd;">
+    📋 В мониторинге ({{ monitoring|length }})
+  </div>
+  {% for case in monitoring %}
+    {% include "arbitr/partials/_search_row_case.html" with case=case %}
+  {% endfor %}
+  {% endif %}
+
+  {% if other_cases or services_no_case %}
+  <div class="sticky top-0 z-10 px-3 py-1.5 text-xs font-bold"
+       style="background:#e5e7eb; color:#4b5563; border-bottom:1px solid #d1d5db;">
+    📂 Остальные ({{ other_total }})
+  </div>
+  {% for case in other_cases %}
+    {% include "arbitr/partials/_search_row_case.html" with case=case %}
+  {% endfor %}
+  {% for svc in services_no_case %}
+    {% include "arbitr/partials/_search_row_service.html" with svc=svc %}
+  {% endfor %}
+  {% endif %}
+
+</div>
+{% else %}
+<div class="bg-base-100 border border-base-300 shadow-lg rounded-b p-3 text-sm opacity-60">
+  По запросу «{{ q }}» ничего не найдено.
+</div>
+{% endif %}

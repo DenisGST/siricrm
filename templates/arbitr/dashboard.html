@@ -1,5 +1,5 @@
 {% extends "arbitr/_layout.html" %}
-{% load humanize %}
+{% load static humanize %}
 {% block title %}Арбитраж · мониторинг{% endblock %}
 
 {% block content %}
@@ -9,29 +9,42 @@
 {# pre-compiled tailwind.css (см. CLAUDE.md «гайдлайны кода»).            #}
 
 <style>
-  /* Active-state переключается JS (delegated click handler ниже),       */
-  /* потому что HTMX свапит ТОЛЬКО #case-pane, а sidebar не              */
-  /* перерендеривается — server-side selected_case_id хватает только    */
-  /* только для первого захода.                                          */
-  /* Стиль один в один как .tg-client-item.active в chat-модалке         */
-  /* (см. static/css/style.css строка 739) — голубой фон + 3px полоска   */
-  /* var(--ms-blue). !important чтобы перекрыть tailwind hover.          */
+  /* Active-state — голубой фон + 3px полоска (как .tg-client-item.active). */
   .arbitr-side-item.is-active {
     background-color: var(--ms-blue-light) !important;
     border-left: 3px solid var(--ms-blue) !important;
   }
   /* Аккордеон <details> — chevron в <summary>. */
-  .arbitr-section > summary {
-    list-style: none;
-    cursor: pointer;
-    user-select: none;
-  }
+  .arbitr-section > summary { list-style: none; cursor: pointer; user-select: none; }
   .arbitr-section > summary::-webkit-details-marker { display: none; }
   .arbitr-section > summary .chevron::before { content: "−"; display: inline-block; width: 1em; }
   .arbitr-section:not([open]) > summary .chevron::before { content: "+"; }
+  /* Search dropdown: спрятан если #search-results пустой (нет результатов). */
+  #search-results:empty { display: none; }
+  #search-results { position: absolute; top: 100%; left: 0; right: 0; z-index: 40; }
+  #arbitr-search-wrap { position: relative; }
 </style>
 
-<div style="display:grid; grid-template-columns:320px 1fr; height:calc(100vh - 4rem);">
+{# ═══════════════ Top header — лого + поиск ═══════════════ #}
+<div class="border-b border-base-300 bg-base-100 px-4 py-2 flex items-center gap-4">
+  <a href="{% url 'arbitr:dashboard' %}" class="shrink-0">
+    <img src="{% static 'img/logo.png' %}" alt="SiriCRM" style="height:32px;">
+  </a>
+  <span class="font-semibold text-lg shrink-0 hidden md:inline">⚖ Арбитраж</span>
+  <div id="arbitr-search-wrap" class="flex-1 max-w-2xl">
+    <input type="search" id="arbitr-search" autocomplete="off"
+           class="input input-bordered input-sm w-full"
+           placeholder="Поиск по ФИО, номеру дела или региону (от 2 символов)…"
+           hx-get="{% url 'arbitr:search' %}"
+           hx-trigger="input changed delay:300ms, focus"
+           hx-target="#search-results"
+           hx-swap="innerHTML"
+           name="q">
+    <div id="search-results"></div>
+  </div>
+</div>
+
+<div style="display:grid; grid-template-columns:320px 1fr; height:calc(100vh - 8rem);">
 
   {# ═══════════════ Sidebar — список клиентов/дел ═══════════════ #}
   <aside class="border-r border-base-300 bg-base-100 overflow-y-auto">
@@ -111,6 +124,20 @@
     document.querySelectorAll(".arbitr-side-item.is-active")
       .forEach(function (el) { el.classList.remove("is-active"); });
     item.classList.add("is-active");
+  });
+
+  // Закрытие dropdown'а поиска: после клика по строке (вызывается из
+  // hx-on::after-request) ИЛИ при клике вне #arbitr-search-wrap.
+  function arbitrCloseSearch() {
+    var el = document.getElementById("search-results");
+    if (el) el.innerHTML = "";
+    var inp = document.getElementById("arbitr-search");
+    if (inp) inp.value = "";
+  }
+  document.addEventListener("click", function (e) {
+    var wrap = document.getElementById("arbitr-search-wrap");
+    if (!wrap || wrap.contains(e.target)) return;
+    arbitrCloseSearch();
   });
 </script>
 {% endblock %}
