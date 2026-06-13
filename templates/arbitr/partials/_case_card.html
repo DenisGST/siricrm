@@ -22,6 +22,10 @@
       </div>
 
       <div class="flex items-center gap-2 shrink-0">
+        {# PAUSED — самый приоритетный бейдж: дело сейчас НЕ парсится. #}
+        {% if case.status == 'paused' %}
+          <span class="badge badge-sm" style="background:#9ca3af; color:#fff; border-color:#9ca3af;">⏸ ПАУЗА</span>
+        {% endif %}
         {# Для SEARCHING с найденными кандидатами — приоритетный бейдж #}
         {% if case.status == 'searching' and case.search_hits %}
           <a href="{% url 'arbitr:case_detail' case.id %}"
@@ -108,17 +112,30 @@
         Запустил мониторинг: {{ case.started_by|default:"—" }}
       </div>
       <div class="flex items-center gap-2">
-        <a href="{% url 'arbitr:case_detail' case.id %}" class="btn btn-ghost btn-sm">Подробно</a>
-        <button
-          class="btn btn-primary btn-sm"
-          hx-post="{% url 'arbitr:case_run' case.id %}"
-          hx-target="#case-{{ case.id }}"
-          hx-swap="outerHTML"
-          hx-indicator="#run-spin-{{ case.id }}"
-        >
-          <span class="loading loading-spinner loading-xs htmx-indicator" id="run-spin-{{ case.id }}"></span>
-          Парсить сейчас
-        </button>
+        {% if case.status == 'paused' %}
+          <button
+            class="btn btn-warning btn-sm"
+            hx-post="{% url 'arbitr:case_toggle_pause' case.id %}"
+            title="Возобновить — дело снова попадёт в автомониторинг">
+            ▶ Возобновить
+          </button>
+        {% else %}
+          <button
+            class="btn btn-ghost btn-sm"
+            hx-post="{% url 'arbitr:case_toggle_pause' case.id %}"
+            title="Приостановить — автотаски пропустят дело, ручной запуск тоже отказывает">
+            ⏸ Пауза
+          </button>
+          <button
+            class="btn btn-primary btn-sm"
+            hx-post="{% url 'arbitr:case_run' case.id %}"
+            hx-target="#case-{{ case.id }}"
+            hx-swap="outerHTML"
+            hx-indicator="#run-spin-{{ case.id }}">
+            <span class="loading loading-spinner loading-xs htmx-indicator" id="run-spin-{{ case.id }}"></span>
+            Парсить сейчас
+          </button>
+        {% endif %}
       </div>
     </div>
   </div>

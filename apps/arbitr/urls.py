@@ -14,6 +14,7 @@ urlpatterns = [
     path("", views.dashboard, name="dashboard"),
     path("case/<uuid:case_id>/", views.case_detail, name="case_detail"),
     path("case/<uuid:case_id>/run/", views.case_run, name="case_run"),
+    path("case/<uuid:case_id>/toggle-pause/", views.case_toggle_pause, name="case_toggle_pause"),
     path("case/<uuid:case_id>/card/", views.case_card_partial, name="case_card"),
     path("case/<uuid:case_id>/log/", views.case_log_partial, name="case_log"),
     path(

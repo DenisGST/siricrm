@@ -20,7 +20,7 @@
     <div class="text-xs opacity-60 truncate">📍 {{ svc.region.name }}</div>
   {% endif %}
   <div class="text-xs opacity-70 truncate font-mono">
-    {% if case.case_number %}{{ case.case_number }}
+    {% if case.status == 'paused' %}⏸ пауза · {% endif %}{% if case.case_number %}{{ case.case_number }}
     {% elif case.status == 'searching' and case.search_hits %}🎯 найдено дел: {{ case.search_hits|length }}
     {% elif case.status == 'searching' %}🔍 ищем…
     {% else %}—{% endif %}
