@@ -258,6 +258,44 @@ def case_run(request, case_id):
 
 
 @login_required
+@require_POST
+def case_toggle_pause(request, case_id):
+    """Переключает дело PAUSED ↔ SEARCHING/MONITORING.
+
+    Автотаски `kad_monitor_pending` / `kad_monitor_case` уже фильтруют
+    по статусу — PAUSED-дела автоматически выпадают из батча.
+    `kad_monitor_one_case` (ручной запуск) тоже отказывает на PAUSED.
+
+    При возобновлении статус выбирается по наличию case_number/kad_url:
+    есть → MONITORING (этап 2), нет → SEARCHING (этап 1).
+
+    HX-Refresh: true → dashboard перезагружается, дело попадает в нужную
+    секцию sidebar'а с новым статусом.
+    """
+    if not is_admin(request.user):
+        return HttpResponse("forbidden", status=403)
+    case = get_object_or_404(ArbitrCase, pk=case_id)
+    if case.status == ArbitrCase.STATUS_PAUSED:
+        if case.case_number and case.kad_url:
+            case.status = ArbitrCase.STATUS_MONITORING
+        else:
+            case.status = ArbitrCase.STATUS_SEARCHING
+        note = f"Возобновлено (user={request.user.username})"
+    else:
+        case.status = ArbitrCase.STATUS_PAUSED
+        note = f"Приостановлено (user={request.user.username})"
+    case.save(update_fields=["status", "updated_at"])
+    ArbitrCheckLog.objects.create(
+        case=case, state=ArbitrCheckLog.STATE_OK, notes=note,
+    )
+    if request.headers.get("HX-Request"):
+        response = HttpResponse(status=204)
+        response["HX-Refresh"] = "true"
+        return response
+    return HttpResponseRedirect(f"/arbitr/?case={case.id}")
+
+
+@login_required
 def case_card_partial(request, case_id):
     """HTMX-партиал карточки одного дела (для dashboard'а)."""
     if not is_admin(request.user):
