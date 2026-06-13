@@ -21,34 +21,103 @@
 </head>
 <body class="min-h-screen bg-base-200">
   <style>
-    /* Search dropdown: спрятан если #search-results пустой. Position'ится  */
-    /* относительно #arbitr-search-wrap (см. inline-style в navbar).        */
+    /* Search dropdown спрятан если пустой. */
     #search-results:empty { display: none; }
     #search-results { position: absolute; top: 100%; left: 0; right: 0; z-index: 40; }
+    /* Filter popover. */
+    #arbitr-filter-pop { position: absolute; top: 100%; right: 0; z-index: 50; min-width: 220px; }
   </style>
-  <div class="navbar bg-base-100 shadow-sm sticky top-0 z-30 gap-3 px-4">
-    {# Лого + надпись (слева, ссылка ведёт на главную SiriCRM). #}
+  <div class="navbar bg-base-100 shadow-sm sticky top-0 z-30 px-4 gap-3">
+
+    {# ── Слева: лого + надпись (ссылка на главную SiriCRM) ── #}
     <a href="/dashboard/" class="flex items-center gap-2 shrink-0">
       <img src="{% static 'img/logo.png' %}" alt="SiriCRM" style="height:32px;">
       <span class="font-semibold whitespace-nowrap">Сириус-CRM Мониторинг Дел</span>
     </a>
-    {# Поиск (центр, растягивается). #}
-    <div id="arbitr-search-wrap" class="flex-1 max-w-2xl" style="position:relative;">
+
+    {# ── Центр: поиск + кнопка-фильтр. flex-1 + justify-center центрируют. ── #}
+    <div class="flex-1 flex justify-center">
       {% if request.user.is_authenticated %}
-      <input type="search" id="arbitr-search" autocomplete="off"
-             class="input input-bordered input-sm w-full"
-             placeholder="Поиск по ФИО, номеру дела или региону (от 2 символов)…"
-             hx-get="{% url 'arbitr:search' %}"
-             hx-trigger="input changed delay:300ms, focus"
-             hx-target="#search-results"
-             hx-swap="innerHTML"
-             name="q">
-      <div id="search-results"></div>
+      <div id="arbitr-search-wrap" class="flex items-center gap-1 w-full"
+           style="max-width:640px; position:relative;">
+        <input type="search" id="arbitr-search" autocomplete="off"
+               class="input input-bordered input-sm flex-1"
+               placeholder="🔎 Поиск по ФИО, номеру дела или региону (от 2 символов)…"
+               hx-get="{% url 'arbitr:search' %}"
+               hx-trigger="input changed delay:300ms, focus"
+               hx-include="#arbitr-filter-form input:checked"
+               hx-target="#search-results"
+               hx-swap="innerHTML"
+               name="q">
+        <div class="relative shrink-0">
+          <button type="button" id="arbitr-filter-btn"
+                  class="btn btn-ghost btn-sm btn-square"
+                  onclick="arbitrToggleFilter(event)"
+                  title="Фильтр групп">
+            ⚙
+          </button>
+          {# Popover фильтра — чекбоксы групп. По умолчанию все включены. #}
+          <div id="arbitr-filter-pop"
+               class="hidden bg-base-100 border border-base-300 rounded shadow-lg p-3">
+            <form id="arbitr-filter-form" class="text-sm space-y-1.5">
+              <div class="text-xs opacity-60 mb-1.5">Искать в группах:</div>
+              <label class="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" name="groups" value="searching"
+                       checked class="checkbox checkbox-xs"
+                       onchange="arbitrRetriggerSearch()">
+                <span>🔍 В поиске</span>
+              </label>
+              <label class="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" name="groups" value="monitoring"
+                       checked class="checkbox checkbox-xs"
+                       onchange="arbitrRetriggerSearch()">
+                <span>📋 В мониторинге</span>
+              </label>
+              <label class="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" name="groups" value="other"
+                       checked class="checkbox checkbox-xs"
+                       onchange="arbitrRetriggerSearch()">
+                <span>📂 Остальные</span>
+              </label>
+            </form>
+          </div>
+        </div>
+        <div id="search-results"></div>
+      </div>
       {% endif %}
     </div>
-    {# Имя пользователя (справа). #}
-    <div class="ml-auto text-sm opacity-70 shrink-0">{{ request.user.username }}</div>
+
+    {# ── Справа: имя пользователя. min-width = баланс лево/право, чтобы #}
+    {# поиск был визуально по центру (как на /dashboard/). ── #}
+    <div class="text-sm opacity-70 shrink-0 text-right" style="min-width:260px;">
+      {{ request.user.username }}
+    </div>
   </div>
+
+  <script>
+    // Toggle popover фильтра.
+    function arbitrToggleFilter(e) {
+      e.stopPropagation();
+      var pop = document.getElementById("arbitr-filter-pop");
+      if (pop) pop.classList.toggle("hidden");
+    }
+    // Re-fire search при изменении чекбоксов.
+    function arbitrRetriggerSearch() {
+      var inp = document.getElementById("arbitr-search");
+      if (inp && inp.value.length >= 2 && window.htmx) {
+        window.htmx.trigger(inp, "input");
+      }
+    }
+    // Close popover при click outside.
+    document.addEventListener("click", function (e) {
+      var pop = document.getElementById("arbitr-filter-pop");
+      var btn = document.getElementById("arbitr-filter-btn");
+      if (!pop || pop.classList.contains("hidden")) return;
+      if (pop.contains(e.target) || (btn && btn.contains(e.target))) return;
+      pop.classList.add("hidden");
+    });
+  </script>
+
   {% block content %}{% endblock %}
 </body>
 </html>

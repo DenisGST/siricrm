@@ -411,47 +411,74 @@ def arbitr_search(request):
         # Пустой партиал → dropdown скрывается (CSS :empty).
         return HttpResponse("")
 
-    case_filter = (
-        Q(case_number__icontains=q)
-        | Q(service__region__name__icontains=q)
-        | Q(service__client__last_name__icontains=q)
-        | Q(service__client__first_name__icontains=q)
-        | Q(service__client__patronymic__icontains=q)
-    )
+    # Группы из ?groups=<g1>&groups=<g2> (фильтр HTMX-чекбоксов).
+    # Если параметра вообще нет — по умолчанию все три группы (нет фильтра).
+    groups_list = request.GET.getlist("groups")
+    if groups_list:
+        active_groups = set(g.strip() for g in groups_list if g.strip())
+    else:
+        active_groups = {"searching", "monitoring", "other"}
+
+    # Поиск по токенам: split q по пробелам, КАЖДОЕ слово должно матчить
+    # хоть одно поле (last_name/first_name/patronymic/case_number/region).
+    # Так «Иванов Иван» находит клиента с last_name=«Иванов», first_name=«Иван»
+    # — слово «Иванов» матчит фамилию, слово «Иван» матчит имя.
+    tokens = q.split()
+    case_filter = Q()
+    for tok in tokens:
+        case_filter &= (
+            Q(case_number__icontains=tok)
+            | Q(service__region__name__icontains=tok)
+            | Q(service__client__last_name__icontains=tok)
+            | Q(service__client__first_name__icontains=tok)
+            | Q(service__client__patronymic__icontains=tok)
+        )
     case_qs = (
         ArbitrCase.objects
         .filter(case_filter)
         .select_related("service__client", "service__region")
     )
 
-    searching = list(
-        case_qs.filter(status=ArbitrCase.STATUS_SEARCHING)
-        .order_by("-last_check_at", "-created_at")[:SEARCH_GROUP_LIMIT]
+    searching = (
+        list(
+            case_qs.filter(status=ArbitrCase.STATUS_SEARCHING)
+            .order_by("-last_check_at", "-created_at")[:SEARCH_GROUP_LIMIT]
+        )
+        if "searching" in active_groups
+        else []
     )
-    monitoring = list(
-        case_qs.filter(status=ArbitrCase.STATUS_MONITORING)
-        .order_by("-last_check_at", "-created_at")[:SEARCH_GROUP_LIMIT]
+    monitoring = (
+        list(
+            case_qs.filter(status=ArbitrCase.STATUS_MONITORING)
+            .order_by("-last_check_at", "-created_at")[:SEARCH_GROUP_LIMIT]
+        )
+        if "monitoring" in active_groups
+        else []
     )
-    other_cases = list(
-        case_qs.filter(status__in=[
-            ArbitrCase.STATUS_PAUSED, ArbitrCase.STATUS_CLOSED,
-        ]).order_by("-last_check_at", "-updated_at")[:SEARCH_GROUP_LIMIT]
-    )
-
-    # Услуги БФЛ без ArbitrCase — поиск по ФИО клиента + регион
-    service_filter = (
-        Q(client__last_name__icontains=q)
-        | Q(client__first_name__icontains=q)
-        | Q(client__patronymic__icontains=q)
-        | Q(region__name__icontains=q)
-    )
-    services_no_case = list(
-        Service.objects
-        .filter(name__short_name__icontains="БФЛ", arbitr_case__isnull=True)
-        .filter(service_filter)
-        .select_related("client", "region")
-        .order_by("-created_at")[:SEARCH_GROUP_LIMIT]
-    )
+    other_cases = []
+    services_no_case = []
+    if "other" in active_groups:
+        other_cases = list(
+            case_qs.filter(status__in=[
+                ArbitrCase.STATUS_PAUSED, ArbitrCase.STATUS_CLOSED,
+            ]).order_by("-last_check_at", "-updated_at")[:SEARCH_GROUP_LIMIT]
+        )
+        # Услуги БФЛ без ArbitrCase — тот же tokenized search.
+        service_filter = Q()
+        for tok in tokens:
+            service_filter &= (
+                Q(client__last_name__icontains=tok)
+                | Q(client__first_name__icontains=tok)
+                | Q(client__patronymic__icontains=tok)
+                | Q(region__name__icontains=tok)
+            )
+        services_no_case = list(
+            Service.objects
+            .filter(name__short_name__icontains="БФЛ", arbitr_case__isnull=True)
+            .filter(service_filter)
+            .select_related("client", "region")
+            .order_by("-created_at")[:SEARCH_GROUP_LIMIT]
+        )
 
     return render(request, "arbitr/partials/_search_results.html", {
         "q": q,
