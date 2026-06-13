@@ -383,3 +383,117 @@ def case_confirm_hit(request, case_id, hit_index):
         response["HX-Redirect"] = redirect_url
         return response
     return HttpResponseRedirect(redirect_url)
+
+
+# ============================================================================
+# Поиск в шапке
+# ============================================================================
+
+SEARCH_GROUP_LIMIT = 20
+
+
+@login_required
+def arbitr_search(request):
+    """HTMX-партиал результатов поиска по делам/услугам.
+
+    Группирует:
+      1. SEARCHING-кейсы (приоритет)
+      2. MONITORING-кейсы
+      3. Остальные — PAUSED/CLOSED-кейсы + Service БФЛ без ArbitrCase
+
+    Фильтр Q-OR по ФИО / case_number / region. Лимит 20 на группу.
+    """
+    if not is_admin(request.user):
+        return HttpResponse("forbidden", status=403)
+
+    q = (request.GET.get("q") or "").strip()
+    if len(q) < 2:
+        # Пустой партиал → dropdown скрывается (CSS :empty).
+        return HttpResponse("")
+
+    case_filter = (
+        Q(case_number__icontains=q)
+        | Q(service__region__name__icontains=q)
+        | Q(service__client__last_name__icontains=q)
+        | Q(service__client__first_name__icontains=q)
+        | Q(service__client__patronymic__icontains=q)
+    )
+    case_qs = (
+        ArbitrCase.objects
+        .filter(case_filter)
+        .select_related("service__client", "service__region")
+    )
+
+    searching = list(
+        case_qs.filter(status=ArbitrCase.STATUS_SEARCHING)
+        .order_by("-last_check_at", "-created_at")[:SEARCH_GROUP_LIMIT]
+    )
+    monitoring = list(
+        case_qs.filter(status=ArbitrCase.STATUS_MONITORING)
+        .order_by("-last_check_at", "-created_at")[:SEARCH_GROUP_LIMIT]
+    )
+    other_cases = list(
+        case_qs.filter(status__in=[
+            ArbitrCase.STATUS_PAUSED, ArbitrCase.STATUS_CLOSED,
+        ]).order_by("-last_check_at", "-updated_at")[:SEARCH_GROUP_LIMIT]
+    )
+
+    # Услуги БФЛ без ArbitrCase — поиск по ФИО клиента + регион
+    service_filter = (
+        Q(client__last_name__icontains=q)
+        | Q(client__first_name__icontains=q)
+        | Q(client__patronymic__icontains=q)
+        | Q(region__name__icontains=q)
+    )
+    services_no_case = list(
+        Service.objects
+        .filter(name__short_name__icontains="БФЛ", arbitr_case__isnull=True)
+        .filter(service_filter)
+        .select_related("client", "region")
+        .order_by("-created_at")[:SEARCH_GROUP_LIMIT]
+    )
+
+    return render(request, "arbitr/partials/_search_results.html", {
+        "q": q,
+        "searching": searching,
+        "monitoring": monitoring,
+        "other_cases": other_cases,
+        "services_no_case": services_no_case,
+        "other_total": len(other_cases) + len(services_no_case),
+        "total": (
+            len(searching) + len(monitoring)
+            + len(other_cases) + len(services_no_case)
+        ),
+    })
+
+
+@login_required
+@require_POST
+def case_create_searching(request, service_id):
+    """Создаёт ArbitrCase(SEARCHING) на услуге БФЛ.
+
+    Если на услуге уже есть ArbitrCase — просто возвращает HX-Redirect
+    на него (idempotent). Иначе создаёт новый SEARCHING + ClientEvent
+    «иск отправлен в суд» (вариация существующего mark_iskotpravlen flow).
+    """
+    if not is_admin(request.user):
+        return HttpResponse("forbidden", status=403)
+    service = get_object_or_404(Service, pk=service_id)
+    if hasattr(service, "arbitr_case"):
+        case = service.arbitr_case
+    else:
+        emp = Employee.objects.filter(user=request.user).first()
+        case = ArbitrCase.objects.create(
+            service=service, started_by=emp,
+            status=ArbitrCase.STATUS_SEARCHING,
+        )
+        ArbitrCheckLog.objects.create(
+            case=case, state=ArbitrCheckLog.STATE_OK,
+            notes=f"Поставлено на мониторинг через поиск (user={request.user.username})",
+        )
+    redirect_url = f"/arbitr/?case={case.id}"
+    if request.headers.get("HX-Request"):
+        response = HttpResponse(status=204)
+        response["HX-Redirect"] = redirect_url
+        return response
+    return HttpResponseRedirect(redirect_url)

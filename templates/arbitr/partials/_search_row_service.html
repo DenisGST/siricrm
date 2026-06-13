@@ -1,0 +1,20 @@
+{# Строка результата для Service БФЛ без ArbitrCase.                    #}
+{# Click-zone — нет (ещё нет дела чтобы открывать). Кнопка справа       #}
+{# создаёт ArbitrCase(SEARCHING) и редиректит на него.                  #}
+{% with c=svc.client %}
+<div class="flex items-center gap-2 px-3 py-2 border-b border-base-200 hover:bg-base-200">
+  <div class="flex-1 min-w-0">
+    <div class="text-sm font-medium truncate">
+      {{ c.last_name }} {{ c.first_name }}{% if c.patronymic %} {{ c.patronymic }}{% endif %}
+    </div>
+    <div class="text-xs opacity-60 truncate">
+      {% if svc.region %}📍 {{ svc.region.name }} · {% endif %}не подключено
+    </div>
+  </div>
+  <button class="btn btn-success btn-xs shrink-0"
+          hx-post="{% url 'arbitr:case_create_searching' svc.id %}"
+          title="Создать ArbitrCase(SEARCHING) → парсер начнёт искать дело по ФИО">
+    + На мониторинг
+  </button>
+</div>
+{% endwith %}
