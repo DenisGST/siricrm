@@ -10,6 +10,9 @@
     <div class="text-xs opacity-60 truncate">
       {% if svc.region %}📍 {{ svc.region.name }} · {% endif %}не подключено
     </div>
+    {% if svc.common_status %}
+      <div class="text-xs opacity-60 truncate">📌 {{ svc.common_status.name }}</div>
+    {% endif %}
   </div>
   <button class="btn btn-success btn-xs shrink-0"
           hx-post="{% url 'arbitr:case_create_searching' svc.id %}"

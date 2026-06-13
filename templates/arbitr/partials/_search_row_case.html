@@ -17,6 +17,9 @@
       {% if case.service.region %}📍 {{ case.service.region.name }}{% endif %}
       {% if case.case_number %} · <span class="font-mono">{{ case.case_number }}</span>{% endif %}
     </div>
+    {% if case.service.common_status %}
+      <div class="text-xs opacity-60 truncate">📌 {{ case.service.common_status.name }}</div>
+    {% endif %}
   </a>
   {# Кнопка пауза/возобновить #}
   {% if case.status == 'paused' %}
