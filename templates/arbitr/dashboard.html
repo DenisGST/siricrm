@@ -1,12 +1,10 @@
 {% extends "arbitr/_layout.html" %}
-{% load static humanize %}
+{% load humanize %}
 {% block title %}Арбитраж · мониторинг{% endblock %}
 
 {% block content %}
-{# Split-layout (chat-style): слева — список дел по клиентам, справа —    #}
-{# панель выбранного дела. Inline-style вместо arbitrary tailwind         #}
-{# `grid-cols-[320px_1fr]` / `h-[calc(...)]` — таких классов нет в       #}
-{# pre-compiled tailwind.css (см. CLAUDE.md «гайдлайны кода»).            #}
+{# Split-layout: слева — список дел, справа — панель выбранного.          #}
+{# Шапка с лого+поиском+username — в arbitr/_layout.html (наследуется).   #}
 
 <style>
   /* Active-state — голубой фон + 3px полоска (как .tg-client-item.active). */
@@ -19,32 +17,9 @@
   .arbitr-section > summary::-webkit-details-marker { display: none; }
   .arbitr-section > summary .chevron::before { content: "−"; display: inline-block; width: 1em; }
   .arbitr-section:not([open]) > summary .chevron::before { content: "+"; }
-  /* Search dropdown: спрятан если #search-results пустой (нет результатов). */
-  #search-results:empty { display: none; }
-  #search-results { position: absolute; top: 100%; left: 0; right: 0; z-index: 40; }
-  #arbitr-search-wrap { position: relative; }
 </style>
 
-{# ═══════════════ Top header — лого + поиск ═══════════════ #}
-<div class="border-b border-base-300 bg-base-100 px-4 py-2 flex items-center gap-4">
-  <a href="{% url 'arbitr:dashboard' %}" class="shrink-0">
-    <img src="{% static 'img/logo.png' %}" alt="SiriCRM" style="height:32px;">
-  </a>
-  <span class="font-semibold text-lg shrink-0 hidden md:inline">⚖ Арбитраж</span>
-  <div id="arbitr-search-wrap" class="flex-1 max-w-2xl">
-    <input type="search" id="arbitr-search" autocomplete="off"
-           class="input input-bordered input-sm w-full"
-           placeholder="Поиск по ФИО, номеру дела или региону (от 2 символов)…"
-           hx-get="{% url 'arbitr:search' %}"
-           hx-trigger="input changed delay:300ms, focus"
-           hx-target="#search-results"
-           hx-swap="innerHTML"
-           name="q">
-    <div id="search-results"></div>
-  </div>
-</div>
-
-<div style="display:grid; grid-template-columns:320px 1fr; height:calc(100vh - 8rem);">
+<div style="display:grid; grid-template-columns:320px 1fr; height:calc(100vh - 4rem);">
 
   {# ═══════════════ Sidebar — список клиентов/дел ═══════════════ #}
   <aside class="border-r border-base-300 bg-base-100 overflow-y-auto">
