@@ -436,7 +436,9 @@ def arbitr_search(request):
     case_qs = (
         ArbitrCase.objects
         .filter(case_filter)
-        .select_related("service__client", "service__region")
+        .select_related(
+            "service__client", "service__region", "service__common_status",
+        )
     )
 
     searching = (
@@ -476,7 +478,7 @@ def arbitr_search(request):
             Service.objects
             .filter(name__short_name__icontains="БФЛ", arbitr_case__isnull=True)
             .filter(service_filter)
-            .select_related("client", "region")
+            .select_related("client", "region", "common_status")
             .order_by("-created_at")[:SEARCH_GROUP_LIMIT]
         )
 
