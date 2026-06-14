@@ -1,0 +1,3 @@
+{% comment %}OOB-обновление бейджа колокола уведомлений. count=0 → серый и скрыт.{% endcomment %}
+<span id="notif-count" hx-swap-oob="true"
+      class="indicator-item badge badge-xs {% if count %}badge-error{% else %}badge-ghost hidden{% endif %}">{{ count }}</span>

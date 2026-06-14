@@ -283,15 +283,16 @@
       <div class="navbar-end gap-0">
         <div class="tooltip tooltip-bottom" data-tip="Уведомления">
           <button type="button" class="btn btn-ghost btn-xs btn-square indicator"
-                  onclick="toggleNotifications()">
+                  data-notif-bell onclick="toggleNotifications()">
             <span id="notif-count" class="indicator-item badge badge-error badge-xs hidden"></span>
             {% icon "bell" size=14 %}
           </button>
         </div>
         <span id="notif-count-poller" class="hidden"
-              hx-get="{% url 'notifications_count' %}"
+              hx-get="{% url 'notifications:badge' %}"
               hx-trigger="load, every 20s, refresh-count"
               hx-swap="none"></span>
+        <div id="notifications-panel-wrap"></div>
 
         <span class="navbar-divider"></span>
 
@@ -784,7 +785,13 @@ document.addEventListener('htmx:afterRequest', (event) => {
     if (inl) inl.value = this.value;
   });
   function toggleNotifications() {
-    openTelegramChatModal();
+    if (document.getElementById('notifications-panel')) {
+      if (window.__closeNotifPanel) window.__closeNotifPanel();
+      else document.getElementById('notifications-panel').remove();
+      return;
+    }
+    htmx.ajax('GET', "{% url 'notifications:panel' %}",
+              { target: '#notifications-panel-wrap', swap: 'innerHTML' });
   }
 
   // Глобальный поиск: открыть/закрыть dropdown
@@ -1079,6 +1086,19 @@ document.addEventListener('htmx:afterRequest', (event) => {
 
     if (raw.includes('data-toast="1"')) {
       playToastSound();
+    }
+
+    // Новое уведомление (колокол): звук + если панель открыта — обновить тело
+    // текущей вкладки (без перерисовки всего шелла → без мигания).
+    if (raw.includes('data-notification-new')) {
+      playToastSound();
+      var notifInner = document.getElementById('notif-inner');
+      if (notifInner) {
+        var curEl = notifInner.querySelector('[data-current-tab]');
+        var curTab = (curEl && curEl.dataset.currentTab) || 'new';
+        htmx.ajax('GET', "{% url 'notifications:list' %}?tab=" + curTab,
+                  { target: '#notif-inner', swap: 'innerHTML' });
+      }
     }
 
     if (raw.includes('data-chat-message="1"')) {

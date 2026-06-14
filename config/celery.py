@@ -58,6 +58,18 @@ app.conf.beat_schedule = {
         'task': 'arbitr.kad_monitor_case',
         'schedule': crontab(minute=30, hour='19,23,3,7'),
     },
+    # Опрос выписки р/с ТБанк (входящие платежи → очередь разнесения).
+    # Будим ежечасно; внутренний throttle (ACCOUNTING_POLL_MIN_INTERVAL_HOURS,
+    # деф. 3ч) сам отсекает лишнее. No-op, если нет кредов / гейт выключен.
+    'accounting-poll-statement': {
+        'task': 'accounting.poll_statement',
+        'schedule': crontab(minute=5),
+    },
+    # Возврат отложенных уведомлений в «Новые» по наступлении snooze_until.
+    'notifications-revive-snoozed': {
+        'task': 'notifications.revive_snoozed',
+        'schedule': 60,
+    },
 }
 
 @setup_logging.connect

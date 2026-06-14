@@ -63,6 +63,23 @@ def invalidate_cache():
     _ACTION_TYPE_CACHE.clear()
 
 
+def _maybe_notify(entry):
+    """Если тип записи помечен notifies — породить уведомления сотрудникам.
+
+    Уведомления не должны ронять запись лога: любая ошибка глотается в WARNING.
+    """
+    if entry is None:
+        return
+    t = entry.event_type or entry.action_type
+    if t is None or not getattr(t, "notifies", False):
+        return
+    try:
+        from apps.notifications.services import notify
+        notify(entry)
+    except Exception:
+        logger.exception("notify() упал для entry=%s", getattr(entry, "pk", None))
+
+
 def record_event(
     client,
     code: str,
@@ -91,7 +108,7 @@ def record_event(
     if et is None:
         logger.warning("EventType code=%r не найден; событие не записано", code)
         return None
-    return ClientLogEntry.objects.create(
+    entry = ClientLogEntry.objects.create(
         subject_kind="client",
         client=client,
         kind="event",
@@ -104,6 +121,8 @@ def record_event(
         bubble_id=bubble_id,
         stored_file=stored_file,
     )
+    _maybe_notify(entry)
+    return entry
 
 
 def record_action(
@@ -145,8 +164,9 @@ def record_action(
         stored_file=stored_file,
     )
     # Spawn связанное событие, если задано
+    spawned = None
     if at.spawns_event_id is not None:
-        ClientLogEntry.objects.create(
+        spawned = ClientLogEntry.objects.create(
             subject_kind="client",
             client=client,
             kind="event",
@@ -155,6 +175,9 @@ def record_action(
             employee=employee,
             parent=action,
         )
+    # Анти-дубль: для пар action→event уведомляем на стороне события;
+    # «одиночное» действие (без spawns_event) — на самом действии.
+    _maybe_notify(spawned if spawned is not None else action)
     return action
 
 

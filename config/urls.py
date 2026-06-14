@@ -63,5 +63,6 @@ urlpatterns = [
     path("arbitr/", include("apps.arbitr.urls", namespace="arbitr")),
     path("afd/", include("apps.afd.urls", namespace="afd")),
     path("scans/", include("apps.scans.urls", namespace="scans")),
+    path("notifications/", include("apps.notifications.urls", namespace="notifications")),
     path("robots.txt", serve, {"document_root": settings.STATIC_ROOT, "path": "robots.txt"}),
 ]

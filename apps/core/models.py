@@ -197,6 +197,11 @@ class Employee(models.Model):
         help_text="Доступ к лотку «Входящие сканы»: видеть присланные со "
                   "сканера документы и привязывать их к клиентам.",
     )
+    telegram_chat_id = models.BigIntegerField(
+        "Telegram chat_id (уведомления)", null=True, blank=True, unique=True,
+        help_text="Привязывается через бота уведомлений по одноразовому коду "
+                  "из профиля. Нужен для дублирования уведомлений в Telegram.",
+    )
     scanner_name = models.CharField(
         "Имя сканера", max_length=100, blank=True, default="",
         help_text="Метка устройства (device) из scan-agent. Сканы с этой "

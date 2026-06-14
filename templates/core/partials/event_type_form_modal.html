@@ -80,6 +80,23 @@
         </p>
       </div>
 
+      <div class="rounded p-2" style="background:var(--ms-bg-soft, #f8fafc)">
+        <label class="label cursor-pointer justify-start gap-2">
+          <input type="checkbox" name="notifies" class="checkbox checkbox-sm checkbox-error"
+                 {% if form.notifies.value %}checked{% endif %}>
+          <span class="label-text">🔔 Порождает уведомление сотрудникам</span>
+        </label>
+        <p class="text-xs text-base-content/50 ml-7 -mt-1">
+          При записи такого события работающим с клиентом сотрудникам приходит
+          уведомление (на сайте + в Telegram-боте).
+        </p>
+        <div class="ml-7 mt-1">
+          <input type="text" name="notify_hint" value="{{ form.notify_hint.value|default:'' }}"
+                 class="input input-bordered input-xs w-full"
+                 placeholder="Подсказка-что-делать (показывается в строке уведомления)">
+        </div>
+      </div>
+
       <div>
         <label class="label cursor-pointer justify-start gap-2">
           <input type="checkbox" name="is_active" class="checkbox checkbox-sm"

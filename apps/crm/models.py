@@ -522,6 +522,17 @@ class EventType(TimeStampedModel):
     )
     is_active = models.BooleanField("Активен", default=True)
     order = models.PositiveIntegerField("Порядок", default=0)
+    notifies = models.BooleanField(
+        "Порождает уведомление", default=False,
+        help_text=(
+            "При записи события этого типа сотрудникам, работающим с клиентом, "
+            "приходит уведомление (на сайте + в Telegram-боте)."
+        ),
+    )
+    notify_hint = models.CharField(
+        "Подсказка-что-делать", max_length=255, blank=True,
+        help_text="Текст-подсказка в строке уведомления (что с этим делать).",
+    )
 
     class Meta:
         verbose_name = "Тип события"
@@ -565,6 +576,18 @@ class ActionType(TimeStampedModel):
     )
     is_active = models.BooleanField("Активен", default=True)
     order = models.PositiveIntegerField("Порядок", default=0)
+    notifies = models.BooleanField(
+        "Порождает уведомление", default=False,
+        help_text=(
+            "При записи действия этого типа сотрудникам, работающим с клиентом, "
+            "приходит уведомление (на сайте + в Telegram-боте). Для действий, "
+            "порождающих событие (spawns_event), ставьте флаг на стороне события."
+        ),
+    )
+    notify_hint = models.CharField(
+        "Подсказка-что-делать", max_length=255, blank=True,
+        help_text="Текст-подсказка в строке уведомления (что с этим делать).",
+    )
 
     class Meta:
         verbose_name = "Тип действия"

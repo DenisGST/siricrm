@@ -1,0 +1,91 @@
+{% comment %}
+Панель уведомлений — фиксирована в правом верхнем углу. Грузится по клику на
+колокол в #notifications-panel-wrap. Закрытие — удаление #notifications-panel.
+Шелл с шапкой статичен; при смене вкладки/реакции перерисовывается только
+#notif-inner (вкладки+список) — без мигания всей панели.
+{% endcomment %}
+<div id="notifications-panel"
+     style="position:fixed; top:3.4rem; right:0.75rem; width:860px; max-width:95vw;
+            max-height:82vh; z-index:1000; display:flex; flex-direction:column;
+            background:var(--ms-bg, #fff); border:1px solid var(--ms-border-light, #e5e7eb);
+            border-radius:0.75rem; box-shadow:0 12px 40px rgba(0,0,0,.18); overflow:hidden;">
+
+  <!-- Шапка -->
+  <div class="flex items-center justify-between px-3 py-2"
+       style="border-bottom:1px solid var(--ms-border-light,#e5e7eb)">
+    <div class="font-bold text-sm">🔔 Уведомления</div>
+    <button type="button" class="btn btn-ghost btn-xs btn-square"
+            onclick="window.__closeNotifPanel && window.__closeNotifPanel()">✕</button>
+  </div>
+
+  <div id="notif-inner">
+    {% include "notifications/partials/panel_inner.html" %}
+  </div>
+
+  {% comment %}Кнопки-иконки как в глобальном поиске: серые, цветные при наведении.{% endcomment %}
+  <style>
+    #notifications-panel .nt-acts { display:flex; align-items:center; gap:3px; }
+    #notifications-panel .nt-act {
+      display:inline-flex; align-items:center; justify-content:center;
+      min-width:26px; height:26px; padding:0 4px; box-sizing:border-box;
+      border:none; background:transparent;
+      border-radius:5px; cursor:pointer;
+      color:#94a3b8;                                  /* серый по умолчанию */
+      transition:color .12s, background .12s;
+    }
+    #notifications-panel .nt-act:hover {
+      background:var(--ms-bg, #eef1f4);
+      color:var(--nt-hc, #3b82f6);                    /* при наведении — свой цвет */
+    }
+    #notifications-panel .nt-act svg { display:block; }
+  </style>
+
+  {% comment %}Закрытие по ESC и клику вне панели. IIFE — скрипт переисполняется
+  при каждом открытии (htmx-swap), top-level const/let дали бы «already declared».{% endcomment %}
+  <script>
+    (function () {
+      var panel = document.getElementById('notifications-panel');
+      if (!panel) return;
+      function close() {
+        document.removeEventListener('keydown', onKey, true);
+        document.removeEventListener('mousedown', onOutside, true);
+        delete window.__closeNotifPanel;
+        panel.remove();
+      }
+      function onKey(e) { if (e.key === 'Escape') close(); }
+      function onOutside(e) {
+        if (panel.contains(e.target)) return;                 // клик внутри панели
+        if (e.target.closest && e.target.closest('[data-notif-bell]')) return; // по колоколу — разрулит toggle
+        close();
+      }
+      // Меню «Напомнить позже»/«Отклонить» выше короткого списка и обрезается
+      // его overflow в любую сторону. Выносим его из скролл-контейнера через
+      // position:fixed и позиционируем у триггера (вниз; вверх — только если
+      // снизу не хватает места до края экрана).
+      function onFocusIn(e) {
+        var label = e.target.closest && e.target.closest('.dropdown > label, .dropdown > [tabindex]');
+        if (!label) return;
+        var menu = label.parentElement.querySelector('.dropdown-content');
+        if (!menu) return;
+        menu.style.position = 'fixed';
+        menu.style.margin = '0';
+        var r = label.getBoundingClientRect();
+        var mh = menu.offsetHeight || 220, mw = menu.offsetWidth || 240, gap = 4;
+        var openUp = (r.bottom + mh + gap > window.innerHeight - 4) && (r.top - mh - gap > 4);
+        menu.style.top = (openUp ? Math.max(4, r.top - mh - gap) : r.bottom + gap) + 'px';
+        var left = r.left;
+        if (left + mw + 4 > window.innerWidth) left = window.innerWidth - mw - 4;
+        menu.style.left = Math.max(4, left) + 'px';
+        menu.style.right = 'auto';
+        menu.style.bottom = 'auto';
+      }
+      panel.addEventListener('focusin', onFocusIn);
+      window.__closeNotifPanel = close;
+      // отложенно, чтобы тот же клик, что открыл панель, её не закрыл
+      setTimeout(function () {
+        document.addEventListener('keydown', onKey, true);
+        document.addEventListener('mousedown', onOutside, true);
+      }, 0);
+    })();
+  </script>
+</div>
