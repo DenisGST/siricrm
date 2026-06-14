@@ -1,0 +1,56 @@
+{% load icons %}
+{% comment %} Карточка статуса источника входящих. Параметры: s (state), title, icon_name, note, source_key. {% endcomment %}
+<div class="card bg-base-100 shadow-sm border border-base-200">
+  <div class="card-body p-4">
+    <div class="flex items-center justify-between">
+      <h3 class="font-semibold flex items-center gap-2">{% icon icon_name size=16 %} {{ title }}</h3>
+      {% if s.active %}
+        <span class="badge badge-success badge-sm gap-1">{% icon "check" size=11 %} активен</span>
+      {% elif s.configured %}
+        <span class="badge badge-warning badge-sm">поллинг выключен</span>
+      {% else %}
+        <span class="badge badge-ghost badge-sm">не настроено</span>
+      {% endif %}
+    </div>
+    <p class="text-xs text-base-content/60">{{ note }}</p>
+
+    {% if s.mode == 'webhook' %}
+      {# Эквайринг — приём нотификациями (push), не поллинг #}
+      <div class="text-sm space-y-1.5 mt-1">
+        <div class="flex justify-between"><span class="text-base-content/60">Приём</span><span>вебхук (нотификации)</span></div>
+        <div class="flex justify-between">
+          <span class="text-base-content/60">Последняя нотификация</span>
+          <span>{% if s.last %}{{ s.last.created_at|date:"d.m.Y H:i" }}{% else %}—{% endif %}</span>
+        </div>
+      </div>
+      <div class="mt-2">
+        <div class="text-xs text-base-content/60 mb-1">NotificationURL для терминала:</div>
+        <input type="text" readonly value="{{ s.webhook_url }}" onclick="this.select()"
+               class="input input-xs input-bordered w-full font-mono text-xs">
+      </div>
+    {% else %}
+      {# Выписка р/с — поллинг #}
+      <div class="text-sm space-y-1.5 mt-1">
+        <div class="flex justify-between">
+          <span class="text-base-content/60">Последняя проверка</span>
+          <span>{% if s.last %}{{ s.last.created_at|date:"d.m.Y H:i" }}{% else %}—{% endif %}</span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-base-content/60">Следующая проверка</span>
+          <span>{% if s.next_at %}{{ s.next_at|date:"d.m.Y H:i" }}{% else %}—{% endif %}</span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-base-content/60">Новых за прошлую проверку</span>
+          <span class="font-semibold {% if s.new_last %}text-success{% endif %}">{{ s.new_last }}</span>
+        </div>
+      </div>
+      {% if s.last and not s.last.ok %}
+        <div class="text-xs text-error mt-1">{% icon "x" size=12 %} {{ s.last.error|default:"ошибка опроса" }}</div>
+      {% endif %}
+      <button class="btn btn-sm btn-outline mt-2" {% if not s.active %}disabled{% endif %}
+              hx-post="{% url 'accounting:poll_now' %}" hx-vals='{"source": "{{ source_key }}"}' hx-swap="none">
+        {% icon "clock" size=14 %} Проверить сейчас
+      </button>
+    {% endif %}
+  </div>
+</div>

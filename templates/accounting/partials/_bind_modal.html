@@ -1,0 +1,125 @@
+{% load icons %}
+{% comment %}
+  Модалка привязки входящего платежа к клиенту и начислениям (реальная форма).
+  Скрипт в IIFE (top-level const падает при повторном открытии), showModal без modal-open.
+  Распределение суммы считается на лету по полям .acct-alloc (делегирование на форме).
+{% endcomment %}
+<dialog id="acct-bind-modal" class="modal">
+  <div class="modal-box max-w-3xl">
+
+    <div class="flex items-center justify-between mb-3">
+      <h3 class="font-bold text-lg flex items-center gap-2">{% icon "user" size=18 %} Привязка входящего платежа</h3>
+      <form method="dialog"><button class="btn btn-sm btn-circle btn-ghost">{% icon "x" size=16 %}</button></form>
+    </div>
+
+    {# Сводка платежа #}
+    <div class="rounded-lg bg-base-200 p-3 mb-4 flex items-center gap-4 flex-wrap">
+      <div>
+        <div class="text-xs text-base-content/60">Сумма</div>
+        <div class="text-2xl font-bold text-success">+{{ ip.amount|floatformat:0 }} ₽</div>
+      </div>
+      <div class="text-sm">
+        <div class="flex gap-2"><span class="text-base-content/60 w-24">Источник</span>
+          <span class="badge badge-outline badge-sm gap-1">
+            {% if ip.source == 'acquiring' %}{% icon "credit-card" size=11 %} Эквайринг{% else %}{% icon "landmark" size=11 %} Расчётный счёт{% endif %}
+          </span></div>
+        <div class="flex gap-2"><span class="text-base-content/60 w-24">Дата</span><span>{{ ip.occurred_at|date:"d.m.Y H:i" }}</span></div>
+        <div class="flex gap-2"><span class="text-base-content/60 w-24">Плательщик</span>
+          <span>{{ ip.payer_name|default:"—" }}{% if ip.payer_phone %} · {{ ip.payer_phone }}{% endif %}{% if ip.source == 'acquiring' %} <span class="text-warning">(введено клиентом)</span>{% endif %}</span></div>
+        {% if ip.purpose %}<div class="flex gap-2"><span class="text-base-content/60 w-24">Назначение</span><span>{{ ip.purpose|truncatechars:80 }}</span></div>{% endif %}
+      </div>
+    </div>
+
+    <form id="acct-bind-form" data-total="{{ ip.amount|stringformat:'s' }}"
+          hx-post="{% url 'accounting:bind_execute' %}" hx-swap="none"
+          hx-on::after-request="if(event.detail.successful && event.detail.requestConfig && event.detail.requestConfig.verb === 'post'){document.getElementById('acct-bind-modal').close();}">
+      <input type="hidden" name="ip" value="{{ ip.id }}">
+
+      {# Клиент + начисления #}
+      <div class="mb-4">
+        <div class="font-semibold text-sm mb-1.5">Клиент</div>
+        <div id="acct-bind-clientblock">
+          {% include "accounting/partials/_bind_clientblock.html" with ip=ip client=preselected_client charges=charges %}
+        </div>
+      </div>
+
+      {# Параметры платежа (авто-дефолт, редактируемо) #}
+      <div class="grid gap-3 mb-4" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr))">
+        <label class="form-control">
+          <span class="label-text text-xs">Тип дохода</span>
+          <select name="income_type" class="select select-sm select-bordered">
+            {% for it in income_types %}
+              <option value="{{ it.id }}" {% if it.id == default_income_type_id %}selected{% endif %}>{{ it.name }} ({{ it.service_name.short_name }})</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label class="form-control">
+          <span class="label-text text-xs">Куда поступил</span>
+          <select name="incoming_account" class="select select-sm select-bordered">
+            {% for acc in incoming_accounts %}
+              <option value="{{ acc.id }}" {% if acc.id == default_account_id %}selected{% endif %}>{{ acc.name }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label class="form-control">
+          <span class="label-text text-xs">Форма оплаты</span>
+          <select name="payment_form" class="select select-sm select-bordered">
+            {% for val, label in payment_forms %}
+              <option value="{{ val }}" {% if val == default_form %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label class="form-control">
+          <span class="label-text text-xs">Дата платежа</span>
+          <input type="date" name="payment_date" value="{{ default_date }}" class="input input-sm input-bordered">
+        </label>
+      </div>
+
+      <label class="form-control mb-2">
+        <span class="label-text text-xs">Комментарий</span>
+        <input type="text" name="note" class="input input-sm input-bordered" placeholder="необязательно">
+      </label>
+
+      <div class="modal-action">
+        <button type="button" class="btn btn-sm" onclick="document.getElementById('acct-bind-modal').close()">Отмена</button>
+        <button type="submit" class="btn btn-sm btn-primary">{% icon "check" size=14 %} Привязать</button>
+      </div>
+    </form>
+  </div>
+  <form method="dialog" class="modal-backdrop"><button>close</button></form>
+</dialog>
+
+<script>
+(function () {
+  var dlg = document.getElementById('acct-bind-modal');
+  if (!dlg) return;
+  dlg.showModal();
+  dlg.addEventListener('close', function () { dlg.remove(); });
+
+  var form = document.getElementById('acct-bind-form');
+  function num(s){ return parseFloat(String(s||'').replace(/\s| /g,'').replace(',','.')) || 0; }
+  function recalc() {
+    var total = num(form.getAttribute('data-total'));
+    var noCharge = form.querySelector('#acct-no-charge');
+    var dist = 0;
+    if (!(noCharge && noCharge.checked)) {
+      form.querySelectorAll('.acct-alloc').forEach(function (i) { dist += num(i.value); });
+    }
+    var dEl = form.querySelector('#acct-bind-distributed');
+    var rEl = form.querySelector('#acct-bind-remainder');
+    if (dEl) dEl.textContent = Math.round(dist).toLocaleString('ru-RU');
+    if (rEl) {
+      var rem = total - dist;
+      rEl.textContent = Math.round(rem).toLocaleString('ru-RU');
+      rEl.className = 'font-semibold ' + (Math.abs(rem) < 0.005 ? 'text-success' : (rem < 0 ? 'text-error' : ''));
+    }
+  }
+  // Делегирование: поля распределения приходят после выбора клиента (htmx swap).
+  form.addEventListener('input', recalc);
+  form.addEventListener('change', recalc);
+  document.body.addEventListener('htmx:afterSwap', function (e) {
+    if (e.target && e.target.id === 'acct-bind-clientblock') recalc();
+  });
+  recalc();
+})();
+</script>

@@ -1,0 +1,60 @@
+{% load icons %}
+{% comment %}
+  Рабочее место бухгалтера. Грузится в #content-area (use_htmx-пункт меню),
+  поэтому повторно использует chrome главной (сайдбар + верхний бар).
+{% endcomment %}
+<div class="p-4" id="acct-panel">
+
+  {% comment %} Заголовок + специфичный поиск раздела. Поиск пока UI-заглушка: своя бизнес-логика будет описана отдельно. {% endcomment %}
+  <div class="flex items-center gap-3 mb-4 flex-wrap">
+    <h2 class="text-xl font-bold flex items-center gap-2">
+      {% icon "calculator" size=22 %} Бухгалтерский учёт
+    </h2>
+    <span class="text-sm text-base-content/50">рабочее место бухгалтера</span>
+
+    <div class="relative ml-auto" style="min-width:300px;max-width:520px;flex:1 1 320px">
+      <label class="input input-sm input-bordered flex items-center gap-2 w-full">
+        {% icon "search" size=15 %}
+        <input type="search" name="q" autocomplete="off" class="grow"
+               placeholder="Поиск по платежам, контрагенту, назначению, сумме…">
+      </label>
+    </div>
+  </div>
+
+  {# ── Вкладки ────────────────────────────────────────────────────────── #}
+  <div role="tablist" class="tabs tabs-boxed mb-4 flex-wrap">
+    <a class="tab tab-active" role="tab"
+       hx-get="{% url 'accounting:tab_bank' %}" hx-target="#acct-tab" hx-swap="innerHTML"
+       onclick="acctTab(this)">
+      {% icon "landmark" size=15 %}<span class="ml-1.5">Банк</span>
+    </a>
+    <a class="tab" role="tab"
+       hx-get="{% url 'accounting:tab_notifications' %}" hx-target="#acct-tab" hx-swap="innerHTML"
+       onclick="acctTab(this)">
+      {% icon "bell" size=15 %}<span class="ml-1.5">Уведомления</span>
+      {% if unbound_count %}<span class="badge badge-error badge-sm ml-1.5">{{ unbound_count }}</span>{% endif %}
+    </a>
+    <a class="tab" role="tab"
+       hx-get="{% url 'accounting:tab_payments' %}" hx-target="#acct-tab" hx-swap="innerHTML"
+       onclick="acctTab(this)">
+      {% icon "receipt" size=15 %}<span class="ml-1.5">Внесённые платежи</span>
+    </a>
+  </div>
+
+  {# Контент активной вкладки — «Банк» подгружается сразу #}
+  <div id="acct-tab" hx-get="{% url 'accounting:tab_bank' %}" hx-trigger="load" hx-swap="innerHTML">
+    <div class="flex justify-center py-10 text-base-content/40">Загрузка…</div>
+  </div>
+
+  <script>
+  (function () {
+    // Переключение активной вкладки (подсветка). Контент грузит HTMX.
+    window.acctTab = function (el) {
+      el.closest('.tabs').querySelectorAll('.tab').forEach(function (t) {
+        t.classList.remove('tab-active');
+      });
+      el.classList.add('tab-active');
+    };
+  })();
+  </script>
+</div>

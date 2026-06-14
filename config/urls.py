@@ -57,6 +57,7 @@ urlpatterns = [
     path("questionnaire/", include("apps.questionnaire.urls", namespace="questionnaire")),
     path("devops/", include("apps.devops.urls", namespace="devops")),
     path("finance/", include("apps.finance.urls", namespace="finance")),
+    path("accounting/", include("apps.accounting.urls", namespace="accounting")),
     path("", include("apps.whatsapp.urls", namespace="whatsapp")),
     path("", include("apps.bubble_import.urls", namespace="bubble_import")),
     path("telegram/", include("apps.telegram.urls", namespace="telegram")),

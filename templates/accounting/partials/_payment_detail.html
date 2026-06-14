@@ -1,0 +1,112 @@
+{% load icons %}
+{% comment %}
+  Платёжка — read-only карточка входящего платежа с данными из выписки/эквайринга.
+  Открывается по клику на строку в «Уведомлениях». Скрипт в IIFE, showModal без modal-open.
+{% endcomment %}
+<dialog id="acct-detail-modal" class="modal">
+  <div class="modal-box max-w-2xl">
+
+    <div class="flex items-center justify-between mb-3">
+      <h3 class="font-bold text-lg flex items-center gap-2">{% icon "receipt" size=18 %} Платёж</h3>
+      <form method="dialog"><button class="btn btn-sm btn-circle btn-ghost">{% icon "x" size=16 %}</button></form>
+    </div>
+
+    {# Шапка: сумма + статус + источник #}
+    <div class="rounded-lg bg-base-200 p-3 mb-4 flex items-center gap-4 flex-wrap">
+      <div>
+        <div class="text-xs text-base-content/60">Сумма</div>
+        <div class="text-2xl font-bold text-success">+{{ ip.amount|floatformat:2 }} ₽</div>
+      </div>
+      <div class="flex flex-col gap-1">
+        <div class="flex gap-2 items-center">
+          {% if ip.source == 'acquiring' %}
+            <span class="badge badge-outline badge-sm gap-1 whitespace-nowrap">{% icon "credit-card" size=11 %} Эквайринг</span>
+          {% else %}
+            <span class="badge badge-outline badge-sm gap-1 whitespace-nowrap">{% icon "landmark" size=11 %} Расчётный счёт</span>
+          {% endif %}
+          {% if ip.is_settlement %}<span class="badge badge-warning badge-sm whitespace-nowrap">эквайринг-зачисление</span>{% endif %}
+          {% if ip.status == 'bound' %}<span class="badge badge-success badge-sm">привязан</span>
+          {% elif ip.status == 'unidentified' %}<span class="badge badge-warning badge-sm">неопознанный</span>
+          {% else %}<span class="badge badge-error badge-sm">не привязан</span>{% endif %}
+        </div>
+        <div class="text-sm text-base-content/70">{{ ip.occurred_at|date:"d.m.Y H:i" }}</div>
+      </div>
+    </div>
+
+    {# Плательщик #}
+    <div class="mb-3">
+      <div class="font-semibold text-sm mb-1">Плательщик</div>
+      <table class="table table-sm">
+        <tbody>
+          <tr><td class="text-base-content/60 w-40">Наименование / ФИО</td><td>{{ ip.payer_name|default:"—" }}{% if ip.source == 'acquiring' %} <span class="text-warning" title="Введено клиентом">⚠ введено клиентом</span>{% endif %}</td></tr>
+          {% if ip.payer_inn %}<tr><td class="text-base-content/60">ИНН</td><td>{{ ip.payer_inn }}</td></tr>{% endif %}
+          {% if ip.payer_phone %}<tr><td class="text-base-content/60">Телефон</td><td>{{ ip.payer_phone }}{% if ip.source == 'acquiring' %} <span class="text-base-content/40">(введён клиентом)</span>{% endif %}</td></tr>{% endif %}
+          {% if ip.raw.payer.acct %}<tr><td class="text-base-content/60">Счёт</td><td class="font-mono text-xs">{{ ip.raw.payer.acct }}</td></tr>{% endif %}
+          {% if ip.raw.payer.bankName %}<tr><td class="text-base-content/60">Банк</td><td>{{ ip.raw.payer.bankName }}{% if ip.raw.payer.bicRu %} · БИК {{ ip.raw.payer.bicRu }}{% endif %}</td></tr>{% endif %}
+        </tbody>
+      </table>
+    </div>
+
+    {# Назначение #}
+    <div class="mb-3">
+      <div class="font-semibold text-sm mb-1">Назначение платежа</div>
+      <div class="text-sm rounded bg-base-200 p-2">{{ ip.purpose|default:"—"|linebreaksbr }}</div>
+    </div>
+
+    {# Реквизиты операции #}
+    <div class="mb-3">
+      <div class="font-semibold text-sm mb-1">Реквизиты операции</div>
+      <table class="table table-sm">
+        <tbody>
+          {% if ip.source == 'acquiring' %}
+            <tr><td class="text-base-content/60 w-40">PaymentId</td><td class="font-mono text-xs">{{ ip.external_id }}</td></tr>
+            {% if ip.order_id %}<tr><td class="text-base-content/60">OrderId</td><td class="font-mono text-xs">{{ ip.order_id }}</td></tr>{% endif %}
+          {% else %}
+            {% if ip.raw.documentNumber %}<tr><td class="text-base-content/60 w-40">Документ №</td><td>{{ ip.raw.documentNumber }}</td></tr>{% endif %}
+            {% if ip.raw.category %}<tr><td class="text-base-content/60">Категория</td><td>{{ ip.raw.category }}</td></tr>{% endif %}
+            {% if ip.raw.receiver.name %}<tr><td class="text-base-content/60">Получатель</td><td>{{ ip.raw.receiver.name }}</td></tr>{% endif %}
+            <tr><td class="text-base-content/60">ID операции</td><td class="font-mono text-xs">{{ ip.external_id }}</td></tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+
+    {# Если привязан — к кому и какие платежи созданы #}
+    {% if ip.status == 'bound' %}
+    <div class="mb-3 rounded-lg border border-success/30 bg-success/5 p-2">
+      <div class="text-sm">Привязан к клиенту: <span class="font-medium">{{ ip.bound_client }}</span>
+        {% if ip.bound_at %}<span class="text-xs text-base-content/50">· {{ ip.bound_at|date:"d.m.Y H:i" }}{% if ip.bound_by %}, {{ ip.bound_by }}{% endif %}</span>{% endif %}</div>
+      {% if created_payments %}
+      <ul class="text-xs mt-1 space-y-0.5">
+        {% for p in created_payments %}
+        <li>• {{ p.amount_in|floatformat:0 }} ₽ → {% if p.charge %}{{ p.charge.title }}{% else %}без начисления{% endif %}</li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    <div class="modal-action">
+      {% if ip.is_settlement %}
+        <span class="text-xs text-base-content/50 mr-auto">Сводное зачисление эквайринга — привязка к клиенту не выполняется (детализация — по эквайринг-нотификациям).</span>
+      {% elif ip.status != 'bound' %}
+        <button class="btn btn-sm btn-primary mr-auto"
+                hx-get="{% url 'accounting:bind_modal' %}?ip={{ ip.id }}" hx-target="body" hx-swap="beforeend"
+                onclick="document.getElementById('acct-detail-modal').close()">
+          {% icon "user" size=14 %} Привязать к клиенту
+        </button>
+      {% endif %}
+      <form method="dialog"><button class="btn btn-sm">Закрыть</button></form>
+    </div>
+  </div>
+  <form method="dialog" class="modal-backdrop"><button>close</button></form>
+</dialog>
+
+<script>
+(function () {
+  var dlg = document.getElementById('acct-detail-modal');
+  if (!dlg) return;
+  dlg.showModal();
+  dlg.addEventListener('close', function () { dlg.remove(); });
+})();
+</script>

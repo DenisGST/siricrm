@@ -1,0 +1,118 @@
+{% load icons %}
+{% comment %}
+  Вкладка «Уведомления» — очередь разнесения входящих платежей (реальные данные).
+  Самообновляется по acctQueueChanged (после привязки / пометки неопознанным).
+{% endcomment %}
+<div class="space-y-3"
+     hx-get="{% url 'accounting:tab_notifications' %}?status={{ status }}&source={{ source }}&kind={{ kind }}"
+     hx-trigger="acctQueueChanged from:body" hx-target="this" hx-swap="outerHTML">
+
+  {# Фильтры: статус / тип / источник #}
+  <div class="flex items-center gap-2 flex-wrap">
+    <div class="join">
+      <a class="btn btn-sm join-item {% if status == 'new' %}btn-active{% endif %}"
+         hx-get="{% url 'accounting:tab_notifications' %}?status=new&source={{ source }}&kind={{ kind }}" hx-target="#acct-tab" hx-swap="innerHTML">
+        Не привязаны {% if counts.new %}<span class="badge badge-error badge-sm ml-1">{{ counts.new }}</span>{% endif %}
+      </a>
+      <a class="btn btn-sm join-item {% if status == 'unidentified' %}btn-active{% endif %}"
+         hx-get="{% url 'accounting:tab_notifications' %}?status=unidentified&source={{ source }}&kind={{ kind }}" hx-target="#acct-tab" hx-swap="innerHTML">
+        Неопознанные {% if counts.unidentified %}<span class="badge badge-warning badge-sm ml-1">{{ counts.unidentified }}</span>{% endif %}
+      </a>
+      <a class="btn btn-sm join-item {% if status == 'bound' %}btn-active{% endif %}"
+         hx-get="{% url 'accounting:tab_notifications' %}?status=bound&source={{ source }}&kind={{ kind }}" hx-target="#acct-tab" hx-swap="innerHTML">
+        Привязаны
+      </a>
+      <a class="btn btn-sm join-item {% if status == 'all' %}btn-active{% endif %}"
+         hx-get="{% url 'accounting:tab_notifications' %}?status=all&source={{ source }}&kind={{ kind }}" hx-target="#acct-tab" hx-swap="innerHTML">
+        Все
+      </a>
+    </div>
+
+    {# Тип платежа: прямой перевод vs эквайринг-зачисление (сводное) #}
+    <div class="join ml-2">
+      <a class="btn btn-sm join-item btn-ghost {% if kind == 'all' %}btn-active{% endif %}"
+         hx-get="{% url 'accounting:tab_notifications' %}?status={{ status }}&source={{ source }}&kind=all" hx-target="#acct-tab" hx-swap="innerHTML">Все типы</a>
+      <a class="btn btn-sm join-item btn-ghost {% if kind == 'direct' %}btn-active{% endif %}"
+         hx-get="{% url 'accounting:tab_notifications' %}?status={{ status }}&source={{ source }}&kind=direct" hx-target="#acct-tab" hx-swap="innerHTML">Прямые переводы</a>
+      <a class="btn btn-sm join-item btn-ghost {% if kind == 'settlement' %}btn-active{% endif %}"
+         hx-get="{% url 'accounting:tab_notifications' %}?status={{ status }}&source={{ source }}&kind=settlement" hx-target="#acct-tab" hx-swap="innerHTML">
+        Эквайринг-зачисления {% if counts.settlement %}<span class="badge badge-warning badge-sm ml-1">{{ counts.settlement }}</span>{% endif %}
+      </a>
+    </div>
+
+    <div class="join ml-2">
+      <a class="btn btn-sm join-item btn-ghost {% if source == 'all' %}btn-active{% endif %}"
+         hx-get="{% url 'accounting:tab_notifications' %}?status={{ status }}&source=all&kind={{ kind }}" hx-target="#acct-tab" hx-swap="innerHTML">Все источники</a>
+      <a class="btn btn-sm join-item btn-ghost {% if source == 'statement' %}btn-active{% endif %}"
+         hx-get="{% url 'accounting:tab_notifications' %}?status={{ status }}&source=statement&kind={{ kind }}" hx-target="#acct-tab" hx-swap="innerHTML">Р/с</a>
+      <a class="btn btn-sm join-item btn-ghost {% if source == 'acquiring' %}btn-active{% endif %}"
+         hx-get="{% url 'accounting:tab_notifications' %}?status={{ status }}&source=acquiring&kind={{ kind }}" hx-target="#acct-tab" hx-swap="innerHTML">Эквайринг</a>
+    </div>
+  </div>
+
+  <div class="card bg-base-100 shadow-sm border border-base-200">
+    <div class="card-body p-0">
+      <table class="table table-sm">
+        <thead>
+          <tr>
+            <th>Источник</th><th>Дата</th><th class="text-right">Сумма</th>
+            <th>Плательщик / данные клиента</th><th>Назначение</th><th>Статус</th><th class="text-right">Действие</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for ip in payments %}
+          <tr class="cursor-pointer hover:bg-base-200/60 {% if ip.is_settlement %}bg-base-200 text-base-content/50{% elif ip.status == 'bound' %}bg-success/5{% elif ip.status == 'unidentified' %}bg-warning/5{% endif %}"
+              hx-get="{% url 'accounting:payment_detail' %}?ip={{ ip.id }}" hx-target="body" hx-swap="beforeend">
+            <td>
+              {% if ip.source == 'acquiring' %}
+                <span class="badge badge-outline badge-sm gap-1 whitespace-nowrap">{% icon "credit-card" size=11 %} Эквайринг</span>
+              {% else %}
+                <span class="badge badge-outline badge-sm gap-1 whitespace-nowrap">{% icon "landmark" size=11 %} Р/с</span>
+              {% endif %}
+              {% if ip.is_settlement %}<div class="mt-0.5"><span class="badge badge-warning badge-xs whitespace-nowrap">эквайринг-зачисление</span></div>{% endif %}
+            </td>
+            <td class="whitespace-nowrap">{{ ip.occurred_at|date:"d.m.Y" }}</td>
+            <td class="text-right font-semibold whitespace-nowrap">+{{ ip.amount|floatformat:0 }} ₽</td>
+            <td>
+              <div>{{ ip.payer_name|default:"—" }}{% if ip.source == 'acquiring' %} <span class="text-warning" title="Введено клиентом на странице оплаты — возможна ошибка">⚠</span>{% endif %}</div>
+              {% if ip.payer_phone %}<div class="text-xs text-base-content/50">тел. {{ ip.payer_phone }}{% if ip.source == 'acquiring' %} · введено клиентом{% endif %}</div>{% endif %}
+            </td>
+            <td class="text-base-content/70">{{ ip.purpose|default:"—"|truncatechars:60 }}</td>
+            <td>
+              {% if ip.status == 'bound' %}
+                <span class="badge badge-success badge-sm whitespace-nowrap">привязан</span>
+                {% if ip.bound_client %}<div class="text-xs text-base-content/60 mt-0.5">→ {{ ip.bound_client }}</div>{% endif %}
+              {% elif ip.status == 'unidentified' %}
+                <span class="badge badge-warning badge-sm whitespace-nowrap">неопознанный</span>
+                {% if ip.note %}<div class="text-xs text-base-content/60 mt-0.5">{{ ip.note|truncatechars:40 }}</div>{% endif %}
+              {% else %}
+                <span class="badge badge-error badge-sm whitespace-nowrap">не привязан</span>
+              {% endif %}
+            </td>
+            <td class="text-right whitespace-nowrap" onclick="event.stopPropagation()">
+              {% if ip.is_settlement %}
+                <span class="text-xs text-base-content/40">эквайринг-зачисление</span>
+              {% elif ip.status == 'bound' %}
+                <button class="btn btn-xs btn-ghost" hx-get="{% url 'accounting:bind_modal' %}?ip={{ ip.id }}" hx-target="body" hx-swap="beforeend">{% icon "filter" size=13 %} Изменить</button>
+              {% else %}
+                <button class="btn btn-xs btn-primary" hx-get="{% url 'accounting:bind_modal' %}?ip={{ ip.id }}" hx-target="body" hx-swap="beforeend">{% icon "user" size=13 %} Привязать</button>
+                {% if ip.status == 'new' %}
+                <button class="btn btn-xs btn-ghost text-warning" title="Не удалось определить плательщика"
+                        hx-post="{% url 'accounting:mark_unidentified' %}" hx-vals='{"ip": "{{ ip.id }}"}' hx-swap="none"
+                        hx-confirm="Пометить платёж как неопознанный?">{% icon "x" size=13 %}</button>
+                {% endif %}
+              {% endif %}
+            </td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="7" class="text-center text-base-content/50 py-6">Платежей нет.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="text-xs text-base-content/40">
+    «Привязать» создаёт платёж в реестре («Платежи») и гасит выбранные начисления. Строка остаётся здесь со статусом «привязан».
+  </div>
+</div>

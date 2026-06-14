@@ -1,0 +1,66 @@
+{% load icons %}
+{% comment %}
+  Блок выбора клиента + распределения суммы по начислениям внутри модалки.
+  Перерисовывается целиком при выборе клиента (target #acct-bind-clientblock).
+{% endcomment %}
+<label class="input input-sm input-bordered flex items-center gap-2 mb-2">
+  {% icon "search" size=14 %}
+  <input type="search" class="grow" placeholder="Поиск клиента по ФИО или телефону…"
+         hx-get="{% url 'accounting:bind_client_search' %}?ip={{ ip.id }}"
+         hx-trigger="keyup changed delay:300ms" name="q"
+         hx-target="#acct-bind-client-results" hx-swap="innerHTML" autocomplete="off">
+</label>
+<div id="acct-bind-client-results" class="mb-2"></div>
+
+{% if client %}
+<input type="hidden" name="client_id" value="{{ client.id }}">
+
+<div class="flex items-center gap-2 rounded-lg border border-success/40 bg-success/5 p-2 mb-3">
+  {% icon "check-circle" size=18 css_class="text-success" %}
+  <div class="text-sm">
+    <div class="font-medium">{{ client }}</div>
+    <div class="text-xs text-base-content/60">{{ client.phone|default:"телефон не указан" }}</div>
+  </div>
+  <span class="text-xs text-base-content/50 ml-auto">для смены — найдите другого в поиске выше</span>
+</div>
+
+<div class="flex items-center justify-between mb-1.5">
+  <div class="font-semibold text-sm">Распределить по начислениям <span class="font-normal text-base-content/50">(необязательно)</span></div>
+  <label class="label cursor-pointer gap-2 py-0">
+    <span class="label-text text-xs">Без начисления (только клиент)</span>
+    <input type="checkbox" id="acct-no-charge" name="no_charge" value="1" class="checkbox checkbox-sm">
+  </label>
+</div>
+
+<div class="overflow-x-auto rounded-lg border border-base-200">
+  <table class="table table-sm">
+    <thead>
+      <tr><th>Начисление</th><th>Срок</th><th class="text-right">Сумма</th><th class="text-right">Остаток</th><th class="text-right">Отнести</th></tr>
+    </thead>
+    <tbody>
+      {% for ch in charges %}
+      <tr class="{% if not ch.rem %}opacity-50{% endif %}">
+        <td>{{ ch.title }}</td>
+        <td class="whitespace-nowrap">{{ ch.due_date|date:"d.m.Y" }}</td>
+        <td class="text-right whitespace-nowrap">{{ ch.amount|floatformat:0 }} ₽</td>
+        <td class="text-right whitespace-nowrap {% if ch.rem %}text-warning{% else %}text-success{% endif %}">{{ ch.rem|floatformat:0 }} ₽</td>
+        <td class="text-right">
+          {% if ch.rem %}
+            <input type="text" inputmode="decimal" name="alloc_{{ ch.id }}" value="{{ ch.prefill|floatformat:'-2' }}"
+                   class="acct-alloc input input-xs input-bordered w-24 text-right">
+          {% else %}
+            <span class="text-base-content/40 text-xs">оплачено</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="5" class="text-center text-base-content/50">У клиента нет начислений — платёж будет привязан без начисления.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+<div class="flex justify-end gap-4 text-sm mt-1.5">
+  <span class="text-base-content/60">Распределено: <span id="acct-bind-distributed" class="font-semibold">0</span> ₽ из {{ ip.amount|floatformat:0 }} ₽</span>
+  <span>Остаток платежа: <span id="acct-bind-remainder" class="font-semibold">{{ ip.amount|floatformat:0 }}</span> ₽</span>
+</div>
+{% endif %}

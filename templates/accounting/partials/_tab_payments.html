@@ -1,0 +1,46 @@
+{% load icons %}
+{% comment %}
+  Вкладка «Внесённые платежи» — реестр привязанных входящих платежей (реальные
+  данные finance.Payment, создаются при разнесении во вкладке «Уведомления»).
+  Самообновляется по acctQueueChanged.
+{% endcomment %}
+<div class="space-y-3"
+     hx-get="{% url 'accounting:tab_payments' %}" hx-trigger="acctQueueChanged from:body"
+     hx-target="this" hx-swap="outerHTML">
+
+  <div class="grid gap-3" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">
+    <div class="stat bg-base-100 border border-base-200 rounded-lg py-3 px-4">
+      <div class="stat-title text-xs">Приход (всего в реестре)</div>
+      <div class="stat-value text-success text-2xl">{{ total_in|floatformat:0 }} ₽</div>
+      <div class="stat-desc">проведённые входящие платежи</div>
+    </div>
+  </div>
+
+  <div class="card bg-base-100 shadow-sm border border-base-200">
+    <div class="card-body p-0">
+      <table class="table table-sm">
+        <thead>
+          <tr>
+            <th>Дата</th><th>Клиент</th><th>Начисление</th><th>Тип дохода</th>
+            <th class="text-right">Сумма</th><th>Счёт</th><th>Форма</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for p in payments %}
+          <tr>
+            <td class="whitespace-nowrap">{{ p.payment_date|date:"d.m.Y" }}</td>
+            <td>{{ p.client }}</td>
+            <td class="text-base-content/70">{% if p.charge %}{{ p.charge.title }}{% else %}<span class="text-base-content/40">—</span>{% endif %}</td>
+            <td class="text-base-content/70">{{ p.income_type.name|default:"—" }}</td>
+            <td class="text-right font-semibold text-success whitespace-nowrap">+{{ p.amount_in|floatformat:0 }} ₽</td>
+            <td>{{ p.incoming_account.name|default:"—" }}</td>
+            <td>{{ p.get_payment_form_display }}</td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="7" class="text-center text-base-content/50 py-6">Платежей пока нет. Разнесите входящие во вкладке «Уведомления».</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
