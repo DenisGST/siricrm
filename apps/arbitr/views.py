@@ -1,7 +1,9 @@
 """Views для UI мониторинга арбитражных дел."""
+import time
 from datetime import timedelta
 
 from django.contrib.auth.decorators import login_required
+from django.core.cache import cache
 from django.db.models import Count, Q
 from django.http import HttpResponse, HttpResponseBadRequest, HttpResponseRedirect
 from django.shortcuts import get_object_or_404, render
@@ -240,21 +242,74 @@ def case_detail(request, case_id):
     )
 
 
+def _active_task_cache_key(case_id) -> str:
+    """Ключ кэша для отслеживания активного celery-task'а по делу.
+
+    Значение: {"task_id": str, "started_at": float}. TTL 10 мин (хватит
+    на самый длинный парсинг + PDF). tasks.kad_monitor_one_case в finally
+    блоке делает cache.delete по этому же ключу — сигнал «таск завершился».
+    """
+    return f"arbitr:active_task:{case_id}"
+
+
 @login_required
 @require_POST
 def case_run(request, case_id):
-    """Ручной запуск парсера для конкретного дела. Возвращает обновлённую карточку."""
+    """Ручной запуск парсера. Сохраняет task_id в кэш — для poll'инга.
+
+    Возвращает обновлённую карточку. Если на деле уже идёт ручной запуск
+    (cache hit) — отказывает с 409 Conflict, чтобы не запустить второй
+    параллельный таск.
+    """
     if not is_admin(request.user):
         return HttpResponse("forbidden", status=403)
     case = get_object_or_404(ArbitrCase, pk=case_id)
-    kad_monitor_one_case.delay(str(case.id))
-    # Сразу пишем «manual run scheduled» в лог — чтобы поллер видел
-    # что что-то происходит до того, как воркер реально стартует.
+    key = _active_task_cache_key(case.id)
+    if cache.get(key):
+        return HttpResponse("Парсинг уже идёт", status=409)
+    result = kad_monitor_one_case.delay(str(case.id))
+    cache.set(key, {
+        "task_id": result.id,
+        "started_at": time.time(),
+        "user": request.user.username,
+    }, timeout=600)
     ArbitrCheckLog.objects.create(
         case=case, state=ArbitrCheckLog.STATE_OK,
         notes=f"Ручной запуск инициирован (user={request.user.username})",
     )
     return _render_case_card(request, case)
+
+
+@login_required
+@require_POST
+def case_run_abort(request, case_id):
+    """Прерывает активный ручной парсинг.
+
+    Получает task_id из кэша, делает AsyncResult.revoke(terminate=True),
+    чистит кэш, пишет в лог. Если активного таска нет — просто триггерит
+    HX-Refresh (UI рассинхронизировался, перерендеримся).
+    """
+    if not is_admin(request.user):
+        return HttpResponse("forbidden", status=403)
+    case = get_object_or_404(ArbitrCase, pk=case_id)
+    key = _active_task_cache_key(case.id)
+    active = cache.get(key)
+    if active:
+        from celery.result import AsyncResult  # noqa: WPS433 — local
+        try:
+            AsyncResult(active["task_id"]).revoke(
+                terminate=True, signal="SIGTERM",
+            )
+        except Exception:  # noqa: BLE001 — best-effort
+            pass
+        cache.delete(key)
+        ArbitrCheckLog.objects.create(
+            case=case, state=ArbitrCheckLog.STATE_ERROR,
+            notes=f"Парсинг прерван пользователем (user={request.user.username})",
+        )
+    response = HttpResponse(status=204)
+    response["HX-Refresh"] = "true"
+    return response
 
 
 @login_required
@@ -297,13 +352,28 @@ def case_toggle_pause(request, case_id):
 
 @login_required
 def case_card_partial(request, case_id):
-    """HTMX-партиал карточки одного дела (для dashboard'а)."""
+    """HTMX-партиал карточки одного дела.
+
+    Используется и для swap'а после ручного запуска, и для self-polling'а
+    карточки во время активного парсинга (`?polling=1`).
+
+    Если `?polling=1` И активного таска в кэше уже нет → парсер завершился,
+    отвечаем HX-Refresh чтобы полностью перерендерить страницу (sidebar,
+    хронология, счётчики events_count — всё обновится).
+    """
     if not is_admin(request.user):
         return HttpResponse("forbidden", status=403)
     case = get_object_or_404(
         _annotate_cases(ArbitrCase.objects.all()),
         pk=case_id,
     )
+    is_polling = request.GET.get("polling") == "1"
+    active = cache.get(_active_task_cache_key(case.id))
+    if is_polling and not active:
+        # Парсер завершился — триггерим полную перезагрузку.
+        response = HttpResponse(status=204)
+        response["HX-Refresh"] = "true"
+        return response
     return _render_case_card(request, case)
 
 
@@ -323,6 +393,11 @@ def case_log_partial(request, case_id):
 def _render_case_card(request, case):
     case.next_check_at = _estimate_next_check_at(case)
     case.last_log_state = _last_log_state(case)
+    # Активный таск — выводим прогресс-UI и self-polling в шаблоне.
+    active = cache.get(_active_task_cache_key(case.id))
+    if active:
+        case.active_task = active
+        case.active_task_elapsed = int(time.time() - active.get("started_at", 0))
     return render(request, "arbitr/partials/_case_card.html", {"case": case})
 
 

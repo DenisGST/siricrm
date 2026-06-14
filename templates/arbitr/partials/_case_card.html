@@ -1,6 +1,18 @@
 {% load humanize %}
-{# Карточка одного дела в дашборде (id="case-<uuid>" — для HTMX swap). #}
-<div id="case-{{ case.id }}" class="card bg-base-100 shadow-sm border border-base-300">
+{# Карточка одного дела в dashboard.html / _case_pane.html (id="case-<uuid>" #}
+{# — для HTMX outerHTML swap).                                                #}
+{# Self-polling: если идёт активный ручной парсинг (case.active_task), карточка #}
+{# раз в 3с дёргает свой же case_card endpoint с ?polling=1. Тот, увидев что  #}
+{# таск завершился (cache очищен), возвращает HX-Refresh — браузер делает    #}
+{# полный reload (sidebar, события, лог — всё обновляется свежими данными).  #}
+<div id="case-{{ case.id }}"
+     class="card bg-base-100 shadow-sm border border-base-300"
+     {% if case.active_task %}
+     hx-get="{% url 'arbitr:case_card' case.id %}?polling=1"
+     hx-trigger="every 3s"
+     hx-target="this"
+     hx-swap="outerHTML"
+     {% endif %}>
   <div class="card-body p-4 gap-3">
     <div class="flex flex-wrap items-start justify-between gap-2">
       <div class="min-w-0">
@@ -107,6 +119,28 @@
       </div>
     {% endif %}
 
+    {# Прогресс ручного парсинга — пока case.active_task в Redis-кэше. #}
+    {# Карточка раз в 3с поллит сервер; cache.delete в tasks.py finally  #}
+    {# сигнализирует «таск завершился» → следующий poll вернёт HX-Refresh. #}
+    {% if case.active_task %}
+      <div class="alert alert-info py-2 px-3 flex items-center gap-3">
+        <span class="loading loading-spinner loading-sm shrink-0"></span>
+        <div class="flex-1 min-w-0">
+          <div class="text-sm font-medium">Парсинг идёт…</div>
+          <div class="text-xs opacity-70">
+            {{ case.active_task_elapsed }}с
+            {% if case.active_task.user %} · запустил {{ case.active_task.user }}{% endif %}
+            · обычно ~50с, но если kad недоступен — может зависнуть
+          </div>
+        </div>
+        <button class="btn btn-error btn-sm shrink-0"
+                hx-post="{% url 'arbitr:case_run_abort' case.id %}"
+                title="Прервать парсинг (revoke celery task)">
+          ✕ Прервать
+        </button>
+      </div>
+    {% endif %}
+
     <div class="flex items-center justify-between gap-2 pt-1">
       <div class="text-xs opacity-60">
         Запустил мониторинг: {{ case.started_by|default:"—" }}
@@ -119,6 +153,9 @@
             title="Возобновить — дело снова попадёт в автомониторинг">
             ▶ Возобновить
           </button>
+        {% elif case.active_task %}
+          {# Пока идёт парсинг — кнопки пауза/парсить отключены, всё в alert'е. #}
+          <span class="text-xs opacity-50">…ждём завершения</span>
         {% else %}
           <button
             class="btn btn-ghost btn-sm"

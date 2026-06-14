@@ -450,20 +450,26 @@ def kad_monitor_one_case(case_id: str):
     )
 
     try:
-        with KadSession() as kad:
-            if case.status == ArbitrCase.STATUS_SEARCHING:
-                result = _search_one(kad, case)
-            elif case.status == ArbitrCase.STATUS_MONITORING:
-                result = _parse_one(kad, case)
-            else:
-                _log_check(
-                    case, ArbitrCheckLog.STATE_ERROR,
-                    notes=f"Ручной запуск недоступен для статуса {case.status}",
-                )
-                return {"error": "wrong_status", "status": case.status}
-    except KadCaptchaRequired as exc:
-        _log_check(case, ArbitrCheckLog.STATE_CAPTCHA, notes=exc.page_url)
-        send_captcha_alert(case, page_url=exc.page_url)
-        result = "captcha"
+        try:
+            with KadSession() as kad:
+                if case.status == ArbitrCase.STATUS_SEARCHING:
+                    result = _search_one(kad, case)
+                elif case.status == ArbitrCase.STATUS_MONITORING:
+                    result = _parse_one(kad, case)
+                else:
+                    _log_check(
+                        case, ArbitrCheckLog.STATE_ERROR,
+                        notes=f"Ручной запуск недоступен для статуса {case.status}",
+                    )
+                    return {"error": "wrong_status", "status": case.status}
+        except KadCaptchaRequired as exc:
+            _log_check(case, ArbitrCheckLog.STATE_CAPTCHA, notes=exc.page_url)
+            send_captcha_alert(case, page_url=exc.page_url)
+            result = "captcha"
 
-    return {"case_id": str(case.id), "result": result}
+        return {"case_id": str(case.id), "result": result}
+    finally:
+        # Сигнал «таск завершился» для UI-поллера в views.case_card_partial.
+        # Тот же ключ что устанавливает views.case_run.
+        from django.core.cache import cache  # noqa: WPS433 — local
+        cache.delete(f"arbitr:active_task:{case.id}")
