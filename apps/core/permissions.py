@@ -76,7 +76,7 @@ def is_management(user) -> bool:
 
 def can_view_all_clients(user) -> bool:
     """Может видеть всех клиентов: superuser, admin, managing_partner,
-    head_dep, Employee.is_owner или сотрудник отдела с
+    head_dep, accountant (бухгалтер), Employee.is_owner или сотрудник отдела с
     Department.sees_all_clients=True (обычно «Отдел продаж»)."""
     if is_management(user):
         return True
@@ -84,6 +84,8 @@ def can_view_all_clients(user) -> bool:
     if not emp:
         return False
     if getattr(emp, "is_owner", False):
+        return True
+    if emp.role == "accountant":
         return True
     if emp.department_id and getattr(emp.department, "sees_all_clients", False):
         return True
