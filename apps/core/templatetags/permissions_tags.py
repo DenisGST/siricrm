@@ -23,3 +23,9 @@ def is_management(user):
 @register.filter
 def can_merge_clients(user):
     return permissions.can_merge_clients(user)
+
+
+@register.filter
+def can_access_procedures(user):
+    from apps.procedure.permissions import can_access_procedures as _check
+    return _check(user)

@@ -1159,6 +1159,11 @@ class Service(TimeStampedModel):
     date_end = models.DateField("Дата окончания оказания услуг", null=True, blank=True)
     date_terminated = models.DateField("Дата расторжения договора", null=True, blank=True)
     date_executed = models.DateField("Дата исполнения услуг по договору", null=True, blank=True)
+    # Заполняется бизнес-логикой при передаче услуги в отдел сбора документов
+    # (apps/crm/service_transfer.py). Показывается в карточке процедуры (п.3 дат услуги).
+    docs_dept_date = models.DateField(
+        "Дата передачи в отдел сбора документов", null=True, blank=True,
+    )
 
     contract_file = models.ForeignKey(
         StoredFile,
@@ -1169,6 +1174,11 @@ class Service(TimeStampedModel):
     )
     contract_price = models.DecimalField(
         "Цена договора, ₽",
+        max_digits=14, decimal_places=2,
+        null=True, blank=True,
+    )
+    total_debt = models.DecimalField(
+        "Сумма всех долгов, ₽",
         max_digits=14, decimal_places=2,
         null=True, blank=True,
     )

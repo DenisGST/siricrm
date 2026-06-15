@@ -1,0 +1,51 @@
+{% comment %}Таймлайны стадий по фазам — в шапке карточки, справа от ФИО.
+  Контекст: service, timeline_phases. Грузится лениво, обновляется по procStagesChanged.
+  Каждый узел шириной под своё название (нет наложений); линия между точками непрерывная.{% endcomment %}
+<div class="proc-sbar">
+  <style>
+    .proc-sbar .proc-tl-phases{display:flex;align-items:flex-start;gap:1.5rem;overflow-x:auto;padding:.1rem 0}
+    .proc-sbar .proc-tl-phase{flex:0 0 auto}
+    .proc-sbar .proc-tl-phase-label{font-size:.7rem;font-weight:600;color:#6b7280;text-align:center;margin-bottom:.3rem;white-space:nowrap}
+    .proc-sbar .proc-tl{display:flex;align-items:stretch}
+    /* узел = grid 3 строки (подпись/точка/дата); ширина = под название → подписи не налезают */
+    .proc-sbar .proc-tl-node{position:relative;display:grid;grid-template-rows:1.35rem 14px 1.35rem;justify-items:center;align-items:center;padding:0 14px;background:none;border:0;cursor:pointer}
+    /* непрерывная линия: левая и правая половинки соединяются у точек соседей */
+    .proc-sbar .proc-tl-node::before,.proc-sbar .proc-tl-node::after{content:"";position:absolute;top:50%;transform:translateY(-50%);height:2px;width:50%;background:#d1d5db;z-index:0}
+    .proc-sbar .proc-tl-node::before{left:0}
+    .proc-sbar .proc-tl-node::after{right:0}
+    .proc-sbar .proc-tl-node:first-child::before{display:none}
+    .proc-sbar .proc-tl-node:last-child::after{display:none}
+    .proc-sbar .proc-tl-node.done::before,.proc-sbar .proc-tl-node.current::before{background:#3b82f6}
+    .proc-sbar .proc-tl-node.done::after{background:#3b82f6}
+    .proc-sbar .proc-tl-dot{position:relative;z-index:1;grid-row:2;width:14px;height:14px;border-radius:9999px;background:#fff;border:2px solid #d1d5db;box-sizing:border-box}
+    .proc-sbar .proc-tl-node.done .proc-tl-dot{background:#3b82f6;border-color:#3b82f6}
+    .proc-sbar .proc-tl-node.current .proc-tl-dot{background:#3b82f6;border-color:#3b82f6;box-shadow:0 0 0 3px rgba(59,130,246,.25)}
+    .proc-sbar .proc-tl-name{grid-row:1;white-space:nowrap;font-size:.7rem;line-height:1.1;text-align:center;color:inherit}
+    .proc-sbar .proc-tl-date{grid-row:3;white-space:nowrap;font-size:.62rem;line-height:1;text-align:center;color:#9ca3af}
+    .proc-sbar .proc-tl-node.down .proc-tl-name{grid-row:3}
+    .proc-sbar .proc-tl-node.down .proc-tl-date{grid-row:1}
+    .proc-sbar .proc-tl-node.upcoming .proc-tl-name{color:#9ca3af}
+    .proc-sbar .proc-tl-node.current .proc-tl-name{font-weight:600;color:#2563eb}
+    .proc-sbar .proc-tl-node:hover .proc-tl-name{text-decoration:underline}
+  </style>
+  <div class="proc-tl-phases">
+    {% for ph in timeline_phases %}
+    <div class="proc-tl-phase">
+      <div class="proc-tl-phase-label">{{ ph.label }}</div>
+      <div class="proc-tl">
+        {% for it in ph.items %}
+        <button type="button" class="proc-tl-node {{ it.state }} {% cycle 'up' 'down' %}"
+                hx-post="{% url 'procedure:set_stage' service.id %}"
+                hx-vals='{"stage_id": "{{ it.obj.id }}", "procedure_id": "{{ it.procedure_id }}"}'
+                hx-target="#procedure-tab-body" hx-swap="innerHTML"
+                title="Перейти на стадию «{{ it.name }}»">
+          <span class="proc-tl-name">{{ it.name }}</span>
+          <span class="proc-tl-dot"></span>
+          {% if it.date %}<span class="proc-tl-date">{{ it.date|date:"d.m.y" }}</span>{% endif %}
+        </button>
+        {% endfor %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>

@@ -1,0 +1,67 @@
+{% comment %}Телефоны лица (должник/супруга) — CRUD ClientPhone, как в карточке клиента.
+  Контекст: service, who ("debtor"/"spouse"), client, phones, purpose_choices, error.{% endcomment %}
+<div id="phones-block-{{ who }}" class="space-y-2">
+  <div class="flex items-center justify-between">
+    <span class="label-text text-xs">Телефоны</span>
+    <span class="text-xs text-base-content/60">{{ phones|length }} шт.</span>
+  </div>
+
+  {% if error %}
+    <div class="alert alert-error text-xs py-2 px-3">{{ error }}</div>
+  {% endif %}
+
+  {% if phones %}
+    <table class="table table-xs">
+      <thead>
+        <tr><th>Номер</th><th>Назначение</th><th></th></tr>
+      </thead>
+      <tbody>
+        {% for p in phones %}
+        <tr>
+          <td class="font-mono">+{{ p.phone }}</td>
+          <td>
+            <form hx-post="{% url 'procedure:phones_set_purpose' service.id who p.id %}"
+                  hx-target="#phones-block-{{ who }}" hx-swap="outerHTML" hx-trigger="change">
+              {% csrf_token %}
+              <select name="purpose" class="select select-bordered select-xs">
+                {% for value, label in purpose_choices %}
+                  <option value="{{ value }}" {% if p.purpose == value %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+              </select>
+            </form>
+          </td>
+          <td class="text-right">
+            <button type="button" class="btn btn-xs btn-ghost text-error"
+                    hx-post="{% url 'procedure:phones_delete' service.id who p.id %}"
+                    hx-target="#phones-block-{{ who }}" hx-swap="outerHTML"
+                    hx-confirm="Удалить телефон +{{ p.phone }} ({{ p.get_purpose_display }})?"
+                    hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'>✕</button>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p class="text-xs text-base-content/60">Телефонов нет.</p>
+  {% endif %}
+
+  <form hx-post="{% url 'procedure:phones_add' service.id who %}"
+        hx-target="#phones-block-{{ who }}" hx-swap="outerHTML"
+        class="flex flex-wrap gap-2 items-end pt-2 border-t border-base-300">
+    {% csrf_token %}
+    <div class="form-control">
+      <label class="label py-0"><span class="label-text text-xs">Номер</span></label>
+      <input type="text" name="phone" required placeholder="+7 (999) 123-45-67"
+             class="input input-bordered input-xs w-44" onblur="formatPhoneField(this)">
+    </div>
+    <div class="form-control">
+      <label class="label py-0"><span class="label-text text-xs">Назначение</span></label>
+      <select name="purpose" class="select select-bordered select-xs w-40">
+        {% for value, label in purpose_choices %}
+          <option value="{{ value }}" {% if value == 'additional' %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <button type="submit" class="btn btn-xs btn-primary">+ Добавить</button>
+  </form>
+</div>

@@ -1,0 +1,95 @@
+{% comment %}Редактируемые данные лица (должник/супруга) → карточка Клиента.
+  Контекст: person (dict), who ("debtor"/"spouse"), service.{% endcomment %}
+<form data-person-form hx-post="{% url 'procedure:update_person' service.id who %}"
+      hx-target="#procedure-tab-body" hx-swap="innerHTML" class="flex flex-col gap-2">
+  {% comment %} ФИО {% endcomment %}
+  <div class="grid grid-cols-3 gap-2">
+    <label class="form-control min-w-0">
+      <span class="label-text text-xs">Фамилия</span>
+      <input type="text" name="last_name" value="{{ person.last_name }}" class="input input-bordered input-sm w-full">
+    </label>
+    <label class="form-control min-w-0">
+      <span class="label-text text-xs">Имя</span>
+      <input type="text" name="first_name" value="{{ person.first_name }}" class="input input-bordered input-sm w-full">
+    </label>
+    <label class="form-control min-w-0">
+      <span class="label-text text-xs">Отчество</span>
+      <input type="text" name="patronymic" value="{{ person.patronymic }}" class="input input-bordered input-sm w-full">
+    </label>
+  </div>
+
+  {% comment %} Дата рождения · Место рождения · ИНН · СНИЛС — одна строка {% endcomment %}
+  <div class="grid grid-cols-4 gap-2">
+    <label class="form-control min-w-0">
+      <span class="label-text text-xs">Дата рождения</span>
+      <input type="date" name="birth_date" value="{{ person.birth_date|date:'Y-m-d' }}" class="input input-bordered input-sm w-full">
+    </label>
+    <label class="form-control min-w-0">
+      <span class="label-text text-xs">Место рождения</span>
+      <input type="text" name="birth_place" value="{{ person.birth_place }}" class="input input-bordered input-sm w-full">
+    </label>
+    <label class="form-control min-w-0">
+      <span class="label-text text-xs">ИНН</span>
+      <input type="text" name="inn" value="{{ person.inn }}" class="input input-bordered input-sm w-full">
+    </label>
+    <label class="form-control min-w-0">
+      <span class="label-text text-xs">СНИЛС</span>
+      <input type="text" name="snils" value="{{ person.snils }}" class="input input-bordered input-sm w-full">
+    </label>
+  </div>
+
+  {% comment %} Паспортные данные — в рамке {% endcomment %}
+  <fieldset class="border border-base-300 rounded p-2">
+    <legend class="text-xs font-semibold px-1">Паспортные данные</legend>
+    <div class="grid grid-cols-4 gap-2">
+      <label class="form-control min-w-0">
+        <span class="label-text text-xs">Серия</span>
+        <input type="text" name="passport_series" value="{{ person.passport_series }}" class="input input-bordered input-sm w-full">
+      </label>
+      <label class="form-control min-w-0">
+        <span class="label-text text-xs">Номер</span>
+        <input type="text" name="passport_number" value="{{ person.passport_number }}" class="input input-bordered input-sm w-full">
+      </label>
+      <label class="form-control min-w-0">
+        <span class="label-text text-xs">Дата выдачи</span>
+        <input type="date" name="passport_issued_date" value="{{ person.passport_issued_date|date:'Y-m-d' }}" class="input input-bordered input-sm w-full">
+      </label>
+      <label class="form-control min-w-0">
+        <span class="label-text text-xs">Код подразд.</span>
+        <input type="text" name="passport_division_code" value="{{ person.passport_division_code }}" class="input input-bordered input-sm w-full">
+      </label>
+    </div>
+    <label class="form-control mt-2 min-w-0">
+      <span class="label-text text-xs">Кем выдан</span>
+      <input type="text" name="passport_issued_by" value="{{ person.passport_issued_by }}" class="input input-bordered input-sm w-full">
+    </label>
+  </fieldset>
+
+  {% if who == "debtor" %}
+  <label class="form-control min-w-0">
+    <span class="label-text text-xs">Сумма всех долгов, ₽</span>
+    <input type="text" name="total_debt" value="{{ service.total_debt|default_if_none:'' }}" class="input input-bordered input-sm w-full" placeholder="0.00">
+  </label>
+  {% endif %}
+
+  <div class="flex gap-2 mt-1">
+    <button type="submit" class="btn btn-sm btn-primary" data-save disabled>Сохранить</button>
+    <button type="button" class="btn btn-sm btn-ghost" data-cancel disabled
+            hx-get="{% url 'procedure:tab_overview' service.id %}"
+            hx-target="#procedure-tab-body" hx-swap="innerHTML">Отмена</button>
+  </div>
+</form>
+
+{% comment %} Адреса — полный CRUD (свои формы, вне формы выше), как в карточке клиента {% endcomment %}
+<div class="mt-3 pt-3 border-t border-base-300"
+     hx-get="{% url 'procedure:addresses_block' service.id who %}"
+     hx-trigger="load" hx-swap="innerHTML">
+  <p class="text-xs text-base-content/50">Загрузка адресов…</p>
+</div>
+
+{% comment %} Телефоны — полный CRUD (свои формы, вне формы выше) {% endcomment %}
+<div class="mt-3 pt-3 border-t border-base-300"
+     hx-get="{% url 'procedure:phones_block' service.id who %}"
+     hx-trigger="load" hx-swap="innerHTML">
+  <p class="text-xs text-base-content/50">Загрузка телефонов…</p>
+</div>

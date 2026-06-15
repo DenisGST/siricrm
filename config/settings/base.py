@@ -53,6 +53,7 @@ INSTALLED_APPS = [
     "apps.scans",
     "apps.accounting",
     "apps.notifications",
+    "apps.procedure",
 
     # django-rules: object-level permissions (apps/<app>/rules.py авто-импортируются)
     "rules.apps.AutodiscoverRulesConfig",

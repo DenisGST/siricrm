@@ -52,8 +52,9 @@ class EmployeeAdmin(admin.ModelAdmin):
 
 @admin.register(Department)
 class DepartmentAdmin(admin.ModelAdmin):
-    list_display = ("name", "manager", "is_active", "created_at")
-    list_filter = ("is_active",)
+    list_display = ("name", "manager", "is_docs_collection", "is_active", "created_at")
+    list_editable = ("is_docs_collection",)
+    list_filter = ("is_active", "is_docs_collection")
     search_fields = ("name", "description")
     autocomplete_fields = ("manager",)
 

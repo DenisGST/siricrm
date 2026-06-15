@@ -1,0 +1,61 @@
+{% load permissions_tags %}
+{% comment %}
+  Карточка процедуры банкротства — полноэкранный экран по услуге БФЛ.
+  Свопится в #content-area (как чат). Вкладки грузятся в #procedure-tab-body.
+{% endcomment %}
+<div class="flex flex-col h-full gap-3" id="procedure-card">
+
+  <div class="flex items-center justify-between gap-4 flex-wrap">
+    <div class="flex-shrink-0">
+      <h2 class="text-lg font-bold">
+        🗂 Процедура банкротства
+        <span class="text-base font-normal">— {{ client.last_name }} {{ client.first_name }} {{ client.patronymic }}</span>
+      </h2>
+      <p class="text-xs text-base-content/70">
+        Услуга {{ service.name.short_name }}
+        {% if service.numb_dogovor %}· Договор № {{ service.numb_dogovor }}{% endif %}
+        {% if service.date_dogovor %}от {{ service.date_dogovor|date:"d.m.Y" }}{% endif %}
+      </p>
+    </div>
+    {% comment %} Таймлайны стадий — справа от заголовка (грузятся лениво, обновляются по procStagesChanged) {% endcomment %}
+    <div class="flex-1 min-w-0" id="proc-stages-bar"
+         hx-get="{% url 'procedure:stages_bar' service.id %}"
+         hx-trigger="load, procStagesChanged from:body"
+         hx-swap="innerHTML"></div>
+  </div>
+
+  {% comment %} Строка вкладок {% endcomment %}
+  <div class="tabs tabs-boxed w-fit" id="procedure-tabs">
+    <a class="tab tab-active" data-tab="overview"
+       hx-get="{% url 'procedure:tab_overview' service.id %}"
+       hx-target="#procedure-tab-body" hx-swap="innerHTML">Обзор / Сроки</a>
+    <a class="tab" data-tab="court"
+       hx-get="{% url 'procedure:tab_court' service.id %}"
+       hx-target="#procedure-tab-body" hx-swap="innerHTML">Суд</a>
+    {% for slug, label in placeholder_tabs.items %}
+      <a class="tab" data-tab="{{ slug }}"
+         hx-get="{% url 'procedure:tab_placeholder' service.id slug %}"
+         hx-target="#procedure-tab-body" hx-swap="innerHTML">{{ label }}</a>
+    {% endfor %}
+  </div>
+
+  <div class="flex-1 overflow-y-auto" id="procedure-tab-body"
+       hx-get="{% url 'procedure:tab_overview' service.id %}"
+       hx-trigger="load" hx-swap="innerHTML">
+    <div class="p-6 text-base-content/50">Загрузка…</div>
+  </div>
+</div>
+
+<script>
+(function () {
+  // Переключение активной вкладки (top-layer-безопасно: IIFE, без top-level const).
+  var tabs = document.getElementById('procedure-tabs');
+  if (!tabs) return;
+  tabs.addEventListener('click', function (e) {
+    var t = e.target.closest('.tab');
+    if (!t) return;
+    tabs.querySelectorAll('.tab').forEach(function (el) { el.classList.remove('tab-active'); });
+    t.classList.add('tab-active');
+  });
+})();
+</script>

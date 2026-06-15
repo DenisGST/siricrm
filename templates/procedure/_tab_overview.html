@@ -1,0 +1,414 @@
+{% load icons %}
+{% comment %}
+  Вкладка «Обзор / Сроки»: сводка по делу + кастомный аккордеон процедур +
+  данные должника + мероприятия. Перерисовывается целиком после любого действия.
+{% endcomment %}
+<div class="flex flex-col gap-4" id="procedure-overview">
+  <style>
+    #procedure-overview .proc-add-btn{color:#9ca3af;transition:color .15s;line-height:0}
+    #procedure-overview .proc-add-btn:hover{color:#22c55e}
+    #procedure-overview .proc-chevron{color:#9ca3af;transition:transform .15s;line-height:0}
+  </style>
+
+  {% comment %} ── Дело (40%) + Данные должника (60%) ── {% endcomment %}
+  <div style="display:grid;grid-template-columns:2fr 3fr;gap:1rem;align-items:start">
+
+    {% comment %} Дело — аккордеон (daisyUI arrow icon): пункт «Дело» + по пункту на процедуру {% endcomment %}
+    <div>
+      <div class="flex items-center justify-between mb-2">
+        <h3 class="font-semibold text-sm">Дело о банкротстве</h3>
+        {% if case.status == "closed" %}
+          <span class="badge badge-neutral badge-sm">Закрыто{% if case.result_label %}: {{ case.result_label }}{% endif %}</span>
+        {% else %}
+          <span class="badge badge-success badge-outline badge-sm">В работе</span>
+        {% endif %}
+      </div>
+
+      <form id="case-form-{{ case.id }}"
+            hx-post="{% url 'procedure:update_case_block' service.id %}"
+            hx-target="#procedure-tab-body" hx-swap="innerHTML">
+
+        {% comment %} ── Сводка по делу ── {% endcomment %}
+        <div class="card bg-base-100 shadow mb-3">
+          <div class="card-body p-3">
+            <div class="grid grid-cols-2 gap-2">
+              <label class="form-control">
+                <span class="label-text text-xs">Финуправляющий (актуальный)</span>
+                <div class="input input-bordered input-sm flex items-center text-base-content/70">{{ case.fm_display }}</div>
+              </label>
+              <label class="form-control">
+                <span class="label-text text-xs">Итог первого заседания</span>
+                {% comment %} Применяется сразу: управляет блоком «+ Процедура» {% endcomment %}
+                <select name="first_hearing_outcome" class="select select-bordered select-sm"
+                        hx-post="{% url 'procedure:update_case_block' service.id %}"
+                        hx-target="#procedure-tab-body" hx-swap="innerHTML"
+                        hx-include="#case-form-{{ case.id }}">
+                  <option value="">— не определён —</option>
+                  {% for val, label in first_hearing_outcomes %}
+                    <option value="{{ val }}" {% if case.first_hearing_outcome == val %}selected{% endif %}>{{ label }}</option>
+                  {% endfor %}
+                </select>
+              </label>
+            </div>
+
+            {% comment %} Строка 1 — даты услуги {% endcomment %}
+            <div class="text-xs font-medium text-base-content/60 mt-3 mb-1">Даты услуги</div>
+            <div class="grid grid-cols-4 gap-2">
+              <label class="form-control">
+                <span class="label-text text-xs">Обращение / анкета</span>
+                <div class="input input-bordered input-sm flex items-center text-base-content/70">{{ date_application|date:"d.m.Y"|default:"—" }}</div>
+              </label>
+              <label class="form-control">
+                <span class="label-text text-xs">Подписание договора</span>
+                <input type="date" name="date_dogovor" value="{{ date_dogovor }}" class="input input-bordered input-sm">
+              </label>
+              <label class="form-control">
+                <span class="label-text text-xs">Сбор док-ов</span>
+                <input type="date" name="docs_dept_date" value="{{ case_docs_dept_date }}" class="input input-bordered input-sm">
+              </label>
+              <label class="form-control">
+                <span class="label-text text-xs">Подготовка иска</span>
+                <div class="input input-bordered input-sm flex items-center text-base-content/70">{{ date_claim_prep|date:"d.m.Y"|default:"—" }}</div>
+              </label>
+            </div>
+
+            {% comment %} Строка 2 — даты судебного дела {% endcomment %}
+            <div class="text-xs font-medium text-base-content/60 mt-3 mb-1">Даты судебного дела</div>
+            <div class="grid grid-cols-3 gap-2">
+              <label class="form-control">
+                <span class="label-text text-xs">Отправка иска в суд</span>
+                <input type="date" name="filing_date" value="{{ case_filing_date }}" class="input input-bordered input-sm">
+              </label>
+              <label class="form-control">
+                <span class="label-text text-xs">Принятие иска судом</span>
+                <input type="date" name="claim_accept_date" value="{{ case_claim_accept_date }}" class="input input-bordered input-sm">
+              </label>
+              <label class="form-control">
+                <span class="label-text text-xs">Первое с/з на</span>
+                <input type="date" name="first_hearing_date" value="{{ case_first_hearing_date }}" class="input input-bordered input-sm">
+              </label>
+            </div>
+          </div>
+        </div>
+
+      </form>
+
+      {% comment %} Сводка: Сохранить/Отмена — неактивны до правки полей сводки {% endcomment %}
+      <div class="flex gap-2 mb-3" data-summary-actions>
+        <button type="submit" form="case-form-{{ case.id }}" class="btn btn-sm btn-primary" data-save disabled>Сохранить</button>
+        <button type="button" class="btn btn-sm btn-ghost" data-cancel disabled
+                hx-get="{% url 'procedure:tab_overview' service.id %}"
+                hx-target="#procedure-tab-body" hx-swap="innerHTML">Отмена</button>
+      </div>
+
+      {% comment %} ── Процедуры: кастомный аккордеон (один раскрыт; своё сохранение) ── {% endcomment %}
+      <h3 class="font-semibold text-sm mb-1">Процедуры</h3>
+      <div id="proc-acc-{{ case.id }}" class="flex flex-col gap-2 mb-2 border border-base-300 rounded p-2">
+        {% for pc in proc_cards %}
+        {% with opened=pc.obj.id|stringformat:'s' %}
+        <div class="border border-base-300 rounded overflow-hidden bg-base-100" data-proc>
+          {% comment %} заголовок (клик — раскрыть/свернуть) {% endcomment %}
+          <div class="flex items-center gap-2 p-2 cursor-pointer select-none bg-base-200" data-proc-head title="Развернуть/свернуть">
+            <span class="proc-chevron {% if expand_proc_id == opened %}rotate-90{% endif %}" data-chevron>{% icon "chevron-right" size=18 %}</span>
+            <span class="text-sm font-medium">{{ forloop.counter }}. {{ pc.obj.get_kind_display }}</span>
+            <span class="text-xs text-base-content/60">· {{ pc.obj.intro_date|date:"d.m.Y"|default:"—" }} — {{ pc.obj.end_date|date:"d.m.Y"|default:"—" }}</span>
+            {% if pc.obj.outcome %}<span class="badge badge-success badge-xs ml-auto">{{ pc.obj.outcome_label }}</span>{% endif %}
+          </div>
+          {% comment %} тело — отдельная форма процедуры {% endcomment %}
+          <form class="px-3 pb-3 {% if expand_proc_id != opened %}hidden{% endif %}" data-proc-body
+                hx-post="{% url 'procedure:update_procedure' service.id pc.obj.id %}"
+                hx-target="#procedure-tab-body" hx-swap="innerHTML">
+            <div class="grid grid-cols-2 gap-2">
+              <label class="form-control col-span-2 min-w-0">
+                <span class="label-text text-xs">Финуправляющий (назначен судом)</span>
+                <select name="financial_manager" class="select select-bordered select-sm w-full">
+                  <option value="">— не назначен —</option>
+                  {% for m in managers %}
+                    <option value="{{ m.id }}" {% if pc.obj.financial_manager_id == m.id %}selected{% endif %}>{{ m.label }}</option>
+                  {% endfor %}
+                </select>
+              </label>
+              <label class="form-control min-w-0">
+                <span class="label-text text-xs">Решение о введении процедуры</span>
+                <input type="date" name="intro_date" value="{{ pc.intro }}" class="input input-bordered input-sm w-full">
+              </label>
+              <label class="form-control min-w-0">
+                <span class="label-text text-xs">Следующее судебное заседание</span>
+                <input type="date" name="next_hearing_date" value="{{ pc.next_hearing }}" class="input input-bordered input-sm w-full">
+              </label>
+              <label class="form-control min-w-0">
+                <span class="label-text text-xs">Публикация ЕФРСБ</span>
+                <input type="date" name="publication_efrsb_date" value="{{ pc.pub_efrsb }}" class="input input-bordered input-sm w-full">
+              </label>
+              <label class="form-control min-w-0">
+                <span class="label-text text-xs">Публикация КоммерсантЪ</span>
+                <input type="date" name="publication_kommersant_date" value="{{ pc.pub_kommersant }}" class="input input-bordered input-sm w-full">
+              </label>
+              <label class="form-control min-w-0">
+                <span class="label-text text-xs">Срок, мес. (4–6)</span>
+                <input type="number" min="1" max="24" name="term_months" value="{{ pc.obj.term_months|default_if_none:'' }}" class="input input-bordered input-sm w-full">
+              </label>
+              <label class="form-control min-w-0">
+                <span class="label-text text-xs">Решение об окончании/завершении</span>
+                <input type="date" name="end_date" value="{{ pc.end }}" class="input input-bordered input-sm w-full">
+              </label>
+              <label class="form-control col-span-2 min-w-0">
+                <span class="label-text text-xs">Исход процедуры</span>
+                <select name="outcome" class="select select-bordered select-sm w-full">
+                  <option value="">— не определён —</option>
+                  {% for val, label in pc.outcome_choices %}
+                    <option value="{{ val }}" {% if pc.obj.outcome == val %}selected{% endif %}>{{ label }}</option>
+                  {% endfor %}
+                </select>
+              </label>
+            </div>
+            <div class="flex gap-2 mt-2 items-center">
+              <button type="submit" class="btn btn-sm btn-primary" data-save disabled>Сохранить</button>
+              <button type="button" class="btn btn-sm btn-ghost" data-cancel disabled
+                      hx-get="{% url 'procedure:tab_overview' service.id %}"
+                      hx-target="#procedure-tab-body" hx-swap="innerHTML">Отмена</button>
+              <button type="button" class="btn btn-sm btn-ghost text-error ml-auto gap-1"
+                      hx-post="{% url 'procedure:delete_procedure' service.id pc.obj.id %}"
+                      hx-confirm="Удалить процедуру «{{ pc.obj.get_kind_display }}» со всеми её мероприятиями?"
+                      hx-target="#procedure-tab-body" hx-swap="innerHTML"
+                      title="Удалить процедуру">{% icon "trash" size=15 %} Удалить</button>
+            </div>
+          </form>
+        </div>
+        {% endwith %}
+        {% empty %}
+          <div class="text-xs text-base-content/50 p-3 border border-base-300 rounded">
+            Процедур пока нет. Добавьте кнопкой «+».
+          </div>
+        {% endfor %}
+      </div>
+
+      {% comment %} ── + Добавить процедуру (первая — вид по итогу; далее — выбор) ── {% endcomment %}
+      {% if add_disabled %}
+        <div class="text-xs text-base-content/50 mb-2">{{ add_disabled_reason }}</div>
+      {% else %}
+      <form hx-post="{% url 'procedure:add_procedure' service.id %}"
+            hx-target="#procedure-tab-body" hx-swap="innerHTML"
+            class="flex items-center gap-2 mb-2">
+        {% if add_kind_locked %}
+          <input type="hidden" name="kind" value="{{ add_kind_locked }}">
+          <button type="submit" class="proc-add-btn" title="Добавить процедуру: {{ add_kind_locked_label }}">{% icon "plus" size=24 %}</button>
+          <span class="text-xs text-base-content/60">{{ add_kind_locked_label }}</span>
+        {% else %}
+          <button type="submit" class="proc-add-btn" title="Добавить процедуру">{% icon "plus" size=24 %}</button>
+          <select name="kind" class="select select-bordered select-sm">
+            {% for val, label in kind_choices %}<option value="{{ val }}">{{ label }}</option>{% endfor %}
+          </select>
+        {% endif %}
+      </form>
+      {% endif %}
+    </div>
+
+    {% comment %} Данные должника — два таба: Должник / Супруга {% endcomment %}
+    <div>
+      <h3 class="font-semibold text-sm mb-2">Данные должника</h3>
+      <div role="tablist" class="tabs tabs-lifted">
+
+        {% comment %} Таб «Должник» {% endcomment %}
+        <input type="radio" name="debtor_tabs_{{ case.id }}" role="tab" class="tab" aria-label="Должник" {% if active_person_tab != "spouse" %}checked{% endif %} />
+        <div role="tabpanel" class="tab-content bg-base-100 border-base-300 p-3">
+          {% include "procedure/_person_form.html" with person=debtor who="debtor" %}
+        </div>
+
+        {% comment %} Таб «Супруг/а» {% endcomment %}
+        <input type="radio" name="debtor_tabs_{{ case.id }}" role="tab" class="tab" aria-label="Супруг/а" {% if active_person_tab == "spouse" %}checked{% endif %} />
+        <div role="tabpanel" class="tab-content bg-base-100 border-base-300 p-3">
+          {% if spouse %}
+            {% include "procedure/_person_form.html" with person=spouse who="spouse" %}
+          {% else %}
+            <p class="text-xs text-base-content/60 mb-2">
+              Супруг/а не указан(а). Выберите из существующих клиентов или добавьте нового.
+            </p>
+            <div class="flex items-end gap-2 mb-2">
+              <label class="form-control flex-1 min-w-0">
+                <span class="label-text text-xs">Поиск супруга</span>
+                <input type="text" name="q" class="input input-bordered input-sm w-full"
+                       placeholder="ФИО или телефон…"
+                       hx-get="{% url 'procedure:spouse_search' service.id %}"
+                       hx-trigger="keyup changed delay:300ms"
+                       hx-target="#spouse-search-results">
+              </label>
+              <form hx-post="{% url 'procedure:spouse_create' service.id %}"
+                    hx-target="#procedure-tab-body" hx-swap="innerHTML">
+                <button type="submit" class="btn btn-sm btn-primary btn-square" title="Добавить нового супруга">
+                  {% icon "user-plus" size=18 %}
+                </button>
+              </form>
+            </div>
+            <div id="spouse-search-results"></div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {% comment %} ── Мероприятия / сроки ── {% endcomment %}
+  <div class="card bg-base-100 shadow">
+    <div class="card-body p-4">
+      <h3 class="font-semibold text-sm mb-2">
+        Мероприятия и сроки
+        {% if overdue_count %}<span class="badge badge-error badge-sm ml-1">просрочено: {{ overdue_count }}</span>{% endif %}
+      </h3>
+      <table class="table table-sm">
+        <thead>
+          <tr><th>Мероприятие</th><th>Где</th><th>Стадия</th><th>Срок</th><th>Статус</th><th class="text-right">Действия</th></tr>
+        </thead>
+        <tbody>
+          {% for ms in milestones %}
+            <tr {% if ms.is_late %}style="background:rgba(239,68,68,.08)"{% endif %}>
+              <td>
+                {{ ms.title }}
+                {% if ms.template.is_draft %}<span class="badge badge-warning badge-xs ml-1" title="Срок не подтверждён АУ">DRAFT</span>{% endif %}
+                {% if ms.is_manual %}<span class="badge badge-ghost badge-xs ml-1">вручную</span>{% endif %}
+              </td>
+              <td class="text-xs text-base-content/70">{{ ms.group_label }}</td>
+              <td class="text-xs text-base-content/70">{{ ms.stage.name|default:"—" }}</td>
+              <td class="{% if ms.is_late %}text-error font-semibold{% endif %}">{{ ms.due_date|date:"d.m.Y"|default:"—" }}</td>
+              <td>
+                {% if ms.status == "done" %}<span class="badge badge-success badge-sm">✓ Выполнено</span>
+                {% elif ms.is_late %}<span class="badge badge-error badge-sm">Просрочено</span>
+                {% elif ms.status == "na" %}<span class="badge badge-ghost badge-sm">Не применимо</span>
+                {% elif ms.status == "skipped" %}<span class="badge badge-ghost badge-sm">Пропущено</span>
+                {% else %}<span class="badge badge-ghost badge-sm">Ожидает</span>{% endif %}
+              </td>
+              <td class="text-right whitespace-nowrap">
+                {% if ms.is_open %}
+                  <button class="btn btn-xs btn-success" title="Выполнено"
+                          hx-post="{% url 'procedure:milestone_set_status' ms.id %}" hx-vals='{"status":"done"}'
+                          hx-target="#procedure-tab-body" hx-swap="innerHTML">✓</button>
+                  <button class="btn btn-xs btn-ghost" title="Не применимо"
+                          hx-post="{% url 'procedure:milestone_set_status' ms.id %}" hx-vals='{"status":"na"}'
+                          hx-target="#procedure-tab-body" hx-swap="innerHTML">н/п</button>
+                {% else %}
+                  <button class="btn btn-xs btn-ghost" title="Вернуть в работу"
+                          hx-post="{% url 'procedure:milestone_set_status' ms.id %}" hx-vals='{"status":"pending"}'
+                          hx-target="#procedure-tab-body" hx-swap="innerHTML">↩</button>
+                {% endif %}
+              </td>
+            </tr>
+          {% empty %}
+            <tr><td colspan="6" class="text-center text-base-content/50">Мероприятий пока нет.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <form hx-post="{% url 'procedure:milestone_add' service.id %}"
+            hx-target="#procedure-tab-body" hx-swap="innerHTML"
+            class="flex items-end gap-2 mt-3 pt-3 border-t">
+        <label class="form-control flex-1">
+          <span class="label-text text-xs">Своё мероприятие</span>
+          <input type="text" name="title" class="input input-bordered input-sm" placeholder="Название" required>
+        </label>
+        <label class="form-control">
+          <span class="label-text text-xs">Срок</span>
+          <input type="date" name="due_date" class="input input-bordered input-sm">
+        </label>
+        <button class="btn btn-sm btn-outline" type="submit">+ Добавить</button>
+      </form>
+    </div>
+  </div>
+
+  {% comment %} Кастомный аккордеон процедур + активация «Сохранить/Отмена» при правке {% endcomment %}
+  <script>
+  (function () {
+    var acc = document.getElementById("proc-acc-{{ case.id }}");
+    if (acc && !acc.dataset.bound) {
+      acc.dataset.bound = "1";
+      acc.addEventListener("click", function (e) {
+        var head = e.target.closest("[data-proc-head]");
+        if (!head) return;
+        var item = head.closest("[data-proc]");
+        var body = item.querySelector("[data-proc-body]");
+        var isOpen = !body.classList.contains("hidden");
+        acc.querySelectorAll("[data-proc]").forEach(function (it) {
+          it.querySelector("[data-proc-body]").classList.add("hidden");
+          var ch = it.querySelector("[data-chevron]"); if (ch) ch.classList.remove("rotate-90");
+        });
+        if (!isOpen) {
+          body.classList.remove("hidden");
+          var ch = item.querySelector("[data-chevron]"); if (ch) ch.classList.add("rotate-90");
+        }
+      });
+    }
+    var root = document.getElementById("procedure-overview");
+    if (root && !root.dataset.dirtyBound) {
+      root.dataset.dirtyBound = "1";
+      var markDirty = function (e) {
+        var pb = e.target.closest("[data-proc-body]");
+        if (pb) {
+          pb.querySelectorAll("[data-save],[data-cancel]").forEach(function (b) { b.disabled = false; });
+          return;
+        }
+        var pf = e.target.closest("[data-person-form]");
+        if (pf) {
+          pf.querySelectorAll("[data-save],[data-cancel]").forEach(function (b) { b.disabled = false; });
+          return;
+        }
+        if (e.target.closest("#case-form-{{ case.id }}")) {
+          var sa = root.querySelector("[data-summary-actions]");
+          if (sa) sa.querySelectorAll("[data-save],[data-cancel]").forEach(function (b) { b.disabled = false; });
+        }
+      };
+      root.addEventListener("input", markDirty);
+      root.addEventListener("change", markDirty);
+    }
+  })();
+  </script>
+
+  {% comment %} DaData-подсказки адреса (как в карточке клиента, без структурных полей) {% endcomment %}
+  <script>
+  (function () {
+    var TOKEN = "{{ dadata_api_key }}";
+    var root = document.getElementById("procedure-overview");
+    if (!TOKEN || !root) return;
+    root.querySelectorAll(".dadata-addr-input").forEach(function (input) {
+      if (input.dataset.bound) return;
+      input.dataset.bound = "1";
+      var box = document.getElementById(input.getAttribute("data-box"));
+      var timer = null;
+      function hide() { if (box) box.style.display = "none"; }
+      function fetchS(q) {
+        if (q.length < 3) { hide(); return; }
+        fetch("https://suggestions.dadata.ru/suggestions/api/4_1/rs/suggest/address", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Accept": "application/json",
+                     "Authorization": "Token " + TOKEN },
+          body: JSON.stringify({ query: q, count: 7 })
+        }).then(function (r) { return r.json(); }).then(function (d) {
+          if (!box || !d.suggestions || !d.suggestions.length) { hide(); return; }
+          box.innerHTML = "";
+          d.suggestions.forEach(function (s) {
+            var el = document.createElement("div");
+            el.textContent = s.value;
+            el.style.cssText = "padding:6px 10px;cursor:pointer;font-size:12px;border-bottom:1px solid var(--ms-border-light,#eee)";
+            el.onmouseenter = function () { el.style.background = "var(--ms-border,#eee)"; };
+            el.onmouseleave = function () { el.style.background = ""; };
+            el.onclick = function () { input.value = s.unrestricted_value || s.value; hide(); };
+            box.appendChild(el);
+          });
+          box.style.display = "block";
+        }).catch(hide);
+      }
+      input.addEventListener("input", function () {
+        clearTimeout(timer);
+        timer = setTimeout(function () { fetchS(input.value); }, 300);
+      });
+      input.addEventListener("focus", function () {
+        if (input.value.length >= 3) fetchS(input.value);
+      });
+    });
+    if (!window.__procAddrOutside) {
+      window.__procAddrOutside = 1;
+      document.addEventListener("click", function (e) {
+        if (!e.target.classList.contains("dadata-addr-input") && !e.target.closest(".dadata-sug-box")) {
+          document.querySelectorAll(".dadata-sug-box").forEach(function (b) { b.style.display = "none"; });
+        }
+      });
+    }
+  })();
+  </script>
+</div>

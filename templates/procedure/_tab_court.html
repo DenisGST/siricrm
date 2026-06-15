@@ -1,0 +1,7 @@
+{% comment %}
+  Вкладка «Суд» — переиспользует блок арбитражного дела из apps/arbitr.
+  Никакого нового кода в arbitr: тот же партиал с ctx {case, service}.
+{% endcomment %}
+<div class="p-1">
+  {% include "arbitr/_case_block.html" %}
+</div>

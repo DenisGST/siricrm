@@ -70,6 +70,11 @@ app.conf.beat_schedule = {
         'task': 'notifications.revive_snoozed',
         'schedule': 60,
     },
+    # Контроль сроков мероприятий процедуры: pending+просрочка → overdue+уведомление.
+    'procedure-mark-overdue-milestones': {
+        'task': 'procedure.mark_overdue_milestones',
+        'schedule': crontab(hour=4, minute=0),
+    },
 }
 
 @setup_logging.connect
