@@ -47,7 +47,7 @@ def can_edit_schedule(user) -> bool:
     """Право составлять/редактировать график платежей и начисления.
 
     Просмотр графика — у всех (см. payment_schedule_modal GET). Редактируют:
-    суперюзер, роль admin, и сотрудники отделов с флагом
+    суперюзер, роль admin/accountant, и сотрудники отделов с флагом
     Department.can_edit_payment_schedule (коммерческий отдел, бухгалтерия).
     """
     if not user.is_authenticated:
@@ -57,7 +57,9 @@ def can_edit_schedule(user) -> bool:
     emp = getattr(user, "employee", None)
     if not emp:
         return False
-    if emp.role == "admin":
+    # Бухгалтер (роль accountant) редактирует начисления/график вне зависимости
+    # от флага отдела — это его прямая обязанность.
+    if emp.role in ("admin", "accountant"):
         return True
     dept = getattr(emp, "department", None)
     return bool(dept and dept.can_edit_payment_schedule)
