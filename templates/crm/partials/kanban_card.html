@@ -51,13 +51,13 @@
       {% endwith %}
     </div>
 
-    {% if client.phone %}
-    <a href="tel:{{ client.phone }}"
+    {% if client.display_phone %}
+    <a href="tel:{{ client.display_phone }}"
        class="inline-flex items-center gap-1 text-xs text-base-content/70 hover:text-base-content hover:underline"
        onclick="event.stopPropagation()"
        title="Позвонить">
       {% icon "phone" size=12 %}
-      {{ client.phone }}
+      {{ client.display_phone }}
     </a>
     {% endif %}
 
@@ -120,10 +120,10 @@
       >
         <span id="ms-status-kanban-{{ client.id }}" class="inline-flex">{% include "crm/partials/telegram_by_status.html" with status=client.ms_status %}</span>
       </button>
-      {% if client.phone %}
-      <a href="tel:{{ client.phone }}"
+      {% if client.display_phone %}
+      <a href="tel:{{ client.display_phone }}"
          class="kanban-action-btn text-base-content/50"
-         title="{{ client.phone }}"
+         title="{{ client.display_phone }}"
          onclick="event.stopPropagation()">
         {% icon "phone" size=18 %}
       </a>

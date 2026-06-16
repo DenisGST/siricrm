@@ -159,6 +159,18 @@ class Client(TimeStampedModel):
     def is_from_bubble(self) -> bool:
         return bool(self.bubble_id)
 
+    @property
+    def display_phone(self) -> str:
+        """Номер для показа в UI: основной кэш `phone`, иначе whatsapp-номер
+        (отформатированный). У части клиентов единственный номер — whatsapp,
+        и без этого фолбэка карточка показывала пустой слот телефона."""
+        if self.phone:
+            return self.phone
+        if self.whatsapp_phone:
+            from apps.crm.phone_utils import format_phone
+            return format_phone(self.whatsapp_phone)
+        return ""
+
     def __str__(self):
         return f"{self.first_name} {self.last_name} (@{self.username})"
 
