@@ -126,15 +126,46 @@ def _move_phones(source, survivor):
     ClientPhone.objects.filter(client=source).delete()
 
 
+def _merge_folder_subtree(canonical, dup):
+    """Рекурсивно слить dup-папку в canonical: дети с одинаковым именем сливаются,
+    уникальные — перевешиваются, файлы dup переезжают на canonical, dup удаляется."""
+    for child in list(dup.children.all()):
+        match = ClientFolder.objects.filter(parent=canonical, name=child.name).first()
+        if match:
+            _merge_folder_subtree(match, child)
+        else:
+            child.parent = canonical
+            child.save(update_fields=["parent"])
+    ClientFile.objects.filter(folder=dup).update(folder=canonical)
+    dup.delete()
+
+
 def _move_files(source, survivor):
-    surv_by_slug = {}
-    for f in ClientFolder.objects.filter(client=survivor):
-        surv_by_slug.setdefault(f.slug, f)
-    surv_root = surv_by_slug.get("root") or ClientFolder.objects.filter(client=survivor).first()
-    for cf in ClientFile.objects.filter(folder__client=source).select_related("folder"):
-        cf.folder = surv_by_slug.get(cf.folder.slug) or surv_root
-        cf.save(update_fields=["folder"])
-    ClientFolder.objects.filter(client=source).delete()
+    """Перенести все папки/файлы source → survivor с рекурсивным слиянием
+    одноимённых поддеревьев. Гарантирует наличие корневой папки у survivor
+    (иначе ClientFile.folder=None → IntegrityError на NOT NULL).
+    """
+    from apps.files.folder_utils import get_or_create_root
+    # Гарантируем корневую папку у survivor (если её нет — создастся)
+    get_or_create_root(survivor)
+
+    # Переключаем все папки source на survivor — теперь у survivor могут быть
+    # дубли корней (по 2 root-папки с одинаковым name).
+    ClientFolder.objects.filter(client=source).update(client=survivor)
+
+    # Сливаем дубли корней (parent IS NULL) у survivor.
+    roots = list(ClientFolder.objects.filter(client=survivor, parent__isnull=True))
+    if len(roots) > 1:
+        # Canonical — с большим числом детей, иначе самый старый.
+        roots.sort(key=lambda r: (-ClientFolder.objects.filter(parent=r).count(), r.created_at))
+        canonical = roots[0]
+        # Нормализуем имя корня по ФИО survivor (если переименование клиента состоялось).
+        target_name = f"{survivor.last_name} {survivor.first_name}".strip()
+        if target_name and canonical.name != target_name:
+            canonical.name = target_name
+            canonical.save(update_fields=["name"])
+        for dup in roots[1:]:
+            _merge_folder_subtree(canonical, dup)
 
 
 # модель+поле для «простых» коллекций (reassign / delete)
