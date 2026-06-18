@@ -160,6 +160,19 @@ class Client(TimeStampedModel):
         return bool(self.bubble_id)
 
     @property
+    def primary_employee(self):
+        """Ответственный для показа на карточке/в списках — ПОСЛЕДНИЙ назначенный
+        (макс. ClientEmployee.id), исключая системного бота. Детерминированно:
+        у M2M `employees` нет сортировки, поэтому `employees.all.0` отдавал разных
+        в канбане и поиске. Использует prefetch `client_employees` если он есть."""
+        ces = sorted(self.client_employees.all(), key=lambda ce: ce.id, reverse=True)
+        if not ces:
+            return None
+        non_bot = [ce for ce in ces
+                   if getattr(getattr(ce.employee, "user", None), "username", "") != "sirius_bot"]
+        return (non_bot or ces)[0].employee
+
+    @property
     def display_phone(self) -> str:
         """Номер для показа в UI: основной кэш `phone`, иначе whatsapp-номер
         (отформатированный). У части клиентов единственный номер — whatsapp,

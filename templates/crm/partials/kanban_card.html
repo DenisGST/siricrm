@@ -26,7 +26,7 @@
           </button>
         {% endif %}{{ client.last_name }} {{ client.first_name }}{% if client.patronymic %}<br>{{ client.patronymic }}{% endif %}
       </h3>
-      {% with emp=client.employees.all.0 %}
+      {% with emp=client.primary_employee %}
         {% if emp %}
           <span id="assign-badge-btn-{{ client.id }}"
                 class="badge badge-ghost text-xs shrink-0 ml-1 cursor-pointer kanban-emp-badge"

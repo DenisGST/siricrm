@@ -894,7 +894,12 @@ def kanban_column(request, status):
     from django.db.models import OuterRef, Subquery
     from apps.crm.models import Message
     last_msg = Message.objects.filter(client=OuterRef("pk")).order_by("-created_at")
-    qs = qs.prefetch_related("employees", "services__name", "services__common_status").annotate(
+    from django.db.models import Prefetch as _Prefetch
+    qs = qs.prefetch_related(
+        # для client.primary_employee (детерминированный ответственный) без N+1
+        _Prefetch("client_employees", queryset=ClientEmployee.objects.select_related("employee__user")),
+        "services__name", "services__common_status",
+    ).annotate(
         last_message_content=Subquery(last_msg.values("content")[:1]),
     ).order_by(
         F("last_message_at").desc(nulls_last=True), "-created_at",
@@ -2734,6 +2739,12 @@ def client_assign_employee(request, client_id):
     prev_employee = Employee.objects.filter(pk=prev_id).select_related("user").first() if prev_id else None
 
     _, created = ClientEmployee.objects.get_or_create(client=client, employee=new_employee)
+
+    # Смена (а не добавление «+»): убираем ИМЕННО прежнего ответственного, по
+    # которому кликнули. Иначе ответственные накапливались (клиент висел сразу
+    # на нескольких), а карточка показывала случайного из них.
+    if prev_employee and prev_employee != new_employee:
+        ClientEmployee.objects.filter(client=client, employee=prev_employee).delete()
 
     # Лог события только если назначение реально изменилось
     if created or (prev_employee and prev_employee != new_employee):
