@@ -160,6 +160,19 @@ class Client(TimeStampedModel):
         return bool(self.bubble_id)
 
     @property
+    def responsible_employees(self):
+        """ВСЕ ответственные клиента (Client.employees), кроме системного бота,
+        по алфавиту. Для показа списка на карточке канбана (добавить/убрать).
+        Использует prefetch `client_employees` (employee__user) если он есть."""
+        ces = sorted(
+            self.client_employees.all(),
+            key=lambda ce: (getattr(ce.employee.user, "last_name", "") or "",
+                            getattr(ce.employee.user, "first_name", "") or ""),
+        )
+        return [ce.employee for ce in ces
+                if getattr(getattr(ce.employee, "user", None), "username", "") != "sirius_bot"]
+
+    @property
     def primary_employee(self):
         """Ответственный для показа на карточке/в списках — ПОСЛЕДНИЙ назначенный
         (макс. ClientEmployee.id), исключая системного бота. Детерминированно:

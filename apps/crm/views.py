@@ -2711,64 +2711,63 @@ def client_assign_employee_picker(request, client_id):
     employees = Employee.objects.filter(is_active=True).select_related("user").order_by(
         "user__last_name", "user__first_name"
     )
-    current_id = request.GET.get("current")
-    if current_id:
-        current = Employee.objects.filter(pk=current_id).first()
-    else:
-        current = client.employees.first()
+    # Уже назначенные ответственные — пометим в пикере (✓, нельзя добавить повторно)
+    current_ids = set(client.employees.values_list("id", flat=True))
     return render(request, "crm/partials/assign_employee_picker.html", {
         "client": client,
         "employees": employees,
-        "current": current,
+        "current_ids": current_ids,
     })
 
 
 @login_required
 @require_POST
 def client_assign_employee(request, client_id):
-    """HTMX: назначает ответственного сотрудника клиенту."""
+    """HTMX: ДОБАВляет ответственного клиенту (модель M2M — один клиент может
+    иметь несколько). Удаление — отдельным client_remove_employee."""
     client = get_object_or_404(Client, pk=client_id)
     employee_id = request.POST.get("employee_id")
     if not employee_id:
         return HttpResponseBadRequest("employee_id required")
 
     new_employee = get_object_or_404(Employee, pk=employee_id, is_active=True)
-
-    # Определяем предыдущего ответственного из query param (выставляется бэйджем)
-    prev_id = request.POST.get("prev_employee_id") or request.GET.get("current")
-    prev_employee = Employee.objects.filter(pk=prev_id).select_related("user").first() if prev_id else None
-
     _, created = ClientEmployee.objects.get_or_create(client=client, employee=new_employee)
 
-    # Смена (а не добавление «+»): убираем ИМЕННО прежнего ответственного, по
-    # которому кликнули. Иначе ответственные накапливались (клиент висел сразу
-    # на нескольких), а карточка показывала случайного из них.
-    if prev_employee and prev_employee != new_employee:
-        ClientEmployee.objects.filter(client=client, employee=prev_employee).delete()
-
-    # Лог события только если назначение реально изменилось
-    if created or (prev_employee and prev_employee != new_employee):
-        try:
-            actor = Employee.objects.get(user=request.user)
-        except Employee.DoesNotExist:
-            actor = None
-
-        if prev_employee and prev_employee != new_employee:
-            desc = (
-                f"Ответственный изменён: {prev_employee.user.get_full_name()} → "
-                f"{new_employee.user.get_full_name()}"
-            )
-        else:
-            desc = f"Назначен ответственный: {new_employee.user.get_full_name()}"
-
+    if created:
+        actor = _current_employee_from_user(request.user)
         client_log.record_event(
-            client, "employee_assigned", comment=desc, employee=actor,
+            client, "employee_assigned",
+            comment=f"Назначен ответственный: {new_employee.user.get_full_name()}",
+            employee=actor,
         )
 
-    # Возвращаем обновлённый бэйдж
-    return render(request, "crm/partials/assign_employee_badge.html", {
+    return render(request, "crm/partials/client_responsibles.html", {
         "client": client,
-        "emp": new_employee,
+        "can_edit": request.user.has_perm("crm.edit_client", client),
+    })
+
+
+@login_required
+@require_POST
+def client_remove_employee(request, client_id):
+    """HTMX: убирает ответственного у клиента."""
+    client = get_object_or_404(Client, pk=client_id)
+    employee_id = request.POST.get("employee_id")
+    if not employee_id:
+        return HttpResponseBadRequest("employee_id required")
+    emp = Employee.objects.filter(pk=employee_id).select_related("user").first()
+    if emp:
+        deleted, _ = ClientEmployee.objects.filter(client=client, employee=emp).delete()
+        if deleted:
+            actor = _current_employee_from_user(request.user)
+            client_log.record_event(
+                client, "employee_removed",
+                comment=f"Снят ответственный: {emp.user.get_full_name()}",
+                employee=actor,
+            )
+    return render(request, "crm/partials/client_responsibles.html", {
+        "client": client,
+        "can_edit": request.user.has_perm("crm.edit_client", client),
     })
 
 

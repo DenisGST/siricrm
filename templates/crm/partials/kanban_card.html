@@ -26,29 +26,7 @@
           </button>
         {% endif %}{{ client.last_name }} {{ client.first_name }}{% if client.patronymic %}<br>{{ client.patronymic }}{% endif %}
       </h3>
-      {% with emp=client.primary_employee %}
-        {% if emp %}
-          <span id="assign-badge-btn-{{ client.id }}"
-                class="badge badge-ghost text-xs shrink-0 ml-1 cursor-pointer kanban-emp-badge"
-                hx-get="{% url 'client_assign_employee_picker' client.id %}?current={{ emp.id }}"
-                hx-target="body"
-                hx-swap="beforeend"
-                onclick="event.stopPropagation()"
-                title="Изменить ответственного">
-            {{ emp|short_name }}
-          </span>
-        {% else %}
-          <span id="assign-badge-btn-{{ client.id }}"
-                class="badge badge-ghost text-xs shrink-0 ml-1 cursor-pointer opacity-50 hover:opacity-100"
-                hx-get="{% url 'client_assign_employee_picker' client.id %}"
-                hx-target="body"
-                hx-swap="beforeend"
-                onclick="event.stopPropagation()"
-                title="Назначить ответственного">
-            + сотрудник
-          </span>
-        {% endif %}
-      {% endwith %}
+      {% include "crm/partials/client_responsibles.html" with can_edit=can_edit_client %}
     </div>
 
     {% if client.display_phone %}

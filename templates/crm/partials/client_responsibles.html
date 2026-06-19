@@ -1,0 +1,28 @@
+{% load crm_tags %}
+{% comment %}Все ответственные клиента (Client.employees) с возможностью убрать (✕)
+и добавить (+). Контейнер целиком перерисовывается после add/remove. can_edit — право менять.{% endcomment %}
+<span id="client-resp-{{ client.id }}"
+      class="inline-flex flex-wrap items-center gap-1 ml-1 align-middle"
+      onclick="event.stopPropagation()">
+  {% for emp in client.responsible_employees %}
+    <span class="badge badge-ghost text-xs gap-1 kanban-emp-badge">
+      {{ emp|short_name }}
+      {% if can_edit %}
+      <button type="button" class="leading-none hover:text-error" title="Убрать ответственного"
+              hx-post="{% url 'client_remove_employee' client.id %}"
+              hx-vals='{"employee_id": "{{ emp.id }}"}'
+              hx-target="#client-resp-{{ client.id }}" hx-swap="outerHTML"
+              onclick="event.stopPropagation()">✕</button>
+      {% endif %}
+    </span>
+  {% empty %}
+    <span class="text-xs text-base-content/40">нет ответственного</span>
+  {% endfor %}
+  {% if can_edit %}
+  <span id="assign-add-btn-{{ client.id }}"
+        class="badge badge-ghost text-xs cursor-pointer opacity-50 hover:opacity-100"
+        hx-get="{% url 'client_assign_employee_picker' client.id %}"
+        hx-target="body" hx-swap="beforeend"
+        onclick="event.stopPropagation()" title="Добавить ответственного">+</span>
+  {% endif %}
+</span>
