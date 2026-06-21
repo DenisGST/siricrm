@@ -232,11 +232,21 @@ def client_targets(request):
         .select_related("name")
         .order_by("-created_at")
     )
+    # Запросы в госорганы клиента, ожидающие ответа — чтобы привязать скан как ответ.
+    from apps.procedure.models import Request as ProcRequest
+    open_requests = (
+        ProcRequest.objects
+        .filter(case__service__client=client,
+                status__in=[ProcRequest.STATUS_SENT, ProcRequest.STATUS_NO_ANSWER])
+        .select_related("recipient")
+        .order_by("-created_at")
+    )
     return render(request, "scans/partials/assign_targets.html", {
         "client": client,
         "folders": folders,
         "default_folder_id": scans_folder.id,
         "services": services,
+        "requests": open_requests,
         "batch": request.GET.get("batch") == "1",
     })
 
@@ -282,6 +292,17 @@ def assign(request, scan_id):
             sent_at=request.POST.get("doc_date") or None,
             file_link=file_link,
         )
+
+    # Опционально — прикрепить скан как ответ на запрос в госорган (модуль процедур).
+    if request.POST.get("attach_to_request") == "on" and request.POST.get("request_id"):
+        from apps.procedure.models import Request as ProcRequest
+        rq = ProcRequest.objects.filter(
+            pk=request.POST["request_id"], case__service__client=client).first()
+        if rq is not None:
+            rq.response_scan = scan.stored_file
+            rq.response_date = request.POST.get("resp_date") or timezone.now().date()
+            rq.status = ProcRequest.STATUS_ANSWERED
+            rq.save(update_fields=["response_scan", "response_date", "status", "updated_at"])
 
     scan.status = IncomingScan.STATUS_ASSIGNED
     scan.client = client

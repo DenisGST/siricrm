@@ -1,0 +1,39 @@
+{% load icons %}
+{% comment %}Таблица корреспонденции (Correspondence). Контекст: items, kind (incoming/outgoing).
+  Колонки: тип письма (документ), контрагент, №, дата, файл-скан (предпросмотр).{% endcomment %}
+<table class="table table-sm table-zebra">
+  <thead>
+    <tr>
+      <th>Тип письма / документ</th>
+      <th>Контрагент</th>
+      <th>{% if kind == "incoming" %}№ ответа{% else %}Исх. №{% endif %}</th>
+      <th>Дата</th>
+      {% if kind == "outgoing" %}<th>Контроль ответа</th>{% endif %}
+      <th>Файл-скан</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for c in items %}
+    <tr>
+      <td class="text-xs">{{ c.subject_type|default:"—" }}{% if c.comments %}<div class="text-base-content/50">{{ c.comments|truncatechars:60 }}</div>{% endif %}</td>
+      <td class="text-xs">{% if c.counterparty %}{{ c.counterparty.short_name|default:c.counterparty.name }}{% else %}—{% endif %}</td>
+      <td class="text-xs">{% if kind == "incoming" %}{{ c.response_number|default:c.outgoing_number|default:"—" }}{% else %}{{ c.outgoing_number|default:"—" }}{% endif %}</td>
+      <td class="text-xs whitespace-nowrap">{% if kind == "incoming" %}{{ c.response_date|date:"d.m.Y"|default:c.sent_at|date:"d.m.Y"|default:"—" }}{% else %}{{ c.sent_at|date:"d.m.Y"|default:"—" }}{% endif %}</td>
+      {% if kind == "outgoing" %}
+      <td class="text-xs">
+        {% if c.response_received %}<span class="badge badge-success badge-xs">ответ {{ c.response_date|date:"d.m.Y" }}</span>
+        {% elif c.track_response and c.control_date %}<span class="badge {% if c.control_date < today %}badge-error{% else %}badge-warning{% endif %} badge-xs">до {{ c.control_date|date:"d.m.Y" }}</span>
+        {% else %}<span class="text-base-content/40">—</span>{% endif %}
+      </td>
+      {% endif %}
+      <td class="text-xs whitespace-nowrap">
+        {% if c.file_link %}<a class="link" href="{{ c.file_link }}" onclick="if(window.procPreview){procPreview(this.href, '{{ c.subject_type|escapejs|default:"Документ" }}'); return false}">{% icon "eye" size=13 %} Просмотр</a>{% else %}<span class="text-base-content/40">нет файла</span>{% endif %}
+      </td>
+    </tr>
+    {% empty %}
+    <tr><td colspan="{% if kind == 'outgoing' %}6{% else %}5{% endif %}" class="text-center text-base-content/50 py-4">
+      {% if kind == "incoming" %}Входящих документов нет.{% else %}Исходящих документов нет.{% endif %}
+    </td></tr>
+    {% endfor %}
+  </tbody>
+</table>

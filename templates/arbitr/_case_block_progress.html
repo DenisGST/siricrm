@@ -1,0 +1,16 @@
+{% comment %}Прогресс-бар парсинга kad для встроенного блока «Суд». Сам себя
+  поллит (every 2s) → block-status: пока таск активен — этот же блок с новой
+  фразой/процентом; завершился — _case_block.html (поллинг прекращается).{% endcomment %}
+<div id="arbitr-block-{{ service.id }}" class="border rounded p-3 mt-3 bg-base-100"
+     hx-get="{% url 'arbitr:case_block_status' case.id %}"
+     hx-trigger="every 2s" hx-target="this" hx-swap="outerHTML">
+  <h4 class="font-semibold text-sm mb-2">⚖ Арбитражное дело</h4>
+  <div class="flex items-center gap-2 mb-2">
+    <span class="loading loading-spinner loading-xs text-primary"></span>
+    <span class="text-sm font-medium">{{ phase }}</span>
+  </div>
+  <div style="background:#e5e7eb;border-radius:9999px;height:8px;overflow:hidden">
+    <div style="background:#3b82f6;height:100%;width:{{ pct }}%;transition:width .6s ease"></div>
+  </div>
+  <div class="text-xs text-base-content/40 mt-1">kad.arbitr.ru · идёт ~{{ elapsed }} с</div>
+</div>

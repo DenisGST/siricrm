@@ -124,9 +124,10 @@
                 <select name="financial_manager" class="select select-bordered select-sm w-full">
                   <option value="">— не назначен —</option>
                   {% for m in managers %}
-                    <option value="{{ m.id }}" {% if pc.obj.financial_manager_id == m.id %}selected{% endif %}>{{ m.label }}</option>
+                    <option value="{{ m.id }}" {% if pc.obj.arbitr_manager_id|stringformat:'s' == m.id %}selected{% endif %}>{{ m.label }}</option>
                   {% endfor %}
                 </select>
+                <span class="label-text-alt text-xs text-base-content/50">Список — из справочника «Арбитражные управляющие»</span>
               </label>
               <label class="form-control min-w-0">
                 <span class="label-text text-xs">Решение о введении процедуры</span>

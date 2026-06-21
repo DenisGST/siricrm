@@ -59,6 +59,9 @@
     <a class="tab {% if active_tab == 'request_packages' %}tab-active{% endif %}"
        hx-get="{% url 'procedure:references_request_packages' %}" hx-target="#ref-content" hx-swap="innerHTML"
        onclick="setRefTab(this)">Пакеты запросов</a>
+    <a class="tab {% if active_tab == 'managers' %}tab-active{% endif %}"
+       hx-get="{% url 'procedure:references_managers' %}" hx-target="#ref-content" hx-swap="innerHTML"
+       onclick="setRefTab(this)">Арбитражные управляющие</a>
   </div>
 
   <div id="ref-content"

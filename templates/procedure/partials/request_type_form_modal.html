@@ -24,19 +24,29 @@
                class="input input-bordered w-full input-sm" required placeholder="Запрос в Росреестр (недвижимость)">
       </div>
       <div class="grid grid-cols-2 gap-3 items-start">
-        <div style="position:relative">
+        <div style="position:relative" data-ta>
           <label class="label py-1"><span class="label-text">Госорган по умолчанию</span></label>
-          <input type="text" id="rtype-rcpt-input" autocomplete="off" class="input input-bordered input-sm w-full"
-                 placeholder="поиск по реестру…"
+          <input type="text" data-ta-input autocomplete="off" class="input input-bordered input-sm w-full"
+                 placeholder="поиск по реестру…" name="q"
                  value="{% if obj.default_recipient %}{{ obj.default_recipient.short_name|default:obj.default_recipient.name }}{% endif %}"
-                 hx-get="{% url 'procedure:reference_recipient_search' %}" hx-trigger="keyup changed delay:300ms" hx-target="#rtype-rcpt-results" name="q">
-          <input type="hidden" name="recipient_id" id="rtype-rcpt-id" value="{{ obj.default_recipient_id|default:'' }}">
-          <div id="rtype-rcpt-results" style="position:absolute;top:100%;left:0;right:0;z-index:60"></div>
+                 data-ta-url="{% url 'procedure:reference_recipient_search' %}" oninput="taSearch(this)">
+          <input type="hidden" name="recipient_id" data-ta-id value="{{ obj.default_recipient_id|default:'' }}">
+          <div data-ta-results style="position:absolute;top:100%;left:0;right:0;z-index:60"></div>
         </div>
         <div>
           <label class="label py-1"><span class="label-text">Срок ответа, дней</span></label>
           <input type="number" name="response_days" value="{{ form.response_days.value|default:30 }}" min="0" class="input input-bordered input-sm w-full">
         </div>
+      </div>
+      <div>
+        <label class="label py-1"><span class="label-text">Шаблон документа (.docx)</span></label>
+        <select name="template" class="select select-bordered select-sm w-full">
+          <option value="">— нет (формирование недоступно) —</option>
+          {% for t in doc_templates %}
+            <option value="{{ t.pk }}" {% if form.template.value|stringformat:'s' == t.pk|stringformat:'s' %}selected{% endif %}>{{ t.name }}</option>
+          {% endfor %}
+        </select>
+        <p class="text-xs text-base-content/60 mt-1">Шаблоны грузятся командой/в АФД (вид «Запрос в госорган»).</p>
       </div>
       <div class="flex flex-wrap gap-4">
         <label class="label cursor-pointer justify-start gap-2">
@@ -56,17 +66,4 @@
     </form>
   </div>
   <form method="dialog" class="modal-backdrop"><button onclick="this.closest('dialog').remove()">close</button></form>
-  <script>
-  (function () {
-    var dlg = document.getElementById('rtype-modal');
-    if (!dlg) return;
-    dlg.addEventListener('click', function (e) {
-      var it = e.target.closest('[data-le-id]');
-      if (!it) return;
-      dlg.querySelector('#rtype-rcpt-id').value = it.getAttribute('data-le-id');
-      dlg.querySelector('#rtype-rcpt-input').value = it.getAttribute('data-le-name');
-      dlg.querySelector('#rtype-rcpt-results').innerHTML = '';
-    });
-  })();
-  </script>
 </dialog>

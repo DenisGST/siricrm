@@ -19,13 +19,46 @@
     {% endif %}
 
   {% elif case.status == "searching" %}
+    {% if user.is_superuser %}
+    <div class="flex flex-wrap gap-2 mb-2">
+      <button type="button" class="btn btn-xs btn-primary"
+              hx-post="{% url 'arbitr:case_run' case.id %}" hx-vals='{"block": "1"}'
+              hx-target="#arbitr-block-{{ service.id }}" hx-swap="outerHTML">
+        🔍 Найти сейчас</button>
+      <button type="button" class="btn btn-xs btn-ghost"
+              hx-get="{% url 'arbitr:case_block' service.id %}"
+              hx-target="#arbitr-block-{{ service.id }}" hx-swap="outerHTML">⟳ Обновить</button>
+    </div>
+    {% endif %}
     <div class="alert alert-warning text-xs mb-2">
       🔍 Ищем дело на kad.arbitr.ru по ФИО и региону.
-      Когда найдём — пришлём уведомление, сотрудник подтвердит и привяжет.
+      Когда найдём — подтвердите своё кнопкой «Это моё дело».
     </div>
     <div class="text-xs text-base-content/70 mb-2">
       Последняя проверка: {{ case.last_check_at|default:"—" }}
     </div>
+
+    {% if case.search_hits %}
+    <div class="mb-2">
+      <div class="text-xs font-semibold mb-1">🎯 Найденные дела ({{ case.search_hits|length }}) — выберите своё:</div>
+      {% for hit in case.search_hits %}
+      <div class="flex flex-wrap items-center gap-2 text-xs border border-base-300 rounded p-2 mb-1">
+        <a class="link link-primary font-mono" href="{{ hit.kad_url }}" target="_blank" rel="noopener">{{ hit.case_number|default:"(без номера)" }}</a>
+        {% if hit.court_name %}<span>{{ hit.court_name }}</span>{% endif %}
+        {% if hit.parties %}<span class="text-base-content/60 truncate">{{ hit.parties|truncatechars:70 }}</span>{% endif %}
+        {% if hit.filed_at %}<span class="text-base-content/50">{{ hit.filed_at }}</span>{% endif %}
+        {% if user.is_superuser %}
+        <button type="button" class="btn btn-xs btn-success ml-auto"
+                hx-post="{% url 'arbitr:case_confirm_hit' case.id forloop.counter0 %}"
+                hx-vals='{"stay": "1"}'
+                hx-target="#arbitr-block-{{ service.id }}" hx-swap="outerHTML"
+                hx-confirm="Привязать это дело и перевести в мониторинг?">Это моё дело</button>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
     <details class="text-xs">
       <summary class="cursor-pointer">Привязать дело вручную</summary>
       <form class="mt-2 flex flex-wrap gap-2 items-end"
@@ -42,6 +75,17 @@
     </details>
 
   {% else %}
+    {% if user.is_superuser %}
+    <div class="flex flex-wrap gap-2 mb-2">
+      <button type="button" class="btn btn-xs btn-primary"
+              hx-post="{% url 'arbitr:case_run' case.id %}" hx-vals='{"block": "1"}'
+              hx-target="#arbitr-block-{{ service.id }}" hx-swap="outerHTML">
+        ⟳ Парсить сейчас</button>
+      <button type="button" class="btn btn-xs btn-ghost"
+              hx-get="{% url 'arbitr:case_block' service.id %}"
+              hx-target="#arbitr-block-{{ service.id }}" hx-swap="outerHTML">⟳ Обновить</button>
+    </div>
+    {% endif %}
     <div class="flex flex-wrap items-center gap-2 mb-2">
       <span class="badge badge-info">{{ case.get_status_display }}</span>
       <a class="link link-primary text-sm font-mono" href="{{ case.kad_url }}" target="_blank" rel="noopener">
@@ -64,7 +108,7 @@
               <td class="text-xs">{{ ev.title }}</td>
               <td class="text-xs">
                 {% for a in ev.attachments.all %}
-                  {% if a.is_locked %}🔒{% else %}📎{% endif %} {{ a.name|truncatechars:30 }}{% if not forloop.last %}, {% endif %}
+                  {% if a.stored_file_id %}<a class="link link-primary" href="{% url 'files:stored_download' a.stored_file_id %}?inline=1" target="_blank" rel="noopener" title="Открыть скан судебного акта">📎 {{ a.name|truncatechars:34 }}</a>{% elif a.is_locked %}<span title="Заблокировано на kad — не скачано">🔒 {{ a.name|truncatechars:34 }}</span>{% elif a.kad_url %}<a class="link" href="{{ a.kad_url }}" target="_blank" rel="noopener">📎 {{ a.name|truncatechars:34 }}</a>{% else %}📎 {{ a.name|truncatechars:34 }}{% endif %}{% if not forloop.last %}<br>{% endif %}
                 {% empty %}—{% endfor %}
               </td>
             </tr>

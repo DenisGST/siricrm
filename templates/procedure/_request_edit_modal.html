@@ -1,0 +1,39 @@
+{% comment %}Лёгкий онлайн-редактор документа запроса: текст по абзацам.
+  Контекст: service, req, paras (index/text), error.{% endcomment %}
+<dialog id="req-edit-modal" class="modal modal-middle modal-open">
+  <div class="modal-box w-full max-w-3xl">
+    <h3 class="font-bold text-lg mb-1">Редактирование документа</h3>
+    <p class="text-sm mb-2">{{ req.title }} → <b>{{ req.recipient_display }}</b>{% if req.outgoing_number %} · Исх. № {{ req.outgoing_number }}{% endif %}</p>
+    <p class="text-xs text-base-content/50 mb-2">
+      Правка текста по абзацам. Форматирование (шрифты/отступы) и подпись/печать сохраняются.
+      После сохранения PDF пересобирается.
+    </p>
+    {% if error %}<div class="alert alert-error text-sm mb-2">{{ error }}</div>{% endif %}
+
+    <form hx-post="{% url 'procedure:request_edit_save' service.id req.pk %}"
+          hx-target="#req-edit-modal" hx-swap="outerHTML" class="space-y-2">
+      {% csrf_token %}
+      <div class="max-h-[60vh] overflow-y-auto space-y-2 border border-base-300 rounded p-2">
+        {% for p in paras %}
+        <textarea name="p_{{ p.index }}" rows="2"
+                  class="textarea textarea-bordered textarea-sm w-full leading-snug"
+                  oninput="this.style.height='';this.style.height=this.scrollHeight+'px'">{{ p.text }}</textarea>
+        {% empty %}
+        <p class="text-sm text-base-content/50 py-3 text-center">Нет редактируемого текста (документ не сформирован или состоит из картинок).</p>
+        {% endfor %}
+      </div>
+      <div class="modal-action">
+        <button type="submit" class="btn btn-primary btn-sm" {% if not paras %}disabled{% endif %}>Сохранить</button>
+        <button type="button" class="btn btn-sm" onclick="this.closest('dialog').remove()">Отмена</button>
+      </div>
+    </form>
+  </div>
+  <form method="dialog" class="modal-backdrop"><button onclick="this.closest('dialog').remove()">close</button></form>
+  <script>
+  (function () {
+    // авто-высота textarea по содержимому при открытии
+    var dlg = document.getElementById('req-edit-modal'); if (!dlg) return;
+    dlg.querySelectorAll('textarea').forEach(function (t) { t.style.height = ''; t.style.height = t.scrollHeight + 'px'; });
+  })();
+  </script>
+</dialog>

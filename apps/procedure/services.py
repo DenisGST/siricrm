@@ -305,8 +305,10 @@ def add_manual_milestone(
 
 @transaction.atomic
 def create_request(case, request_type, *, recipient=None, employee=None) -> Request:
-    """Создать запрос по типу (госорган — из типа по умолчанию или переданный)."""
+    """Создать запрос по типу (госорган — из типа по умолчанию или переданный).
+    Исходящий № присваивается сразу (сквозной по делу)."""
     rec = recipient or request_type.default_recipient
+    next_num = (case.requests.aggregate(m=Max("outgoing_number"))["m"] or 0) + 1
     return Request.objects.create(
         case=case,
         request_type=request_type,
@@ -314,6 +316,7 @@ def create_request(case, request_type, *, recipient=None, employee=None) -> Requ
         recipient=rec,
         recipient_name=((rec.short_name or rec.name) if rec else ""),
         response_days=request_type.response_days,
+        outgoing_number=next_num,
         created_by=employee,
     )
 

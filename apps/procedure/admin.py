@@ -1,6 +1,7 @@
 from django.contrib import admin
 
 from .models import (
+    ArbitrationManager,
     BankruptcyCase,
     MilestoneTemplate,
     Procedure,
@@ -10,6 +11,14 @@ from .models import (
     RequestPackage,
     RequestType,
 )
+
+
+@admin.register(ArbitrationManager)
+class ArbitrationManagerAdmin(admin.ModelAdmin):
+    list_display = ("short_fio", "inn", "snils", "phone", "email", "sro", "is_active")
+    search_fields = ("last_name", "first_name", "inn", "snils")
+    list_filter = ("is_active",)
+    raw_id_fields = ("sro", "employee", "signature_file")
 
 
 @admin.register(ProcedureStage)

@@ -24,6 +24,16 @@ urlpatterns = [
     path("service/<uuid:service_id>/requests/<uuid:req_id>/response/", views.request_response_form, name="request_response_form"),
     path("service/<uuid:service_id>/requests/<uuid:req_id>/response/save/", views.request_response, name="request_response"),
     path("service/<uuid:service_id>/requests/<uuid:req_id>/delete/", views.request_delete, name="request_delete"),
+    path("service/<uuid:service_id>/requests/<uuid:req_id>/generate/", views.request_generate_form, name="request_generate_form"),
+    path("service/<uuid:service_id>/requests/<uuid:req_id>/generate/save/", views.request_generate, name="request_generate"),
+    path("service/<uuid:service_id>/requests/<uuid:req_id>/edit/", views.request_edit_form, name="request_edit_form"),
+    path("service/<uuid:service_id>/requests/<uuid:req_id>/edit/save/", views.request_edit_save, name="request_edit_save"),
+    path("service/<uuid:service_id>/requests/<uuid:req_id>/upload-doc/", views.request_upload_form, name="request_upload_form"),
+    path("service/<uuid:service_id>/requests/<uuid:req_id>/upload-doc/save/", views.request_upload, name="request_upload"),
+    path("service/<uuid:service_id>/file-url/<uuid:sf_id>/", views.doc_presigned_url, name="doc_presigned_url"),
+    # Корреспонденция: загрузка сканов (Входящие/Исходящие)
+    path("service/<uuid:service_id>/correspondence/<str:direction>/upload/", views.correspondence_upload_form, name="correspondence_upload_form"),
+    path("service/<uuid:service_id>/correspondence/<str:direction>/upload/save/", views.correspondence_upload, name="correspondence_upload"),
     path("service/<uuid:service_id>/tab/<str:tab>/", views.tab_placeholder, name="tab_placeholder"),
     # Действия по делу/процедурам
     path("service/<uuid:service_id>/case/", views.update_case_block, name="update_case_block"),
@@ -65,4 +75,9 @@ urlpatterns = [
     path("references/request-package/add/", views.reference_request_package_edit, name="reference_request_package_add"),
     path("references/request-package/<uuid:pk>/", views.reference_request_package_edit, name="reference_request_package_edit"),
     path("references/request-package/<uuid:pk>/delete/", views.reference_request_package_delete, name="reference_request_package_delete"),
+    # Справочник «Арбитражные управляющие»
+    path("references/managers/", views.references_managers, name="references_managers"),
+    path("references/manager/add/", views.reference_manager_edit, name="reference_manager_add"),
+    path("references/manager/<uuid:pk>/", views.reference_manager_edit, name="reference_manager_edit"),
+    path("references/manager/<uuid:pk>/delete/", views.reference_manager_delete, name="reference_manager_delete"),
 ]

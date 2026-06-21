@@ -1,0 +1,74 @@
+{% comment %}Модалка АУ. Контекст: form, obj, employees.{% endcomment %}
+<dialog id="mgr-modal" class="modal modal-middle modal-open">
+  <div class="modal-box w-full max-w-2xl" style="overflow:visible">
+    <h3 class="font-bold text-lg mb-4">{% if obj %}Редактирование АУ{% else %}Новый арбитражный управляющий{% endif %}</h3>
+    <form hx-post="{% if obj %}{% url 'procedure:reference_manager_edit' obj.pk %}{% else %}{% url 'procedure:reference_manager_add' %}{% endif %}"
+          hx-target="#mgr-modal" hx-swap="outerHTML" hx-encoding="multipart/form-data" class="space-y-3">
+      {% csrf_token %}
+      <div class="grid grid-cols-3 gap-2">
+        <label class="form-control"><span class="label-text text-xs">Фамилия</span>
+          <input type="text" name="last_name" value="{{ form.last_name.value|default:'' }}" class="input input-bordered input-sm" required></label>
+        <label class="form-control"><span class="label-text text-xs">Имя</span>
+          <input type="text" name="first_name" value="{{ form.first_name.value|default:'' }}" class="input input-bordered input-sm" required></label>
+        <label class="form-control"><span class="label-text text-xs">Отчество</span>
+          <input type="text" name="patronymic" value="{{ form.patronymic.value|default:'' }}" class="input input-bordered input-sm"></label>
+      </div>
+      <div class="grid grid-cols-2 gap-2">
+        <label class="form-control"><span class="label-text text-xs">ИНН</span>
+          <input type="text" name="inn" value="{{ form.inn.value|default:'' }}" class="input input-bordered input-sm"></label>
+        <label class="form-control"><span class="label-text text-xs">СНИЛС</span>
+          <input type="text" name="snils" value="{{ form.snils.value|default:'' }}" class="input input-bordered input-sm"></label>
+      </div>
+      <label class="form-control"><span class="label-text text-xs">Адрес для корреспонденции</span>
+        <input type="text" name="corr_address" value="{{ form.corr_address.value|default:'' }}" class="input input-bordered input-sm"></label>
+      <div class="grid grid-cols-2 gap-2">
+        <label class="form-control"><span class="label-text text-xs">Телефон / факс</span>
+          <input type="text" name="phone" value="{{ form.phone.value|default:'' }}" class="input input-bordered input-sm"></label>
+        <label class="form-control"><span class="label-text text-xs">E-mail</span>
+          <input type="text" name="email" value="{{ form.email.value|default:'' }}" class="input input-bordered input-sm"></label>
+      </div>
+      <div class="grid grid-cols-2 gap-2 items-start">
+        <div class="form-control" style="position:relative" data-combo>
+          <span class="label-text text-xs">СРО (из реестра)</span>
+          <input type="text" data-combo-input autocomplete="off" class="input input-bordered input-sm w-full"
+                 placeholder="введите первые буквы…" oninput="comboFilter(this)" onfocus="comboFilter(this)"
+                 value="{% if obj.sro %}{{ obj.sro.short_name|default:obj.sro.name }}{% endif %}">
+          <input type="hidden" name="recipient_id" data-combo-id value="{{ obj.sro_id|default:'' }}">
+          <ul data-combo-list class="menu menu-sm bg-base-200 rounded-box shadow p-1"
+              style="display:none;position:absolute;top:100%;left:0;right:0;z-index:60;max-height:220px;overflow:auto;flex-wrap:nowrap">
+            {% for le in sro_options %}
+            <li data-combo-opt data-id="{{ le.pk }}" data-text="{{ le.short_name|default:le.name|lower }}">
+              <a onclick="comboPick(this)">{{ le.short_name|default:le.name }}</a>
+            </li>
+            {% endfor %}
+          </ul>
+        </div>
+        <label class="form-control"><span class="label-text text-xs">Реквизиты СРО (текст, если нет в реестре)</span>
+          <input type="text" name="sro_text" value="{{ form.sro_text.value|default:'' }}" class="input input-bordered input-sm"></label>
+      </div>
+      <div class="grid grid-cols-2 gap-2 items-end">
+        <label class="form-control"><span class="label-text text-xs">Сотрудник (если штатный)</span>
+          <select name="employee" class="select select-bordered select-sm">
+            <option value="">— не привязан —</option>
+            {% for e in employees %}<option value="{{ e.pk }}" {% if form.employee.value|stringformat:'s' == e.pk|stringformat:'s' %}selected{% endif %}>{{ e.user.last_name }} {{ e.user.first_name }} {{ e.patronymic }}</option>{% endfor %}
+          </select></label>
+        <label class="label cursor-pointer justify-start gap-2">
+          <input type="checkbox" name="is_active" class="checkbox checkbox-sm" {% if form.is_active.value %}checked{% endif %}>
+          <span class="label-text">Активен</span></label>
+      </div>
+      <div class="rounded p-2" style="background:var(--ms-bg-soft,#f8fafc)">
+        <label class="label py-1"><span class="label-text text-xs">Подпись и печать одним файлом (PNG, прозрачный фон)</span>
+          {% if obj.signature_file_id %}<a class="link text-xs ml-1" href="{% url 'files:stored_download' obj.signature_file_id %}?inline=1" target="_blank">текущий</a>{% endif %}
+        </label>
+        <input type="file" name="signature" accept="image/png,image/*" class="block w-full text-xs border border-base-300 rounded p-1">
+        <p class="text-xs text-base-content/50 mt-1">Используется при формировании запроса «с подписью и печатью».</p>
+      </div>
+      {% if form.errors %}<div class="alert alert-error text-sm">{% for f, e in form.errors.items %}<div>{{ f }}: {{ e|join:", " }}</div>{% endfor %}</div>{% endif %}
+      <div class="modal-action">
+        <button type="submit" class="btn btn-primary btn-sm">Сохранить</button>
+        <button type="button" class="btn btn-sm" onclick="this.closest('dialog').remove()">Отмена</button>
+      </div>
+    </form>
+  </div>
+  <form method="dialog" class="modal-backdrop"><button onclick="this.closest('dialog').remove()">close</button></form>
+</dialog>

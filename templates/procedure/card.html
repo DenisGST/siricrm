@@ -3,15 +3,16 @@
   Карточка процедуры банкротства — полноэкранный экран по услуге БФЛ.
   Свопится в #content-area (как чат). Вкладки грузятся в #procedure-tab-body.
 {% endcomment %}
-<div class="flex flex-col h-full gap-3" id="procedure-card">
+<div class="flex flex-col h-full gap-2" id="procedure-card" style="margin-top:-10px">
 
-  <div class="flex items-center justify-between gap-4 flex-wrap">
+  <div class="flex items-start justify-between gap-4 flex-wrap">
     <div class="flex-shrink-0">
-      <h2 class="text-lg font-bold">
-        🗂 Процедура банкротства
-        <span class="text-base font-normal">— {{ client.last_name }} {{ client.first_name }} {{ client.patronymic }}</span>
+      <div class="text-sm font-semibold text-base-content/50">🗂 Процедура банкротства</div>
+      <h2 class="text-xl font-bold leading-tight" style="color:#000">
+        {{ client.last_name }} {{ client.first_name }} {{ client.patronymic }}
       </h2>
-      <p class="text-xs text-base-content/70">
+      {% if service.region %}<div class="text-xs text-base-content/70">{{ service.region.name }}</div>{% endif %}
+      <p class="text-xs text-base-content/50">
         Услуга {{ service.name.short_name }}
         {% if service.numb_dogovor %}· Договор № {{ service.numb_dogovor }}{% endif %}
         {% if service.date_dogovor %}от {{ service.date_dogovor|date:"d.m.Y" }}{% endif %}

@@ -142,6 +142,108 @@
   </script>
 
   <script>
+    // Typeahead-выбор (надёжно, без inline-script в модалках): результат-ссылка
+    // вызывает taPick(this); контейнер помечен data-ta, поля — data-ta-id /
+    // data-ta-input, результаты — data-ta-results. data-le-id/data-le-name на ссылке.
+    window.taPick = function (el) {
+      var ta = el.closest('[data-ta]');
+      if (!ta) return;
+      var idEl = ta.querySelector('[data-ta-id]');
+      var inEl = ta.querySelector('[data-ta-input]');
+      var resEl = ta.querySelector('[data-ta-results]');
+      if (idEl) idEl.value = el.getAttribute('data-le-id') || '';
+      if (inEl) inEl.value = el.getAttribute('data-le-name') || '';
+      if (resEl) resEl.innerHTML = '';
+    };
+
+    // Combobox с фильтром по первым буквам (опции уже отрендерены на клиенте).
+    // Контейнер data-combo; поле ввода data-combo-input; hidden data-combo-id;
+    // список data-combo-list; пункты data-combo-opt (data-id, data-text=lower).
+    window.comboFilter = function (input) {
+      var box = input.closest('[data-combo]'); if (!box) return;
+      var list = box.querySelector('[data-combo-list]');
+      var q = (input.value || '').trim().toLowerCase();
+      var any = false, exactId = '';
+      box.querySelectorAll('[data-combo-opt]').forEach(function (li) {
+        var t = li.getAttribute('data-text') || '';
+        var show = !q || t.indexOf(q) !== -1;
+        li.style.display = show ? '' : 'none';
+        if (show) any = true;
+        if (t === q) exactId = li.getAttribute('data-id');
+      });
+      if (list) list.style.display = any ? 'block' : 'none';
+      // точное совпадение текста → проставим id (на случай ввода без клика)
+      box.querySelector('[data-combo-id]').value = exactId;
+    };
+    window.comboPick = function (a) {
+      var box = a.closest('[data-combo]'); if (!box) return;
+      var li = a.closest('[data-combo-opt]');
+      box.querySelector('[data-combo-id]').value = li.getAttribute('data-id') || '';
+      box.querySelector('[data-combo-input]').value = a.textContent.trim();
+      box.querySelector('[data-combo-list]').style.display = 'none';
+    };
+    document.addEventListener('click', function (e) {
+      document.querySelectorAll('[data-combo-list]').forEach(function (list) {
+        var box = list.closest('[data-combo]');
+        if (box && !box.contains(e.target)) list.style.display = 'none';
+      });
+    });
+
+    // Серверный typeahead через fetch (надёжно и в модалках, в отличие от
+    // hx-get внутри динамически добавленной модалки). Результаты — HTML-партиал
+    // с onclick="taPick(this)". Контейнер data-ta; результаты data-ta-results.
+    window.taSearch = function (input) {
+      var box = input.closest('[data-ta]'); if (!box) return;
+      var res = box.querySelector('[data-ta-results]'); if (!res) return;
+      var url = input.getAttribute('data-ta-url'); if (!url) return;
+      clearTimeout(input._taTimer);
+      input._taTimer = setTimeout(function () {
+        var q = (input.value || '').trim();
+        if (q.length < 2) { res.innerHTML = ''; return; }
+        var params = 'q=' + encodeURIComponent(q);
+        // доп. параметры (тип/регион и т.п.) — элементы data-ta-param в контейнере
+        box.querySelectorAll('[data-ta-param]').forEach(function (el) {
+          var name = el.getAttribute('data-ta-param');
+          var val = el.type === 'checkbox' ? (el.checked ? '1' : '0') : el.value;
+          if (val !== '' && val != null) params += '&' + name + '=' + encodeURIComponent(val);
+        });
+        fetch(url + (url.indexOf('?') >= 0 ? '&' : '?') + params,
+              { headers: { 'X-Requested-With': 'XMLHttpRequest' }, credentials: 'same-origin' })
+          .then(function (r) { return r.text(); })
+          .then(function (html) { res.innerHTML = html; })
+          .catch(function () { res.innerHTML = ''; });
+      }, 300);
+    };
+    // Перезапуск поиска при смене типа/региона (находит поле ввода в контейнере).
+    window.taRefresh = function (el) {
+      var box = el.closest('[data-ta]'); if (!box) return;
+      var input = box.querySelector('[data-ta-input]');
+      if (input) window.taSearch(input);
+    };
+
+    // Запоминание раскрытия <details id=…> (чтобы htmx-перезагрузка фрагмента
+    // не сбрасывала открытый раздел). На <details>: ontoggle="_detToggle(this)".
+    window._detOpenState = window._detOpenState || {};
+    window._detToggle = function (d) { if (d && d.id) window._detOpenState[d.id] = d.open; };
+    document.body.addEventListener('htmx:afterSettle', function () {
+      Object.keys(window._detOpenState).forEach(function (id) {
+        var d = document.getElementById(id);
+        if (d && d.open !== window._detOpenState[id]) d.open = window._detOpenState[id];
+      });
+    });
+    // Парсинг kad завершился — тост (блок «Суд» уже перерисовался свежими данными).
+    document.body.addEventListener('courtParseDone', function () {
+      if (window.showToast) window.showToast('Готово — данные с kad.arbitr.ru обновлены', 'success');
+    });
+    document.addEventListener('click', function (e) {
+      document.querySelectorAll('[data-ta-results]').forEach(function (res) {
+        var box = res.closest('[data-ta]');
+        if (box && !box.contains(e.target)) res.innerHTML = '';
+      });
+    });
+  </script>
+
+  <script>
     // Форматирование телефона в «+7 (XXX) XXX-XX-XX» (8→7, 10 цифр→+7).
     // Навешивается на поля телефона через onblur="formatPhoneField(this)".
     // Серверная нормализация (ClientForm.clean_phone / sync) — основная гарантия.

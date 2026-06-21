@@ -2,8 +2,8 @@
 {% if items %}
 <ul class="menu menu-sm bg-base-200 rounded-box shadow p-1" style="max-height:220px;overflow:auto">
   {% for le in items %}
-  <li><a data-le-id="{{ le.pk }}" data-le-name="{{ le.short_name|default:le.name }}">
-    {{ le.name }}{% if le.inn %} · ИНН {{ le.inn }}{% endif %}
+  <li><a onclick="taPick(this)" data-le-id="{{ le.pk }}" data-le-name="{{ le.short_name|default:le.name }}">
+    {{ le.name }}{% if le.inn %} · ИНН {{ le.inn }}{% endif %}{% if le.region %} · <span class="text-base-content/50">{{ le.region.name }}</span>{% endif %}
   </a></li>
   {% endfor %}
 </ul>

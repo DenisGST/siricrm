@@ -252,20 +252,40 @@ def _active_task_cache_key(case_id) -> str:
     return f"arbitr:active_task:{case_id}"
 
 
+def _parse_progress_ctx(case):
+    """Контекст прогресс-бара парсинга: фраза-этап и % по времени с запуска."""
+    active = cache.get(_active_task_cache_key(case.id)) or {}
+    elapsed = int(time.time() - active.get("started_at", time.time())) if active else 0
+    is_search = case.status == ArbitrCase.STATUS_SEARCHING
+    if elapsed < 4:
+        phase = "Подключаемся к kad.arbitr.ru…"
+    elif elapsed < 12:
+        phase = "Ищем дело по ФИО…" if is_search else "Открываем карточку дела…"
+    elif elapsed < 22:
+        phase = "Скачиваем информацию по делу…"
+    else:
+        phase = "Скачиваем файлы (судебные акты)…"
+    return {"service": case.service, "case": case,
+            "phase": phase, "pct": min(92, 8 + int(elapsed * 3.5)), "elapsed": elapsed}
+
+
 @login_required
 @require_POST
 def case_run(request, case_id):
     """Ручной запуск парсера. Сохраняет task_id в кэш — для poll'инга.
 
-    Возвращает обновлённую карточку. Если на деле уже идёт ручной запуск
-    (cache hit) — отказывает с 409 Conflict, чтобы не запустить второй
-    параллельный таск.
+    block=1 → вернуть прогресс-блок (для встроенной вкладки «Суд»), иначе —
+    дашбордную карточку. Повторный запуск при активном таске — отдаёт прогресс
+    (block) или 409 (карточка), второй параллельный таск не стартует.
     """
     if not is_admin(request.user):
         return HttpResponse("forbidden", status=403)
     case = get_object_or_404(ArbitrCase, pk=case_id)
+    as_block = bool(request.POST.get("block"))
     key = _active_task_cache_key(case.id)
     if cache.get(key):
+        if as_block:
+            return render(request, "arbitr/_case_block_progress.html", _parse_progress_ctx(case))
         return HttpResponse("Парсинг уже идёт", status=409)
     result = kad_monitor_one_case.delay(str(case.id))
     cache.set(key, {
@@ -277,7 +297,21 @@ def case_run(request, case_id):
         case=case, state=ArbitrCheckLog.STATE_OK,
         notes=f"Ручной запуск инициирован (user={request.user.username})",
     )
+    if as_block:
+        return render(request, "arbitr/_case_block_progress.html", _parse_progress_ctx(case))
     return _render_case_card(request, case)
+
+
+@login_required
+def case_block_status(request, case_id):
+    """Поллинг прогресса для встроенного блока: пока таск активен — прогресс-блок;
+    завершился — актуальный _case_block.html (поллинг останавливается)."""
+    case = get_object_or_404(ArbitrCase, pk=case_id)
+    if cache.get(_active_task_cache_key(case.id)):
+        return render(request, "arbitr/_case_block_progress.html", _parse_progress_ctx(case))
+    resp = render(request, "arbitr/_case_block.html", {"service": case.service, "case": case})
+    resp["HX-Trigger"] = "courtParseDone"
+    return resp
 
 
 @login_required
@@ -449,6 +483,11 @@ def case_confirm_hit(request, case_id, hit_index):
         case=case, state=ArbitrCheckLog.STATE_OK,
         notes=f"Сотрудник подтвердил дело {case_number} — переводим в MONITORING",
     )
+    # stay=1 (из вкладки «Суд» карточки процедуры) — перерисовать блок дела на
+    # месте, без редиректа на dashboard арбитража.
+    if request.POST.get("stay") or request.GET.get("stay"):
+        return render(request, "arbitr/_case_block.html",
+                      {"service": case.service, "case": case})
     # После confirm весь блок страницы рендерится по-другому (нет
     # «кандидатов», есть инстанции/события). Перезагружаем dashboard с
     # выбранным делом в URL — sidebar тоже обновится с новым статусом.

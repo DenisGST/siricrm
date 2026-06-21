@@ -19,7 +19,7 @@ from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_POST
 
 from apps.core.models import Employee
-from apps.crm.models import Address, Client, ClientPhone, LegalEntity, Service
+from apps.crm.models import Address, Client, ClientPhone, Correspondence, LegalEntity, Service
 from apps.crm.phone_utils import (
     add_client_phone,
     find_client_by_phone,
@@ -36,6 +36,7 @@ from .models import (
     KIND_RESTRUCTURING,
     PROCEDURE_KIND_CHOICES,
     SCOPE_COMMON,
+    ArbitrationManager,
     BankruptcyCase,
     MilestoneTemplate,
     Procedure,
@@ -241,10 +242,10 @@ def _overview_context(case: BankruptcyCase, expand_proc_id=None,
         name = " ".join(filter(None, [e.user.last_name, e.user.first_name, e.patronymic]))
         return name.strip() or e.user.get_full_name() or e.user.username
 
-    # Финуправляющие — сотрудники с ролью «Арбитражный управляющий».
+    # Финуправляющие — из справочника «Арбитражные управляющие».
     managers = [
-        {"id": e.id, "label": _mgr_label(e)}
-        for e in Employee.objects.filter(role="arbitration", is_active=True).select_related("user")
+        {"id": str(m.id), "label": m.full_fio}
+        for m in ArbitrationManager.objects.filter(is_active=True)
     ]
     client = case.service.client
     spouse_client = client.spouse
@@ -484,17 +485,14 @@ def update_procedure(request, service_id, proc_id):
     term = (request.POST.get("term_months") or "").strip()
     p.term_months = int(term) if term.isdigit() else None
     fm_id = request.POST.get("financial_manager") or ""
-    if fm_id and Employee.objects.filter(id=fm_id, role="arbitration").exists():
-        p.financial_manager_id = fm_id
-    else:
-        p.financial_manager = None
+    p.arbitr_manager = ArbitrationManager.objects.filter(id=fm_id).first() if fm_id else None
     oc = request.POST.get("outcome", "")
     if oc not in {c for c, _ in outcomes_for_kind(p.kind)}:
         oc = ""
     p.outcome = oc
     p.save(update_fields=[
         "intro_date", "publication_efrsb_date", "publication_kommersant_date",
-        "next_hearing_date", "end_date", "term_months", "financial_manager",
+        "next_hearing_date", "end_date", "term_months", "arbitr_manager",
         "outcome", "updated_at",
     ])
     services.recompute_case_closed(case)
@@ -957,10 +955,26 @@ def _correspondence_context(case) -> dict:
     requests = list(case.requests.select_related("recipient", "request_type").all())
     for r in requests:
         r.is_late = bool(r.status == Request.STATUS_SENT and r.due_date and r.due_date < today)
+    corr = (Correspondence.objects.filter(service=case.service)
+            .select_related("counterparty").order_by("-sent_at", "-created_at"))
+    # Судебные акты — все вложения из арбитражного дела (мониторинг kad).
+    from apps.arbitr.models import ArbitrAttachment
+    arb = getattr(case.service, "arbitr_case", None)
+    court_acts = []
+    if arb is not None:
+        court_acts = list(
+            ArbitrAttachment.objects.filter(event__case=arb)
+            .select_related("event").order_by("-event__event_date", "-created_at")
+        )
     return {
         "service": case.service,
         "case": case,
+        "today": today,
         "requests": requests,
+        "incoming": [c for c in corr if c.direction == "incoming"],
+        "outgoing": [c for c in corr if c.direction == "outgoing"],
+        "court_acts": court_acts,
+        "has_arbitr_case": arb is not None,
         "request_types": RequestType.objects.filter(is_active=True).order_by("order", "name"),
         "request_packages": RequestPackage.objects.filter(is_active=True).order_by("order", "name"),
         "method_choices": Request.METHOD_CHOICES,
@@ -982,15 +996,30 @@ def tab_correspondence(request, service_id):
 @login_required
 @require_procedures
 def recipient_search(request, service_id):
-    """Typeahead госоргана — поиск по реестру LegalEntity (имя/ИНН)."""
+    """Typeahead госоргана — поиск по реестру LegalEntity (имя/ИНН).
+    Доп. фильтр по типу (kind) и приоритет региона дела (region=1)."""
     q = (request.GET.get("q") or "").strip()
     items = []
     if len(q) >= 2:
-        items = list(
-            LegalEntity.objects.filter(
-                Q(name__icontains=q) | Q(short_name__icontains=q) | Q(inn__icontains=q)
-            ).order_by("name")[:10]
+        qs = LegalEntity.objects.filter(
+            Q(name__icontains=q) | Q(short_name__icontains=q) | Q(inn__icontains=q)
         )
+        kind = (request.GET.get("kind") or "").strip()
+        if kind:
+            qs = qs.filter(kind_id=kind)
+        if request.GET.get("region") == "1":
+            region_id = (Service.objects.filter(pk=service_id)
+                         .values_list("region_id", flat=True).first())
+            if region_id:
+                from django.db.models import Case, IntegerField, When
+                qs = qs.annotate(_rm=Case(
+                    When(region_id=region_id, then=0), default=1,
+                    output_field=IntegerField())).order_by("_rm", "name")
+            else:
+                qs = qs.order_by("name")
+        else:
+            qs = qs.order_by("name")
+        items = list(qs.select_related("region")[:10])
     return render(request, "procedure/_recipient_results.html", {"items": items, "q": q})
 
 
@@ -1102,6 +1131,10 @@ def request_response(request, service_id, req_id):
         no_answer=bool(request.POST.get("no_answer")),
         employee=_actor(request),
     )
+    f = request.FILES.get("response_scan")
+    if f:
+        req.response_scan = _scan_to_storedfile(f)
+        req.save(update_fields=["response_scan", "updated_at"])
     return _req_trigger()
 
 
@@ -1141,7 +1174,12 @@ def reference_request_type_edit(request, pk=None):
             return HttpResponse(headers={"HX-Trigger": "reloadRequestTypes"})
     else:
         form = RequestTypeForm(instance=obj)
-    return render(request, "procedure/partials/request_type_form_modal.html", {"form": form, "obj": obj})
+    from apps.afd.models import DocumentTemplate
+    return render(request, "procedure/partials/request_type_form_modal.html", {
+        "form": form, "obj": obj,
+        "doc_templates": DocumentTemplate.objects.filter(
+            kind=DocumentTemplate.KIND_REQUEST, is_active=True).order_by("name"),
+    })
 
 
 @user_passes_test(is_references_access)
@@ -1183,3 +1221,311 @@ def reference_request_package_edit(request, pk=None):
 def reference_request_package_delete(request, pk):
     get_object_or_404(RequestPackage, pk=pk).delete()
     return HttpResponse(headers={"HX-Trigger": "reloadRequestPackages"})
+
+
+# ── Справочник «Арбитражные управляющие» ────────────────────────────────────
+
+@user_passes_test(is_references_access)
+def references_managers(request):
+    items = ArbitrationManager.objects.select_related("sro", "employee__user").order_by("last_name", "first_name")
+    return render(request, "procedure/partials/references_managers.html", {"items": items})
+
+
+@user_passes_test(is_references_access)
+def reference_manager_edit(request, pk=None):
+    from .forms import ArbitrationManagerForm
+    obj = get_object_or_404(ArbitrationManager, pk=pk) if pk else None
+    if request.method == "POST":
+        form = ArbitrationManagerForm(request.POST, instance=obj)
+        if form.is_valid():
+            o = form.save(commit=False)
+            rid = (request.POST.get("recipient_id") or "").strip()
+            o.sro = LegalEntity.objects.filter(pk=rid).first() if rid else None
+            sig = request.FILES.get("signature")
+            if sig:
+                o.signature_file = _scan_to_storedfile(sig)
+            o.save()
+            return HttpResponse(headers={"HX-Trigger": "reloadManagers"})
+    else:
+        form = ArbitrationManagerForm(instance=obj)
+    from apps.crm.models import LegalEntityKind
+    sro_kind = (LegalEntityKind.objects.filter(short_name__iexact="СРО").first()
+                or LegalEntityKind.objects.filter(name__icontains="аморегулир").first())
+    sro_options = (LegalEntity.objects.filter(kind=sro_kind).order_by("name")
+                   if sro_kind else LegalEntity.objects.none())
+    return render(request, "procedure/partials/manager_form_modal.html", {
+        "form": form, "obj": obj, "sro_options": sro_options,
+        "employees": Employee.objects.filter(is_active=True)
+        .select_related("user").order_by("user__last_name", "user__first_name"),
+    })
+
+
+@user_passes_test(is_references_access)
+@require_POST
+def reference_manager_delete(request, pk):
+    get_object_or_404(ArbitrationManager, pk=pk).delete()
+    return HttpResponse(headers={"HX-Trigger": "reloadManagers"})
+
+
+# ── Запросы: формирование документа ─────────────────────────────────────────
+
+@never_cache
+@login_required
+@require_procedures
+def request_generate_form(request, service_id, req_id):
+    try:
+        service = _bfl_service(request, service_id)
+    except _NotBFL as exc:
+        return HttpResponseForbidden(str(exc))
+    case = services.ensure_case(service)
+    req = get_object_or_404(Request, pk=req_id, case=case)
+    from .request_documents import check_request_data
+    all_ok, check_groups = check_request_data(req)
+    return render(request, "procedure/_request_generate_modal.html", {
+        "service": service, "req": req,
+        "check_all_ok": all_ok, "check_groups": check_groups,
+    })
+
+
+@login_required
+@require_procedures
+@require_POST
+def request_generate(request, service_id, req_id):
+    try:
+        service = _bfl_service(request, service_id)
+    except _NotBFL as exc:
+        return HttpResponseForbidden(str(exc))
+    case = services.ensure_case(service)
+    req = get_object_or_404(Request, pk=req_id, case=case)
+    from .request_documents import RequestDocError, generate_request_document
+    try:
+        generate_request_document(
+            req,
+            with_signature=bool(request.POST.get("with_signature")),
+            marriage_cert=(request.POST.get("marriage_cert") or "").strip(),
+            employee=_actor(request),
+        )
+    except RequestDocError as exc:
+        return render(request, "procedure/_request_generate_modal.html",
+                      {"service": service, "req": req, "error": str(exc)})
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception("request_generate failed")
+        return render(request, "procedure/_request_generate_modal.html",
+                      {"service": service, "req": req,
+                       "error": "Не удалось сформировать документ (ошибка конвертации). Попробуйте ещё раз."})
+    return _req_trigger()
+
+
+# ── Корреспонденция: загрузка сканов (Входящие/Исходящие) ───────────────────
+
+def _scan_to_storedfile(f):
+    """Загрузить файл-скан в S3 → StoredFile (+ ссылка для предпросмотра)."""
+    from apps.files.models import StoredFile
+    from apps.files.s3_utils import upload_file_to_s3
+    data = f.read()
+    bucket, key = upload_file_to_s3(
+        data, prefix="procedure/correspondence", filename=f.name,
+        content_type=(f.content_type or "application/octet-stream"),
+    )
+    return StoredFile.objects.create(
+        bucket=bucket, key=key, filename=f.name,
+        content_type=(f.content_type or ""), size=len(data),
+    )
+
+
+@never_cache
+@login_required
+@require_procedures
+def correspondence_upload_form(request, service_id, direction):
+    try:
+        service = _bfl_service(request, service_id)
+    except _NotBFL as exc:
+        return HttpResponseForbidden(str(exc))
+    if direction not in ("incoming", "outgoing"):
+        return HttpResponseBadRequest("Неизвестное направление")
+    case = services.ensure_case(service)
+    from apps.crm.models import LegalEntityKind
+    # Для входящих — список запросов дела (привязать ответ к запросу).
+    case_requests = (case.requests.select_related("recipient").order_by("outgoing_number")
+                     if direction == "incoming" else [])
+    return render(request, "procedure/_correspondence_upload_modal.html",
+                  {"service": service, "direction": direction,
+                   "kinds": LegalEntityKind.objects.order_by("name"),
+                   "case_requests": case_requests})
+
+
+@login_required
+@require_procedures
+@require_POST
+def correspondence_upload(request, service_id, direction):
+    try:
+        service = _bfl_service(request, service_id)
+    except _NotBFL as exc:
+        return HttpResponseForbidden(str(exc))
+    if direction not in ("incoming", "outgoing"):
+        return HttpResponseBadRequest("Неизвестное направление")
+    services.ensure_case(service)
+    from django.urls import reverse
+    co = Correspondence(
+        service=service, direction=direction,
+        subject_type=(request.POST.get("subject_type") or "").strip(),
+        outgoing_number=(request.POST.get("number") or "").strip(),
+        sent_at=_date(request.POST.get("date")),
+        comments=(request.POST.get("comments") or "").strip(),
+    )
+    rid = (request.POST.get("recipient_id") or "").strip()
+    if rid:
+        co.counterparty = LegalEntity.objects.filter(pk=rid).first()
+    f = request.FILES.get("scan")
+    sf = None
+    if f:
+        sf = _scan_to_storedfile(f)
+        co.file_link = reverse("files:stored_download", args=[sf.id]) + "?inline=1"
+    co.save()
+    # Привязка входящего к запросу как ответ на него.
+    if direction == "incoming" and request.POST.get("as_response"):
+        rq = Request.objects.filter(
+            pk=(request.POST.get("request_id") or ""), case__service=service).first()
+        if rq is not None:
+            if sf is not None:
+                rq.response_scan = sf
+            rq.response_date = co.sent_at or rq.response_date
+            num = (request.POST.get("number") or "").strip()
+            if num:
+                rq.response_number = num
+            rq.status = Request.STATUS_ANSWERED
+            rq.save(update_fields=[
+                "response_scan", "response_date", "response_number", "status", "updated_at",
+            ])
+    return _req_trigger()
+
+
+# ── Запросы: онлайн-редактирование документа (текст по абзацам) ──────────────
+
+@never_cache
+@login_required
+@require_procedures
+def request_edit_form(request, service_id, req_id):
+    try:
+        service = _bfl_service(request, service_id)
+    except _NotBFL as exc:
+        return HttpResponseForbidden(str(exc))
+    case = services.ensure_case(service)
+    req = get_object_or_404(Request, pk=req_id, case=case)
+    paras = []
+    if req.document_docx_id:
+        from apps.files.s3_utils import download_file_from_s3
+        from .request_documents import extract_editable_paragraphs
+        data = download_file_from_s3(req.document_docx.bucket, req.document_docx.key)
+        paras = extract_editable_paragraphs(data)
+    return render(request, "procedure/_request_edit_modal.html",
+                  {"service": service, "req": req, "paras": paras})
+
+
+@login_required
+@require_procedures
+@require_POST
+def request_edit_save(request, service_id, req_id):
+    try:
+        service = _bfl_service(request, service_id)
+    except _NotBFL as exc:
+        return HttpResponseForbidden(str(exc))
+    case = services.ensure_case(service)
+    req = get_object_or_404(Request, pk=req_id, case=case)
+    if not req.document_docx_id:
+        return HttpResponseBadRequest("Нет документа для редактирования")
+    from apps.files.s3_utils import download_file_from_s3
+    from .request_documents import apply_paragraph_edits, save_edited_document
+    edits = {}
+    for k, v in request.POST.items():
+        if k.startswith("p_"):
+            try:
+                edits[int(k[2:])] = v
+            except ValueError:
+                pass
+    data = download_file_from_s3(req.document_docx.bucket, req.document_docx.key)
+    try:
+        new_docx = apply_paragraph_edits(data, edits)
+        save_edited_document(req, new_docx, employee=_actor(request))
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception("request_edit_save failed")
+        return render(request, "procedure/_request_edit_modal.html", {
+            "service": service, "req": req,
+            "paras": [{"index": int(k[2:]), "text": v} for k, v in request.POST.items() if k.startswith("p_")],
+            "error": "Не удалось сохранить (ошибка конвертации). Попробуйте ещё раз.",
+        })
+    return _req_trigger()
+
+
+# ── Превью офисных файлов (doc/docx/xls…) через Microsoft Office Online Viewer ─
+
+@login_required
+@require_procedures
+def doc_presigned_url(request, service_id, sf_id):
+    """Pre-signed URL файла в S3 — сырой публичный (Office Online Viewer его сам
+    скачивает с серверов Microsoft, поэтому наш auth-gated stored_download не годится)."""
+    from django.http import JsonResponse
+    from apps.files.models import StoredFile
+    from apps.files.s3_utils import get_presigned_url
+    sf = get_object_or_404(StoredFile, pk=sf_id)
+    return JsonResponse({"url": get_presigned_url(sf.bucket, sf.key, expiration=1800)})
+
+
+# ── Запросы: подгрузка готового документа (pdf/docx) ────────────────────────
+
+@never_cache
+@login_required
+@require_procedures
+def request_upload_form(request, service_id, req_id):
+    try:
+        service = _bfl_service(request, service_id)
+    except _NotBFL as exc:
+        return HttpResponseForbidden(str(exc))
+    case = services.ensure_case(service)
+    req = get_object_or_404(Request, pk=req_id, case=case)
+    return render(request, "procedure/_request_upload_doc_modal.html", {"service": service, "req": req})
+
+
+@login_required
+@require_procedures
+@require_POST
+def request_upload(request, service_id, req_id):
+    try:
+        service = _bfl_service(request, service_id)
+    except _NotBFL as exc:
+        return HttpResponseForbidden(str(exc))
+    case = services.ensure_case(service)
+    req = get_object_or_404(Request, pk=req_id, case=case)
+    f = request.FILES.get("file")
+    name = (getattr(f, "name", "") or "").lower()
+    if not f or not (name.endswith(".pdf") or name.endswith(".docx")):
+        return render(request, "procedure/_request_upload_doc_modal.html",
+                      {"service": service, "req": req, "error": "Загрузите файл .pdf или .docx"})
+    from apps.files.models import StoredFile
+    from apps.files.s3_utils import upload_file_to_s3
+    from .request_documents import DOCX_CT, _attach, _store
+    is_docx = name.endswith(".docx")
+    data = f.read()
+    ct = f.content_type or (DOCX_CT if is_docx else "application/pdf")
+    bucket, key = upload_file_to_s3(data, prefix="procedure/requests", filename=f.name, content_type=ct)
+    sf = StoredFile.objects.create(bucket=bucket, key=key, filename=f.name, content_type=ct, size=len(data))
+    client = req.case.service.client
+    emp = _actor(request)
+    _attach(client, sf, emp)
+    if is_docx:
+        req.document_docx = sf
+        try:
+            from apps.afd.pdf_utils import docx_to_pdf
+            pdf_sf = _store(docx_to_pdf(data), filename=f"{f.name[:-5]}.pdf", content_type="application/pdf")
+            _attach(client, pdf_sf, emp)
+            req.document_pdf = pdf_sf
+        except Exception:
+            import logging
+            logging.getLogger(__name__).exception("request_upload: docx→pdf failed")
+    else:
+        req.document_pdf = sf
+    req.generated_at = timezone.now()
+    req.save(update_fields=["document_docx", "document_pdf", "generated_at", "updated_at"])
+    return _req_trigger()

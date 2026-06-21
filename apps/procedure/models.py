@@ -236,10 +236,15 @@ class Procedure(TimeStampedModel):
         ProcedureStage, on_delete=models.SET_NULL, null=True, blank=True,
         related_name="current_procedures", verbose_name="Текущая стадия",
     )
-    # ФУ назначается судом при введении этой процедуры.
+    # ФУ назначается судом при введении. Реквизиты — из справочника
+    # «Арбитражные управляющие» (arbitr_manager); поля ниже — legacy/fallback.
+    arbitr_manager = models.ForeignKey(
+        "ArbitrationManager", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="procedures", verbose_name="Финуправляющий (АУ)",
+    )
     financial_manager = models.ForeignKey(
         "core.Employee", on_delete=models.SET_NULL, null=True, blank=True,
-        related_name="managed_procedures", verbose_name="Финуправляющий (штатный)",
+        related_name="managed_procedures", verbose_name="Финуправляющий (штатный, legacy)",
     )
     fm_name_external = models.CharField(
         "Финуправляющий (внешний)", max_length=255, blank=True,
@@ -278,6 +283,8 @@ class Procedure(TimeStampedModel):
 
     @property
     def fm_display(self) -> str:
+        if self.arbitr_manager_id and self.arbitr_manager:
+            return self.arbitr_manager.full_fio
         e = self.financial_manager
         if e is not None:
             name = " ".join(filter(None, [e.user.last_name, e.user.first_name, e.patronymic]))
@@ -398,6 +405,10 @@ class RequestType(TimeStampedModel):
         "Срок ответа, дней", default=30,
         help_text="Через сколько дней ждём ответ (для контроля срока).",
     )
+    template = models.ForeignKey(
+        "afd.DocumentTemplate", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="+", verbose_name="Шаблон документа (.docx)",
+    )
     order = models.PositiveIntegerField("Порядок", default=0)
     is_active = models.BooleanField("Активен", default=True)
     is_draft = models.BooleanField(
@@ -488,6 +499,23 @@ class Request(TimeStampedModel):
     response_date = models.DateField("Дата ответа", null=True, blank=True)
     response_number = models.CharField("Номер ответа", max_length=120, blank=True)
     response_text = models.TextField("Текст/итог ответа", blank=True)
+    response_scan = models.ForeignKey(
+        "files.StoredFile", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="+", verbose_name="Скан ответа",
+    )
+
+    # Сформированный документ запроса (исходящее письмо).
+    outgoing_number = models.PositiveIntegerField("Исходящий №", null=True, blank=True)
+    with_signature = models.BooleanField("С подписью и печатью", default=False)
+    generated_at = models.DateTimeField("Сформирован", null=True, blank=True)
+    document_pdf = models.ForeignKey(
+        "files.StoredFile", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="+", verbose_name="Документ (PDF)",
+    )
+    document_docx = models.ForeignKey(
+        "files.StoredFile", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="+", verbose_name="Документ (.docx)",
+    )
 
     created_by = models.ForeignKey(
         "core.Employee", on_delete=models.SET_NULL, null=True, blank=True,
@@ -520,3 +548,66 @@ class Request(TimeStampedModel):
             self.status == self.STATUS_SENT
             and self.due_date and self.due_date < timezone.localdate()
         )
+
+
+# ── Арбитражные управляющие (справочник реквизитов ФУ) ──────────────────────
+
+class ArbitrationManager(TimeStampedModel):
+    """Справочник АУ: реквизиты финуправляющего для документов-запросов.
+
+    ИНН/СНИЛС/адрес/тел/email/СРО — подставляются в шаблоны. PNG подписи и
+    печати (опц.) накладываются при формировании «с подписью и печатью».
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    last_name = models.CharField("Фамилия", max_length=120)
+    first_name = models.CharField("Имя", max_length=120)
+    patronymic = models.CharField("Отчество", max_length=120, blank=True)
+    inn = models.CharField("ИНН", max_length=20, blank=True)
+    snils = models.CharField("СНИЛС", max_length=20, blank=True)
+    corr_address = models.CharField("Адрес для корреспонденции", max_length=400, blank=True)
+    phone = models.CharField("Телефон / факс", max_length=120, blank=True)
+    email = models.CharField("E-mail", max_length=255, blank=True)
+    sro = models.ForeignKey(
+        "crm.LegalEntity", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="+", verbose_name="СРО",
+    )
+    sro_text = models.CharField(
+        "Реквизиты СРО (текст)", max_length=500, blank=True,
+        help_text="Если СРО не выбран из реестра — текстом для подстановки.",
+    )
+    employee = models.ForeignKey(
+        "core.Employee", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="arbitration_profiles", verbose_name="Сотрудник (если штатный)",
+    )
+    signature_file = models.ForeignKey(
+        "files.StoredFile", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="+", verbose_name="Подпись и печать (PNG)",
+    )
+    is_active = models.BooleanField("Активен", default=True)
+
+    class Meta:
+        verbose_name = "Арбитражный управляющий"
+        verbose_name_plural = "Арбитражные управляющие"
+        ordering = ["last_name", "first_name"]
+
+    def __str__(self):
+        return self.short_fio
+
+    @property
+    def full_fio(self) -> str:
+        return " ".join(filter(None, [self.last_name, self.first_name, self.patronymic])).strip()
+
+    @property
+    def short_fio(self) -> str:
+        ini = ""
+        if self.first_name:
+            ini += self.first_name[0] + "."
+        if self.patronymic:
+            ini += self.patronymic[0] + "."
+        return (f"{self.last_name} {ini}".strip()) or "—"
+
+    @property
+    def sro_display(self) -> str:
+        if self.sro_id and self.sro:
+            return self.sro.name
+        return self.sro_text or ""

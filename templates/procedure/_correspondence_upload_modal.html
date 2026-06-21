@@ -1,0 +1,73 @@
+{% comment %}Загрузка скана в Входящие/Исходящие → Correspondence. Контекст: service, direction.{% endcomment %}
+<dialog id="corr-upload-modal" class="modal modal-middle modal-open">
+  <div class="modal-box w-full max-w-lg" style="overflow:visible">
+    <h3 class="font-bold text-lg mb-3">Загрузить скан — {% if direction == 'incoming' %}Входящее{% else %}Исходящее{% endif %}</h3>
+    <form hx-post="{% url 'procedure:correspondence_upload' service.id direction %}"
+          hx-target="#corr-upload-modal" hx-swap="outerHTML" hx-encoding="multipart/form-data"
+          class="space-y-3">
+      {% csrf_token %}
+      <div>
+        <label class="label py-1"><span class="label-text">Файл-скан</span></label>
+        <input type="file" name="scan" class="block w-full text-sm border border-base-300 rounded p-1" required>
+      </div>
+      <div>
+        <label class="label py-1"><span class="label-text">Тип письма / документ</span></label>
+        <input type="text" name="subject_type" class="input input-bordered input-sm w-full"
+               placeholder="напр. Ответ Росреестра / Запрос в ИФНС">
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="label py-1"><span class="label-text">№</span></label>
+          <input type="text" name="number" class="input input-bordered input-sm w-full">
+        </div>
+        <div>
+          <label class="label py-1"><span class="label-text">Дата</span></label>
+          <input type="date" name="date" class="input input-bordered input-sm w-full">
+        </div>
+      </div>
+      <div class="form-control" data-ta style="position:relative">
+        <span class="label-text text-xs">Контрагент (необязательно)</span>
+        <div class="flex gap-2 items-center mb-1">
+          <select data-ta-param="kind" onchange="taRefresh(this)" class="select select-bordered select-xs flex-1">
+            <option value="">Все типы</option>
+            {% for k in kinds %}<option value="{{ k.pk }}">{{ k.short_name|default:k.name }}</option>{% endfor %}
+          </select>
+          <label class="label cursor-pointer gap-1 py-0">
+            <input type="checkbox" data-ta-param="region" onchange="taRefresh(this)" class="checkbox checkbox-xs" checked>
+            <span class="label-text text-xs">по региону</span>
+          </label>
+        </div>
+        <input type="text" data-ta-input name="q" autocomplete="off"
+               class="input input-bordered input-sm w-full" placeholder="поиск по реестру…"
+               data-ta-url="{% url 'procedure:recipient_search' service.id %}" oninput="taSearch(this)">
+        <input type="hidden" name="recipient_id" data-ta-id>
+        <div data-ta-results style="position:absolute;top:100%;left:0;right:0;z-index:60"></div>
+      </div>
+      <div>
+        <label class="label py-1"><span class="label-text">Комментарий</span></label>
+        <input type="text" name="comments" class="input input-bordered input-sm w-full">
+      </div>
+      {% if direction == "incoming" and case_requests %}
+      <div class="rounded p-2" style="background:var(--ms-bg-soft,#f8fafc)">
+        <label class="label cursor-pointer justify-start gap-2 py-0">
+          <input type="checkbox" name="as_response" class="checkbox checkbox-sm"
+                 onchange="document.getElementById('resp-req-sel').disabled=!this.checked">
+          <span class="label-text">Это ответ на запрос</span>
+        </label>
+        <select name="request_id" id="resp-req-sel" class="select select-bordered select-sm w-full mt-1" disabled>
+          <option value="">— выберите запрос —</option>
+          {% for rq in case_requests %}
+          <option value="{{ rq.pk }}">№ {{ rq.outgoing_number|default:"—" }} · {{ rq.title }} → {{ rq.recipient_display }}</option>
+          {% endfor %}
+        </select>
+        <p class="text-xs text-base-content/50 mt-1">Файл станет сканом ответа на выбранный запрос (статус запроса → «Ответ получен»).</p>
+      </div>
+      {% endif %}
+      <div class="modal-action">
+        <button type="submit" class="btn btn-primary btn-sm">Загрузить</button>
+        <button type="button" class="btn btn-sm" onclick="this.closest('dialog').remove()">Отмена</button>
+      </div>
+    </form>
+  </div>
+  <form method="dialog" class="modal-backdrop"><button onclick="this.closest('dialog').remove()">close</button></form>
+</dialog>

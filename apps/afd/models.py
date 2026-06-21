@@ -72,9 +72,11 @@ class DocumentTemplate(models.Model):
     """Шаблон документа АФД — .docx с плейсхолдерами {key}."""
 
     KIND_CONTRACT_BFL = "contract_bfl"
+    KIND_REQUEST = "request"
     KIND_OTHER = "other"
     KIND_CHOICES = [
         (KIND_CONTRACT_BFL, "Договор юруслуг (БФЛ)"),
+        (KIND_REQUEST, "Запрос в госорган"),
         (KIND_OTHER, "Прочее"),
     ]
 
