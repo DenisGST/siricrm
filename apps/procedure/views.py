@@ -956,7 +956,8 @@ def _correspondence_context(case) -> dict:
     for r in requests:
         r.is_late = bool(r.status == Request.STATUS_SENT and r.due_date and r.due_date < today)
     corr = (Correspondence.objects.filter(service=case.service)
-            .select_related("counterparty").order_by("-sent_at", "-created_at"))
+            .select_related("counterparty", "stored_file", "request")
+            .order_by("-sent_at", "-created_at"))
     # Судебные акты — все вложения из арбитражного дела (мониторинг kad).
     from apps.arbitr.models import ArbitrAttachment
     arb = getattr(case.service, "arbitr_case", None)

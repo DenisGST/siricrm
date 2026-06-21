@@ -1787,6 +1787,18 @@ class Correspondence(TimeStampedModel):
         'Ссылка на файл письма', blank=True,
         help_text='URL Google Drive (исторический) или S3.',
     )
+    stored_file = models.ForeignKey(
+        'files.StoredFile', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='correspondences',
+        verbose_name='Файл (StoredFile)',
+        help_text='FK на файл в S3 — заменяет file_link для новых записей.',
+    )
+    request = models.ForeignKey(
+        'procedure.Request', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='correspondences',
+        verbose_name='Связанный запрос',
+        help_text='Для писем созданных в рамках запроса/ответа.',
+    )
 
     track_response = models.BooleanField('Отслеживать ответ', default=False)
     control_date = models.DateField('Контрольная дата', null=True, blank=True)

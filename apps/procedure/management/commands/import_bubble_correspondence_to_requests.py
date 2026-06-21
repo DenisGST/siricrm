@@ -21,9 +21,10 @@ from django.db import transaction
 from django.db.models import Max
 from django.utils import timezone
 
+from apps.bubble_import import bubble_api
 from apps.bubble_import.extractors import clean_str, parse_bubble_date, strip_bbcode
 from apps.bubble_import.models import BubbleRecord
-from apps.crm.models import LegalEntity, Service
+from apps.crm.models import Correspondence, LegalEntity, Service
 from apps.files.folder_utils import create_bfl_folders
 from apps.files.models import ClientFile, ClientFolder, StoredFile
 from apps.procedure.models import BankruptcyCase, Request, RequestType
@@ -97,6 +98,12 @@ class Command(BaseCommand):
                             help="UUID одной услуги (для точечного теста).")
         parser.add_argument("--reapply", action="store_true",
                             help="Обновлять уже импортированные Request (по bubble_id).")
+        parser.add_argument("--purge-correspondence", action="store_true",
+                            help="Перед импортом удалить ВСЕ crm.Correspondence "
+                                 "с bubble_id (Bubble-импорт). Используй когда "
+                                 "пересоздаёшь пары out/in после изменения логики.")
+        parser.add_argument("--no-correspondence", action="store_true",
+                            help="Не создавать пары crm.Correspondence (только Request).")
 
     # ── Кэши на прогон ────────────────────────────────────────────────────
     _types_by_code = None
@@ -106,6 +113,8 @@ class Command(BaseCommand):
     # Files-кэши: предзагружаются единожды на старте handle()
     _file_by_bubble_id = {}   # Bubble Files._id → StoredFile.id (UUID str)
     _file_by_gdrive_url = {}  # Bubble Files.linkGDrive → StoredFile.id (точный URL)
+    # Gosorgan-кэш: для recipient_name строкой когда LegalEntity FK не найден
+    _gosorgan_by_id = {}      # Bubble Gosorgan._id → {name, adress}
 
     def _request_type(self, code):
         if self._types_by_code is None:
@@ -128,19 +137,24 @@ class Command(BaseCommand):
         return svc
 
     def _recipient(self, kontragent_bid):
+        """LegalEntity по Bubble Kontragent UUID (через map_gosorgan_to_legalentities).
+
+        Возвращает (legal_entity_or_none, name_fallback_string). Если FK не
+        найден — пытается отдать имя из кэша Gosorgan (для recipient_name).
+        """
         if not kontragent_bid:
-            return None
+            return None, ""
         if kontragent_bid in self._legalentity_cache:
-            return self._legalentity_cache[kontragent_bid]
-        le = LegalEntity.objects.filter(bubble_id=kontragent_bid).first()
-        if le is None:
-            or_rec = BubbleRecord.objects.filter(
-                entity="Organization", bubble_id=kontragent_bid, status="imported",
-            ).first()
-            if or_rec and or_rec.target_id:
-                le = LegalEntity.objects.filter(pk=or_rec.target_id).first()
-        self._legalentity_cache[kontragent_bid] = le
-        return le
+            le = self._legalentity_cache[kontragent_bid]
+        else:
+            le = LegalEntity.objects.filter(bubble_id=kontragent_bid).first()
+            self._legalentity_cache[kontragent_bid] = le
+        # Имя-фолбэк из Gosorgan (для recipient_name строки в Request)
+        name = ""
+        gos = self._gosorgan_by_id.get(kontragent_bid)
+        if gos:
+            name = (gos.get("name") or "")[:255]
+        return le, name
 
     def _next_outgoing_number(self, case):
         cur = self._outgoing_counters.get(case.id)
@@ -167,6 +181,28 @@ class Command(BaseCommand):
         if not sf_id:
             return None
         return StoredFile.objects.filter(pk=sf_id).first()
+
+    def _preload_gosorgan(self):
+        """Тянем Gosorgan из Bubble API один раз — нужен для recipient_name."""
+        self._gosorgan_by_id = {}
+        if not bubble_api.is_configured():
+            self.stdout.write("  ⚠ BUBBLE_API_TOKEN не задан — recipient_name строкой не загружен")
+            return
+        cursor = 0
+        try:
+            while True:
+                page = bubble_api.fetch_page("Gosorgan", cursor=cursor, limit=100)
+                for o in page["results"]:
+                    self._gosorgan_by_id[o.get("_id")] = {
+                        "name": o.get("name") or "",
+                        "adress": o.get("adress") or "",
+                    }
+                cursor += page["count"]
+                if page["remaining"] <= 0:
+                    break
+        except Exception as e:
+            self.stdout.write(f"  ⚠ Gosorgan fetch err: {e}")
+        self.stdout.write(f"  Кэш Gosorgan: {len(self._gosorgan_by_id)}")
 
     def _preload_file_caches(self):
         """Грузим все imported BubbleRecord(Files) с target_id в память."""
@@ -258,10 +294,9 @@ class Command(BaseCommand):
         else:
             case = ensure_case(service)
 
-        # 4. Recipient
-        recipient = self._recipient(raw.get("Kontragent"))
-        recipient_name = ""
-        if recipient is not None:
+        # 4. Recipient (FK + name строкой из Gosorgan-кэша)
+        recipient, recipient_name = self._recipient(raw.get("Kontragent"))
+        if recipient is not None and not recipient_name:
             recipient_name = (recipient.short_name or recipient.name or "")[:255]
 
         # 5. Поля Request
@@ -333,18 +368,107 @@ class Command(BaseCommand):
             for k, val in defaults.items():
                 setattr(existing, k, val)
             existing.save()
+            req = existing
             stats["updated"] += 1
         else:
             defaults["outgoing_number"] = self._next_outgoing_number(case)
             defaults["bubble_id"] = bid
-            Request.objects.create(**defaults)
+            req = Request.objects.create(**defaults)
             stats["created"] += 1
+
+        # 8. Correspondence-пары для разделов «Входящие/Исходящие»
+        if not self._make_correspondence:
+            return
+        self._upsert_correspondence_pair(
+            req=req,
+            service=service,
+            recipient=recipient,
+            recipient_name=recipient_name,
+            sent_date=sent_date,
+            due_date=due_date,
+            response_date=response_date,
+            responce_ok=responce_ok,
+            raw=raw,
+            bid=bid,
+            stats=stats,
+        )
+
+    def _upsert_correspondence_pair(self, *, req, service, recipient, recipient_name,
+                                     sent_date, due_date, response_date, responce_ok,
+                                     raw, bid, stats):
+        """Создать/обновить пару crm.Correspondence: одну исходящую (документ
+        запроса) и одну входящую (скан ответа, если есть).
+
+        bubble_id у пары:
+          outgoing → bid
+          incoming → f"{bid}:incoming"
+        """
+        from apps.crm.models import Correspondence  # локальный импорт во избежание циклов
+
+        comments_text = strip_bbcode(raw.get("comments"))
+
+        # Исходящее (документ запроса).
+        out_defaults = {
+            "service": service,
+            "request": req,
+            "counterparty": recipient,
+            "direction": "outgoing",
+            "subject_type": req.title[:255],
+            "outgoing_number": clean_str(raw.get("numbIsx"))[:100],
+            "sent_at": sent_date,
+            "delivery_method": req.sent_method or "",
+            "file_link": clean_str(raw.get("gDiskLink"))[:5000],
+            "stored_file": req.document_pdf,
+            "track_response": bool(raw.get("trackResponse")),
+            "control_date": due_date,
+            "response_received": responce_ok,
+            "response_date": response_date if responce_ok else None,
+            "response_text": req.response_text,
+            "response_number": req.response_number,
+            "comments": comments_text,
+        }
+        Correspondence.objects.update_or_create(bubble_id=bid, defaults=out_defaults)
+        stats["corr_outgoing"] += 1
+
+        # Входящее (скан ответа) — только если ответ зафиксирован.
+        if responce_ok and (response_date or req.response_scan_id):
+            in_bid = f"{bid}:incoming"
+            recip_label = recipient_name or (recipient.short_name or recipient.name)[:255] if recipient else ""
+            in_subject = f"Ответ: {req.title[:200]}"
+            in_defaults = {
+                "service": service,
+                "request": req,
+                "counterparty": recipient,
+                "direction": "incoming",
+                "subject_type": in_subject[:255],
+                "outgoing_number": "",   # у входящего номера исходящего нет
+                "sent_at": response_date,
+                "delivery_method": "",
+                "file_link": "",
+                "stored_file": req.response_scan,
+                "track_response": False,
+                "control_date": None,
+                "response_received": False,
+                "response_date": None,
+                "response_text": "",
+                "response_number": req.response_number,  # № ответа
+                "comments": "",
+            }
+            Correspondence.objects.update_or_create(bubble_id=in_bid, defaults=in_defaults)
+            stats["corr_incoming"] += 1
 
     def handle(self, *args, **opts):
         dry_run = opts["dry_run"]
         limit = opts["limit"]
         reapply = opts["reapply"]
         service_uuid = opts["service"]
+        self._make_correspondence = not opts["no_correspondence"]
+
+        # Очистка старых Bubble-Correspondence — перед перезаливкой пар out/in.
+        if opts["purge_correspondence"] and not dry_run:
+            n = Correspondence.objects.exclude(bubble_id__isnull=True).exclude(bubble_id="").count()
+            self.stdout.write(f"Удаляю {n} crm.Correspondence с bubble_id…")
+            Correspondence.objects.exclude(bubble_id__isnull=True).exclude(bubble_id="").delete()
 
         qs = BubbleRecord.objects.filter(entity="Сorrespondence", status="imported")
         if service_uuid:
@@ -363,6 +487,8 @@ class Command(BaseCommand):
         )
         self.stdout.write("Предзагрузка кэшей Files…")
         self._preload_file_caches()
+        self.stdout.write("Предзагрузка Gosorgan (для recipient_name)…")
+        self._preload_gosorgan()
 
         stats = Counter()
         stats["unknown_type_uuids"] = Counter()
@@ -407,6 +533,7 @@ class Command(BaseCommand):
             "non_request_file_moved", "non_request_file_moved_dry",
             "no_service", "no_type", "unknown_type", "request_type_missing",
             "with_document", "with_response_scan", "answer_without_file",
+            "corr_outgoing", "corr_incoming",
         ]:
             self.stdout.write(f"  {key}: {stats[key]}")
 

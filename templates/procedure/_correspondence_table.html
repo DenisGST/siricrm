@@ -1,6 +1,6 @@
 {% load icons %}
 {% comment %}Таблица корреспонденции (Correspondence). Контекст: items, kind (incoming/outgoing).
-  Колонки: тип письма (документ), контрагент, №, дата, файл-скан (предпросмотр).{% endcomment %}
+  Колонки: тип письма (документ), контрагент, №, дата, файл-скан (предпросмотр) + связка с Request.{% endcomment %}
 <table class="table table-sm table-zebra">
   <thead>
     <tr>
@@ -9,14 +9,15 @@
       <th>{% if kind == "incoming" %}№ ответа{% else %}Исх. №{% endif %}</th>
       <th>Дата</th>
       {% if kind == "outgoing" %}<th>Контроль ответа</th>{% endif %}
-      <th>Файл-скан</th>
+      <th>Файл</th>
+      <th>Связь</th>
     </tr>
   </thead>
   <tbody>
     {% for c in items %}
     <tr>
       <td class="text-xs">{{ c.subject_type|default:"—" }}{% if c.comments %}<div class="text-base-content/50">{{ c.comments|truncatechars:60 }}</div>{% endif %}</td>
-      <td class="text-xs">{% if c.counterparty %}{{ c.counterparty.short_name|default:c.counterparty.name }}{% else %}—{% endif %}</td>
+      <td class="text-xs">{% if c.counterparty %}{{ c.counterparty.short_name|default:c.counterparty.name }}{% elif c.request and c.request.recipient_name %}{{ c.request.recipient_name }}{% else %}—{% endif %}</td>
       <td class="text-xs">{% if kind == "incoming" %}{{ c.response_number|default:c.outgoing_number|default:"—" }}{% else %}{{ c.outgoing_number|default:"—" }}{% endif %}</td>
       <td class="text-xs whitespace-nowrap">{% if kind == "incoming" %}{{ c.response_date|date:"d.m.Y"|default:c.sent_at|date:"d.m.Y"|default:"—" }}{% else %}{{ c.sent_at|date:"d.m.Y"|default:"—" }}{% endif %}</td>
       {% if kind == "outgoing" %}
@@ -27,11 +28,20 @@
       </td>
       {% endif %}
       <td class="text-xs whitespace-nowrap">
-        {% if c.file_link %}<a class="link" href="{{ c.file_link }}" onclick="if(window.procPreview){procPreview(this.href, '{{ c.subject_type|escapejs|default:"Документ" }}'); return false}">{% icon "eye" size=13 %} Просмотр</a>{% else %}<span class="text-base-content/40">нет файла</span>{% endif %}
+        {% if c.stored_file_id %}
+          <a class="link link-primary" href="{% url 'files:stored_download' c.stored_file_id %}?inline=1" onclick="if(window.procPreview){procPreview(this.href, '{{ c.subject_type|escapejs|default:"Документ" }}'); return false}">{% icon "eye" size=13 %} Просмотр</a>
+        {% elif c.file_link %}
+          <a class="link" href="{{ c.file_link }}" target="_blank" rel="noopener" title="Внешняя ссылка (Google Drive)">{% icon "eye" size=13 %} GDrive ↗</a>
+        {% else %}<span class="text-base-content/40">нет файла</span>{% endif %}
+      </td>
+      <td class="text-xs whitespace-nowrap">
+        {% if c.request_id %}
+          <span class="badge badge-ghost badge-xs" title="Связь с запросом № {{ c.request.outgoing_number }}">↔ {{ c.request.outgoing_number }}</span>
+        {% endif %}
       </td>
     </tr>
     {% empty %}
-    <tr><td colspan="{% if kind == 'outgoing' %}6{% else %}5{% endif %}" class="text-center text-base-content/50 py-4">
+    <tr><td colspan="{% if kind == 'outgoing' %}7{% else %}6{% endif %}" class="text-center text-base-content/50 py-4">
       {% if kind == "incoming" %}Входящих документов нет.{% else %}Исходящих документов нет.{% endif %}
     </td></tr>
     {% endfor %}
