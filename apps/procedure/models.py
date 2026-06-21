@@ -468,6 +468,10 @@ class Request(TimeStampedModel):
     ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    bubble_id = models.CharField(
+        "Bubble ID", max_length=64, blank=True, null=True, unique=True, db_index=True,
+        help_text="ID записи Сorrespondence в исходной CRM на bubble.io (для идемпотентного импорта).",
+    )
     case = models.ForeignKey(
         BankruptcyCase, on_delete=models.CASCADE,
         related_name="requests", verbose_name="Дело",
