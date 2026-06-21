@@ -19,7 +19,7 @@ from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_POST
 
 from apps.core.models import Employee
-from apps.crm.models import Address, Client, ClientPhone, Service
+from apps.crm.models import Address, Client, ClientPhone, LegalEntity, Service
 from apps.crm.phone_utils import (
     add_client_phone,
     find_client_by_phone,
@@ -41,13 +41,15 @@ from .models import (
     Procedure,
     ProcedureMilestone,
     ProcedureStage,
+    Request,
+    RequestPackage,
+    RequestType,
     outcomes_for_kind,
 )
 from .permissions import require_procedures
 from apps.core.permissions import is_references_access
 
 PLACEHOLDER_TABS = {
-    "correspondence": "Корреспонденция",
     "documents": "Документы",
     "creditors": "Кредиторы / РТК",
     "publications": "Публикации",
@@ -941,3 +943,243 @@ def reference_milestone_delete(request, pk):
     # мероприятие остаётся в истории (FK обнуляется).
     get_object_or_404(MilestoneTemplate, pk=pk).delete()
     return HttpResponse(headers={"HX-Trigger": "reloadMilestones"})
+
+
+# ── Вкладка «Корреспонденция» → Запросы ─────────────────────────────────────
+
+def _req_trigger():
+    """Пустой ответ + сигнал перезагрузить список запросов."""
+    return HttpResponse(headers={"HX-Trigger": "reloadRequests"})
+
+
+def _correspondence_context(case) -> dict:
+    today = timezone.localdate()
+    requests = list(case.requests.select_related("recipient", "request_type").all())
+    for r in requests:
+        r.is_late = bool(r.status == Request.STATUS_SENT and r.due_date and r.due_date < today)
+    return {
+        "service": case.service,
+        "case": case,
+        "requests": requests,
+        "request_types": RequestType.objects.filter(is_active=True).order_by("order", "name"),
+        "request_packages": RequestPackage.objects.filter(is_active=True).order_by("order", "name"),
+        "method_choices": Request.METHOD_CHOICES,
+    }
+
+
+@never_cache
+@login_required
+@require_procedures
+def tab_correspondence(request, service_id):
+    try:
+        service = _bfl_service(request, service_id)
+    except _NotBFL as exc:
+        return HttpResponseForbidden(str(exc))
+    case = services.ensure_case(service)
+    return render(request, "procedure/_tab_correspondence.html", _correspondence_context(case))
+
+
+@login_required
+@require_procedures
+def recipient_search(request, service_id):
+    """Typeahead госоргана — поиск по реестру LegalEntity (имя/ИНН)."""
+    q = (request.GET.get("q") or "").strip()
+    items = []
+    if len(q) >= 2:
+        items = list(
+            LegalEntity.objects.filter(
+                Q(name__icontains=q) | Q(short_name__icontains=q) | Q(inn__icontains=q)
+            ).order_by("name")[:10]
+        )
+    return render(request, "procedure/_recipient_results.html", {"items": items, "q": q})
+
+
+@login_required
+@require_procedures
+@require_POST
+def request_add(request, service_id):
+    try:
+        service = _bfl_service(request, service_id)
+    except _NotBFL as exc:
+        return HttpResponseForbidden(str(exc))
+    case = services.ensure_case(service)
+    rt = get_object_or_404(RequestType, pk=request.POST.get("request_type"))
+    recipient = None
+    rid = (request.POST.get("recipient_id") or "").strip()
+    if rid:
+        recipient = LegalEntity.objects.filter(pk=rid).first()
+    services.create_request(case, rt, recipient=recipient, employee=_actor(request))
+    return _req_trigger()
+
+
+@login_required
+@require_procedures
+@require_POST
+def request_package_add(request, service_id):
+    try:
+        service = _bfl_service(request, service_id)
+    except _NotBFL as exc:
+        return HttpResponseForbidden(str(exc))
+    case = services.ensure_case(service)
+    pkg = get_object_or_404(RequestPackage, pk=request.POST.get("package"))
+    services.create_request_package(case, pkg, employee=_actor(request))
+    return _req_trigger()
+
+
+@login_required
+@require_procedures
+@require_POST
+def request_delete(request, service_id, req_id):
+    try:
+        service = _bfl_service(request, service_id)
+    except _NotBFL as exc:
+        return HttpResponseForbidden(str(exc))
+    case = services.ensure_case(service)
+    get_object_or_404(Request, pk=req_id, case=case).delete()
+    return _req_trigger()
+
+
+@never_cache
+@login_required
+@require_procedures
+def request_sent_form(request, service_id, req_id):
+    try:
+        service = _bfl_service(request, service_id)
+    except _NotBFL as exc:
+        return HttpResponseForbidden(str(exc))
+    case = services.ensure_case(service)
+    req = get_object_or_404(Request, pk=req_id, case=case)
+    return render(request, "procedure/_request_sent_modal.html", {
+        "service": service, "req": req, "method_choices": Request.METHOD_CHOICES,
+    })
+
+
+@login_required
+@require_procedures
+@require_POST
+def request_sent(request, service_id, req_id):
+    try:
+        service = _bfl_service(request, service_id)
+    except _NotBFL as exc:
+        return HttpResponseForbidden(str(exc))
+    case = services.ensure_case(service)
+    req = get_object_or_404(Request, pk=req_id, case=case)
+    services.mark_request_sent(
+        req, method=request.POST.get("sent_method", ""),
+        sent_date=_date(request.POST.get("sent_date")), employee=_actor(request),
+    )
+    return _req_trigger()
+
+
+@never_cache
+@login_required
+@require_procedures
+def request_response_form(request, service_id, req_id):
+    try:
+        service = _bfl_service(request, service_id)
+    except _NotBFL as exc:
+        return HttpResponseForbidden(str(exc))
+    case = services.ensure_case(service)
+    req = get_object_or_404(Request, pk=req_id, case=case)
+    return render(request, "procedure/_request_response_modal.html", {"service": service, "req": req})
+
+
+@login_required
+@require_procedures
+@require_POST
+def request_response(request, service_id, req_id):
+    try:
+        service = _bfl_service(request, service_id)
+    except _NotBFL as exc:
+        return HttpResponseForbidden(str(exc))
+    case = services.ensure_case(service)
+    req = get_object_or_404(Request, pk=req_id, case=case)
+    services.set_request_response(
+        req,
+        response_date=_date(request.POST.get("response_date")),
+        number=request.POST.get("response_number", ""),
+        text=request.POST.get("response_text", ""),
+        no_answer=bool(request.POST.get("no_answer")),
+        employee=_actor(request),
+    )
+    return _req_trigger()
+
+
+# ── Справочники «Типы запросов» / «Пакеты запросов» ─────────────────────────
+
+@user_passes_test(is_references_access)
+def reference_recipient_search(request):
+    """Typeahead госоргана для справочника типов (без привязки к услуге)."""
+    q = (request.GET.get("q") or "").strip()
+    items = []
+    if len(q) >= 2:
+        items = list(
+            LegalEntity.objects.filter(
+                Q(name__icontains=q) | Q(short_name__icontains=q) | Q(inn__icontains=q)
+            ).order_by("name")[:10]
+        )
+    return render(request, "procedure/_recipient_results.html", {"items": items, "q": q})
+
+
+@user_passes_test(is_references_access)
+def references_request_types(request):
+    items = RequestType.objects.select_related("default_recipient").order_by("order", "name")
+    return render(request, "procedure/partials/references_request_types.html", {"items": items})
+
+
+@user_passes_test(is_references_access)
+def reference_request_type_edit(request, pk=None):
+    from .forms import RequestTypeForm
+    obj = get_object_or_404(RequestType, pk=pk) if pk else None
+    if request.method == "POST":
+        form = RequestTypeForm(request.POST, instance=obj)
+        if form.is_valid():
+            o = form.save(commit=False)
+            rid = (request.POST.get("recipient_id") or "").strip()
+            o.default_recipient = LegalEntity.objects.filter(pk=rid).first() if rid else None
+            o.save()
+            return HttpResponse(headers={"HX-Trigger": "reloadRequestTypes"})
+    else:
+        form = RequestTypeForm(instance=obj)
+    return render(request, "procedure/partials/request_type_form_modal.html", {"form": form, "obj": obj})
+
+
+@user_passes_test(is_references_access)
+@require_POST
+def reference_request_type_delete(request, pk):
+    get_object_or_404(RequestType, pk=pk).delete()
+    return HttpResponse(headers={"HX-Trigger": "reloadRequestTypes"})
+
+
+@user_passes_test(is_references_access)
+def references_request_packages(request):
+    items = RequestPackage.objects.prefetch_related("types").order_by("order", "name")
+    return render(request, "procedure/partials/references_request_packages.html", {"items": items})
+
+
+@user_passes_test(is_references_access)
+def reference_request_package_edit(request, pk=None):
+    from .forms import RequestPackageForm
+    obj = get_object_or_404(RequestPackage, pk=pk) if pk else None
+    if request.method == "POST":
+        form = RequestPackageForm(request.POST, instance=obj)
+        if form.is_valid():
+            form.save()
+            return HttpResponse(headers={"HX-Trigger": "reloadRequestPackages"})
+    else:
+        form = RequestPackageForm(instance=obj)
+    if request.method == "POST":
+        selected = request.POST.getlist("types")
+    else:
+        selected = [str(t.pk) for t in obj.types.all()] if obj else []
+    return render(request, "procedure/partials/request_package_form_modal.html", {
+        "form": form, "obj": obj, "selected_type_ids": selected,
+        "all_types": RequestType.objects.order_by("order", "name"),
+    })
+
+
+@user_passes_test(is_references_access)
+@require_POST
+def reference_request_package_delete(request, pk):
+    get_object_or_404(RequestPackage, pk=pk).delete()
+    return HttpResponse(headers={"HX-Trigger": "reloadRequestPackages"})

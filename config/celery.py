@@ -75,6 +75,11 @@ app.conf.beat_schedule = {
         'task': 'procedure.mark_overdue_milestones',
         'schedule': crontab(hour=4, minute=0),
     },
+    # Контроль сроков ответов на запросы: отправлен+просрочка → уведомление.
+    'procedure-mark-overdue-requests': {
+        'task': 'procedure.mark_overdue_requests',
+        'schedule': crontab(hour=4, minute=10),
+    },
 }
 
 @setup_logging.connect

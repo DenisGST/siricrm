@@ -17,6 +17,8 @@ from apps.procedure.models import (
     SCOPE_COMMON,
     MilestoneTemplate,
     ProcedureStage,
+    RequestPackage,
+    RequestType,
 )
 
 # (code, name, kind_scope, order, is_terminal)
@@ -72,6 +74,31 @@ EVENT_TYPES = [
     ("procedure_added", "Добавлена процедура", "court", False, False, ""),
     # Источник даты «Передача документов на подготовку иска» (п.4 дат услуги).
     ("claim_prep_assigned", "Передано на подготовку иска", "employee", False, True, ""),
+    ("request_overdue", "Просрочен ответ на запрос", "system",
+     True, False, "Проверьте, пришёл ли ответ; при необходимости — повторный запрос"),
+]
+
+# DRAFT-каталог типов запросов: (code, name, response_days, order)
+# 🛑 ЗАГЛУШКА. Госорган по умолчанию и сроки уточняет юрист в Справочниках.
+REQUEST_TYPES = [
+    ("req_rosreestr", "Запрос в Росреестр (недвижимость)", 30, 10),
+    ("req_gibdd", "Запрос в ГИБДД/МРЭО (транспорт)", 30, 20),
+    ("req_gostehnadzor", "Запрос в Гостехнадзор (самоходная техника)", 30, 30),
+    ("req_gims", "Запрос в ГИМС (маломерные суда)", 30, 40),
+    ("req_fns", "Запрос в ФНС (счета, доли, ИП, доходы)", 30, 50),
+    ("req_sfr", "Запрос в СФР/ПФР (выплаты, СНИЛС, работодатели)", 30, 60),
+    ("req_zags", "Запрос в ЗАГС (акты гражданского состояния)", 30, 70),
+    ("req_bank", "Запрос в банк (счета, остатки, движение)", 30, 80),
+    ("req_employment", "Запрос в центр занятости", 30, 90),
+]
+
+# DRAFT-пакеты: (code, name, [type_codes], order)
+REQUEST_PACKAGES = [
+    ("pkg_basic", "Базовый пакет запросов",
+     ["req_rosreestr", "req_gibdd", "req_fns", "req_sfr", "req_zags", "req_bank"], 10),
+    ("pkg_full", "Расширенный пакет запросов",
+     ["req_rosreestr", "req_gibdd", "req_gostehnadzor", "req_gims", "req_fns",
+      "req_sfr", "req_zags", "req_bank", "req_employment"], 20),
 ]
 
 
@@ -107,6 +134,24 @@ class Command(BaseCommand):
                           "notify_hint": hint, "is_active": True},
             )
         self.stdout.write(self.style.SUCCESS(f"Типы событий: {len(EVENT_TYPES)}"))
+
+        rtypes = {}
+        for code, name, days, order in REQUEST_TYPES:
+            rt, _ = RequestType.objects.update_or_create(
+                code=code,
+                defaults={"name": name, "response_days": days, "order": order,
+                          "is_active": True, "is_draft": True},
+            )
+            rtypes[code] = rt
+        self.stdout.write(self.style.SUCCESS(f"Типы запросов: {len(rtypes)}"))
+
+        for code, name, type_codes, order in REQUEST_PACKAGES:
+            pkg, _ = RequestPackage.objects.update_or_create(
+                code=code,
+                defaults={"name": name, "order": order, "is_active": True, "is_draft": True},
+            )
+            pkg.types.set([rtypes[tc] for tc in type_codes if tc in rtypes])
+        self.stdout.write(self.style.SUCCESS(f"Пакеты запросов: {len(REQUEST_PACKAGES)}"))
 
         self.stdout.write(self.style.WARNING(
             "🛑 DRAFT: состав и сроки мероприятий — заглушка. "

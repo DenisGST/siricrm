@@ -1,0 +1,12 @@
+{% comment %}Результаты поиска госоргана (LegalEntity). Контекст: items, q.{% endcomment %}
+{% if items %}
+<ul class="menu menu-sm bg-base-200 rounded-box shadow p-1" style="max-height:220px;overflow:auto">
+  {% for le in items %}
+  <li><a data-le-id="{{ le.pk }}" data-le-name="{{ le.short_name|default:le.name }}">
+    {{ le.name }}{% if le.inn %} · ИНН {{ le.inn }}{% endif %}
+  </a></li>
+  {% endfor %}
+</ul>
+{% elif q %}
+<div class="text-xs text-base-content/50 p-2 bg-base-200 rounded">Ничего не найдено — добавьте госорган в реестр контрагентов.</div>
+{% endif %}

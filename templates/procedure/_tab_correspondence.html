@@ -1,0 +1,122 @@
+{% load icons %}
+{% comment %}Вкладка «Корреспонденция» → блок «Запросы». Контекст: service, case,
+  requests, request_types, request_packages, method_choices.
+  Самоперезагрузка по reloadRequests (действия отдают пустой 204 + этот триггер).{% endcomment %}
+<div id="requests-list"
+     hx-trigger="reloadRequests from:body"
+     hx-get="{% url 'procedure:tab_correspondence' service.id %}"
+     hx-swap="outerHTML">
+  <div class="flex flex-col gap-3" id="procedure-correspondence">
+
+    <h3 class="font-semibold text-base">Запросы</h3>
+
+    {% comment %} Создание: один запрос / пакет {% endcomment %}
+    <div class="card bg-base-100 shadow">
+      <div class="card-body p-3 flex flex-row flex-wrap gap-6 items-end">
+        <form class="flex flex-wrap items-end gap-2"
+              hx-post="{% url 'procedure:request_add' service.id %}" hx-swap="none">
+          {% csrf_token %}
+          <label class="form-control min-w-0">
+            <span class="label-text text-xs">Тип запроса</span>
+            <select name="request_type" class="select select-bordered select-sm" required>
+              <option value="">— выберите тип —</option>
+              {% for rt in request_types %}<option value="{{ rt.pk }}">{{ rt.name }}</option>{% endfor %}
+            </select>
+          </label>
+          <label class="form-control min-w-0" style="position:relative">
+            <span class="label-text text-xs">Госорган (необязательно)</span>
+            <input type="text" id="rcpt-input" name="q" autocomplete="off"
+                   class="input input-bordered input-sm" placeholder="поиск по реестру…"
+                   hx-get="{% url 'procedure:recipient_search' service.id %}"
+                   hx-trigger="keyup changed delay:300ms" hx-target="#rcpt-results">
+            <input type="hidden" name="recipient_id" id="rcpt-id">
+            <div id="rcpt-results" style="position:absolute;top:100%;left:0;right:0;z-index:50"></div>
+          </label>
+          <button type="submit" class="btn btn-primary btn-sm">➕ Запрос</button>
+        </form>
+
+        <form class="flex flex-wrap items-end gap-2"
+              hx-post="{% url 'procedure:request_package_add' service.id %}" hx-swap="none">
+          {% csrf_token %}
+          <label class="form-control min-w-0">
+            <span class="label-text text-xs">Пакет запросов</span>
+            <select name="package" class="select select-bordered select-sm" required>
+              <option value="">— выберите пакет —</option>
+              {% for p in request_packages %}<option value="{{ p.pk }}">{{ p.name }} ({{ p.types.count }})</option>{% endfor %}
+            </select>
+          </label>
+          <button type="submit" class="btn btn-outline btn-sm">📦 Сформировать пакет</button>
+        </form>
+      </div>
+    </div>
+
+    {% comment %} Список запросов {% endcomment %}
+    <div class="overflow-x-auto">
+      <table class="table table-sm table-zebra">
+        <thead>
+          <tr>
+            <th>Госорган</th><th>Тип запроса</th><th>Отправлен</th>
+            <th>Срок ответа</th><th>Статус</th><th class="text-right"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in requests %}
+          <tr class="{% if r.is_late %}bg-error/10{% endif %}">
+            <td>{{ r.recipient_display }}</td>
+            <td class="text-xs">{{ r.title }}</td>
+            <td class="text-xs">
+              {% if r.sent_date %}{{ r.sent_date|date:"d.m.Y" }}{% if r.sent_method %} · {{ r.get_sent_method_display }}{% endif %}{% else %}<span class="text-base-content/40">—</span>{% endif %}
+            </td>
+            <td class="text-xs">
+              {% if r.due_date %}{{ r.due_date|date:"d.m.Y" }}{% if r.is_late %} <span class="badge badge-error badge-xs">просрочен</span>{% endif %}{% else %}<span class="text-base-content/40">—</span>{% endif %}
+            </td>
+            <td>
+              {% if r.status == 'draft' %}<span class="badge badge-ghost badge-sm">черновик</span>
+              {% elif r.status == 'sent' %}<span class="badge badge-info badge-sm">отправлен</span>
+              {% elif r.status == 'answered' %}<span class="badge badge-success badge-sm">ответ{% if r.response_date %} {{ r.response_date|date:"d.m.Y" }}{% endif %}</span>
+              {% elif r.status == 'no_answer' %}<span class="badge badge-warning badge-sm">без ответа</span>{% endif %}
+            </td>
+            <td class="text-right whitespace-nowrap">
+              {% if r.status == 'draft' or r.status == 'no_answer' %}
+              <button class="btn btn-xs btn-outline"
+                      hx-get="{% url 'procedure:request_sent_form' service.id r.pk %}"
+                      hx-target="body" hx-swap="beforeend">Отправлен</button>
+              {% endif %}
+              {% if r.status == 'sent' or r.status == 'answered' %}
+              <button class="btn btn-xs btn-outline"
+                      hx-get="{% url 'procedure:request_response_form' service.id r.pk %}"
+                      hx-target="body" hx-swap="beforeend">Ответ</button>
+              {% endif %}
+              <button class="btn btn-xs btn-error btn-outline"
+                      hx-post="{% url 'procedure:request_delete' service.id r.pk %}"
+                      hx-confirm="Удалить запрос «{{ r.title }}»?">✕</button>
+            </td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="6" class="text-center text-base-content/50 py-4">
+            Запросов пока нет. Создайте запрос или сформируйте пакет.
+          </td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <script>
+  (function () {
+    // Typeahead госоргана: клик по результату ставит hidden recipient_id + текст.
+    var box = document.getElementById('procedure-correspondence');
+    if (!box) return;
+    box.addEventListener('click', function (e) {
+      var it = e.target.closest('[data-le-id]');
+      if (!it) return;
+      var idEl = document.getElementById('rcpt-id');
+      var inEl = document.getElementById('rcpt-input');
+      var res = document.getElementById('rcpt-results');
+      if (idEl) idEl.value = it.getAttribute('data-le-id');
+      if (inEl) inEl.value = it.getAttribute('data-le-name');
+      if (res) res.innerHTML = '';
+    });
+  })();
+  </script>
+</div>

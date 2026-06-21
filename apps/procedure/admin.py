@@ -6,6 +6,9 @@ from .models import (
     Procedure,
     ProcedureMilestone,
     ProcedureStage,
+    Request,
+    RequestPackage,
+    RequestType,
 )
 
 
@@ -63,3 +66,33 @@ class ProcedureMilestoneAdmin(admin.ModelAdmin):
     list_filter = ("status", "stage", "is_mandatory", "is_manual")
     search_fields = ("title", "case__service__numb_dogovor")
     raw_id_fields = ("case", "procedure", "template", "responsible", "done_by")
+
+
+@admin.register(RequestType)
+class RequestTypeAdmin(admin.ModelAdmin):
+    list_display = ("order", "name", "code", "default_recipient", "response_days", "is_draft", "is_active")
+    list_display_links = ("name",)
+    list_editable = ("order", "response_days", "is_draft", "is_active")
+    list_filter = ("is_draft", "is_active")
+    search_fields = ("name", "code")
+    raw_id_fields = ("default_recipient",)
+    ordering = ("order", "name")
+
+
+@admin.register(RequestPackage)
+class RequestPackageAdmin(admin.ModelAdmin):
+    list_display = ("order", "name", "code", "is_draft", "is_active")
+    list_display_links = ("name",)
+    list_editable = ("order", "is_draft", "is_active")
+    list_filter = ("is_draft", "is_active")
+    search_fields = ("name", "code")
+    filter_horizontal = ("types",)
+    ordering = ("order", "name")
+
+
+@admin.register(Request)
+class RequestAdmin(admin.ModelAdmin):
+    list_display = ("title", "case", "recipient_display", "status", "sent_date", "due_date")
+    list_filter = ("status", "sent_method")
+    search_fields = ("title", "case__service__client__last_name", "recipient_name")
+    raw_id_fields = ("case", "request_type", "recipient", "created_by")

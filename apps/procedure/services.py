@@ -23,6 +23,7 @@ from .models import (
     Procedure,
     ProcedureMilestone,
     ProcedureStage,
+    Request,
 )
 
 
@@ -298,3 +299,61 @@ def add_manual_milestone(
         title=title, due_date=due_date, responsible=responsible,
         is_mandatory=is_mandatory, is_manual=True, notes=notes,
     )
+
+
+# ── Запросы в госорганы ─────────────────────────────────────────────────────
+
+@transaction.atomic
+def create_request(case, request_type, *, recipient=None, employee=None) -> Request:
+    """Создать запрос по типу (госорган — из типа по умолчанию или переданный)."""
+    rec = recipient or request_type.default_recipient
+    return Request.objects.create(
+        case=case,
+        request_type=request_type,
+        title=request_type.name,
+        recipient=rec,
+        recipient_name=((rec.short_name or rec.name) if rec else ""),
+        response_days=request_type.response_days,
+        created_by=employee,
+    )
+
+
+@transaction.atomic
+def create_request_package(case, package, *, employee=None) -> list:
+    """Создать запросы по всем активным типам пакета."""
+    created = []
+    for rt in package.types.filter(is_active=True).order_by("order"):
+        created.append(create_request(case, rt, employee=employee))
+    return created
+
+
+@transaction.atomic
+def mark_request_sent(req: Request, *, method: str, sent_date, employee=None) -> Request:
+    """Отметить отправку: способ + дата → пересчёт срока ответа, статус «Отправлен»."""
+    req.sent_method = method or ""
+    req.sent_date = sent_date
+    days = req.response_days
+    req.due_date = (sent_date + timedelta(days=days)) if (sent_date and days) else None
+    req.status = Request.STATUS_SENT
+    req.overdue_notified = False
+    req.save(update_fields=[
+        "sent_method", "sent_date", "due_date", "status", "overdue_notified", "updated_at",
+    ])
+    return req
+
+
+@transaction.atomic
+def set_request_response(req: Request, *, response_date=None, number="", text="",
+                        no_answer=False, employee=None) -> Request:
+    """Внести ответ (или пометить «Без ответа»)."""
+    if no_answer:
+        req.status = Request.STATUS_NO_ANSWER
+    else:
+        req.response_date = response_date
+        req.response_number = number or ""
+        req.response_text = text or ""
+        req.status = Request.STATUS_ANSWERED
+    req.save(update_fields=[
+        "status", "response_date", "response_number", "response_text", "updated_at",
+    ])
+    return req

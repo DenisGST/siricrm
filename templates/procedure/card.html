@@ -32,6 +32,9 @@
     <a class="tab" data-tab="court"
        hx-get="{% url 'procedure:tab_court' service.id %}"
        hx-target="#procedure-tab-body" hx-swap="innerHTML">Суд</a>
+    <a class="tab" data-tab="correspondence"
+       hx-get="{% url 'procedure:tab_correspondence' service.id %}"
+       hx-target="#procedure-tab-body" hx-swap="innerHTML">Корреспонденция</a>
     {% for slug, label in placeholder_tabs.items %}
       <a class="tab" data-tab="{{ slug }}"
          hx-get="{% url 'procedure:tab_placeholder' service.id slug %}"

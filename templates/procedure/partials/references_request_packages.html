@@ -1,0 +1,48 @@
+{% comment %}Справочник «Пакеты запросов». Контекст: items (RequestPackage).{% endcomment %}
+<div id="request-packages-list"
+     hx-trigger="reloadRequestPackages from:body"
+     hx-get="{% url 'procedure:references_request_packages' %}"
+     hx-swap="outerHTML">
+
+  <div class="flex flex-wrap justify-between items-center mb-3 gap-2">
+    <h3 class="font-semibold">Пакеты запросов ({{ items|length }})</h3>
+    <button class="btn btn-primary btn-sm"
+            hx-get="{% url 'procedure:reference_request_package_add' %}"
+            hx-target="body" hx-swap="beforeend">+ Добавить пакет</button>
+  </div>
+
+  <p class="text-xs text-base-content/60 mb-3">
+    Пакет = набор типов запросов. «Сформировать пакет» в карточке создаёт запросы по всем типам.
+  </p>
+
+  <div class="overflow-x-auto">
+    <table class="table table-sm table-zebra">
+      <thead>
+        <tr><th class="w-10">№</th><th>Пакет</th><th>Типы запросов</th><th class="w-20 text-center">Статус</th><th class="w-28 text-right"></th></tr>
+      </thead>
+      <tbody>
+        {% for it in items %}
+        <tr>
+          <td class="text-xs text-base-content/50">{{ it.order }}</td>
+          <td>{% if it.is_draft %}<span title="Черновик">🔶</span> {% endif %}{{ it.name }}
+            <div class="text-xs font-mono text-base-content/40">{{ it.code }}</div></td>
+          <td class="text-xs">
+            {% for t in it.types.all %}<span class="badge badge-outline badge-xs">{{ t.name }}</span> {% empty %}<span class="text-base-content/40">— нет типов —</span>{% endfor %}
+          </td>
+          <td class="text-center">{% if it.is_active %}<span class="badge badge-success badge-xs">активен</span>{% else %}<span class="badge badge-ghost badge-xs">скрыт</span>{% endif %}</td>
+          <td class="text-right whitespace-nowrap">
+            <button class="btn btn-xs btn-outline"
+                    hx-get="{% url 'procedure:reference_request_package_edit' it.pk %}"
+                    hx-target="body" hx-swap="beforeend">Изменить</button>
+            <button class="btn btn-xs btn-error btn-outline"
+                    hx-post="{% url 'procedure:reference_request_package_delete' it.pk %}"
+                    hx-confirm="Удалить пакет «{{ it.name }}»?">Удалить</button>
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="5" class="text-center text-base-content/60 py-6">Пакетов запросов нет</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>

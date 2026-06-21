@@ -1,0 +1,55 @@
+{% comment %}Справочник «Типы запросов». Контекст: items (RequestType).{% endcomment %}
+<div id="request-types-list"
+     hx-trigger="reloadRequestTypes from:body"
+     hx-get="{% url 'procedure:references_request_types' %}"
+     hx-swap="outerHTML">
+
+  <div class="flex flex-wrap justify-between items-center mb-3 gap-2">
+    <h3 class="font-semibold">Типы запросов ({{ items|length }})</h3>
+    <button class="btn btn-primary btn-sm"
+            hx-get="{% url 'procedure:reference_request_type_add' %}"
+            hx-target="body" hx-swap="beforeend">+ Добавить тип</button>
+  </div>
+
+  <p class="text-xs text-base-content/60 mb-3">
+    Тип запроса = госорган по умолчанию + срок ответа (дней) для контроля.
+    🔶 — черновик. Клик по заголовку столбца — сортировка.
+  </p>
+
+  <div class="overflow-x-auto">
+    <table class="table table-sm table-zebra ref-sortable">
+      <thead>
+        <tr>
+          <th class="w-10 cursor-pointer select-none" onclick="sortRefTable(this,'num')">№<span class="ml-1 opacity-40">↕</span></th>
+          <th class="cursor-pointer select-none" onclick="sortRefTable(this,'str')">Тип запроса<span class="ml-1 opacity-40">↕</span></th>
+          <th>Госорган по умолчанию</th>
+          <th class="w-24 text-center cursor-pointer select-none" onclick="sortRefTable(this,'num')">Срок, дн<span class="ml-1 opacity-40">↕</span></th>
+          <th class="w-20 text-center cursor-pointer select-none" onclick="sortRefTable(this,'str')">Статус<span class="ml-1 opacity-40">↕</span></th>
+          <th class="w-28 text-right"></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for it in items %}
+        <tr>
+          <td class="text-xs text-base-content/50">{{ it.order }}</td>
+          <td>{% if it.is_draft %}<span title="Черновик">🔶</span> {% endif %}{{ it.name }}
+            <div class="text-xs font-mono text-base-content/40">{{ it.code }}</div></td>
+          <td class="text-xs">{% if it.default_recipient %}{{ it.default_recipient.short_name|default:it.default_recipient.name }}{% else %}<span class="text-base-content/40">—</span>{% endif %}</td>
+          <td class="text-center text-xs">{{ it.response_days }}</td>
+          <td class="text-center">{% if it.is_active %}<span class="badge badge-success badge-xs">активен</span>{% else %}<span class="badge badge-ghost badge-xs">скрыт</span>{% endif %}</td>
+          <td class="text-right whitespace-nowrap">
+            <button class="btn btn-xs btn-outline"
+                    hx-get="{% url 'procedure:reference_request_type_edit' it.pk %}"
+                    hx-target="body" hx-swap="beforeend">Изменить</button>
+            <button class="btn btn-xs btn-error btn-outline"
+                    hx-post="{% url 'procedure:reference_request_type_delete' it.pk %}"
+                    hx-confirm="Удалить тип «{{ it.name }}»?">Удалить</button>
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="6" class="text-center text-base-content/60 py-6">Типов запросов нет</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>

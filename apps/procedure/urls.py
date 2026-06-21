@@ -14,6 +14,16 @@ urlpatterns = [
     path("service/<uuid:service_id>/tab/overview/", views.tab_overview, name="tab_overview"),
     path("service/<uuid:service_id>/stages-bar/", views.stages_bar, name="stages_bar"),
     path("service/<uuid:service_id>/tab/court/", views.tab_court, name="tab_court"),
+    path("service/<uuid:service_id>/tab/correspondence/", views.tab_correspondence, name="tab_correspondence"),
+    # Запросы (внутри «Корреспонденции»)
+    path("service/<uuid:service_id>/requests/recipient-search/", views.recipient_search, name="recipient_search"),
+    path("service/<uuid:service_id>/requests/add/", views.request_add, name="request_add"),
+    path("service/<uuid:service_id>/requests/package-add/", views.request_package_add, name="request_package_add"),
+    path("service/<uuid:service_id>/requests/<uuid:req_id>/sent/", views.request_sent_form, name="request_sent_form"),
+    path("service/<uuid:service_id>/requests/<uuid:req_id>/sent/save/", views.request_sent, name="request_sent"),
+    path("service/<uuid:service_id>/requests/<uuid:req_id>/response/", views.request_response_form, name="request_response_form"),
+    path("service/<uuid:service_id>/requests/<uuid:req_id>/response/save/", views.request_response, name="request_response"),
+    path("service/<uuid:service_id>/requests/<uuid:req_id>/delete/", views.request_delete, name="request_delete"),
     path("service/<uuid:service_id>/tab/<str:tab>/", views.tab_placeholder, name="tab_placeholder"),
     # Действия по делу/процедурам
     path("service/<uuid:service_id>/case/", views.update_case_block, name="update_case_block"),
@@ -45,4 +55,14 @@ urlpatterns = [
     path("references/milestone/add/", views.reference_milestone_edit, name="reference_milestone_add"),
     path("references/milestone/<uuid:pk>/", views.reference_milestone_edit, name="reference_milestone_edit"),
     path("references/milestone/<uuid:pk>/delete/", views.reference_milestone_delete, name="reference_milestone_delete"),
+    # Справочник «Типы запросов» / «Пакеты запросов»
+    path("references/recipient-search/", views.reference_recipient_search, name="reference_recipient_search"),
+    path("references/request-types/", views.references_request_types, name="references_request_types"),
+    path("references/request-type/add/", views.reference_request_type_edit, name="reference_request_type_add"),
+    path("references/request-type/<uuid:pk>/", views.reference_request_type_edit, name="reference_request_type_edit"),
+    path("references/request-type/<uuid:pk>/delete/", views.reference_request_type_delete, name="reference_request_type_delete"),
+    path("references/request-packages/", views.references_request_packages, name="references_request_packages"),
+    path("references/request-package/add/", views.reference_request_package_edit, name="reference_request_package_add"),
+    path("references/request-package/<uuid:pk>/", views.reference_request_package_edit, name="reference_request_package_edit"),
+    path("references/request-package/<uuid:pk>/delete/", views.reference_request_package_delete, name="reference_request_package_delete"),
 ]
