@@ -10,9 +10,9 @@ from datetime import datetime
 from decimal import Decimal, InvalidOperation
 
 from django.conf import settings
-from django.contrib.auth.decorators import login_required
+from django.contrib.auth.decorators import login_required, user_passes_test
 from django.db.models import Q
-from django.http import HttpResponseBadRequest, HttpResponseForbidden
+from django.http import HttpResponse, HttpResponseBadRequest, HttpResponseForbidden
 from django.shortcuts import get_object_or_404, render
 from django.utils import timezone
 from django.views.decorators.cache import never_cache
@@ -29,6 +29,7 @@ from apps.crm.phone_utils import (
 
 from . import services
 from .models import (
+    BASE_DATE_KEY_CHOICES,
     CLOSING_OUTCOMES,
     FIRST_HEARING_OUTCOMES,
     KIND_REALIZATION,
@@ -36,12 +37,14 @@ from .models import (
     PROCEDURE_KIND_CHOICES,
     SCOPE_COMMON,
     BankruptcyCase,
+    MilestoneTemplate,
     Procedure,
     ProcedureMilestone,
     ProcedureStage,
     outcomes_for_kind,
 )
 from .permissions import require_procedures
+from apps.core.permissions import is_references_access
 
 PLACEHOLDER_TABS = {
     "correspondence": "Корреспонденция",
@@ -311,6 +314,38 @@ def _overview_context(case: BankruptcyCase, expand_proc_id=None,
         "active_person_tab": active_person_tab,
         "dadata_api_key": settings.DADATA_API_KEY,
     }
+
+
+# ── Лендинг «Юрист БФЛ» (пункт меню) ───────────────────────────────────────
+
+@never_cache
+@login_required
+@require_procedures
+def panel(request):
+    """Рабочее место юриста БФЛ — пустая карточка. Данные клиента подгружаются
+    выбором в главном поиске (кнопка «Дело БФЛ» в строке клиента)."""
+    return render(request, "procedure/panel.html", {})
+
+
+@never_cache
+@login_required
+@require_procedures
+def open_client_case(request):
+    """Открыть дело БФЛ клиента в рабочей области (из кнопки в поиске).
+    0 услуг БФЛ → подсказка; 1 → сразу карточка; несколько → выбор."""
+    client_id = request.GET.get("client_id")
+    svcs = list(
+        Service.objects.visible_to(request.user)
+        .select_related("client", "name")
+        .filter(client_id=client_id, name__short_name="БФЛ")
+        .order_by("-date_dogovor", "-id")
+    )
+    if not svcs:
+        return render(request, "procedure/panel.html", {"no_bfl": True})
+    if len(svcs) == 1:
+        return procedure_card(request, svcs[0].id)
+    return render(request, "procedure/panel_pick.html",
+                  {"client": svcs[0].client, "services": svcs})
 
 
 # ── Карточка + вкладки ─────────────────────────────────────────────────────
@@ -865,3 +900,44 @@ def address_delete(request, service_id, who, address_id):
     addr = get_object_or_404(Address, pk=address_id, client=client)
     addr.delete()
     return _render_addresses(request, service, who)
+
+
+# ── Справочник «Шаблоны мероприятий» (редактирование вне админки) ────────────
+# Гейт — `is_references_access` (как у остальных справочников: superuser/admin/
+# head_dep), раздел открывается из «Справочников». Каталог стадий редактируется
+# отдельно (пока в админке) — здесь только мероприятия.
+
+@user_passes_test(is_references_access)
+def references_milestones(request):
+    items = (
+        MilestoneTemplate.objects.select_related("stage")
+        .order_by("stage__order", "order", "title")
+    )
+    return render(request, "procedure/partials/references_milestones.html", {"items": items})
+
+
+@user_passes_test(is_references_access)
+def reference_milestone_edit(request, pk=None):
+    from .forms import MilestoneTemplateForm
+    obj = get_object_or_404(MilestoneTemplate, pk=pk) if pk else None
+    if request.method == "POST":
+        form = MilestoneTemplateForm(request.POST, instance=obj)
+        if form.is_valid():
+            form.save()
+            return HttpResponse(headers={"HX-Trigger": "reloadMilestones"})
+    else:
+        form = MilestoneTemplateForm(instance=obj)
+    return render(request, "procedure/partials/milestone_form_modal.html", {
+        "form": form, "obj": obj,
+        "stages": ProcedureStage.objects.filter(is_active=True).order_by("order"),
+        "base_date_choices": BASE_DATE_KEY_CHOICES,
+    })
+
+
+@user_passes_test(is_references_access)
+@require_POST
+def reference_milestone_delete(request, pk):
+    # template→ProcedureMilestone.on_delete=SET_NULL → у живых процедур
+    # мероприятие остаётся в истории (FK обнуляется).
+    get_object_or_404(MilestoneTemplate, pk=pk).delete()
+    return HttpResponse(headers={"HX-Trigger": "reloadMilestones"})

@@ -51,6 +51,14 @@
                   onclick="closeGlobalSearch()">
             {% icon "history" size=15 %}
           </button>
+          {% if c.bfl_services %}
+          <button type="button" class="gs-act" title="Открыть дело о банкротстве (Юрист БФЛ)" style="--gs-hc:#7c3aed"
+                  hx-get="{% url 'procedure:open_client_case' %}?client_id={{ c.id }}"
+                  hx-target="#content-area" hx-swap="innerHTML"
+                  onclick="closeGlobalSearch()">
+            {% icon "femida" size=15 %}
+          </button>
+          {% endif %}
           {% if c.phone %}
           <a class="gs-act" href="tel:{{ c.phone }}" title="Позвонить: {{ c.phone }}" style="--gs-hc:#14b8a6">
             {% icon "phone" size=15 %}

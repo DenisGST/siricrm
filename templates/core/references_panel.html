@@ -50,6 +50,9 @@
     <a class="tab {% if active_tab == 'action_types' %}tab-active{% endif %}"
        hx-get="{% url 'core:references_action_types' %}" hx-target="#ref-content" hx-swap="innerHTML"
        onclick="setRefTab(this)">Типы действий</a>
+    <a class="tab {% if active_tab == 'milestones' %}tab-active{% endif %}"
+       hx-get="{% url 'procedure:references_milestones' %}" hx-target="#ref-content" hx-swap="innerHTML"
+       onclick="setRefTab(this)">Шаблоны мероприятий</a>
   </div>
 
   <div id="ref-content"

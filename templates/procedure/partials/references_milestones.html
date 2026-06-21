@@ -1,0 +1,80 @@
+{% comment %}Справочник «Шаблоны мероприятий» — список по стадиям + add/edit/delete.
+  Контекст: items (MilestoneTemplate с stage). Грузится в #ref-content панели справочников.{% endcomment %}
+<div id="milestones-list"
+     hx-trigger="reloadMilestones from:body"
+     hx-get="{% url 'procedure:references_milestones' %}"
+     hx-swap="outerHTML">
+
+  <div class="flex flex-wrap justify-between items-center mb-3 gap-2">
+    <h3 class="font-semibold">Шаблоны мероприятий ({{ items|length }})</h3>
+    <div class="flex gap-2">
+      <button class="btn btn-ghost btn-xs" onclick="document.querySelectorAll('#milestones-list details.ms-group').forEach(d=>d.open=true)">Развернуть все</button>
+      <button class="btn btn-ghost btn-xs" onclick="document.querySelectorAll('#milestones-list details.ms-group').forEach(d=>d.open=false)">Свернуть все</button>
+      <button class="btn btn-primary btn-sm"
+              hx-get="{% url 'procedure:reference_milestone_add' %}"
+              hx-target="body" hx-swap="beforeend">
+        + Добавить мероприятие
+      </button>
+    </div>
+  </div>
+
+  <p class="text-xs text-base-content/60 mb-3">
+    Мероприятия сгруппированы по <b>стадии</b>. Срок = <b>базовая дата (якорь) + смещение, дней</b>.
+    🔶 — черновик (срок подлежит подтверждению АУ). Клик по заголовку столбца — сортировка.
+  </p>
+
+  {% regroup items by stage as items_by_stage %}
+  {% for group in items_by_stage %}
+    <details class="ms-group mb-2 border rounded" style="border-color:var(--ms-border-light)" open>
+      <summary class="px-3 py-2 cursor-pointer font-semibold text-sm bg-base-200 select-none">
+        <span class="badge badge-ghost badge-sm mr-2">{{ group.list|length }}</span>
+        {{ group.grouper.name }}
+        <span class="badge badge-outline badge-xs ml-1">{{ group.grouper.get_kind_scope_display }}</span>
+      </summary>
+      <div class="overflow-x-auto p-2">
+        <table class="table table-sm table-zebra ref-sortable">
+          <thead>
+            <tr>
+              <th class="w-10 cursor-pointer select-none" onclick="sortRefTable(this,'num')">№<span class="ml-1 opacity-40">↕</span></th>
+              <th class="cursor-pointer select-none" onclick="sortRefTable(this,'str')">Мероприятие<span class="ml-1 opacity-40">↕</span></th>
+              <th class="cursor-pointer select-none" onclick="sortRefTable(this,'str')">Якорь срока<span class="ml-1 opacity-40">↕</span></th>
+              <th class="w-20 text-center cursor-pointer select-none" onclick="sortRefTable(this,'num')">Смещ., дн<span class="ml-1 opacity-40">↕</span></th>
+              <th class="w-16 text-center">Обяз.</th>
+              <th class="w-20 text-center cursor-pointer select-none" onclick="sortRefTable(this,'str')">Статус<span class="ml-1 opacity-40">↕</span></th>
+              <th class="w-28 text-right"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for it in group.list %}
+            <tr>
+              <td class="text-xs text-base-content/50">{{ it.order }}</td>
+              <td>
+                {% if it.is_draft %}<span title="Черновик — срок подлежит подтверждению">🔶</span> {% endif %}{{ it.title }}
+                <div class="text-xs font-mono text-base-content/40">{{ it.code }}</div>
+              </td>
+              <td class="text-xs">
+                {% if it.base_date_key %}{{ it.get_base_date_key_display }}{% else %}<span class="text-base-content/40">без срока</span>{% endif %}
+              </td>
+              <td class="text-center text-xs">{{ it.offset_days }}</td>
+              <td class="text-center">{% if it.is_mandatory %}✓{% else %}<span class="text-base-content/30">—</span>{% endif %}</td>
+              <td class="text-center">
+                {% if it.is_active %}<span class="badge badge-success badge-xs">активно</span>{% else %}<span class="badge badge-ghost badge-xs">скрыто</span>{% endif %}
+              </td>
+              <td class="text-right whitespace-nowrap">
+                <button class="btn btn-xs btn-outline"
+                        hx-get="{% url 'procedure:reference_milestone_edit' it.pk %}"
+                        hx-target="body" hx-swap="beforeend">Изменить</button>
+                <button class="btn btn-xs btn-error btn-outline"
+                        hx-post="{% url 'procedure:reference_milestone_delete' it.pk %}"
+                        hx-confirm="Удалить мероприятие «{{ it.title }}»? (у уже заведённых процедур оно останется в истории)">Удалить</button>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </details>
+  {% empty %}
+    <div class="text-center text-base-content/60 py-6">Шаблонов мероприятий нет</div>
+  {% endfor %}
+</div>

@@ -1772,6 +1772,10 @@ def global_search(request):
     )
     for c in clients:
         c.no_access = c.id not in visible_ids
+        # Услуги БФЛ — для кнопки «Дело БФЛ» (Юрист БФЛ). services уже prefetch'нуты.
+        c.bfl_services = ([] if c.no_access else
+                          [s for s in c.services.all()
+                           if getattr(s.name, "short_name", "") == "БФЛ"])
     for m in messages:
         m.no_access = m.client_id not in visible_ids
     for f in files:
