@@ -517,6 +517,12 @@ class LegalEntity(TimeStampedModel):
         help_text="Код территориального органа ФССП из opendata.fssp.gov.ru "
                   "(для идемпотентного импорта реестра ОСП).",
     )
+    court_code = models.CharField(
+        "Код суда (ГАС Правосудие)", max_length=20, blank=True, null=True, unique=True,
+        help_text="Код суда формата «22RS0001» (2 цифры — код субъекта РФ, "
+                  "2 буквы — тип, 4 цифры — порядковый). Для идемпотентного "
+                  "импорта из sudrf.ru.",
+    )
 
     def __str__(self):
         return self.short_name or self.name
