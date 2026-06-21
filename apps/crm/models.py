@@ -512,6 +512,12 @@ class LegalEntity(TimeStampedModel):
         verbose_name="Регион (субъект РФ)",
     )
 
+    fssp_code = models.CharField(
+        "Код ОСП (ФССП)", max_length=20, blank=True, null=True, unique=True,
+        help_text="Код территориального органа ФССП из opendata.fssp.gov.ru "
+                  "(для идемпотентного импорта реестра ОСП).",
+    )
+
     def __str__(self):
         return self.short_name or self.name
 
