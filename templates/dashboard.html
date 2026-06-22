@@ -940,6 +940,40 @@ document.addEventListener('htmx:afterRequest', (event) => {
     const poller = document.getElementById('notif-count-poller');
     if (poller && window.htmx) htmx.trigger(poller, 'refresh-count');
   });
+
+  // ── Быстрый предпросмотр файла в модалке (глобально — не в HTMX-партиале,
+  // иначе при innerHTML-свопе вкладки скрипт мог не выполниться и onclick падал
+  // на дефолтный href = скачивание). procPreview(url) — iframe (PDF/картинки);
+  // procPreviewOffice(url) — тот же iframe (url ведёт на office_pdf → PDF-рендер). ──
+  window.procPreview = function (url, name) {
+    var dlg = document.createElement('dialog');
+    dlg.className = 'modal modal-open'; dlg.style.zIndex = '1200';
+    var box = document.createElement('div');
+    box.className = 'modal-box p-0 flex flex-col';
+    box.style.cssText = 'max-width:980px;width:92vw;height:88vh';
+    var bar = document.createElement('div');
+    bar.className = 'flex items-center gap-2 px-3 py-2 border-b border-base-300';
+    var ttl = document.createElement('span');
+    ttl.className = 'font-semibold text-sm truncate'; ttl.textContent = name || 'Просмотр документа';
+    var ext = document.createElement('a');
+    ext.className = 'btn btn-ghost btn-xs ml-auto'; ext.href = url; ext.target = '_blank';
+    ext.rel = 'noopener'; ext.title = 'Открыть в новой вкладке'; ext.textContent = '↗';
+    var cls = document.createElement('button');
+    cls.type = 'button'; cls.className = 'btn btn-ghost btn-xs'; cls.textContent = '✕';
+    cls.onclick = function () { dlg.remove(); };
+    bar.append(ttl, ext, cls);
+    var frame = document.createElement('iframe');
+    frame.src = url; frame.style.cssText = 'flex:1;width:100%;border:0';
+    box.append(bar, frame);
+    var bd = document.createElement('div');
+    bd.className = 'modal-backdrop'; bd.onclick = function () { dlg.remove(); };
+    dlg.append(box, bd);
+    document.addEventListener('keydown', function esc(e) {
+      if (e.key === 'Escape') { dlg.remove(); document.removeEventListener('keydown', esc); }
+    });
+    document.body.appendChild(dlg);
+  };
+  window.procPreviewOffice = function (url, name) { window.procPreview(url, name || 'Просмотр документа'); };
 </script>
 
 
