@@ -1460,18 +1460,35 @@ def request_edit_save(request, service_id, req_id):
     return _req_trigger()
 
 
-# ── Превью офисных файлов (doc/docx/xls…) через Microsoft Office Online Viewer ─
+# ── Превью офисных файлов (doc/docx/xls…) = их PDF-рендер в iframe ────────────
 
 @login_required
 @require_procedures
-def doc_presigned_url(request, service_id, sf_id):
-    """Pre-signed URL файла в S3 — сырой публичный (Office Online Viewer его сам
-    скачивает с серверов Microsoft, поэтому наш auth-gated stored_download не годится)."""
-    from django.http import JsonResponse
+def office_pdf(request, service_id, sf_id):
+    """PDF-рендер офисного файла для предпросмотра в iframe (без внешнего вьюера).
+
+    🛑 MS Office Online Viewer не годится: Microsoft скачивает файл со своих серверов,
+    а наш S3 — Beget (российское облако `s3.ru1.storage.beget.cloud`), снаружи для них
+    недоступен → вьюер ничего не открывает. Поэтому отдаём PDF сами:
+    если у документа запроса уже есть PDF-двойник (`document_pdf`) — редирект на него;
+    иначе конвертируем docx/xls на лету через LibreOffice.
+    """
     from apps.files.models import StoredFile
-    from apps.files.s3_utils import get_presigned_url
     sf = get_object_or_404(StoredFile, pk=sf_id)
-    return JsonResponse({"url": get_presigned_url(sf.bucket, sf.key, expiration=1800)})
+    rq = Request.objects.filter(document_docx=sf, document_pdf__isnull=False).first()
+    if rq is not None:
+        from django.shortcuts import redirect
+        from django.urls import reverse
+        return redirect(reverse("files:stored_download", args=[rq.document_pdf_id]) + "?inline=1")
+    from apps.afd.pdf_utils import docx_to_pdf
+    from apps.files.s3_utils import download_file_from_s3
+    try:
+        pdf = docx_to_pdf(download_file_from_s3(sf.bucket, sf.key))
+    except Exception:
+        return HttpResponse("Не удалось сконвертировать документ для предпросмотра", status=415)
+    resp = HttpResponse(pdf, content_type="application/pdf")
+    resp["Content-Disposition"] = "inline; filename=preview.pdf"
+    return resp
 
 
 # ── Запросы: подгрузка готового документа (pdf/docx) ────────────────────────

@@ -30,7 +30,7 @@ urlpatterns = [
     path("service/<uuid:service_id>/requests/<uuid:req_id>/edit/save/", views.request_edit_save, name="request_edit_save"),
     path("service/<uuid:service_id>/requests/<uuid:req_id>/upload-doc/", views.request_upload_form, name="request_upload_form"),
     path("service/<uuid:service_id>/requests/<uuid:req_id>/upload-doc/save/", views.request_upload, name="request_upload"),
-    path("service/<uuid:service_id>/file-url/<uuid:sf_id>/", views.doc_presigned_url, name="doc_presigned_url"),
+    path("service/<uuid:service_id>/office-pdf/<uuid:sf_id>/", views.office_pdf, name="office_pdf"),
     # Корреспонденция: загрузка сканов (Входящие/Исходящие)
     path("service/<uuid:service_id>/correspondence/<str:direction>/upload/", views.correspondence_upload_form, name="correspondence_upload_form"),
     path("service/<uuid:service_id>/correspondence/<str:direction>/upload/save/", views.correspondence_upload, name="correspondence_upload"),
