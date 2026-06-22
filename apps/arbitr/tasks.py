@@ -206,14 +206,20 @@ def _search_one(kad: KadSession, case: ArbitrCase) -> str:
         return "error"
 
     duration_ms = int((time.monotonic() - started) * 1000)
+    from datetime import timedelta
+    now = timezone.now()
     if not hits:
         _log_check(
             case, ArbitrCheckLog.STATE_NOTHING, duration_ms=duration_ms,
             notes=f"По ФИО '{fio}' дела не найдены",
         )
-        case.last_check_at = timezone.now()
+        case.last_check_at = now
         case.last_check_ok = True
-        case.save(update_fields=["last_check_at", "last_check_ok"])
+        # miss — следующий поиск через 3ч
+        case.next_search_at = now + timedelta(hours=3)
+        case.save(update_fields=[
+            "last_check_at", "last_check_ok", "next_search_at",
+        ])
         return "nothing"
 
     # Найдено хотя бы что-то — сохраняем в case.search_hits для UI выбора.
@@ -230,11 +236,14 @@ def _search_one(kad: KadSession, case: ArbitrCase) -> str:
         for h in hits
     ]
     case.search_hits = hits_payload
-    case.search_hits_at = timezone.now()
-    case.last_check_at = timezone.now()
+    case.search_hits_at = now
+    case.last_check_at = now
     case.last_check_ok = True
+    # hit — нашли кандидатов, следующий поиск через 24ч (если юзер ничего не выберет)
+    case.next_search_at = now + timedelta(hours=24)
     case.save(update_fields=[
-        "search_hits", "search_hits_at", "last_check_at", "last_check_ok",
+        "search_hits", "search_hits_at",
+        "last_check_at", "last_check_ok", "next_search_at",
     ])
 
     notes = f"Найдено {len(hits_payload)} кандидат(ов): " + "; ".join(
@@ -266,7 +275,7 @@ def kad_monitor_case():
     try:
         with KadSession() as kad:
             for case in cases:
-                stats[_parse_one(kad, case)] += 1
+                stats[_parse_one(kad, case)["result"]] += 1
                 if cooldown.is_active():
                     # _parse_one внутри схватил капчу → cooldown активен →
                     # остаток пачки пропускаем (бессмысленно дёргать kad).
@@ -280,11 +289,19 @@ def kad_monitor_case():
     return {"monitoring_cases": total, **stats}
 
 
-def _parse_one(kad: KadSession, case: ArbitrCase) -> str:
-    """Парсит карточку одного дела. Возвращает ключ для статистики."""
+def _parse_one(kad: KadSession, case: ArbitrCase) -> dict:
+    """Парсит карточку одного дела. Возвращает dict:
+      {result: 'ok'|'nothing'|'error'|'captcha',
+       new_events: N, new_files: M, remaining_files: R, duration_sec: S}
+    Файлы качаются порциями до 5 за прогон (limit=5); если осталось больше —
+    `remaining_files > 0`, докачается в следующий парсинг (через 24ч).
+    После успеха пишет next_parse_at = now() + 24ч.
+    """
+    base = {"result": "error", "new_events": 0, "new_files": 0,
+            "remaining_files": 0, "duration_sec": 0}
     if not case.kad_url:
         _log_check(case, ArbitrCheckLog.STATE_ERROR, notes="kad_url пуст")
-        return "error"
+        return base
 
     started = time.monotonic()
     try:
@@ -292,13 +309,14 @@ def _parse_one(kad: KadSession, case: ArbitrCase) -> str:
     except KadCaptchaRequired as exc:
         _log_check(case, ArbitrCheckLog.STATE_CAPTCHA, notes=exc.page_url)
         handle_captcha(case, page_url=exc.page_url)
-        return "captcha"
+        return {**base, "result": "captcha",
+                "duration_sec": int(time.monotonic() - started)}
     except NotImplementedError:
         _log_check(
             case, ArbitrCheckLog.STATE_ERROR,
             notes="Парсер parse_case ещё не реализован",
         )
-        return "error"
+        return base
     except Exception as exc:  # noqa: BLE001
         logger.exception("kad: ошибка парсинга дела %s", case.id)
         _log_check(case, ArbitrCheckLog.STATE_ERROR, notes=str(exc)[:1000])
@@ -306,7 +324,7 @@ def _parse_one(kad: KadSession, case: ArbitrCase) -> str:
         case.last_check_at = timezone.now()
         case.last_check_ok = False
         case.save(update_fields=["last_error", "last_check_at", "last_check_ok"])
-        return "error"
+        return {**base, "duration_sec": int(time.monotonic() - started)}
 
     duration_ms = int((time.monotonic() - started) * 1000)
     persisted = _persist_case_info(case, info)
@@ -319,10 +337,11 @@ def _parse_one(kad: KadSession, case: ArbitrCase) -> str:
     except Exception:
         source_cookies = []
 
-    # Скачиваем PDF'ы новых вложений в S3 (best-effort: ошибка отдельного
-    # документа не валит обработку дела целиком). ОТДЕЛЬНАЯ download-сессия
-    # — её Chrome имеет PDF prefs, которые ломают search-flow в main.
-    downloaded = _download_new_attachments(case, source_cookies=source_cookies)
+    # Скачиваем PDF'ы новых вложений в S3 порциями по 5 (best-effort:
+    # ошибка отдельного документа не валит обработку дела целиком).
+    # ОТДЕЛЬНАЯ download-сессия — её Chrome имеет PDF prefs, которые
+    # ломают search-flow в main.
+    downloaded = _download_new_attachments(case, source_cookies=source_cookies, limit=5)
 
     _log_check(
         case, ArbitrCheckLog.STATE_OK, duration_ms=duration_ms,
@@ -330,26 +349,39 @@ def _parse_one(kad: KadSession, case: ArbitrCase) -> str:
             f"events={len(info.events)} "
             f"new={persisted['new_events']} "
             f"docs+={persisted['new_attachments']} "
-            f"dl={downloaded['ok']}/{downloaded['ok'] + downloaded['failed']}"
+            f"dl={downloaded['ok']}/{downloaded['ok'] + downloaded['failed']} "
+            f"left={downloaded['remaining']}"
         ),
     )
+    now = timezone.now()
     case.court_name = info.court_name or case.court_name
     case.judge = info.judge or case.judge
     if info.instances:
         case.instances = info.instances
-    case.last_check_at = timezone.now()
+    case.last_check_at = now
     case.last_check_ok = True
+    # «не чаще 1 раз в сутки» на это дело
+    from datetime import timedelta
+    case.next_parse_at = now + timedelta(hours=24)
     case.save(update_fields=[
         "court_name", "judge", "instances",
-        "last_check_at", "last_check_ok",
+        "last_check_at", "last_check_ok", "next_parse_at",
     ])
-    return "ok"
+    return {
+        "result": "ok",
+        "new_events": persisted["new_events"],
+        "new_files": downloaded["ok"],
+        "remaining_files": downloaded["remaining"],
+        "duration_sec": int(time.monotonic() - started),
+    }
 
 
 def _download_new_attachments(
-    case: ArbitrCase, *, source_cookies: list,
+    case: ArbitrCase, *, source_cookies: list, limit: int = 5,
 ) -> dict:
-    """Качает все ArbitrAttachment этого дела без stored_file → S3.
+    """Качает ArbitrAttachment этого дела без stored_file → S3, не более `limit`
+    за один раз (по умолчанию 5 — анти-капча: каждый PDF-download — это
+    отдельный запрос на kad, после ~20 подряд kad показывает капчу).
 
     Открывает ОТДЕЛЬНУЮ download-сессию (Chrome с PDF prefs) — этой сессии
     нельзя делать search/parse (PDF prefs ломают anti-bot), но качать PDF
@@ -358,19 +390,22 @@ def _download_new_attachments(
 
     Best-effort: ошибки скачивания отдельного файла логируем и идём дальше.
     Captcha — поднимаем выше (KadCaptchaRequired), пусть batch остановится.
-    Возвращает {'ok': N, 'failed': M, 'locked': K, 'skipped': X}.
+
+    Возвращает {'ok': N, 'failed': M, 'locked': K, 'skipped': X, 'remaining': R}.
+    remaining — сколько ещё незакачанных осталось ПОСЛЕ этого прогона.
     """
     from apps.files.models import StoredFile  # лениво — кросс-аппный импорт
     from apps.files.s3_utils import upload_file_to_s3
 
-    stats = {"ok": 0, "failed": 0, "locked": 0, "skipped": 0}
-    qs_list = list(
-        ArbitrAttachment.objects.filter(
-            event__case=case, stored_file__isnull=True,
-        ).select_related("event")
-    )
-    if not qs_list:
+    stats = {"ok": 0, "failed": 0, "locked": 0, "skipped": 0, "remaining": 0}
+    base_qs = ArbitrAttachment.objects.filter(
+        event__case=case, stored_file__isnull=True,
+    ).select_related("event")
+    pending_total = base_qs.count()
+    if not pending_total:
         return stats
+    qs_list = list(base_qs[:limit]) if limit and limit > 0 else list(base_qs)
+    stats["remaining"] = max(0, pending_total - len(qs_list))
 
     # Открываем ОТДЕЛЬНУЮ Chrome-сессию с PDF prefs.
     with KadSession(download_mode=True) as dl:
@@ -450,47 +485,109 @@ def _download_new_attachments(
     return stats
 
 
-@shared_task(name="arbitr.kad_throttled_one")
-def kad_throttled_one():
-    """Парсит ОДНО дело из MONITORING — самое «протухшее» (минимальный
-    last_check_at, NULL первыми).
+@shared_task(name="arbitr.kad_smart_one")
+def kad_smart_one():
+    """Динамический парсер kad — 1 кейс за тик, дальше пауза по результату.
 
-    Идея: вместо больших батчей по 200 кейсов раз в 6ч (которые гарантированно
-    нарывались на капчу), beat дёргает эту таску каждые 5 минут → 1 кейс / 5 мин
-    = 288 кейсов/сутки. kad-IP не успевает «прогореть», капча почти не
-    срабатывает. На dev сейчас 1192 кейса → полный круг ~4 суток, для рабочей
-    нагрузки 250 active+500 stale = ~2.6 суток.
-
-    Если активен 12ч captcha-cooldown — таска тихо выходит.
+    Алгоритм (раз в 10с дёргается beat'ом):
+      0. Если активен captcha-cooldown (12ч) — выйти молча.
+      1. Если активен smart-throttle (Redis-key с TTL) — выйти.
+      2. Global lock (`arbitr:smart_lock`, TTL 10мин) — выйти если занят.
+      3. Сначала SEARCHING-кейс с next_search_at <= now или NULL.
+         Иначе MONITORING-кейс с next_parse_at <= now или NULL.
+         (Каждое дело парсится не чаще 1 раз/сутки — это и есть next_parse_at.)
+      4. Парсим (SEARCHING → _search_one, MONITORING → _parse_one).
+         _parse_one сам ставит next_parse_at = now+24ч, качает до 5 файлов
+         за раз, остаток ждёт следующего парсинга.
+      5. После MONITORING-парсинга — ставим smart-throttle:
+           5 мин если что-то новое (events>0 или files>0),
+           10 сек если ничего нового,
+           60 сек на error/nothing.
+      6. При success (result=ok) шлём короткий алёрт в MAX.
+      7. captcha → handle_captcha (12ч cooldown + 1 алёрт), следующие тики
+         тихо пропускаются.
     """
+    from django.core.cache import cache
+    from django.db.models import F, Q
+
     if cooldown.is_active():
-        return {"skipped": "captcha_cooldown", "until": cooldown.until().isoformat()}
+        return {"skipped": "captcha_cooldown"}
 
-    from django.db.models import F
-    case = (
-        ArbitrCase.objects
-        .filter(status=ArbitrCase.STATUS_MONITORING)
-        .select_related("service__client", "service__region", "started_by__user")
-        .order_by(F("last_check_at").asc(nulls_first=True))
-        .first()
-    )
-    if case is None:
-        return {"skipped": "no_cases"}
+    THROTTLE_KEY = "arbitr:smart_throttle_until"
+    LOCK_KEY = "arbitr:smart_lock"
 
-    logger.info(
-        "kad_throttled_one: case=%s number=%s prev_check=%s",
-        case.id, case.case_number, case.last_check_at,
-    )
+    if cache.get(THROTTLE_KEY):
+        return {"skipped": "throttle"}
+    if not cache.add(LOCK_KEY, "1", timeout=600):
+        return {"skipped": "lock_busy"}
 
     try:
-        with KadSession() as kad:
-            result = _parse_one(kad, case)
-    except KadCaptchaRequired as exc:
-        _log_check(case, ArbitrCheckLog.STATE_CAPTCHA, notes=exc.page_url)
-        handle_captcha(case, page_url=exc.page_url)
-        result = "captcha"
+        now = timezone.now()
 
-    return {"case_id": str(case.id), "case_number": case.case_number, "result": result}
+        candidate = (
+            ArbitrCase.objects
+            .filter(status=ArbitrCase.STATUS_SEARCHING)
+            .filter(Q(next_search_at__isnull=True) | Q(next_search_at__lte=now))
+            .select_related("service__client", "service__region", "started_by__user")
+            .order_by(F("next_search_at").asc(nulls_first=True))
+            .first()
+        )
+        kind = "search"
+
+        if candidate is None:
+            candidate = (
+                ArbitrCase.objects
+                .filter(status=ArbitrCase.STATUS_MONITORING)
+                .filter(Q(next_parse_at__isnull=True) | Q(next_parse_at__lte=now))
+                .select_related("service__client", "service__region", "started_by__user")
+                .order_by(F("next_parse_at").asc(nulls_first=True))
+                .first()
+            )
+            kind = "parse"
+
+        if candidate is None:
+            # Все кейсы спарсены/обысканы недавно — короткая пауза, чтобы
+            # не молотить SELECT каждые 10 секунд впустую.
+            cache.set(THROTTLE_KEY, "1", timeout=60)
+            return {"skipped": "nothing_ready"}
+
+        case = candidate
+        logger.info(
+            "kad_smart_one: case=%s number=%s kind=%s",
+            case.id, case.case_number, kind,
+        )
+
+        try:
+            with KadSession() as kad:
+                if kind == "search":
+                    sr = _search_one(kad, case)
+                    # _search_one уже ставит next_search_at (3ч miss / 24ч hit)
+                    cache.set(THROTTLE_KEY, "1", timeout=60)
+                    return {"case_id": str(case.id), "kind": "search", "result": sr}
+                # MONITORING
+                pr = _parse_one(kad, case)
+                if pr["result"] == "ok":
+                    something_new = pr["new_events"] > 0 or pr["new_files"] > 0
+                    cache.set(THROTTLE_KEY, "1", timeout=(300 if something_new else 10))
+                    # короткое уведомление в MAX
+                    from .notifications import send_parsed_alert
+                    send_parsed_alert(
+                        case,
+                        new_events=pr["new_events"],
+                        new_files=pr["new_files"],
+                        duration_sec=pr["duration_sec"],
+                    )
+                elif pr["result"] == "captcha":
+                    pass  # handle_captcha уже включил 12ч cooldown
+                else:
+                    cache.set(THROTTLE_KEY, "1", timeout=60)
+                return {"case_id": str(case.id), "kind": "parse", **pr}
+        except KadCaptchaRequired as exc:
+            _log_check(case, ArbitrCheckLog.STATE_CAPTCHA, notes=exc.page_url)
+            handle_captcha(case, page_url=exc.page_url)
+            return {"case_id": str(case.id), "result": "captcha"}
+    finally:
+        cache.delete(LOCK_KEY)
 
 
 @shared_task(name="arbitr.kad_monitor_one_case")
@@ -528,9 +625,9 @@ def kad_monitor_one_case(case_id: str):
         try:
             with KadSession() as kad:
                 if case.status == ArbitrCase.STATUS_SEARCHING:
-                    result = _search_one(kad, case)
+                    result = _search_one(kad, case)  # str
                 elif case.status == ArbitrCase.STATUS_MONITORING:
-                    result = _parse_one(kad, case)
+                    result = _parse_one(kad, case)["result"]  # dict→str
                 else:
                     _log_check(
                         case, ArbitrCheckLog.STATE_ERROR,

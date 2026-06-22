@@ -159,7 +159,7 @@ class Command(BaseCommand):
                     for case in batch:
                         done += 1
                         try:
-                            result = _parse_one(kad, case)
+                            result = _parse_one(kad, case)["result"]
                         except KadCaptchaRequired as exc:
                             self.stdout.write(self.style.ERROR(
                                 f"[{done}/{len(cases)}] CAPTCHA — глобальный cooldown 12ч активирован ({exc.page_url})"

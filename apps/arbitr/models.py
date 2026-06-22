@@ -91,6 +91,17 @@ class ArbitrCase(models.Model):
     search_hits_at = models.DateTimeField(
         "Когда найдены", null=True, blank=True,
     )
+    # Расписание следующих обращений к kad (для smart-throttle):
+    # next_search_at — когда можно следующий раз искать по ФИО (для SEARCHING).
+    #   Заполняется по результату: hit → +24ч, miss → +3ч.
+    # next_parse_at  — когда можно следующий раз парсить карточку (для MONITORING).
+    #   Заполняется после _parse_one: now + 24ч (правило «не чаще 1 раз/сутки»).
+    next_search_at = models.DateTimeField(
+        "Следующий поиск не раньше", null=True, blank=True,
+    )
+    next_parse_at = models.DateTimeField(
+        "Следующий парсинг не раньше", null=True, blank=True,
+    )
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -101,6 +112,8 @@ class ArbitrCase(models.Model):
         indexes = [
             models.Index(fields=["status"]),
             models.Index(fields=["last_check_at"]),
+            models.Index(fields=["next_search_at"]),
+            models.Index(fields=["next_parse_at"]),
         ]
 
     def __str__(self):

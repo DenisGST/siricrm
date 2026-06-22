@@ -14,6 +14,41 @@ from .models import ArbitrCase
 logger = logging.getLogger("arbitr.notify")
 
 
+def send_parsed_alert(
+    case: ArbitrCase, *,
+    new_events: int,
+    new_files: int,
+    duration_sec: int,
+) -> bool:
+    """После успешного парсинга шлёт в MAX короткую сводку:
+    «А12-…/2025 — Иванов И. И. · скачано 3 новых записей, 1 новый файл · 67с»
+    """
+    chat_id = (settings.ARBITR_CAPTCHA_NOTIFY_MAX_CHAT_ID or "").strip()
+    token = (settings.MAX_BOT_TOKEN or "").strip()
+    if not chat_id or not token:
+        return False
+
+    client = case.service.client if case.service else None
+    fio = (
+        " ".join(filter(None, [
+            client.last_name if client else "",
+            client.first_name if client else "",
+            client.patronymic if client else "",
+        ])).strip() or "(без ФИО)"
+    )
+    case_number = case.case_number or "(номер не указан)"
+    text = (
+        f"✅ {case_number} · {fio}\n"
+        f"Скачано: {new_events} нов. записей, {new_files} нов. файл(ов) · {duration_sec}с"
+    )
+    ok, _msg_id, err = send_max_message(
+        access_token=token, chat_id=chat_id, text=text,
+    )
+    if not ok:
+        logger.error("Parsed alert MAX send failed: %s", err)
+    return ok
+
+
 def handle_captcha(case: ArbitrCase, *, page_url: str = "") -> None:
     """Реакция на капчу от kad: активировать 12ч-cooldown и (если активировали
     только что) — отправить одиночный алёрт в MAX.
