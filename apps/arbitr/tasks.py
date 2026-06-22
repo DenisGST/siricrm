@@ -450,6 +450,49 @@ def _download_new_attachments(
     return stats
 
 
+@shared_task(name="arbitr.kad_throttled_one")
+def kad_throttled_one():
+    """Парсит ОДНО дело из MONITORING — самое «протухшее» (минимальный
+    last_check_at, NULL первыми).
+
+    Идея: вместо больших батчей по 200 кейсов раз в 6ч (которые гарантированно
+    нарывались на капчу), beat дёргает эту таску каждые 5 минут → 1 кейс / 5 мин
+    = 288 кейсов/сутки. kad-IP не успевает «прогореть», капча почти не
+    срабатывает. На dev сейчас 1192 кейса → полный круг ~4 суток, для рабочей
+    нагрузки 250 active+500 stale = ~2.6 суток.
+
+    Если активен 12ч captcha-cooldown — таска тихо выходит.
+    """
+    if cooldown.is_active():
+        return {"skipped": "captcha_cooldown", "until": cooldown.until().isoformat()}
+
+    from django.db.models import F
+    case = (
+        ArbitrCase.objects
+        .filter(status=ArbitrCase.STATUS_MONITORING)
+        .select_related("service__client", "service__region", "started_by__user")
+        .order_by(F("last_check_at").asc(nulls_first=True))
+        .first()
+    )
+    if case is None:
+        return {"skipped": "no_cases"}
+
+    logger.info(
+        "kad_throttled_one: case=%s number=%s prev_check=%s",
+        case.id, case.case_number, case.last_check_at,
+    )
+
+    try:
+        with KadSession() as kad:
+            result = _parse_one(kad, case)
+    except KadCaptchaRequired as exc:
+        _log_check(case, ArbitrCheckLog.STATE_CAPTCHA, notes=exc.page_url)
+        handle_captcha(case, page_url=exc.page_url)
+        result = "captcha"
+
+    return {"case_id": str(case.id), "case_number": case.case_number, "result": result}
+
+
 @shared_task(name="arbitr.kad_monitor_one_case")
 def kad_monitor_one_case(case_id: str):
     """Ручной запуск парсинга ОДНОГО дела (минуя work-window).
