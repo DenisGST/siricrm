@@ -133,7 +133,7 @@ def kad_monitor_pending():
     """
     qs = ArbitrCase.objects.filter(
         status=ArbitrCase.STATUS_SEARCHING,
-    ).select_related("service__client", "started_by__user")
+    ).select_related("service__client", "service__region", "started_by__user")
     cases = list(qs)
     total = len(cases)
     logger.info("kad_monitor_pending: %d дел в поиске", total)
@@ -167,9 +167,16 @@ def _search_one(kad: KadSession, case: ArbitrCase) -> str:
         _log_check(case, ArbitrCheckLog.STATE_ERROR, notes="у клиента не задано ФИО")
         return "error"
 
+    # Фильтр по региону — без него по «Иванову И. И.» kad может вернуть
+    # десятки дел из разных судов РФ. Префикс case_number у kad — «АNN»
+    # где NN = Region.number (12=Волгоград, 40=Москва, 41=МО, 56=СПб …).
+    # search_by_party потом отфильтрует по case_number.upper().startswith(prefix).
+    region = case.service.region if case.service else None
+    court_code = f"А{region.number}" if region and region.number else ""
+
     started = time.monotonic()
     try:
-        hits = kad.search_by_party(fio)
+        hits = kad.search_by_party(fio, court_code=court_code)
     except KadCaptchaRequired as exc:
         _log_check(case, ArbitrCheckLog.STATE_CAPTCHA, notes=exc.page_url)
         send_captcha_alert(case, page_url=exc.page_url)
@@ -236,7 +243,7 @@ def kad_monitor_case():
 
     qs = ArbitrCase.objects.filter(
         status=ArbitrCase.STATUS_MONITORING,
-    ).select_related("service__client", "started_by__user")
+    ).select_related("service__client", "service__region", "started_by__user")
     cases = list(qs)
     total = len(cases)
     logger.info("kad_monitor_case: %d дел в мониторинге", total)
@@ -438,7 +445,7 @@ def kad_monitor_one_case(case_id: str):
     """
     try:
         case = ArbitrCase.objects.select_related(
-            "service__client", "started_by__user",
+            "service__client", "service__region", "started_by__user",
         ).get(pk=case_id)
     except ArbitrCase.DoesNotExist:
         logger.warning("kad_monitor_one_case: case %s не найден", case_id)
