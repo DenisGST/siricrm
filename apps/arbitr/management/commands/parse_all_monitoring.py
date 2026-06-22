@@ -16,6 +16,9 @@
 
   # все MONITORING (включая ранее парсенные) — для full re-scan
   python manage.py parse_all_monitoring --all
+
+  # батчи по 10 с паузами по 3 мин и первичной паузой 40 мин (gentle режим)
+  python manage.py parse_all_monitoring --batch-size 10 --sleep-between 180 --initial-cooldown 2400
 """
 import time
 from collections import Counter
@@ -25,6 +28,15 @@ from django.core.management.base import BaseCommand
 from apps.arbitr.models import ArbitrCase
 from apps.arbitr.parsers.kad import KadCaptchaRequired, KadSession
 from apps.arbitr.tasks import _parse_one
+
+
+def _fmt_eta(seconds: int) -> str:
+    seconds = max(0, int(seconds))
+    h, rem = divmod(seconds, 3600)
+    m, s = divmod(rem, 60)
+    if h:
+        return f"{h}ч{m:02d}м"
+    return f"{m}м{s:02d}с"
 
 
 class Command(BaseCommand):
@@ -46,6 +58,27 @@ class Command(BaseCommand):
             help="Названия common_status через запятую "
                  "(деф: Реструктуризация,Реализация). "
                  "'*' = все статусы.",
+        )
+        parser.add_argument(
+            "--batch-size", type=int, default=0,
+            help="Размер батча в одной KadSession (0 = весь батч в одной сессии). "
+                 "Между батчами — пауза --sleep-between и НОВАЯ KadSession "
+                 "(свежий Chrome помогает после остыва kad-IP).",
+        )
+        parser.add_argument(
+            "--sleep-between", type=int, default=0,
+            help="Пауза между батчами в секундах (имеет смысл с --batch-size).",
+        )
+        parser.add_argument(
+            "--initial-cooldown", type=int, default=0,
+            help="Пауза ПЕРЕД первым батчем в секундах "
+                 "(чтобы дать kad-IP остыть после предыдущей капчи).",
+        )
+        parser.add_argument(
+            "--stop-on-captcha", action="store_true",
+            help="При капче полностью завершить прогон (старое поведение). "
+                 "По умолчанию (с --batch-size) — закончить текущий батч и "
+                 "перейти к следующему после --sleep-between (давая IP остыть).",
         )
 
     def handle(self, *args, **opts):
@@ -78,30 +111,69 @@ class Command(BaseCommand):
                 self.stdout.write(f"  … и ещё {len(cases) - 10}")
             return
 
+        batch_size = opts["batch_size"] or len(cases)
+        sleep_between = opts["sleep_between"]
+        initial_cooldown = opts["initial_cooldown"]
+        stop_on_captcha = opts["stop_on_captcha"] or not opts["batch_size"]
+
+        # Разбиваем на батчи
+        batches = [cases[i:i + batch_size] for i in range(0, len(cases), batch_size)]
+        self.stdout.write(
+            f"Батчей: {len(batches)} по ~{batch_size}; "
+            f"пауза между {sleep_between}с; "
+            f"первичная {initial_cooldown}с; "
+            f"stop_on_captcha={stop_on_captcha}"
+        )
+
+        if initial_cooldown:
+            self.stdout.write(f"⏳ Первичная пауза {_fmt_eta(initial_cooldown)}…")
+            time.sleep(initial_cooldown)
+
         stats = Counter()
         started = time.monotonic()
+        done = 0
+        aborted = False
         try:
-            with KadSession() as kad:
-                for i, case in enumerate(cases, 1):
-                    try:
-                        result = _parse_one(kad, case)
-                    except KadCaptchaRequired as exc:
-                        self.stdout.write(self.style.WARNING(
-                            f"[{i}/{len(cases)}] CAPTCHA — abort batch ({exc.page_url})"
-                        ))
-                        stats["captcha"] += len(cases) - i + 1
-                        break
-                    stats[result] += 1
-                    el = int(time.monotonic() - started)
-                    self.stdout.write(
-                        f"[{i}/{len(cases)}] {case.case_number:25s} "
-                        f"→ {result:8s}  (всего {el}с, в среднем {el/i:.1f}с)"
-                    )
+            for bi, batch in enumerate(batches, 1):
+                if aborted:
+                    stats["captcha"] += len(batch)
+                    continue
+                self.stdout.write(self.style.NOTICE(
+                    f"\n── Батч {bi}/{len(batches)} ({len(batch)} кейсов) ──"
+                ))
+                with KadSession() as kad:
+                    for case in batch:
+                        done += 1
+                        try:
+                            result = _parse_one(kad, case)
+                        except KadCaptchaRequired as exc:
+                            self.stdout.write(self.style.WARNING(
+                                f"[{done}/{len(cases)}] CAPTCHA — abort batch ({exc.page_url})"
+                            ))
+                            stats["captcha"] += 1
+                            if stop_on_captcha:
+                                aborted = True
+                                # остаток текущего батча тоже метим капчей
+                                remaining_in_batch = len(batch) - (done - (bi-1)*batch_size)
+                                stats["captcha"] += remaining_in_batch
+                                done += remaining_in_batch
+                            break
+                        stats[result] += 1
+                        el = int(time.monotonic() - started)
+                        avg = el / done
+                        eta = int(avg * (len(cases) - done) + sleep_between * (len(batches) - bi))
+                        self.stdout.write(
+                            f"[{done}/{len(cases)}] {case.case_number:25s} "
+                            f"→ {result:8s}  ср.{avg:.0f}с  ост.~{_fmt_eta(eta)}"
+                        )
+                if bi < len(batches) and sleep_between and not aborted:
+                    self.stdout.write(f"⏳ Пауза {_fmt_eta(sleep_between)} перед следующим батчем…")
+                    time.sleep(sleep_between)
         finally:
             total = int(time.monotonic() - started)
             self.stdout.write("")
             self.stdout.write(self.style.SUCCESS(
-                f"=== ИТОГ ({total}с = {total//60}м{total%60}с) ==="
+                f"=== ИТОГ ({_fmt_eta(total)}) ==="
             ))
             for k in ("ok", "nothing", "error", "captcha"):
                 self.stdout.write(f"  {k}: {stats[k]}")
