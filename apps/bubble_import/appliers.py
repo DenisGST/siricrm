@@ -166,7 +166,9 @@ def _man_fields(rec: BubbleRecord) -> dict:
         "email": clean_str(v("email"))[:254],
         "notes": strip_bbcode(v("notes")),
         "gender": gender_from_bubble(v("Пол")),
-        "is_married": bool(v("isMarried")),
+        # ⚠ Bubble-баг: у этого поля ключ с лидирующим пробелом — « isMarried».
+        # Учитываем оба варианта.
+        "is_married": bool(v("isMarried") or v(" isMarried")),
         "referral_source": strip_bbcode(v("From"))[:255],
     }
 
@@ -442,22 +444,34 @@ def link_spouses() -> int:
 
     Запускается после apply пакета — оба супруга должны быть импортированы.
     Возвращает число проставленных связей.
+
+    ⚠ Bubble-баг: ключ поля называется « spouse» (с лидирующим пробелом).
+    Учитываем оба варианта.
     """
     linked = 0
-    recs = BubbleRecord.objects.filter(
-        entity="Man", status="imported",
-    ).exclude(raw__spouse=None)
+    # Берём всех Man с любым непустым spouse/«ведущим пробелом» spouse.
+    recs = BubbleRecord.objects.filter(entity="Man", status="imported")
     by_bubble = {
         c.bubble_id: c
         for c in Client.objects.exclude(bubble_id=None)
     }
+    # Двунаправленная установка: если у A.spouse = B, ставим A↔B оба раза.
     for rec in recs:
-        spouse_bid = (rec.raw or {}).get("spouse")
+        raw = rec.raw or {}
+        spouse_bid = raw.get("spouse") or raw.get(" spouse")
+        if not spouse_bid:
+            continue
         client = by_bubble.get(rec.bubble_id)
-        spouse = by_bubble.get(spouse_bid) if spouse_bid else None
+        spouse = by_bubble.get(spouse_bid)
         if client and spouse and client.spouse_id != spouse.id:
             client.spouse = spouse
             client.save(update_fields=["spouse"])
+            linked += 1
+        # Зеркало: если у супруги в Bubble нет обратной ссылки, проставим её
+        # вручную (в большинстве кейсов Bubble хранит связь только с одной стороны).
+        if client and spouse and spouse.spouse_id != client.id:
+            spouse.spouse = client
+            spouse.save(update_fields=["spouse"])
             linked += 1
     return linked
 
