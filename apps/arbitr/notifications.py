@@ -50,21 +50,20 @@ def send_captcha_alert(case: ArbitrCase, *, page_url: str = "") -> bool:
     if until_dt:
         msk = timezone.localtime(until_dt)
         resume_line = (
-            "⏸ Мониторинг приостановлен на 12 часов.\n"
-            f"Возобновится: {msk:%d.%m %H:%M} (МСК)\n"
+            "⏸ Мониторинг арбитража приостановлен на 12 часов.\n"
+            f"Возобновится автоматически: {msk:%d.%m %H:%M} (МСК)\n"
         )
     else:
         resume_line = ""
 
     text = (
-        "⚠️ kad.arbitr.ru показал капчу\n"
+        "⚠️ kad.arbitr.ru показал капчу серверу\n"
         f"{resume_line}"
         f"Первое сорвавшееся дело: {case_number}\n"
         f"Клиент: {fio}\n"
-        f"Запустил мониторинг: {started_by}\n"
-        f"Открыть kad: {page_url or case.kad_url or 'https://kad.arbitr.ru'}\n"
-        "Если решишь капчу раньше — на сервере: "
-        "`python manage.py arbitr_clear_cooldown`"
+        f"Запустил мониторинг: {started_by}\n\n"
+        "ℹ️ Капчу из браузера НЕ решить — kad показывает её только на IP "
+        "сервера. Парсер сам подождёт 12ч и попробует снова."
     )
 
     ok, msg_id, err = send_max_message(
