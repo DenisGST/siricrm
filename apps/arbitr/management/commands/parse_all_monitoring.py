@@ -23,8 +23,9 @@
 import time
 from collections import Counter
 
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 
+from apps.arbitr import cooldown
 from apps.arbitr.models import ArbitrCase
 from apps.arbitr.parsers.kad import KadCaptchaRequired, KadSession
 from apps.arbitr.tasks import _parse_one
@@ -76,9 +77,13 @@ class Command(BaseCommand):
         )
         parser.add_argument(
             "--stop-on-captcha", action="store_true",
-            help="При капче полностью завершить прогон (старое поведение). "
-                 "По умолчанию (с --batch-size) — закончить текущий батч и "
-                 "перейти к следующему после --sleep-between (давая IP остыть).",
+            help="Игнорируется — теперь любая капча активирует глобальный "
+                 "12ч cooldown и прогон ВСЕГДА останавливается.",
+        )
+        parser.add_argument(
+            "--ignore-cooldown", action="store_true",
+            help="Запустить даже если активен глобальный cooldown после "
+                 "недавней капчи (kad почти наверняка снова покажет капчу).",
         )
 
     def handle(self, *args, **opts):
@@ -102,6 +107,17 @@ class Command(BaseCommand):
         if opts["limit"]:
             qs = qs[: opts["limit"]]
 
+        # Глобальный cooldown после недавней капчи от kad. Без флага
+        # --ignore-cooldown — отказываемся стартовать, чтобы не нагенерить
+        # пустых попыток + не флудить алёртами в MAX.
+        if cooldown.is_active() and not opts["ignore_cooldown"]:
+            until = cooldown.until()
+            raise CommandError(
+                f"Активен глобальный cooldown после капчи. Возобновится: "
+                f"{until:%d.%m %H:%M} (МСК). Снять вручную: "
+                f"python manage.py arbitr_clear_cooldown."
+            )
+
         cases = list(qs)
         self.stdout.write(f"К прогону: {len(cases)} кейсов")
         if opts["dry_run"] or not cases:
@@ -114,15 +130,13 @@ class Command(BaseCommand):
         batch_size = opts["batch_size"] or len(cases)
         sleep_between = opts["sleep_between"]
         initial_cooldown = opts["initial_cooldown"]
-        stop_on_captcha = opts["stop_on_captcha"] or not opts["batch_size"]
 
         # Разбиваем на батчи
         batches = [cases[i:i + batch_size] for i in range(0, len(cases), batch_size)]
         self.stdout.write(
             f"Батчей: {len(batches)} по ~{batch_size}; "
             f"пауза между {sleep_between}с; "
-            f"первичная {initial_cooldown}с; "
-            f"stop_on_captcha={stop_on_captcha}"
+            f"первичная {initial_cooldown}с"
         )
 
         if initial_cooldown:
@@ -147,18 +161,27 @@ class Command(BaseCommand):
                         try:
                             result = _parse_one(kad, case)
                         except KadCaptchaRequired as exc:
-                            self.stdout.write(self.style.WARNING(
-                                f"[{done}/{len(cases)}] CAPTCHA — abort batch ({exc.page_url})"
+                            self.stdout.write(self.style.ERROR(
+                                f"[{done}/{len(cases)}] CAPTCHA — глобальный cooldown 12ч активирован ({exc.page_url})"
                             ))
                             stats["captcha"] += 1
-                            if stop_on_captcha:
-                                aborted = True
-                                # остаток текущего батча тоже метим капчей
-                                remaining_in_batch = len(batch) - (done - (bi-1)*batch_size)
-                                stats["captcha"] += remaining_in_batch
-                                done += remaining_in_batch
+                            aborted = True
+                            remaining_in_batch = len(batch) - (done - (bi-1)*batch_size)
+                            stats["captcha"] += remaining_in_batch
+                            done += remaining_in_batch
                             break
                         stats[result] += 1
+                        if result == "captcha":
+                            # _parse_one уже активировал cooldown внутри,
+                            # дальше дёргать kad бессмысленно.
+                            self.stdout.write(self.style.ERROR(
+                                f"[{done}/{len(cases)}] {case.case_number}: captcha (cooldown активен) — стоп"
+                            ))
+                            aborted = True
+                            remaining_in_batch = len(batch) - (done - (bi-1)*batch_size)
+                            stats["captcha"] += remaining_in_batch
+                            done += remaining_in_batch
+                            break
                         el = int(time.monotonic() - started)
                         avg = el / done
                         eta = int(avg * (len(cases) - done) + sleep_between * (len(batches) - bi))

@@ -12,8 +12,9 @@ from datetime import datetime, time as dtime
 from celery import shared_task
 from django.utils import timezone
 
+from . import cooldown
 from .models import ArbitrAttachment, ArbitrCase, ArbitrCheckLog, ArbitrEvent
-from .notifications import send_captcha_alert
+from .notifications import handle_captcha
 from .parsers.kad import (
     KadCaptchaRequired,
     KadCaseInfo,
@@ -131,6 +132,10 @@ def kad_monitor_pending():
     круглосуточно. Расписание задаётся в django-celery-beat
     (`arbitr-kad-monitor-pending`).
     """
+    if cooldown.is_active():
+        logger.info("kad_monitor_pending: cooldown active until %s — пропускаем", cooldown.until())
+        return {"skipped": "captcha_cooldown", "until": cooldown.until().isoformat()}
+
     qs = ArbitrCase.objects.filter(
         status=ArbitrCase.STATUS_SEARCHING,
     ).select_related("service__client", "service__region", "started_by__user")
@@ -146,13 +151,17 @@ def kad_monitor_pending():
         with KadSession() as kad:
             for case in cases:
                 stats[_search_one(kad, case)] += 1
+                if cooldown.is_active():
+                    # Внутри _search_one схватили капчу → активировался cooldown
+                    # → остальные кейсы этой пачки пропускаем, не дёргая kad.
+                    break
     except KadCaptchaRequired as exc:
-        # Капча на этапе захода на главную — пачка отменена, дальше нет смысла.
+        # Капча на этапе захода на главную — активируем cooldown, одиночный
+        # алёрт. Остаток пачки НЕ дёргаем (раньше тут был флуд из N алёртов).
         logger.warning("kad_monitor_pending: captcha — aborting batch")
-        for case in cases:
-            _log_check(case, ArbitrCheckLog.STATE_CAPTCHA, notes=exc.page_url)
-            send_captcha_alert(case, page_url=exc.page_url)
-            stats["captcha"] += 1
+        _log_check(cases[0], ArbitrCheckLog.STATE_CAPTCHA, notes=exc.page_url)
+        handle_captcha(cases[0], page_url=exc.page_url)
+        stats["captcha"] += 1
 
     return {"pending_cases": total, **stats}
 
@@ -179,7 +188,7 @@ def _search_one(kad: KadSession, case: ArbitrCase) -> str:
         hits = kad.search_by_party(fio, court_code=court_code)
     except KadCaptchaRequired as exc:
         _log_check(case, ArbitrCheckLog.STATE_CAPTCHA, notes=exc.page_url)
-        send_captcha_alert(case, page_url=exc.page_url)
+        handle_captcha(case, page_url=exc.page_url)
         return "captcha"
     except NotImplementedError:
         _log_check(
@@ -240,6 +249,9 @@ def kad_monitor_case():
     """Парсит карточку дела на kad для каждого ArbitrCase в 'monitoring'."""
     if not _in_work_window():
         return {"skipped": "outside_work_window"}
+    if cooldown.is_active():
+        logger.info("kad_monitor_case: cooldown active until %s — пропускаем", cooldown.until())
+        return {"skipped": "captcha_cooldown", "until": cooldown.until().isoformat()}
 
     qs = ArbitrCase.objects.filter(
         status=ArbitrCase.STATUS_MONITORING,
@@ -255,12 +267,15 @@ def kad_monitor_case():
         with KadSession() as kad:
             for case in cases:
                 stats[_parse_one(kad, case)] += 1
+                if cooldown.is_active():
+                    # _parse_one внутри схватил капчу → cooldown активен →
+                    # остаток пачки пропускаем (бессмысленно дёргать kad).
+                    break
     except KadCaptchaRequired as exc:
         logger.warning("kad_monitor_case: captcha — aborting batch")
-        for case in cases:
-            _log_check(case, ArbitrCheckLog.STATE_CAPTCHA, notes=exc.page_url)
-            send_captcha_alert(case, page_url=exc.page_url)
-            stats["captcha"] += 1
+        _log_check(cases[0], ArbitrCheckLog.STATE_CAPTCHA, notes=exc.page_url)
+        handle_captcha(cases[0], page_url=exc.page_url)
+        stats["captcha"] += 1
 
     return {"monitoring_cases": total, **stats}
 
@@ -276,7 +291,7 @@ def _parse_one(kad: KadSession, case: ArbitrCase) -> str:
         info = kad.parse_case(case.kad_url)
     except KadCaptchaRequired as exc:
         _log_check(case, ArbitrCheckLog.STATE_CAPTCHA, notes=exc.page_url)
-        send_captcha_alert(case, page_url=exc.page_url)
+        handle_captcha(case, page_url=exc.page_url)
         return "captcha"
     except NotImplementedError:
         _log_check(
@@ -369,7 +384,7 @@ def _download_new_attachments(
         try:
             dl._raise_if_captcha()  # noqa: SLF001
         except KadCaptchaRequired:
-            send_captcha_alert(case, page_url=case.kad_url)
+            handle_captcha(case, page_url=case.kad_url)
             raise
 
         for att in qs_list:
@@ -456,6 +471,16 @@ def kad_monitor_one_case(case_id: str):
         case.id, case.status,
     )
 
+    if cooldown.is_active():
+        logger.info("kad_monitor_one_case: cooldown until %s — отказ", cooldown.until())
+        _log_check(
+            case, ArbitrCheckLog.STATE_CAPTCHA,
+            notes=f"Парсинг приостановлен (cooldown до {cooldown.until():%d.%m %H:%M} МСК)",
+        )
+        from django.core.cache import cache  # noqa: WPS433
+        cache.delete(f"arbitr:active_task:{case.id}")
+        return {"case_id": str(case.id), "result": "cooldown", "until": cooldown.until().isoformat()}
+
     try:
         try:
             with KadSession() as kad:
@@ -471,7 +496,7 @@ def kad_monitor_one_case(case_id: str):
                     return {"error": "wrong_status", "status": case.status}
         except KadCaptchaRequired as exc:
             _log_check(case, ArbitrCheckLog.STATE_CAPTCHA, notes=exc.page_url)
-            send_captcha_alert(case, page_url=exc.page_url)
+            handle_captcha(case, page_url=exc.page_url)
             result = "captcha"
 
         return {"case_id": str(case.id), "result": result}
