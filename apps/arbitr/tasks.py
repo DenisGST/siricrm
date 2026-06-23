@@ -521,6 +521,7 @@ def kad_smart_one():
       7. captcha → handle_captcha (12ч cooldown + 1 алёрт), следующие тики
          тихо пропускаются.
     """
+    import random  # noqa: WPS433
     from django.core.cache import cache
     from django.db.models import F, Q
 
@@ -529,6 +530,9 @@ def kad_smart_one():
 
     THROTTLE_KEY = "arbitr:smart_throttle_until"
     LOCK_KEY = "arbitr:smart_lock"
+    COUNTER_KEY = "arbitr:smart_parse_count"
+    BREAK_EVERY = 8       # каждые N успешных парсингов
+    BREAK_SECONDS = 1800  # пауза 30 мин
 
     if cache.get(THROTTLE_KEY):
         return {"skipped": "throttle"}
@@ -582,7 +586,19 @@ def kad_smart_one():
                 pr = _parse_one(kad, case)
                 if pr["result"] == "ok":
                     something_new = pr["new_events"] > 0 or pr["new_files"] > 0
-                    cache.set(THROTTLE_KEY, "1", timeout=(300 if something_new else 10))
+                    # Считаем успешные парсинги — каждые BREAK_EVERY пауза 30 мин.
+                    count = int(cache.get(COUNTER_KEY) or 0) + 1
+                    if count >= BREAK_EVERY:
+                        cache.set(THROTTLE_KEY, "1", timeout=BREAK_SECONDS)
+                        cache.set(COUNTER_KEY, 0, timeout=86400)
+                        pr["long_break"] = BREAK_SECONDS
+                    else:
+                        cache.set(COUNTER_KEY, count, timeout=86400)
+                        # Случайная пауза 1-10 мин если что-то новое, иначе 10с.
+                        delay = random.randint(60, 600) if something_new else 10
+                        cache.set(THROTTLE_KEY, "1", timeout=delay)
+                        pr["delay"] = delay
+                    pr["parse_count"] = count
                     # короткое уведомление в MAX
                     from .notifications import send_parsed_alert
                     send_parsed_alert(
