@@ -200,9 +200,16 @@ def _search_one(kad: KadSession, case: ArbitrCase) -> str:
         logger.exception("kad: ошибка поиска для дела %s", case.id)
         _log_check(case, ArbitrCheckLog.STATE_ERROR, notes=str(exc)[:1000])
         case.last_error = str(exc)[:2000]
-        case.last_check_at = timezone.now()
+        from datetime import timedelta
+        now = timezone.now()
+        case.last_check_at = now
         case.last_check_ok = False
-        case.save(update_fields=["last_error", "last_check_at", "last_check_ok"])
+        # error при поиске — пробуем через час (без этого NULL next_search_at
+        # → тот же кейс снова первый в очереди, бесконечный цикл).
+        case.next_search_at = now + timedelta(hours=1)
+        case.save(update_fields=[
+            "last_error", "last_check_at", "last_check_ok", "next_search_at",
+        ])
         return "error"
 
     duration_ms = int((time.monotonic() - started) * 1000)
@@ -321,9 +328,16 @@ def _parse_one(kad: KadSession, case: ArbitrCase) -> dict:
         logger.exception("kad: ошибка парсинга дела %s", case.id)
         _log_check(case, ArbitrCheckLog.STATE_ERROR, notes=str(exc)[:1000])
         case.last_error = str(exc)[:2000]
-        case.last_check_at = timezone.now()
+        now = timezone.now()
+        case.last_check_at = now
         case.last_check_ok = False
-        case.save(update_fields=["last_error", "last_check_at", "last_check_ok"])
+        # error — не зацикливать кейс, попробуем через час (а не сразу
+        # снова, как было раньше: NULL next_parse_at → кейс снова первый).
+        from datetime import timedelta
+        case.next_parse_at = now + timedelta(hours=1)
+        case.save(update_fields=[
+            "last_error", "last_check_at", "last_check_ok", "next_parse_at",
+        ])
         return {**base, "duration_sec": int(time.monotonic() - started)}
 
     duration_ms = int((time.monotonic() - started) * 1000)
@@ -586,6 +600,30 @@ def kad_smart_one():
             _log_check(case, ArbitrCheckLog.STATE_CAPTCHA, notes=exc.page_url)
             handle_captcha(case, page_url=exc.page_url)
             return {"case_id": str(case.id), "result": "captcha"}
+        except Exception as exc:  # noqa: BLE001
+            # WebDriverException, OOM, что угодно — НЕ даём задаче упасть
+            # с raised (иначе Celery бэкграундит retry, а главное — кейс
+            # без next_*_at снова первый в очереди и зацикливается).
+            logger.exception("kad_smart_one: ошибка на кейсе %s", case.id)
+            _log_check(case, ArbitrCheckLog.STATE_ERROR, notes=str(exc)[:1000])
+            from datetime import timedelta
+            now = timezone.now()
+            case.last_error = str(exc)[:2000]
+            case.last_check_at = now
+            case.last_check_ok = False
+            if kind == "search":
+                case.next_search_at = now + timedelta(hours=1)
+                case.save(update_fields=[
+                    "last_error", "last_check_at", "last_check_ok", "next_search_at",
+                ])
+            else:
+                case.next_parse_at = now + timedelta(hours=1)
+                case.save(update_fields=[
+                    "last_error", "last_check_at", "last_check_ok", "next_parse_at",
+                ])
+            # Дать времени на восстановление (chromedriver, FD-лимиты)
+            cache.set(THROTTLE_KEY, "1", timeout=120)
+            return {"case_id": str(case.id), "result": "error", "exc": str(exc)[:200]}
     finally:
         cache.delete(LOCK_KEY)
 
