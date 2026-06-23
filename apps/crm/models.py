@@ -22,6 +22,16 @@ class Region(models.Model):
         max_length=255,
         verbose_name='Наименование региона'
     )
+    # Код арбитражного суда субъекта РФ — префикс номера дела на kad.arbitr.ru
+    # (например, «А12» для Волгоградской области, «А40» для Москвы).
+    # ВАЖНО: это НЕ совпадает с number (код субъекта РФ). У ФАС РФ своя
+    # нумерация арбитражных судов. Заполняется data-миграцией crm/0064.
+    # Пусто → фильтр по региону при поиске kad отключён (вернёт все hits).
+    arbitr_code = models.CharField(
+        max_length=8, blank=True, default='',
+        verbose_name='Код арбитражного суда (kad.arbitr.ru)',
+        help_text='Префикс номера дела на kad — например «А12», «А40», «А56»',
+    )
     court_name = models.CharField(
         max_length=500,
         verbose_name='Наименование суда'

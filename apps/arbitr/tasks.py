@@ -183,11 +183,15 @@ def _search_one(kad: KadSession, case: ArbitrCase) -> str:
         return "error"
 
     # Фильтр по региону — без него по «Иванову И. И.» kad может вернуть
-    # десятки дел из разных судов РФ. Префикс case_number у kad — «АNN»
-    # где NN = Region.number (12=Волгоград, 40=Москва, 41=МО, 56=СПб …).
-    # search_by_party потом отфильтрует по case_number.upper().startswith(prefix).
+    # десятки дел из разных судов РФ. Берём Region.arbitr_code — это код
+    # АС субъекта РФ на kad.arbitr.ru (например, «А12» для Волгограда,
+    # «А40» для Москвы, «А56» для СПб). НЕ совпадает с Region.number
+    # (код субъекта РФ), у ФАС РФ своя нумерация — см. миграцию
+    # crm/0094_region_arbitr_code_data.
+    # Если arbitr_code не задан (новый/редкий регион) — фильтр пропускаем,
+    # вернётся всё что нашёл kad по ФИО.
     region = case.service.region if case.service else None
-    court_code = f"А{region.number}" if region and region.number else ""
+    court_code = (region.arbitr_code or "").strip() if region else ""
 
     started = time.monotonic()
     try:
