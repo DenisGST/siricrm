@@ -541,6 +541,7 @@ def kad_smart_one():
          тихо пропускаются.
     """
     import random  # noqa: WPS433
+    from datetime import timedelta
     from django.core.cache import cache
     from django.db.models import F, Q
 
@@ -552,6 +553,11 @@ def kad_smart_one():
     COUNTER_KEY = "arbitr:smart_parse_count"
     BREAK_EVERY = 8       # каждые N успешных парсингов
     BREAK_SECONDS = 1800  # пауза 30 мин
+
+    def _set_throttle(seconds):
+        # Храним ISO-таймстемп конца паузы — UI считывает и показывает ETA.
+        end = (timezone.now() + timedelta(seconds=seconds)).isoformat()
+        cache.set(THROTTLE_KEY, end, timeout=seconds)
 
     if cache.get(THROTTLE_KEY):
         return {"skipped": "throttle"}
@@ -585,7 +591,7 @@ def kad_smart_one():
         if candidate is None:
             # Все кейсы спарсены/обысканы недавно — короткая пауза, чтобы
             # не молотить SELECT каждые 10 секунд впустую.
-            cache.set(THROTTLE_KEY, "1", timeout=60)
+            _set_throttle(60)
             return {"skipped": "nothing_ready"}
 
         case = candidate
@@ -593,13 +599,16 @@ def kad_smart_one():
             "kad_smart_one: case=%s number=%s kind=%s",
             case.id, case.case_number, kind,
         )
+        # Для real-time панели на /arbitr/ — «парсит сейчас».
+        # Снимется в finally вместе с LOCK_KEY.
+        cache.set("arbitr:smart_current_case", str(case.id), timeout=600)
 
         try:
             with KadSession() as kad:
                 if kind == "search":
                     sr = _search_one(kad, case)
                     # _search_one уже ставит next_search_at (3ч miss / 24ч hit)
-                    cache.set(THROTTLE_KEY, "1", timeout=60)
+                    _set_throttle(60)
                     return {"case_id": str(case.id), "kind": "search", "result": sr}
                 # MONITORING
                 pr = _parse_one(kad, case)
@@ -608,14 +617,14 @@ def kad_smart_one():
                     # Считаем успешные парсинги — каждые BREAK_EVERY пауза 30 мин.
                     count = int(cache.get(COUNTER_KEY) or 0) + 1
                     if count >= BREAK_EVERY:
-                        cache.set(THROTTLE_KEY, "1", timeout=BREAK_SECONDS)
+                        _set_throttle(BREAK_SECONDS)
                         cache.set(COUNTER_KEY, 0, timeout=86400)
                         pr["long_break"] = BREAK_SECONDS
                     else:
                         cache.set(COUNTER_KEY, count, timeout=86400)
                         # Случайная пауза 1-10 мин если что-то новое, иначе 10с.
                         delay = random.randint(60, 600) if something_new else 10
-                        cache.set(THROTTLE_KEY, "1", timeout=delay)
+                        _set_throttle(delay)
                         pr["delay"] = delay
                     pr["parse_count"] = count
                     # короткое уведомление в MAX
@@ -629,7 +638,7 @@ def kad_smart_one():
                 elif pr["result"] == "captcha":
                     pass  # handle_captcha уже включил 12ч cooldown
                 else:
-                    cache.set(THROTTLE_KEY, "1", timeout=60)
+                    _set_throttle(60)
                 return {"case_id": str(case.id), "kind": "parse", **pr}
         except KadCaptchaRequired as exc:
             _log_check(case, ArbitrCheckLog.STATE_CAPTCHA, notes=exc.page_url)
@@ -657,10 +666,11 @@ def kad_smart_one():
                     "last_error", "last_check_at", "last_check_ok", "next_parse_at",
                 ])
             # Дать времени на восстановление (chromedriver, FD-лимиты)
-            cache.set(THROTTLE_KEY, "1", timeout=120)
+            _set_throttle(120)
             return {"case_id": str(case.id), "result": "error", "exc": str(exc)[:200]}
     finally:
         cache.delete(LOCK_KEY)
+        cache.delete("arbitr:smart_current_case")
 
 
 @shared_task(name="arbitr.kad_monitor_one_case")

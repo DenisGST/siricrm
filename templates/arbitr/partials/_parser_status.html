@@ -1,0 +1,82 @@
+{% load humanize %}
+{# Real-time панель парсера kad. HTMX-полит каждые 5 сек.                  #}
+
+<style>
+  /* Цвета бэйджа состояния. */
+  .arbitr-ps-badge { color:#fff; padding:2px 8px; border-radius:4px; font-weight:600; font-size:11px; }
+  .arbitr-ps-working  { background:#10b981; }
+  .arbitr-ps-captcha  { background:#ef4444; }
+  .arbitr-ps-break    { background:#f59e0b; }
+  .arbitr-ps-throttle { background:#eab308; }
+  .arbitr-ps-idle     { background:#9ca3af; }
+</style>
+
+<div class="flex items-stretch gap-3 px-3 py-2 border-b bg-base-100 text-xs"
+     style="border-color: var(--ms-blue-light, #dbeafe);">
+
+  {# ── Состояние ── #}
+  <div class="flex items-center gap-2 pr-3 border-r border-base-300">
+    <span class="arbitr-ps-badge arbitr-ps-{{ state }}">
+      {% if state == "working" %}🟢{% elif state == "captcha" %}🚫{% elif state == "break" %}⏸{% elif state == "throttle" %}⏳{% else %}⚪{% endif %}
+      {{ state_label }}
+    </span>
+    <div class="text-[11px] opacity-70">
+      До перерыва: <b>{{ parse_count }}/{{ break_every }}</b>
+    </div>
+  </div>
+
+  {# ── Что парсит сейчас ── #}
+  <div class="flex-1 min-w-0 px-2 flex flex-col justify-center">
+    {% if current_case %}
+      <div class="font-semibold truncate">
+        Сейчас: {{ current_case.case_number|default:"(без номера)" }} ·
+        {{ current_case.service.client }}
+      </div>
+      <div class="opacity-60 text-[11px]">
+        {{ current_case.get_status_display }}
+      </div>
+    {% else %}
+      <div class="opacity-50">— ничего не парсится —</div>
+    {% endif %}
+  </div>
+
+  {# ── Статистика за 24ч + готовые ── #}
+  <div class="px-3 border-l border-base-300 flex items-center gap-3 whitespace-nowrap">
+    <div class="text-[11px]">
+      <div class="opacity-60">За 24ч</div>
+      <div>
+        <span title="успешно" style="color:#10b981">✅ {{ ok_24h }}</span>
+        ·
+        <span title="ничего нового" style="color:#6b7280">⏸ {{ nothing_24h }}</span>
+        ·
+        <span title="ошибки" style="color:#f59e0b">⚠ {{ error_24h }}</span>
+        ·
+        <span title="капчи" style="color:#ef4444">🚫 {{ captcha_24h }}</span>
+      </div>
+    </div>
+    <div class="text-[11px]">
+      <div class="opacity-60">В очереди</div>
+      <div>
+        <span title="готовых к парсингу">📋 {{ ready_parse }}</span>
+        ·
+        <span title="готовых к поиску">🔍 {{ ready_search }}</span>
+      </div>
+    </div>
+  </div>
+
+  {# ── Последние 3 спарсенных ── #}
+  <div class="px-3 border-l border-base-300 flex items-center" style="min-width:280px;">
+    <div class="text-[11px] w-full">
+      <div class="opacity-60 mb-0.5">Последние</div>
+      {% for c in last_parsed|slice:":3" %}
+        <div class="truncate">
+          <span class="opacity-70">{{ c.last_check_at|date:"H:i" }}</span>
+          <b>{{ c.case_number|default:"(?)" }}</b>
+          <span class="opacity-70">· {{ c.service.client }}</span>
+        </div>
+      {% empty %}
+        <div class="opacity-50">пока ничего</div>
+      {% endfor %}
+    </div>
+  </div>
+</div>

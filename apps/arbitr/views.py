@@ -640,3 +640,99 @@ def case_create_searching(request, service_id):
         response["HX-Redirect"] = redirect_url
         return response
     return HttpResponseRedirect(redirect_url)
+
+
+@login_required
+def parser_status(request):
+    """Real-time панель работы парсера для /arbitr/.
+
+    HTMX-полит каждые 5 сек. Партиал показывает: текущее состояние
+    (работает / длинная пауза / капча), что парсит сейчас, счётчик до
+    30-мин перерыва, статистику за 24ч, последние 5 успешных кейсов.
+    """
+    from apps.arbitr import cooldown
+    from collections import Counter
+    from django.utils.dateparse import parse_datetime
+
+    now = timezone.now()
+    captcha_until = cooldown.until() if cooldown.is_active() else None
+    throttle_ttl = None
+    throttle_val = cache.get("arbitr:smart_throttle_until")
+    if throttle_val:
+        end_dt = parse_datetime(throttle_val)
+        if end_dt:
+            throttle_ttl = int((end_dt - now).total_seconds())
+            if throttle_ttl <= 0:
+                throttle_ttl = None
+    parse_count = int(cache.get("arbitr:smart_parse_count") or 0)
+    BREAK_EVERY = 8
+
+    current_case_id = cache.get("arbitr:smart_current_case")
+    current_case = None
+    if current_case_id:
+        current_case = (
+            ArbitrCase.objects
+            .select_related("service__client")
+            .filter(pk=current_case_id)
+            .first()
+        )
+
+    log_24h = ArbitrCheckLog.objects.filter(ts__gte=now - timedelta(hours=24))
+    stats = Counter(log_24h.values_list("state", flat=True))
+
+    last_parsed = list(
+        ArbitrCase.objects
+        .filter(last_check_ok=True)
+        .select_related("service__client")
+        .order_by("-last_check_at")[:5]
+    )
+
+    ready_parse = (
+        ArbitrCase.objects
+        .filter(status=ArbitrCase.STATUS_MONITORING)
+        .filter(Q(next_parse_at__isnull=True) | Q(next_parse_at__lte=now))
+        .count()
+    )
+    ready_search = (
+        ArbitrCase.objects
+        .filter(status=ArbitrCase.STATUS_SEARCHING)
+        .filter(Q(next_search_at__isnull=True) | Q(next_search_at__lte=now))
+        .count()
+    )
+
+    if captcha_until:
+        state = "captcha"
+        state_label = f"Капча — пауза до {timezone.localtime(captcha_until):%H:%M}"
+    elif throttle_ttl and throttle_ttl > 600:
+        state = "break"
+        state_label = f"Длинная пауза, осталось {throttle_ttl//60}м"
+    elif current_case_id and not throttle_ttl:
+        state = "working"
+        state_label = "Парсит"
+    elif throttle_ttl:
+        state = "throttle"
+        if throttle_ttl >= 60:
+            state_label = f"Пауза до след. кейса: {throttle_ttl//60}м {throttle_ttl%60:02d}с"
+        else:
+            state_label = f"Пауза до след. кейса: {throttle_ttl}с"
+    else:
+        state = "idle"
+        state_label = "Готов"
+
+    ctx = {
+        "state": state,
+        "state_label": state_label,
+        "current_case": current_case,
+        "parse_count": parse_count,
+        "break_every": BREAK_EVERY,
+        "captcha_until": captcha_until,
+        "throttle_ttl": throttle_ttl,
+        "ok_24h": stats.get("ok", 0),
+        "nothing_24h": stats.get("nothing", 0),
+        "error_24h": stats.get("error", 0),
+        "captcha_24h": stats.get("captcha", 0),
+        "ready_parse": ready_parse,
+        "ready_search": ready_search,
+        "last_parsed": last_parsed,
+    }
+    return render(request, "arbitr/partials/_parser_status.html", ctx)
