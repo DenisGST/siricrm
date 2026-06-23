@@ -174,6 +174,12 @@ def _search_one(kad: KadSession, case: ArbitrCase) -> str:
     ])).strip()
     if not fio:
         _log_check(case, ArbitrCheckLog.STATE_ERROR, notes="у клиента не задано ФИО")
+        from datetime import timedelta
+        now = timezone.now()
+        case.last_check_at = now
+        case.last_check_ok = False
+        case.next_search_at = now + timedelta(hours=24)
+        case.save(update_fields=["last_check_at", "last_check_ok", "next_search_at"])
         return "error"
 
     # Фильтр по региону — без него по «Иванову И. И.» kad может вернуть
@@ -308,6 +314,13 @@ def _parse_one(kad: KadSession, case: ArbitrCase) -> dict:
             "remaining_files": 0, "duration_sec": 0}
     if not case.kad_url:
         _log_check(case, ArbitrCheckLog.STATE_ERROR, notes="kad_url пуст")
+        # Без kad_url дело парсить нельзя — отложим на 24ч, чтоб не зацикливался.
+        from datetime import timedelta
+        now = timezone.now()
+        case.last_check_at = now
+        case.last_check_ok = False
+        case.next_parse_at = now + timedelta(hours=24)
+        case.save(update_fields=["last_check_at", "last_check_ok", "next_parse_at"])
         return base
 
     started = time.monotonic()
@@ -323,7 +336,13 @@ def _parse_one(kad: KadSession, case: ArbitrCase) -> dict:
             case, ArbitrCheckLog.STATE_ERROR,
             notes="Парсер parse_case ещё не реализован",
         )
-        return base
+        from datetime import timedelta
+        now = timezone.now()
+        case.last_check_at = now
+        case.last_check_ok = False
+        case.next_parse_at = now + timedelta(hours=24)
+        case.save(update_fields=["last_check_at", "last_check_ok", "next_parse_at"])
+        return {**base, "duration_sec": int(time.monotonic() - started)}
     except Exception as exc:  # noqa: BLE001
         logger.exception("kad: ошибка парсинга дела %s", case.id)
         _log_check(case, ArbitrCheckLog.STATE_ERROR, notes=str(exc)[:1000])
