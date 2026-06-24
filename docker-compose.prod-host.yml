@@ -250,9 +250,8 @@ services:
         max-file: "5"
 
   arbitr-runner-b:
-    build:
-      context: .
-      dockerfile: docker/arbitr/Dockerfile
+    # Переиспользуем образ runner'а A (экономия места: 1 образ вместо 3 ×8GB).
+    image: siricrm-arbitr-runner:latest
     command: celery -A config worker -Q arbitr_b -l info --concurrency=1 --max-tasks-per-child=20
     volumes:
       - .:/app
@@ -274,9 +273,7 @@ services:
         max-file: "5"
 
   arbitr-runner-c:
-    build:
-      context: .
-      dockerfile: docker/arbitr/Dockerfile
+    image: siricrm-arbitr-runner:latest
     command: celery -A config worker -Q arbitr_c -l info --concurrency=1 --max-tasks-per-child=20
     volumes:
       - .:/app
