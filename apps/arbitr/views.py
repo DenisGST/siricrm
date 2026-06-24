@@ -735,9 +735,19 @@ def parser_status(request):
         # окно «через полночь»
         return h >= start or h < end
 
-    current_ip = cache.get("arbitr:current_snat_ip") or ""
-    # Если rotator ещё не отписался (Redis-key пустой) — оценим по расписанию:
-    # это просто хинт для UI «вероятно сейчас активен».
+    # rotator (host-side bash скрипт) пишет ключ напрямую в Redis через
+    # `redis-cli SET arbitr:current_snat_ip …` — БЕЗ Django-префикса `:1:`.
+    # Django cache добавил бы префикс при .get() и не нашёл бы значение,
+    # поэтому читаем низкоуровнево через redis-py.
+    current_ip = ""
+    try:
+        import redis as _redis  # noqa: WPS433
+        from django.conf import settings as _settings  # noqa: WPS433
+        _r = _redis.Redis.from_url(_settings.REDIS_URL)
+        _v = _r.get("arbitr:current_snat_ip")
+        current_ip = _v.decode("utf-8") if _v else ""
+    except Exception:
+        current_ip = ""
     ip_rows = []
     for ip, s, e in SCHEDULE:
         active_now = _is_active(s, e, msk_hour)

@@ -49,8 +49,17 @@
       <div class="opacity-60 text-[11px]">
         {{ current_case.get_status_display }}
       </div>
+    {% elif state == "captcha" %}
+      <div class="opacity-70">Парсинг остановлен после капчи — ждём {{ state_label|cut:"Капча — пауза до " }}</div>
+      <div class="opacity-50 text-[11px]">После окна возобновится автоматически с новым IP по расписанию</div>
+    {% elif state == "break" %}
+      <div class="opacity-70">Длинная пауза каждые {{ break_every }} парсингов — отдыхаем</div>
+      <div class="opacity-50 text-[11px]">{{ state_label }}</div>
+    {% elif state == "throttle" %}
+      <div class="opacity-70">Пауза между кейсами (rnd 3-15 мин при «есть новое», 10с при «без нового»)</div>
+      <div class="opacity-50 text-[11px]">{{ state_label }}</div>
     {% else %}
-      <div class="opacity-50">— ничего не парсится —</div>
+      <div class="opacity-50">— нет кейсов готовых к парсингу прямо сейчас —</div>
     {% endif %}
   </div>
 
