@@ -21,6 +21,7 @@ class ClientQuerySet(models.QuerySet):
           * superuser / admin / managing_partner;
           * Employee.is_owner (root);
           * head_dep (любой руководитель отдела);
+          * accountant (бухгалтер — разносит платежи по всем клиентам);
           * сотрудник отдела с `Department.sees_all_clients=True`.
 
         Остальные сотрудники видят клиента, если:
@@ -37,7 +38,7 @@ class ClientQuerySet(models.QuerySet):
             return self.none()
         if getattr(emp, "is_owner", False):
             return self
-        if emp.role in ("head_dep", "managing_partner"):
+        if emp.role in ("head_dep", "managing_partner", "accountant"):
             return self
         if emp.department_id and getattr(emp.department, "sees_all_clients", False):
             return self
@@ -54,7 +55,7 @@ class ServiceQuerySet(models.QuerySet):
     def visible_to(self, user) -> "ServiceQuerySet":
         """Услуги, доступные пользователю.
 
-        * elevated (admin/head_dep/superuser) — все;
+        * elevated (admin/head_dep/superuser) + accountant (бухгалтер) — все;
         * остальные — услуги, на которые сотрудник назначен
           (``Service.employees``) ИЛИ чей тип услуги в ``services_allowed``.
         """
@@ -63,6 +64,8 @@ class ServiceQuerySet(models.QuerySet):
         emp = get_employee(user)
         if not emp:
             return self.none()
+        if emp.role == "accountant":
+            return self
         return self.filter(
             models.Q(employees=emp)
             | models.Q(name_id__in=emp.services_allowed.values_list("id", flat=True))

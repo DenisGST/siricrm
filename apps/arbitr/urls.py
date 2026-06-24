@@ -12,8 +12,11 @@ urlpatterns = [
 
     # Сервисная страница мониторинга
     path("", views.dashboard, name="dashboard"),
+    path("parser-status/", views.parser_status, name="parser_status"),
     path("case/<uuid:case_id>/", views.case_detail, name="case_detail"),
     path("case/<uuid:case_id>/run/", views.case_run, name="case_run"),
+    path("case/<uuid:case_id>/block-status/", views.case_block_status, name="case_block_status"),
+    path("case/<uuid:case_id>/abort/", views.case_run_abort, name="case_run_abort"),
     path("case/<uuid:case_id>/toggle-pause/", views.case_toggle_pause, name="case_toggle_pause"),
     path("search/", views.arbitr_search, name="search"),
     path("service/<uuid:service_id>/start-search/", views.case_create_searching, name="case_create_searching"),

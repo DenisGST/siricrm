@@ -53,4 +53,31 @@
   <label class="label py-1 mt-1"><span class="label-text">Дата документа</span></label>
   <input type="date" name="doc_date" class="input input-bordered input-sm w-full">
 </div>
+
+<div class="divider my-2"></div>
+
+<label class="label cursor-pointer justify-start gap-2 py-1">
+  <input type="checkbox" name="attach_to_request" class="checkbox checkbox-sm"
+         onchange="document.getElementById('scan-req-fields').classList.toggle('hidden', !this.checked)">
+  <span class="label-text">Это ответ на запрос в госорган (БФЛ)</span>
+</label>
+
+<div id="scan-req-fields" class="hidden mt-1 pl-1 border-l-2 border-base-300">
+  {% if requests %}
+  <label class="label py-1"><span class="label-text">Запрос (ответ на который пришёл)</span></label>
+  <select name="request_id" class="select select-bordered select-sm w-full">
+    <option value="">— выберите запрос —</option>
+    {% for rq in requests %}
+    <option value="{{ rq.id }}">№ {{ rq.outgoing_number|default:"—" }} · {{ rq.title }} → {{ rq.recipient_display }}</option>
+    {% endfor %}
+  </select>
+  <label class="label py-1 mt-1"><span class="label-text">Дата ответа</span></label>
+  <input type="date" name="resp_date" class="input input-bordered input-sm w-full">
+  <p class="text-xs text-base-content/50 mt-1">Скан станет сканом ответа на выбранный запрос (статус запроса → «Ответ получен»).</p>
+  {% else %}
+  <div class="alert alert-info text-xs py-1 px-2">
+    У клиента нет запросов в госорганы, ожидающих ответа.
+  </div>
+  {% endif %}
+</div>
 {% endif %}

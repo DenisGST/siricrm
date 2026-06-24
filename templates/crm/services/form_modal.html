@@ -1,4 +1,5 @@
 {% load rules %}
+{% load permissions_tags %}
 <dialog id="service-modal" class="modal modal-middle modal-open">
 
   <!-- Результаты поиска — за пределами modal-box, внутри dialog (тот же top-layer) -->
@@ -301,6 +302,17 @@
                       title="Передать услугу в работу отдела или сотрудника">
                 ↪ Передать в работу отдела/сотрудника
               </button>
+
+              {% if service.name.short_name == "БФЛ" and user|can_access_procedures %}
+              <button type="button"
+                      class="btn btn-sm btn-primary w-full mt-2"
+                      hx-get="{% url 'procedure:card' service.id %}"
+                      hx-target="#content-area" hx-swap="innerHTML"
+                      hx-on::after-request="document.getElementById('service-modal')?.remove()"
+                      title="Открыть рабочее место юриста по этой процедуре">
+                🗂 Карточка процедуры банкротства
+              </button>
+              {% endif %}
             </div>
             {% endif %}
           </div>

@@ -1,7 +1,9 @@
 """Views для UI мониторинга арбитражных дел."""
+import time
 from datetime import timedelta
 
 from django.contrib.auth.decorators import login_required
+from django.core.cache import cache
 from django.db.models import Count, Q
 from django.http import HttpResponse, HttpResponseBadRequest, HttpResponseRedirect
 from django.shortcuts import get_object_or_404, render
@@ -240,21 +242,108 @@ def case_detail(request, case_id):
     )
 
 
+def _active_task_cache_key(case_id) -> str:
+    """Ключ кэша для отслеживания активного celery-task'а по делу.
+
+    Значение: {"task_id": str, "started_at": float}. TTL 10 мин (хватит
+    на самый длинный парсинг + PDF). tasks.kad_monitor_one_case в finally
+    блоке делает cache.delete по этому же ключу — сигнал «таск завершился».
+    """
+    return f"arbitr:active_task:{case_id}"
+
+
+def _parse_progress_ctx(case):
+    """Контекст прогресс-бара парсинга: фраза-этап и % по времени с запуска."""
+    active = cache.get(_active_task_cache_key(case.id)) or {}
+    elapsed = int(time.time() - active.get("started_at", time.time())) if active else 0
+    is_search = case.status == ArbitrCase.STATUS_SEARCHING
+    if elapsed < 4:
+        phase = "Подключаемся к kad.arbitr.ru…"
+    elif elapsed < 12:
+        phase = "Ищем дело по ФИО…" if is_search else "Открываем карточку дела…"
+    elif elapsed < 22:
+        phase = "Скачиваем информацию по делу…"
+    else:
+        phase = "Скачиваем файлы (судебные акты)…"
+    return {"service": case.service, "case": case,
+            "phase": phase, "pct": min(92, 8 + int(elapsed * 3.5)), "elapsed": elapsed}
+
+
 @login_required
 @require_POST
 def case_run(request, case_id):
-    """Ручной запуск парсера для конкретного дела. Возвращает обновлённую карточку."""
+    """Ручной запуск парсера. Сохраняет task_id в кэш — для poll'инга.
+
+    block=1 → вернуть прогресс-блок (для встроенной вкладки «Суд»), иначе —
+    дашбордную карточку. Повторный запуск при активном таске — отдаёт прогресс
+    (block) или 409 (карточка), второй параллельный таск не стартует.
+    """
     if not is_admin(request.user):
         return HttpResponse("forbidden", status=403)
     case = get_object_or_404(ArbitrCase, pk=case_id)
-    kad_monitor_one_case.delay(str(case.id))
-    # Сразу пишем «manual run scheduled» в лог — чтобы поллер видел
-    # что что-то происходит до того, как воркер реально стартует.
+    as_block = bool(request.POST.get("block"))
+    key = _active_task_cache_key(case.id)
+    if cache.get(key):
+        if as_block:
+            return render(request, "arbitr/_case_block_progress.html", _parse_progress_ctx(case))
+        return HttpResponse("Парсинг уже идёт", status=409)
+    result = kad_monitor_one_case.delay(str(case.id))
+    cache.set(key, {
+        "task_id": result.id,
+        "started_at": time.time(),
+        "user": request.user.username,
+    }, timeout=600)
     ArbitrCheckLog.objects.create(
         case=case, state=ArbitrCheckLog.STATE_OK,
         notes=f"Ручной запуск инициирован (user={request.user.username})",
     )
+    if as_block:
+        return render(request, "arbitr/_case_block_progress.html", _parse_progress_ctx(case))
     return _render_case_card(request, case)
+
+
+@login_required
+def case_block_status(request, case_id):
+    """Поллинг прогресса для встроенного блока: пока таск активен — прогресс-блок;
+    завершился — актуальный _case_block.html (поллинг останавливается)."""
+    case = get_object_or_404(ArbitrCase, pk=case_id)
+    if cache.get(_active_task_cache_key(case.id)):
+        return render(request, "arbitr/_case_block_progress.html", _parse_progress_ctx(case))
+    resp = render(request, "arbitr/_case_block.html", {"service": case.service, "case": case})
+    resp["HX-Trigger"] = "courtParseDone"
+    return resp
+
+
+@login_required
+@require_POST
+def case_run_abort(request, case_id):
+    """Прерывает активный ручной парсинг.
+
+    Получает task_id из кэша, делает AsyncResult.revoke(terminate=True),
+    чистит кэш, пишет в лог. Если активного таска нет — просто триггерит
+    HX-Refresh (UI рассинхронизировался, перерендеримся).
+    """
+    if not is_admin(request.user):
+        return HttpResponse("forbidden", status=403)
+    case = get_object_or_404(ArbitrCase, pk=case_id)
+    key = _active_task_cache_key(case.id)
+    active = cache.get(key)
+    if active:
+        from celery.result import AsyncResult  # noqa: WPS433 — local
+        try:
+            AsyncResult(active["task_id"]).revoke(
+                terminate=True, signal="SIGTERM",
+            )
+        except Exception:  # noqa: BLE001 — best-effort
+            pass
+        cache.delete(key)
+        ArbitrCheckLog.objects.create(
+            case=case, state=ArbitrCheckLog.STATE_ERROR,
+            notes=f"Парсинг прерван пользователем (user={request.user.username})",
+        )
+    response = HttpResponse(status=204)
+    response["HX-Refresh"] = "true"
+    return response
 
 
 @login_required
@@ -297,13 +386,28 @@ def case_toggle_pause(request, case_id):
 
 @login_required
 def case_card_partial(request, case_id):
-    """HTMX-партиал карточки одного дела (для dashboard'а)."""
+    """HTMX-партиал карточки одного дела.
+
+    Используется и для swap'а после ручного запуска, и для self-polling'а
+    карточки во время активного парсинга (`?polling=1`).
+
+    Если `?polling=1` И активного таска в кэше уже нет → парсер завершился,
+    отвечаем HX-Refresh чтобы полностью перерендерить страницу (sidebar,
+    хронология, счётчики events_count — всё обновится).
+    """
     if not is_admin(request.user):
         return HttpResponse("forbidden", status=403)
     case = get_object_or_404(
         _annotate_cases(ArbitrCase.objects.all()),
         pk=case_id,
     )
+    is_polling = request.GET.get("polling") == "1"
+    active = cache.get(_active_task_cache_key(case.id))
+    if is_polling and not active:
+        # Парсер завершился — триггерим полную перезагрузку.
+        response = HttpResponse(status=204)
+        response["HX-Refresh"] = "true"
+        return response
     return _render_case_card(request, case)
 
 
@@ -323,6 +427,11 @@ def case_log_partial(request, case_id):
 def _render_case_card(request, case):
     case.next_check_at = _estimate_next_check_at(case)
     case.last_log_state = _last_log_state(case)
+    # Активный таск — выводим прогресс-UI и self-polling в шаблоне.
+    active = cache.get(_active_task_cache_key(case.id))
+    if active:
+        case.active_task = active
+        case.active_task_elapsed = int(time.time() - active.get("started_at", 0))
     return render(request, "arbitr/partials/_case_card.html", {"case": case})
 
 
@@ -374,6 +483,11 @@ def case_confirm_hit(request, case_id, hit_index):
         case=case, state=ArbitrCheckLog.STATE_OK,
         notes=f"Сотрудник подтвердил дело {case_number} — переводим в MONITORING",
     )
+    # stay=1 (из вкладки «Суд» карточки процедуры) — перерисовать блок дела на
+    # месте, без редиректа на dashboard арбитража.
+    if request.POST.get("stay") or request.GET.get("stay"):
+        return render(request, "arbitr/_case_block.html",
+                      {"service": case.service, "case": case})
     # После confirm весь блок страницы рендерится по-другому (нет
     # «кандидатов», есть инстанции/события). Перезагружаем dashboard с
     # выбранным делом в URL — sidebar тоже обновится с новым статусом.
@@ -526,3 +640,99 @@ def case_create_searching(request, service_id):
         response["HX-Redirect"] = redirect_url
         return response
     return HttpResponseRedirect(redirect_url)
+
+
+@login_required
+def parser_status(request):
+    """Real-time панель работы парсера для /arbitr/.
+
+    HTMX-полит каждые 5 сек. Партиал показывает: текущее состояние
+    (работает / длинная пауза / капча), что парсит сейчас, счётчик до
+    30-мин перерыва, статистику за 24ч, последние 5 успешных кейсов.
+    """
+    from apps.arbitr import cooldown
+    from collections import Counter
+    from django.utils.dateparse import parse_datetime
+
+    now = timezone.now()
+    captcha_until = cooldown.until() if cooldown.is_active() else None
+    throttle_ttl = None
+    throttle_val = cache.get("arbitr:smart_throttle_until")
+    if throttle_val:
+        end_dt = parse_datetime(throttle_val)
+        if end_dt:
+            throttle_ttl = int((end_dt - now).total_seconds())
+            if throttle_ttl <= 0:
+                throttle_ttl = None
+    parse_count = int(cache.get("arbitr:smart_parse_count") or 0)
+    BREAK_EVERY = 8
+
+    current_case_id = cache.get("arbitr:smart_current_case")
+    current_case = None
+    if current_case_id:
+        current_case = (
+            ArbitrCase.objects
+            .select_related("service__client")
+            .filter(pk=current_case_id)
+            .first()
+        )
+
+    log_24h = ArbitrCheckLog.objects.filter(ts__gte=now - timedelta(hours=24))
+    stats = Counter(log_24h.values_list("state", flat=True))
+
+    last_parsed = list(
+        ArbitrCase.objects
+        .filter(last_check_ok=True)
+        .select_related("service__client")
+        .order_by("-last_check_at")[:5]
+    )
+
+    ready_parse = (
+        ArbitrCase.objects
+        .filter(status=ArbitrCase.STATUS_MONITORING)
+        .filter(Q(next_parse_at__isnull=True) | Q(next_parse_at__lte=now))
+        .count()
+    )
+    ready_search = (
+        ArbitrCase.objects
+        .filter(status=ArbitrCase.STATUS_SEARCHING)
+        .filter(Q(next_search_at__isnull=True) | Q(next_search_at__lte=now))
+        .count()
+    )
+
+    if captcha_until:
+        state = "captcha"
+        state_label = f"Капча — пауза до {timezone.localtime(captcha_until):%H:%M}"
+    elif throttle_ttl and throttle_ttl > 600:
+        state = "break"
+        state_label = f"Длинная пауза, осталось {throttle_ttl//60}м"
+    elif current_case_id and not throttle_ttl:
+        state = "working"
+        state_label = "Парсит"
+    elif throttle_ttl:
+        state = "throttle"
+        if throttle_ttl >= 60:
+            state_label = f"Пауза до след. кейса: {throttle_ttl//60}м {throttle_ttl%60:02d}с"
+        else:
+            state_label = f"Пауза до след. кейса: {throttle_ttl}с"
+    else:
+        state = "idle"
+        state_label = "Готов"
+
+    ctx = {
+        "state": state,
+        "state_label": state_label,
+        "current_case": current_case,
+        "parse_count": parse_count,
+        "break_every": BREAK_EVERY,
+        "captcha_until": captcha_until,
+        "throttle_ttl": throttle_ttl,
+        "ok_24h": stats.get("ok", 0),
+        "nothing_24h": stats.get("nothing", 0),
+        "error_24h": stats.get("error", 0),
+        "captcha_24h": stats.get("captcha", 0),
+        "ready_parse": ready_parse,
+        "ready_search": ready_search,
+        "last_parsed": last_parsed,
+    }
+    return render(request, "arbitr/partials/_parser_status.html", ctx)

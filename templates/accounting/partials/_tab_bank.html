@@ -1,0 +1,65 @@
+{% load icons %}
+{% comment %}
+  Вкладка «Банк» — мониторинг источников входящих платежей (реальные данные).
+  Самообновляется по событию acctBankChanged (после «Проверить сейчас»).
+{% endcomment %}
+<div class="space-y-4"
+     hx-get="{% url 'accounting:tab_bank' %}" hx-trigger="acctBankChanged from:body"
+     hx-target="this" hx-swap="outerHTML">
+
+  <div class="grid gap-4" style="grid-template-columns:repeat(auto-fit,minmax(300px,1fr))">
+
+    {% include "accounting/partials/_bank_source_card.html" with s=statement title="Расчётный счёт (ТБанк)" icon_name="landmark" source_key="statement" note="Поллинг выписки по API — только входящие, не чаще раз в 3 часа." %}
+
+    {% include "accounting/partials/_bank_source_card.html" with s=acquiring title="Эквайринг (страница оплаты)" icon_name="credit-card" source_key="acquiring" note="Платежи со страницы fo-y.ru — с введёнными клиентом ФИО и телефоном (возможны ошибки)." %}
+
+    {# Сводка очереди #}
+    <div class="card bg-base-100 shadow-sm border border-base-200">
+      <div class="card-body p-4">
+        <h3 class="font-semibold flex items-center gap-2">{% icon "info" size=16 %} Очередь разнесения</h3>
+        <p class="text-xs text-base-content/60">Новые платежи попадают во вкладку «Уведомления».</p>
+        <div class="text-sm space-y-1.5 mt-1">
+          <div class="flex justify-between"><span class="text-base-content/60">Не привязано</span><span class="font-semibold {% if queue.unbound %}text-error{% endif %}">{{ queue.unbound }}</span></div>
+          <div class="flex justify-between"><span class="text-base-content/60">Неопознанных</span><span class="font-semibold {% if queue.unidentified %}text-warning{% endif %}">{{ queue.unidentified }}</span></div>
+          <div class="flex justify-between"><span class="text-base-content/60">Привязано за сегодня</span><span class="font-semibold text-success">{{ queue.bound_today }}</span></div>
+          <div class="flex justify-between"><span class="text-base-content/60">Сумма не привязанных</span><span class="font-semibold">{{ queue.unbound_sum|floatformat:0 }} ₽</span></div>
+        </div>
+        <a class="btn btn-sm btn-primary mt-2"
+           hx-get="{% url 'accounting:tab_notifications' %}" hx-target="#acct-tab" hx-swap="innerHTML"
+           onclick="document.querySelectorAll('#acct-panel .tab').forEach(function(t){t.classList.remove('tab-active')}); document.querySelectorAll('#acct-panel .tab')[1].classList.add('tab-active')">
+          {% icon "bell" size=14 %} Перейти к разнесению
+        </a>
+      </div>
+    </div>
+  </div>
+
+  {# История проверок #}
+  <div class="card bg-base-100 shadow-sm border border-base-200">
+    <div class="card-body p-4">
+      <h3 class="font-semibold mb-2">История проверок</h3>
+      <div class="overflow-x-auto">
+        <table class="table table-sm">
+          <thead>
+            <tr><th>Время</th><th>Источник</th><th class="text-right">Найдено</th><th class="text-right">Новых</th><th>Статус</th></tr>
+          </thead>
+          <tbody>
+            {% for p in polls %}
+            <tr>
+              <td class="whitespace-nowrap">{{ p.created_at|date:"d.m.Y H:i" }}</td>
+              <td>{{ p.get_source_display }}</td>
+              <td class="text-right">{{ p.found }}</td>
+              <td class="text-right">{{ p.created }}</td>
+              <td>
+                {% if p.ok %}<span class="badge badge-success badge-sm">ок</span>
+                {% else %}<span class="badge badge-error badge-sm" title="{{ p.error }}">ошибка</span>{% endif %}
+              </td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="5" class="text-center text-base-content/50">Проверок ещё не было.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>

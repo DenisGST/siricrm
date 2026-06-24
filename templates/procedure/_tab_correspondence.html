@@ -1,0 +1,207 @@
+{% load icons %}
+{% comment %}Вкладка «Корреспонденция» — 3 раскрывающихся раздела:
+  Запросы/Ответы (Request, с генерацией), Входящие/Исходящие (Correspondence по
+  направлению — файлы-сканы с номером/датой/предпросмотром).
+  Самоперезагрузка по reloadRequests (действия по запросам отдают 204 + триггер).{% endcomment %}
+<div id="requests-list"
+     hx-trigger="reloadRequests from:body"
+     hx-get="{% url 'procedure:tab_correspondence' service.id %}"
+     hx-swap="outerHTML">
+  <style>
+    /* Иконки-действия запроса: серые по умолчанию, цветные при наведении (как в поиске CRM) */
+    #procedure-correspondence .req-act{display:inline-flex;align-items:center;justify-content:center;
+      width:26px;height:26px;border:none;background:transparent;border-radius:5px;cursor:pointer;
+      color:#94a3b8;transition:color .12s,background .12s}
+    #procedure-correspondence .req-act:hover{background:var(--ms-bg,#eef1f4);color:var(--act-hc,#2563eb)}
+  </style>
+  {% comment %}procPreview/procPreviewOffice определены глобально в dashboard.html
+    (надёжнее, чем инлайн-скрипт в HTMX-партиале).{% endcomment %}
+  <div class="flex flex-col gap-3" id="procedure-correspondence">
+
+    {% comment %} ── Раздел 1: Запросы / Ответы ── {% endcomment %}
+    <details id="corr-sec-requests" ontoggle="_detToggle(this)" class="border border-base-300 rounded">
+      <summary class="px-3 py-2 cursor-pointer font-semibold bg-base-200 select-none rounded-t">
+        Запросы / Ответы <span class="badge badge-ghost badge-sm ml-1">{{ requests|length }}</span>
+      </summary>
+      <div class="p-3 flex flex-col gap-3">
+        {% comment %} Создание: один запрос / пакет {% endcomment %}
+        <div class="flex flex-row flex-wrap gap-6 items-end">
+          <form class="flex flex-wrap items-end gap-2"
+                hx-post="{% url 'procedure:request_add' service.id %}" hx-swap="none">
+            {% csrf_token %}
+            <label class="form-control min-w-0">
+              <span class="label-text text-xs">Тип запроса</span>
+              <select name="request_type" class="select select-bordered select-sm" required>
+                <option value="">— выберите тип —</option>
+                {% for rt in request_types %}<option value="{{ rt.pk }}">{{ rt.name }}</option>{% endfor %}
+              </select>
+            </label>
+            <label class="form-control min-w-0" style="position:relative" data-ta>
+              <span class="label-text text-xs">Госорган (необязательно)</span>
+              <input type="text" data-ta-input name="q" autocomplete="off"
+                     class="input input-bordered input-sm" placeholder="поиск по реестру…"
+                     data-ta-url="{% url 'procedure:recipient_search' service.id %}" oninput="taSearch(this)">
+              <input type="hidden" name="recipient_id" data-ta-id>
+              <div data-ta-results style="position:absolute;top:100%;left:0;right:0;z-index:50"></div>
+            </label>
+            <button type="submit" class="btn btn-primary btn-sm">➕ Запрос</button>
+          </form>
+          <form class="flex flex-wrap items-end gap-2"
+                hx-post="{% url 'procedure:request_package_add' service.id %}" hx-swap="none">
+            {% csrf_token %}
+            <label class="form-control min-w-0">
+              <span class="label-text text-xs">Пакет запросов</span>
+              <select name="package" class="select select-bordered select-sm" required>
+                <option value="">— выберите пакет —</option>
+                {% for p in request_packages %}<option value="{{ p.pk }}">{{ p.name }} ({{ p.types.count }})</option>{% endfor %}
+              </select>
+            </label>
+            <button type="submit" class="btn btn-outline btn-sm">📦 Сформировать пакет</button>
+          </form>
+        </div>
+
+        <div class="overflow-x-auto">
+          <table class="table table-sm table-zebra">
+            <thead>
+              <tr>
+                <th>№</th><th>Создан</th><th>Госорган</th><th>Тип запроса</th><th>Запрос</th><th>Отправлен</th>
+                <th>Срок ответа</th><th>Статус</th><th class="text-right"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for r in requests %}
+              <tr class="{% if r.is_late %}bg-error/10{% endif %}">
+                <td class="text-xs font-semibold whitespace-nowrap">{{ r.outgoing_number|default:"—" }}</td>
+                <td class="text-xs whitespace-nowrap">{{ r.created_at|date:"d.m.Y" }}</td>
+                <td>{{ r.recipient_display }}</td>
+                <td class="text-xs">{{ r.title }}</td>
+                <td class="text-xs whitespace-nowrap align-middle">
+                  {% if r.document_pdf_id or r.document_docx_id %}
+                    {% if r.document_pdf_id %}<a class="link link-primary" href="{% url 'files:stored_download' r.document_pdf_id %}?inline=1" onclick="procPreview(this.href, 'Запрос № {{ r.outgoing_number|default:'' }}'); return false">PDF</a>{% endif %}
+                    {% if r.document_docx_id %}{% if r.document_pdf_id %} · {% endif %}<a class="link" href="{% url 'files:stored_download' r.document_docx_id %}" onclick="procPreviewOffice('{% url 'procedure:office_pdf' service.id r.document_docx_id %}', 'Запрос № {{ r.outgoing_number|default:'' }} (docx)'); return false">docx</a>{% endif %}
+                  {% else %}<span class="text-base-content/40">нет</span>{% endif %}
+                </td>
+                <td class="text-xs">
+                  {% if r.sent_date %}{{ r.sent_date|date:"d.m.Y" }}{% if r.sent_method %} · {{ r.get_sent_method_display }}{% endif %}{% else %}<span class="text-base-content/40">—</span>{% endif %}
+                </td>
+                <td class="text-xs">
+                  {% if r.due_date %}{{ r.due_date|date:"d.m.Y" }}{% if r.is_late %} <span class="badge badge-error badge-xs">просрочен</span>{% endif %}{% else %}<span class="text-base-content/40">—</span>{% endif %}
+                </td>
+                <td>
+                  {% if r.status == 'draft' %}<span class="badge badge-ghost badge-sm">черновик</span>
+                  {% elif r.status == 'sent' %}<span class="badge badge-info badge-sm">отправлен</span>
+                  {% elif r.status == 'answered' %}<span class="badge badge-success badge-sm">ответ{% if r.response_date %} {{ r.response_date|date:"d.m.Y" }}{% endif %}</span>
+                  {% elif r.status == 'no_answer' %}<span class="badge badge-warning badge-sm">без ответа</span>{% endif %}
+                  {% if r.response_scan_id %}<br><a class="link text-xs" href="{% url 'files:stored_download' r.response_scan_id %}?inline=1" onclick="procPreview(this.href, 'Скан ответа'); return false">скан ответа</a>{% endif %}
+                </td>
+                <td class="text-right whitespace-nowrap align-middle">
+                  <div class="inline-flex flex-nowrap gap-1 align-middle">
+                    <button type="button" class="req-act" style="--act-hc:#2563eb"
+                            hx-get="{% url 'procedure:request_generate_form' service.id r.pk %}"
+                            hx-target="body" hx-swap="beforeend"
+                            title="{% if r.document_pdf_id %}Переформировать документ по шаблону{% else %}Сформировать документ по шаблону{% endif %}">{% if r.document_pdf_id %}{% icon "refresh-ccw" size=16 %}{% else %}{% icon "file-text" size=16 %}{% endif %}</button>
+                    <button type="button" class="req-act" style="--act-hc:#16a34a"
+                            hx-get="{% url 'procedure:request_upload_form' service.id r.pk %}"
+                            hx-target="body" hx-swap="beforeend" title="Подгрузить готовый PDF / DOCX">{% icon "upload" size=16 %}</button>
+                    {% if r.document_docx_id %}
+                    <button type="button" class="req-act" style="--act-hc:#d97706"
+                            hx-get="{% url 'procedure:request_edit_form' service.id r.pk %}"
+                            hx-target="body" hx-swap="beforeend" title="Редактировать текст документа">{% icon "pencil" size=16 %}</button>
+                    {% endif %}
+                    {% if r.status == 'draft' or r.status == 'no_answer' %}
+                    <button type="button" class="req-act" style="--act-hc:#0891b2"
+                            hx-get="{% url 'procedure:request_sent_form' service.id r.pk %}"
+                            hx-target="body" hx-swap="beforeend" title="Отметить как отправленный">{% icon "send" size=16 %}</button>
+                    {% endif %}
+                    {% if r.status == 'sent' or r.status == 'answered' %}
+                    <button type="button" class="req-act" style="--act-hc:#7c3aed"
+                            hx-get="{% url 'procedure:request_response_form' service.id r.pk %}"
+                            hx-target="body" hx-swap="beforeend" title="Внести ответ">{% icon "download" size=16 %}</button>
+                    {% endif %}
+                    <button type="button" class="req-act" style="--act-hc:#dc2626"
+                            hx-post="{% url 'procedure:request_delete' service.id r.pk %}"
+                            hx-confirm="Удалить запрос «{{ r.title }}»?" title="Удалить запрос">{% icon "trash" size=16 %}</button>
+                  </div>
+                </td>
+              </tr>
+              {% empty %}
+              <tr><td colspan="9" class="text-center text-base-content/50 py-4">
+                Запросов пока нет. Создайте запрос или сформируйте пакет.
+              </td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </details>
+
+    {% comment %} ── Раздел 2: Входящие ── {% endcomment %}
+    <details id="corr-sec-incoming" ontoggle="_detToggle(this)" class="border border-base-300 rounded">
+      <summary class="px-3 py-2 cursor-pointer font-semibold bg-base-200 select-none rounded-t">
+        Входящие <span class="badge badge-ghost badge-sm ml-1">{{ incoming|length }}</span>
+      </summary>
+      <div class="p-3 overflow-x-auto">
+        <div class="mb-2">
+          <button class="btn btn-outline btn-sm"
+                  hx-get="{% url 'procedure:correspondence_upload_form' service.id 'incoming' %}"
+                  hx-target="body" hx-swap="beforeend">📎 Загрузить скан</button>
+        </div>
+        {% include "procedure/_correspondence_table.html" with items=incoming kind="incoming" %}
+      </div>
+    </details>
+
+    {% comment %} ── Раздел 3: Исходящие ── {% endcomment %}
+    <details id="corr-sec-outgoing" ontoggle="_detToggle(this)" class="border border-base-300 rounded">
+      <summary class="px-3 py-2 cursor-pointer font-semibold bg-base-200 select-none rounded-t">
+        Исходящие <span class="badge badge-ghost badge-sm ml-1">{{ outgoing|length }}</span>
+      </summary>
+      <div class="p-3 overflow-x-auto">
+        <div class="mb-2">
+          <button class="btn btn-outline btn-sm"
+                  hx-get="{% url 'procedure:correspondence_upload_form' service.id 'outgoing' %}"
+                  hx-target="body" hx-swap="beforeend">📎 Загрузить скан</button>
+        </div>
+        {% include "procedure/_correspondence_table.html" with items=outgoing kind="outgoing" %}
+      </div>
+    </details>
+
+    {% comment %} ── Раздел 4: Судебные акты (вложения из дела kad) ── {% endcomment %}
+    <details id="corr-sec-acts" ontoggle="_detToggle(this)" class="border border-base-300 rounded">
+      <summary class="px-3 py-2 cursor-pointer font-semibold bg-base-200 select-none rounded-t">
+        Судебные акты <span class="badge badge-ghost badge-sm ml-1">{{ court_acts|length }}</span>
+      </summary>
+      <div class="p-3 overflow-x-auto">
+        {% if not has_arbitr_case %}
+          <p class="text-xs text-base-content/50">
+            По делу не ведётся мониторинг kad.arbitr.ru — нет арбитражного дела. Привяжите дело во вкладке «Суд».
+          </p>
+        {% else %}
+        <table class="table table-sm table-zebra">
+          <thead>
+            <tr><th>Дата</th><th>Тип / событие</th><th>Файл — судебный акт</th></tr>
+          </thead>
+          <tbody>
+            {% for a in court_acts %}
+            <tr>
+              <td class="text-xs whitespace-nowrap">{{ a.event.event_date|date:"d.m.Y"|default:"—" }}</td>
+              <td class="text-xs">{{ a.event.kind|default:"—" }}{% if a.event.title %} · {{ a.event.title|truncatechars:50 }}{% endif %}</td>
+              <td class="text-xs">
+                {% if a.stored_file_id %}<a class="link link-primary" href="{% url 'files:stored_download' a.stored_file_id %}?inline=1" onclick="procPreview(this.href, '{{ a.name|escapejs }}'); return false" title="Просмотреть судебный акт">📎 {{ a.name|truncatechars:60 }}</a>
+                {% elif a.is_locked %}<span title="Заблокировано на kad — не скачано">🔒 {{ a.name|truncatechars:60 }}</span>
+                {% elif a.kad_url %}<a class="link" href="{{ a.kad_url }}" target="_blank" rel="noopener">📎 {{ a.name|truncatechars:60 }}</a>
+                {% else %}📎 {{ a.name|truncatechars:60 }}{% endif %}
+              </td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="3" class="text-center text-base-content/50 py-4">
+              Судебных актов пока нет — нажмите «Парсить сейчас» во вкладке «Суд».
+            </td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% endif %}
+      </div>
+    </details>
+
+  </div>
+</div>

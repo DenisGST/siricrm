@@ -1,0 +1,26 @@
+{% load icons %}
+{% comment %}Выбор дела, если у клиента несколько услуг БФЛ. Контекст: client, services.{% endcomment %}
+<div class="flex flex-col h-full gap-3" id="procedure-panel">
+  <div class="flex items-center gap-2">
+    {% icon "femida" size=24 %}
+    <div>
+      <h2 class="text-lg font-bold">Юрист БФЛ — выбор дела</h2>
+      <p class="text-xs text-base-content/70">
+        У клиента {{ client.last_name }} {{ client.first_name }} {{ client.patronymic }} несколько услуг БФЛ — выберите дело:
+      </p>
+    </div>
+  </div>
+
+  <div class="flex flex-col gap-2 max-w-2xl">
+    {% for s in services %}
+    <button type="button" class="btn btn-outline justify-start gap-2"
+            hx-get="{% url 'procedure:card' s.id %}"
+            hx-target="#content-area" hx-swap="innerHTML">
+      {% icon "femida" size=16 %}
+      <span>
+        {{ s.name.short_name }}{% if s.numb_dogovor %} · Договор № {{ s.numb_dogovor }}{% endif %}{% if s.date_dogovor %} от {{ s.date_dogovor|date:"d.m.Y" }}{% endif %}{% if s.common_status %} — {{ s.common_status.name }}{% endif %}
+      </span>
+    </button>
+    {% endfor %}
+  </div>
+</div>

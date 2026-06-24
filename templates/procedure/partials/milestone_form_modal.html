@@ -1,0 +1,112 @@
+{% comment %}Модалка добавления/редактирования шаблона мероприятия.
+  Контекст: form, obj, stages, base_date_choices.
+  На успехе вью возвращает пустой 204 + HX-Trigger reloadMilestones → модалка
+  (hx-swap=outerHTML на #milestone-modal) исчезает, список перезагружается.{% endcomment %}
+<dialog id="milestone-modal" class="modal modal-middle modal-open">
+  <div class="modal-box w-full max-w-2xl">
+    <h3 class="font-bold text-lg mb-4">
+      {% if obj %}Редактирование мероприятия{% else %}Новое мероприятие{% endif %}
+      {% if obj.is_draft %}<span class="badge badge-warning badge-xs ml-2">🔶 черновик</span>{% endif %}
+    </h3>
+    <form hx-post="{% if obj %}{% url 'procedure:reference_milestone_edit' obj.pk %}{% else %}{% url 'procedure:reference_milestone_add' %}{% endif %}"
+          hx-target="#milestone-modal" hx-swap="outerHTML"
+          class="space-y-3">
+      {% csrf_token %}
+
+      <div>
+        <label class="label py-1"><span class="label-text">Стадия</span></label>
+        <select name="stage" class="select select-bordered select-sm w-full" required>
+          <option value="">— выберите стадию —</option>
+          {% for s in stages %}
+            <option value="{{ s.pk }}" {% if form.stage.value|stringformat:'s' == s.pk|stringformat:'s' %}selected{% endif %}>{{ s.name }} ({{ s.get_kind_scope_display }})</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="label py-1"><span class="label-text">Код</span></label>
+          <input type="text" name="code" value="{{ form.code.value|default:'' }}"
+                 class="input input-bordered w-full input-sm font-mono" required
+                 placeholder="restr_inventory">
+          <p class="text-xs text-base-content/60 mt-1">Латиница/подчёркивание, уникальный.</p>
+        </div>
+        <div>
+          <label class="label py-1"><span class="label-text">Порядок</span></label>
+          <input type="number" name="order" value="{{ form.order.value|default:0 }}"
+                 class="input input-bordered w-full input-sm" min="0">
+        </div>
+      </div>
+
+      <div>
+        <label class="label py-1"><span class="label-text">Мероприятие</span></label>
+        <input type="text" name="title" value="{{ form.title.value|default:'' }}"
+               class="input input-bordered w-full input-sm" required
+               placeholder="Опубликовать сведения в ЕФРСБ">
+      </div>
+
+      <div>
+        <label class="label py-1"><span class="label-text">Описание</span></label>
+        <textarea name="description" rows="2"
+                  class="textarea textarea-bordered w-full text-sm"
+                  placeholder="Что нужно сделать на этом сроке.">{{ form.description.value|default:'' }}</textarea>
+      </div>
+
+      <div class="rounded p-2 grid grid-cols-2 gap-3" style="background:var(--ms-bg-soft,#f8fafc)">
+        <div>
+          <label class="label py-1"><span class="label-text">Базовая дата (якорь срока)</span></label>
+          <select name="base_date_key" class="select select-bordered select-sm w-full">
+            <option value="">— без срока —</option>
+            {% for code, label in base_date_choices %}
+              <option value="{{ code }}" {% if form.base_date_key.value == code %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <label class="label py-1"><span class="label-text">Смещение, дней</span></label>
+          <input type="number" name="offset_days" value="{{ form.offset_days.value|default:0 }}"
+                 class="input input-bordered w-full input-sm">
+          <p class="text-xs text-base-content/60 mt-1">Срок = базовая дата + N дней (можно отрицательное).</p>
+        </div>
+      </div>
+
+      <div>
+        <label class="label py-1"><span class="label-text">Ответственная роль (необязательно)</span></label>
+        <input type="text" name="responsible_role" value="{{ form.responsible_role.value|default:'' }}"
+               class="input input-bordered w-full input-sm" placeholder="напр. arbitration">
+      </div>
+
+      <div class="flex flex-wrap gap-4">
+        <label class="label cursor-pointer justify-start gap-2">
+          <input type="checkbox" name="is_mandatory" class="checkbox checkbox-sm"
+                 {% if form.is_mandatory.value %}checked{% endif %}>
+          <span class="label-text">Обязательное</span>
+        </label>
+        <label class="label cursor-pointer justify-start gap-2">
+          <input type="checkbox" name="is_draft" class="checkbox checkbox-sm checkbox-warning"
+                 {% if form.is_draft.value %}checked{% endif %}>
+          <span class="label-text">🔶 Черновик (срок не подтверждён)</span>
+        </label>
+        <label class="label cursor-pointer justify-start gap-2">
+          <input type="checkbox" name="is_active" class="checkbox checkbox-sm"
+                 {% if form.is_active.value %}checked{% endif %}>
+          <span class="label-text">Активно (видно в UI)</span>
+        </label>
+      </div>
+
+      {% if form.errors %}
+        <div class="alert alert-error text-sm">
+          {% for field, errs in form.errors.items %}<div>{{ field }}: {{ errs|join:", " }}</div>{% endfor %}
+        </div>
+      {% endif %}
+
+      <div class="modal-action">
+        <button type="submit" class="btn btn-primary btn-sm">Сохранить</button>
+        <button type="button" class="btn btn-sm" onclick="this.closest('dialog').remove()">Отмена</button>
+      </div>
+    </form>
+  </div>
+  <form method="dialog" class="modal-backdrop">
+    <button onclick="this.closest('dialog').remove()">close</button>
+  </form>
+</dialog>

@@ -1,0 +1,24 @@
+{% load icons %}
+{% comment %} Результаты поиска клиента: один столбец, ФИО + регион + услуга/статус. {% endcomment %}
+{% if clients %}
+<ul class="flex flex-col bg-base-100 rounded-box border border-base-300 max-h-60 overflow-y-auto">
+  {% for c in clients %}
+  {% with svc=c.services.all.0 %}
+  <li class="border-b border-base-200 last:border-b-0">
+    <a class="block w-full px-3 py-2 cursor-pointer hover:bg-base-200"
+       hx-get="{% url 'accounting:bind_charges' %}?ip={{ ip_id }}&client={{ c.id }}"
+       hx-target="#acct-bind-clientblock" hx-swap="innerHTML">
+      <div class="font-medium text-sm">{{ c.last_name }} {{ c.first_name }}{% if c.patronymic %} {{ c.patronymic }}{% endif %}</div>
+      <div class="text-xs text-base-content/60">
+        {% if svc.region %}{{ svc.region }}{% else %}регион не указан{% endif %}
+        {% if svc %} · {{ svc.name.short_name }}: <span class="text-base-content/80">{{ svc.common_status.name|default:"без статуса" }}</span>{% endif %}
+        {% if c.phone %} · {{ c.phone }}{% endif %}
+      </div>
+    </a>
+  </li>
+  {% endwith %}
+  {% endfor %}
+</ul>
+{% elif query|length >= 2 %}
+<div class="text-sm text-base-content/50 px-1 py-2">Ничего не найдено.</div>
+{% endif %}

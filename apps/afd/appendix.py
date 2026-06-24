@@ -106,6 +106,91 @@ def schedule_appendix_pdf(service, *, appendix_no=1) -> bytes | None:
     return buf.getvalue()
 
 
+def _esc(v):
+    """Экранирование для reportlab Paragraph (XML)."""
+    from xml.sax.saxutils import escape
+    return escape(str(v or ""))
+
+
+def consent_pdf(ctx) -> bytes:
+    """Заявление о согласии на обработку персональных данных (приложение к договору).
+
+    ctx — контекст договора (contract_bfl.build_context): данные клиента +
+    реквизиты Исполнителя из ExecutorOrg ({Реквизиты_исполнителя}, {ispolnitel}).
+    """
+    from reportlab.lib.enums import TA_JUSTIFY as J
+    _ensure_font()
+    font = "DejaVu" if "DejaVu" in pdfmetrics.getRegisteredFontNames() else "Helvetica"
+    font_b = "DejaVu-Bold" if "DejaVu-Bold" in pdfmetrics.getRegisteredFontNames() else "Helvetica-Bold"
+    st_head = ParagraphStyle("head", fontName=font, fontSize=10, leading=13, spaceAfter=2)
+    st_from = ParagraphStyle("from", fontName=font, fontSize=10, leading=13, spaceBefore=6, spaceAfter=8)
+    st_title = ParagraphStyle("title", fontName=font_b, fontSize=12, alignment=1, spaceAfter=10)
+    st_body = ParagraphStyle("body", fontName=font, fontSize=10, leading=14,
+                             alignment=J, firstLineIndent=0.8 * cm, spaceAfter=6)
+    st_sign = ParagraphStyle("sign", fontName=font, fontSize=10, leading=16, spaceBefore=14)
+
+    last = ctx.get("Фамилия", "")
+    first = ctx.get("Имя", "")
+    patr = ctx.get("Отчество", "")
+    fio = " ".join(p for p in [last, first, patr] if p).strip()
+    initials = (last + " " + "".join(f"{p[0]}." for p in [first, patr] if p)).strip()
+
+    requisites = ctx.get("Реквизиты_исполнителя", "") or ""
+    ispolnitel = ctx.get("ispolnitel", "") or "Исполнителю"
+
+    pass_line = (f"паспорт {_esc(ctx.get('паспорт_серия'))} номер {_esc(ctx.get('паспорт_номер'))}), "
+                 f"выдан {_esc(ctx.get('паспорт_выдан_где'))} {_esc(ctx.get('паспорт_выдан_когда'))} г., "
+                 f"адрес регистрации: {_esc(ctx.get('адрес_регистрации'))}, "
+                 f"тел. {_esc(ctx.get('номер_телефона'))}")
+
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4, rightMargin=2 * cm, leftMargin=2.5 * cm,
+                            topMargin=2 * cm, bottomMargin=2 * cm)
+    story = []
+    for line in requisites.split("\n"):
+        story.append(Paragraph(_esc(line) or "&nbsp;", st_head))
+    story.append(Paragraph(f"От {_esc(fio)}", st_from))
+    story.append(Paragraph("Заявление о согласии на обработку персональных данных", st_title))
+
+    story.append(Paragraph(
+        f"Я, {_esc(fio)}, {_esc(ctx.get('дата рождения'))} г/р ({pass_line}, "
+        f"даю своё согласие {_esc(ispolnitel)} (далее — Исполнитель) на сбор, запись, "
+        "систематизацию, накопление, хранение, уточнение (обновление, изменение), "
+        "извлечение, использование, обезличивание, блокирование, удаление и уничтожение, "
+        "в том числе автоматизированные, своих персональных данных в специализированной "
+        "электронной базе данных о моих фамилии, имени, отчестве, дате и месте рождения, "
+        "адресе, семейном, социальном, имущественном положении, образовании, профессии, "
+        "доходах, месте работы, а также иной информации личного характера, которая может "
+        "быть использована при предоставлении Исполнителем консультационных услуг, и в "
+        "целях участия в опросах/анкетировании, проводимых Исполнителем для изучения и "
+        "исследования мнения клиентов о качестве обслуживания и услугах Исполнителя, при "
+        "условии гарантии неразглашения данной информации третьим лицам.", st_body))
+    story.append(Paragraph(
+        "Я согласен на размещение текстов судебных решений и определений, количества и "
+        "наименования кредиторов с указанием суммы задолженности, сроков выполнения работ, "
+        "отзывов (текстовых и/или фото- и видеоматериалов), а также в маркетинговых "
+        "(рекламных) материалах Исполнителя.", st_body))
+    story.append(Paragraph(
+        "Я согласен на предоставление мне информации путём направления почтовой "
+        "корреспонденции по моему домашнему адресу, посредством электронной почты, "
+        "телефонных обращений, смс-сообщений.", st_body))
+    story.append(Paragraph(
+        "Данное согласие действует с момента подписания настоящего заявления в течение "
+        "срока предоставления Исполнителем услуг и пяти лет после прекращения указанных "
+        "услуг. По истечении указанного срока действие настоящего заявления считается "
+        "продлённым на каждые последующие пять лет при отсутствии у Исполнителя сведений "
+        "о его отзыве.", st_body))
+    story.append(Paragraph(
+        "Данное согласие может быть отозвано путём представления Исполнителю письменного "
+        "заявления.", st_body))
+    story.append(Paragraph(
+        f"«___» __________ 20__ г.&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"
+        f"_______________ /{_esc(initials)}", st_sign))
+
+    doc.build(story)
+    return buf.getvalue()
+
+
 def questionnaire_appendix_pdf(service) -> bytes | None:
     """PDF анкеты (последний ответ по услуге) как приложение. None — если анкет нет."""
     response = (

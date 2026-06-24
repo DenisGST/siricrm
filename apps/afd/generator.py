@@ -68,6 +68,13 @@ def generate_bfl_contract(service, employee=None):
     # 2. Основной PDF + приложения → сводный PDF
     pdf_main = docx_to_pdf(docx_bytes)
     pdf_chunks = [pdf_main]
+    # Согласие на обработку персональных данных (оператор — из ExecutorOrg).
+    try:
+        consent = appendix.consent_pdf(ctx)
+        if consent:
+            pdf_chunks.append(consent)
+    except Exception:
+        log.exception("generate_bfl_contract: не удалось сформировать согласие на ПДн")
     schedule_pdf = appendix.schedule_appendix_pdf(service, appendix_no=1)
     if schedule_pdf:
         pdf_chunks.append(schedule_pdf)

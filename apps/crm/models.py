@@ -22,6 +22,16 @@ class Region(models.Model):
         max_length=255,
         verbose_name='Наименование региона'
     )
+    # Код арбитражного суда субъекта РФ — префикс номера дела на kad.arbitr.ru
+    # (например, «А12» для Волгоградской области, «А40» для Москвы).
+    # ВАЖНО: это НЕ совпадает с number (код субъекта РФ). У ФАС РФ своя
+    # нумерация арбитражных судов. Заполняется data-миграцией crm/0064.
+    # Пусто → фильтр по региону при поиске kad отключён (вернёт все hits).
+    arbitr_code = models.CharField(
+        max_length=8, blank=True, default='',
+        verbose_name='Код арбитражного суда (kad.arbitr.ru)',
+        help_text='Префикс номера дела на kad — например «А12», «А40», «А56»',
+    )
     court_name = models.CharField(
         max_length=500,
         verbose_name='Наименование суда'
@@ -158,6 +168,44 @@ class Client(TimeStampedModel):
     @property
     def is_from_bubble(self) -> bool:
         return bool(self.bubble_id)
+
+    @property
+    def responsible_employees(self):
+        """ВСЕ ответственные клиента (Client.employees), кроме системного бота,
+        по алфавиту. Для показа списка на карточке канбана (добавить/убрать).
+        Использует prefetch `client_employees` (employee__user) если он есть."""
+        ces = sorted(
+            self.client_employees.all(),
+            key=lambda ce: (getattr(ce.employee.user, "last_name", "") or "",
+                            getattr(ce.employee.user, "first_name", "") or ""),
+        )
+        return [ce.employee for ce in ces
+                if getattr(getattr(ce.employee, "user", None), "username", "") != "sirius_bot"]
+
+    @property
+    def primary_employee(self):
+        """Ответственный для показа на карточке/в списках — ПОСЛЕДНИЙ назначенный
+        (макс. ClientEmployee.id), исключая системного бота. Детерминированно:
+        у M2M `employees` нет сортировки, поэтому `employees.all.0` отдавал разных
+        в канбане и поиске. Использует prefetch `client_employees` если он есть."""
+        ces = sorted(self.client_employees.all(), key=lambda ce: ce.id, reverse=True)
+        if not ces:
+            return None
+        non_bot = [ce for ce in ces
+                   if getattr(getattr(ce.employee, "user", None), "username", "") != "sirius_bot"]
+        return (non_bot or ces)[0].employee
+
+    @property
+    def display_phone(self) -> str:
+        """Номер для показа в UI: основной кэш `phone`, иначе whatsapp-номер
+        (отформатированный). У части клиентов единственный номер — whatsapp,
+        и без этого фолбэка карточка показывала пустой слот телефона."""
+        if self.phone:
+            return self.phone
+        if self.whatsapp_phone:
+            from apps.crm.phone_utils import format_phone
+            return format_phone(self.whatsapp_phone)
+        return ""
 
     def __str__(self):
         return f"{self.first_name} {self.last_name} (@{self.username})"
@@ -474,6 +522,18 @@ class LegalEntity(TimeStampedModel):
         verbose_name="Регион (субъект РФ)",
     )
 
+    fssp_code = models.CharField(
+        "Код ОСП (ФССП)", max_length=20, blank=True, null=True, unique=True,
+        help_text="Код территориального органа ФССП из opendata.fssp.gov.ru "
+                  "(для идемпотентного импорта реестра ОСП).",
+    )
+    court_code = models.CharField(
+        "Код суда (ГАС Правосудие)", max_length=20, blank=True, null=True, unique=True,
+        help_text="Код суда формата «22RS0001» (2 цифры — код субъекта РФ, "
+                  "2 буквы — тип, 4 цифры — порядковый). Для идемпотентного "
+                  "импорта из sudrf.ru.",
+    )
+
     def __str__(self):
         return self.short_name or self.name
 
@@ -522,6 +582,17 @@ class EventType(TimeStampedModel):
     )
     is_active = models.BooleanField("Активен", default=True)
     order = models.PositiveIntegerField("Порядок", default=0)
+    notifies = models.BooleanField(
+        "Порождает уведомление", default=False,
+        help_text=(
+            "При записи события этого типа сотрудникам, работающим с клиентом, "
+            "приходит уведомление (на сайте + в Telegram-боте)."
+        ),
+    )
+    notify_hint = models.CharField(
+        "Подсказка-что-делать", max_length=255, blank=True,
+        help_text="Текст-подсказка в строке уведомления (что с этим делать).",
+    )
 
     class Meta:
         verbose_name = "Тип события"
@@ -565,6 +636,18 @@ class ActionType(TimeStampedModel):
     )
     is_active = models.BooleanField("Активен", default=True)
     order = models.PositiveIntegerField("Порядок", default=0)
+    notifies = models.BooleanField(
+        "Порождает уведомление", default=False,
+        help_text=(
+            "При записи действия этого типа сотрудникам, работающим с клиентом, "
+            "приходит уведомление (на сайте + в Telegram-боте). Для действий, "
+            "порождающих событие (spawns_event), ставьте флаг на стороне события."
+        ),
+    )
+    notify_hint = models.CharField(
+        "Подсказка-что-делать", max_length=255, blank=True,
+        help_text="Текст-подсказка в строке уведомления (что с этим делать).",
+    )
 
     class Meta:
         verbose_name = "Тип действия"
@@ -1136,6 +1219,11 @@ class Service(TimeStampedModel):
     date_end = models.DateField("Дата окончания оказания услуг", null=True, blank=True)
     date_terminated = models.DateField("Дата расторжения договора", null=True, blank=True)
     date_executed = models.DateField("Дата исполнения услуг по договору", null=True, blank=True)
+    # Заполняется бизнес-логикой при передаче услуги в отдел сбора документов
+    # (apps/crm/service_transfer.py). Показывается в карточке процедуры (п.3 дат услуги).
+    docs_dept_date = models.DateField(
+        "Дата передачи в отдел сбора документов", null=True, blank=True,
+    )
 
     contract_file = models.ForeignKey(
         StoredFile,
@@ -1146,6 +1234,11 @@ class Service(TimeStampedModel):
     )
     contract_price = models.DecimalField(
         "Цена договора, ₽",
+        max_digits=14, decimal_places=2,
+        null=True, blank=True,
+    )
+    total_debt = models.DecimalField(
+        "Сумма всех долгов, ₽",
         max_digits=14, decimal_places=2,
         null=True, blank=True,
     )
@@ -1715,6 +1808,18 @@ class Correspondence(TimeStampedModel):
     file_link = models.TextField(
         'Ссылка на файл письма', blank=True,
         help_text='URL Google Drive (исторический) или S3.',
+    )
+    stored_file = models.ForeignKey(
+        'files.StoredFile', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='correspondences',
+        verbose_name='Файл (StoredFile)',
+        help_text='FK на файл в S3 — заменяет file_link для новых записей.',
+    )
+    request = models.ForeignKey(
+        'procedure.Request', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='correspondences',
+        verbose_name='Связанный запрос',
+        help_text='Для писем созданных в рамках запроса/ответа.',
     )
 
     track_response = models.BooleanField('Отслеживать ответ', default=False)

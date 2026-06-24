@@ -3,31 +3,37 @@
   <div class="fixed inset-0 z-40"
        onclick="document.getElementById('assign-picker-{{ client.id }}').remove()"></div>
   <div id="assign-picker-panel-{{ client.id }}"
-       class="fixed z-50 w-48 bg-base-100 border border-base-300 rounded-lg shadow-xl py-1">
+       class="fixed z-50 w-56 max-h-72 overflow-y-auto bg-base-100 border border-base-300 rounded-lg shadow-xl py-1">
     {% for emp in employees %}
-    <button type="button"
-      class="w-full text-left px-3 py-1.5 text-sm hover:bg-base-200 flex items-center gap-2
-             {% if emp == current %}text-primary font-semibold{% endif %}"
-      hx-post="{% url 'client_assign_employee' client.id %}"
-      hx-vals='{"employee_id": "{{ emp.id }}", "prev_employee_id": "{{ current.id }}"}'
-      hx-target="#assign-badge-btn-{{ client.id }}"
-      hx-swap="outerHTML"
-      hx-on::after-request="document.getElementById('assign-picker-{{ client.id }}')?.remove()"
-      onclick="event.stopPropagation()">
-      <span class="w-3">{% if emp == current %}✓{% endif %}</span>
-      {{ emp|short_name }}
-    </button>
+      {% if emp.id in current_ids %}
+      <div class="w-full text-left px-3 py-1.5 text-sm flex items-center gap-2 text-primary font-semibold opacity-70 cursor-default"
+           title="Уже ответственный">
+        <span class="w-3">✓</span>{{ emp|short_name }}
+      </div>
+      {% else %}
+      <button type="button"
+        class="w-full text-left px-3 py-1.5 text-sm hover:bg-base-200 flex items-center gap-2"
+        hx-post="{% url 'client_assign_employee' client.id %}"
+        hx-vals='{"employee_id": "{{ emp.id }}"}'
+        hx-target="#client-resp-{{ client.id }}"
+        hx-swap="outerHTML"
+        hx-on::after-request="document.getElementById('assign-picker-{{ client.id }}')?.remove()"
+        onclick="event.stopPropagation()">
+        <span class="w-3"></span>{{ emp|short_name }}
+      </button>
+      {% endif %}
     {% endfor %}
   </div>
 </div>
 <script>
 (function() {
-  var btn   = document.getElementById('assign-badge-btn-{{ client.id }}');
+  var btn   = document.getElementById('assign-add-btn-{{ client.id }}')
+            || document.getElementById('client-resp-{{ client.id }}');
   var panel = document.getElementById('assign-picker-panel-{{ client.id }}');
   if (btn && panel) {
     var r = btn.getBoundingClientRect();
     panel.style.top  = (r.bottom + 4) + 'px';
-    panel.style.left = r.left + 'px';
+    panel.style.left = Math.max(4, r.left - 100) + 'px';
   }
 })();
 </script>

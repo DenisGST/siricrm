@@ -1,0 +1,28 @@
+{% load icons %}
+{% comment %}Лендинг «Юрист БФЛ» — пустая карточка. Данные клиента появляются
+  после выбора в главном поиске (кнопка «⚖ Дело БФЛ» в строке клиента).{% endcomment %}
+<div class="flex flex-col h-full gap-3" id="procedure-panel">
+
+  <div class="flex items-center gap-2">
+    {% icon "femida" size=24 %}
+    <div>
+      <h2 class="text-lg font-bold">Юрист БФЛ</h2>
+      <p class="text-xs text-base-content/70">Рабочее место юриста / помощника арбитражного управляющего</p>
+    </div>
+  </div>
+
+  <div class="flex-1 flex items-center justify-center text-center">
+    <div class="max-w-md px-6">
+      <div class="opacity-20 mb-3">{% icon "femida" size=56 %}</div>
+      {% if no_bfl %}
+        <p class="text-base-content/60">У выбранного клиента нет услуги <b>БФЛ</b> — дело о банкротстве открыть не из чего.</p>
+      {% else %}
+        <p class="text-base-content/60">
+          Найдите клиента в <b>поиске вверху</b> и нажмите кнопку
+          <span class="inline-flex items-center gap-1 align-middle">{% icon "femida" size=14 %} <b>«Дело БФЛ»</b></span>
+          в его строке — здесь откроется карточка процедуры банкротства.
+        </p>
+      {% endif %}
+    </div>
+  </div>
+</div>

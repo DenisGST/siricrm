@@ -51,6 +51,7 @@ urlpatterns = [
     path("clients/<uuid:client_id>/move/", views.client_move, name="client_move"),
     path("clients/<uuid:client_id>/assign-employee/", views.client_assign_employee_picker, name="client_assign_employee_picker"),
     path("clients/<uuid:client_id>/assign-employee/set/", views.client_assign_employee, name="client_assign_employee"),
+    path("clients/<uuid:client_id>/assign-employee/remove/", views.client_remove_employee, name="client_remove_employee"),
     path("clients/<uuid:client_id>/messenger-status/", views.messenger_status_badge, name="messenger_status_badge"),
     path("api/notifications/count/", views.notifications_count, name="notifications_count"),
     path("api/global-search/", views.global_search, name="global_search"),

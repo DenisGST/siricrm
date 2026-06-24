@@ -19,7 +19,15 @@
   .arbitr-section:not([open]) > summary .chevron::before { content: "+"; }
 </style>
 
-<div style="display:grid; grid-template-columns:320px 1fr; height:calc(100vh - 4rem);">
+{# ═══ Real-time панель парсера. HTMX-полит каждые 5 сек. ═══ #}
+<div id="arbitr-parser-status"
+     hx-get="{% url 'arbitr:parser_status' %}"
+     hx-trigger="load, every 5s"
+     hx-swap="innerHTML">
+  <div class="px-3 py-2 text-xs opacity-50 bg-base-100 border-b">Загрузка статуса парсера…</div>
+</div>
+
+<div style="display:grid; grid-template-columns:320px 1fr; height:calc(100vh - 7rem);">
 
   {# ═══════════════ Sidebar — список клиентов/дел ═══════════════ #}
   <aside class="border-r border-base-300 bg-base-100 overflow-y-auto">

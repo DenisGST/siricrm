@@ -47,6 +47,29 @@ def _push(msg_obj):
         logger.warning("MAX webhook: failed WS push: %s", e)
 
 
+def _download_max_file(url: str, attempts: int = 3):
+    """Скачать вложение из MAX CDN с ретраями и проверкой полноты.
+
+    Возвращает ``(bytes, content_type, err)``. Проверяем длину против
+    ``Content-Length`` — обрезанный файл не сохраняем (лучше ретрай)."""
+    last_err = None
+    for i in range(attempts):
+        try:
+            resp = requests.get(url, timeout=(10, 90))
+            resp.raise_for_status()
+            data = resp.content
+            ctype = (resp.headers.get("Content-Type") or "").lower()
+            clen = resp.headers.get("Content-Length")
+            if clen and clen.isdigit() and int(clen) != len(data):
+                raise IOError("incomplete: got %d of %s bytes" % (len(data), clen))
+            return data, ctype, None
+        except Exception as e:
+            last_err = e
+            logger.warning("MAX download attempt %d/%d failed (%s): %s",
+                           i + 1, attempts, url[:60], e)
+    return None, None, str(last_err)
+
+
 def handle_max_event(data: dict):
     """Обработать один webhook-payload MAX (текст + вложения)."""
     if not isinstance(data, dict):
@@ -136,6 +159,12 @@ def handle_max_event(data: dict):
             from apps.crm.event_logger import log_messenger_message
             log_messenger_message(client, msg_obj)
 
+    # Наше исходящее эхо? (мы отправили файл — MAX вернул его вебхуком).
+    # Тогда пропускаем ВСЕ вложения этого mid, чтобы не задвоить в чате.
+    is_our_echo = bool(max_mid and Message.objects.filter(
+        max_message_id=max_mid, channel="max", direction="outgoing",
+    ).exists())
+
     # вложения
     for att in attachments:
         att_type = att.get("type")
@@ -143,28 +172,32 @@ def handle_max_event(data: dict):
         filename = att.get("filename") or None
         size = att.get("size")
 
+        if att_type == "link":
+            continue  # цитата-ссылка обработана выше, не файл
+
         url = payload.get("url")
         if not url:
             logger.warning("MAX webhook: attachment without url, att=%r", att)
             continue
 
-        # Дубликат — это наше исходящее вложение, пуш НЕ делаем
-        if max_mid and Message.objects.filter(
-            max_message_id=max_mid,
-            channel="max",
-            message_type__in=["image", "video", "audio", "voice", "document"],
-        ).exists():
-            logger.info("MAX webhook: duplicate attachment mid=%s, skipping", max_mid)
+        if is_our_echo:
             continue
 
-        # качаем файл
-        try:
-            resp = requests.get(url, timeout=15)
-            resp.raise_for_status()
-            file_bytes = resp.content
-            content_type = (resp.headers.get("Content-Type") or "").lower()
-        except Exception as e:
-            logger.exception("❌ MAX webhook: failed download from %s: %s", url, e)
+        # 🛑 Дедуп ПО ВЛОЖЕНИЮ, а не по mid. Несколько файлов (страниц
+        # договора) в одном сообщении имеют ОБЩИЙ mid — старый дедуп по mid
+        # сохранял только первое, остальные страницы терялись («приходит
+        # 1-2 страницы»). Ключ вложения — стабильный photo_id/token/url.
+        att_uid = str(payload.get("photo_id") or payload.get("token") or url)
+        if Message.objects.filter(
+            channel="max", direction="incoming", raw_payload__att_uid=att_uid,
+        ).exists():
+            logger.info("MAX webhook: duplicate attachment uid=%s, skipping", att_uid[:24])
+            continue
+
+        # качаем файл (ретраи + проверка полноты по Content-Length)
+        file_bytes, content_type, derr = _download_max_file(url)
+        if file_bytes is None:
+            logger.error("❌ MAX webhook: failed download from %s: %s", url, derr)
             continue
 
         if not filename:
@@ -219,6 +252,7 @@ def handle_max_event(data: dict):
             file_name=filename,
             raw_payload={
                 "channel": "max",
+                "att_uid": att_uid,
                 "attachment_type": att_type,
                 "payload": payload,
                 "size": size,

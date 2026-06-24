@@ -44,6 +44,13 @@ class Department(TimeStampedModel):
                   "график платежей и начисления (например, коммерческий "
                   "отдел и бухгалтерия). Просмотр графика доступен всем.",
     )
+    is_docs_collection = models.BooleanField(
+        "Отдел сбора документов",
+        default=False,
+        help_text="Отметьте на отделе сбора документов. При передаче услуги "
+                  "в этот отдел в услугу проставляется «Дата передачи в отдел "
+                  "сбора документов» (используется в карточке процедуры).",
+    )
 
     def __str__(self):
         return self.name
@@ -196,6 +203,11 @@ class Employee(models.Model):
         "Обработка входящих сканов", default=False,
         help_text="Доступ к лотку «Входящие сканы»: видеть присланные со "
                   "сканера документы и привязывать их к клиентам.",
+    )
+    telegram_chat_id = models.BigIntegerField(
+        "Telegram chat_id (уведомления)", null=True, blank=True, unique=True,
+        help_text="Привязывается через бота уведомлений по одноразовому коду "
+                  "из профиля. Нужен для дублирования уведомлений в Telegram.",
     )
     scanner_name = models.CharField(
         "Имя сканера", max_length=100, blank=True, default="",

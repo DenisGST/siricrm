@@ -1,0 +1,21 @@
+{% comment %}Превью выбранного супруга — запись в базу только по кнопке «Сохранить».
+  Контекст: service, c (выбранный Client).{% endcomment %}
+<div class="p-2 rounded bg-base-200 border border-base-300">
+  <div class="text-xs mb-2">
+    Выбран супруг/а:
+    <b>{{ c.last_name }} {{ c.first_name }} {{ c.patronymic }}</b>
+  </div>
+  <div class="flex gap-2">
+    <button type="button" class="btn btn-sm btn-primary"
+            hx-post="{% url 'procedure:spouse_link' service.id %}"
+            hx-vals='{"client_id": "{{ c.id }}"}'
+            hx-target="#procedure-tab-body" hx-swap="innerHTML">
+      Сохранить
+    </button>
+    <button type="button" class="btn btn-sm btn-ghost"
+            hx-get="{% url 'procedure:spouse_search' service.id %}?q="
+            hx-target="#spouse-search-results" hx-swap="innerHTML">
+      Выбрать другого
+    </button>
+  </div>
+</div>

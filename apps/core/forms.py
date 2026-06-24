@@ -337,7 +337,8 @@ class EventTypeForm(forms.ModelForm):
     class Meta:
         model = EventType
         fields = ["code", "name", "source", "order",
-                  "description", "is_manual", "is_active", "standard_actions"]
+                  "description", "is_manual", "notifies", "notify_hint",
+                  "is_active", "standard_actions"]
         widgets = {
             "description": forms.Textarea(attrs={"rows": 2}),
         }
@@ -354,7 +355,8 @@ class ActionTypeForm(forms.ModelForm):
     class Meta:
         model = ActionType
         fields = ["code", "name", "order", "description",
-                  "spawns_event", "is_manual", "is_active"]
+                  "spawns_event", "is_manual", "notifies", "notify_hint",
+                  "is_active"]
         widgets = {
             "description": forms.Textarea(attrs={"rows": 2}),
         }

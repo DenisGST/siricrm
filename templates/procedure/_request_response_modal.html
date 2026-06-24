@@ -1,0 +1,46 @@
+{% comment %}Модалка «Ответ на запрос». Контекст: service, req.
+  На успехе вью отдаёт 204 + HX-Trigger reloadRequests.{% endcomment %}
+<dialog id="req-resp-modal" class="modal modal-middle modal-open">
+  <div class="modal-box w-full max-w-lg">
+    <h3 class="font-bold text-lg mb-2">Ответ на запрос</h3>
+    <p class="text-sm mb-3">{{ req.title }} → <b>{{ req.recipient_display }}</b></p>
+    <form hx-post="{% url 'procedure:request_response' service.id req.pk %}"
+          hx-target="#req-resp-modal" hx-swap="outerHTML" hx-encoding="multipart/form-data" class="space-y-3">
+      {% csrf_token %}
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="label py-1"><span class="label-text">Дата ответа</span></label>
+          <input type="date" name="response_date" value="{{ req.response_date|date:'Y-m-d' }}"
+                 class="input input-bordered input-sm w-full">
+        </div>
+        <div>
+          <label class="label py-1"><span class="label-text">Номер ответа</span></label>
+          <input type="text" name="response_number" value="{{ req.response_number }}"
+                 class="input input-bordered input-sm w-full">
+        </div>
+      </div>
+      <div>
+        <label class="label py-1"><span class="label-text">Текст / итог ответа</span></label>
+        <textarea name="response_text" rows="3" class="textarea textarea-bordered w-full text-sm"
+                  placeholder="Что ответил госорган.">{{ req.response_text }}</textarea>
+      </div>
+      <div>
+        <label class="label py-1"><span class="label-text">Скан ответа</span>
+          {% if req.response_scan_id %}<a class="link text-xs ml-2" href="{% url 'files:stored_download' req.response_scan_id %}?inline=1" target="_blank">текущий файл</a>{% endif %}
+        </label>
+        <input type="file" name="response_scan" class="block w-full text-sm border border-base-300 rounded p-1">
+      </div>
+      <label class="label cursor-pointer justify-start gap-2 rounded p-2" style="background:var(--ms-bg-soft,#f8fafc)">
+        <input type="checkbox" name="no_answer" class="checkbox checkbox-sm checkbox-warning">
+        <span class="label-text">Ответ не получен — закрыть как «Без ответа»</span>
+      </label>
+      <div class="modal-action">
+        <button type="submit" class="btn btn-primary btn-sm">Сохранить</button>
+        <button type="button" class="btn btn-sm" onclick="this.closest('dialog').remove()">Отмена</button>
+      </div>
+    </form>
+  </div>
+  <form method="dialog" class="modal-backdrop">
+    <button onclick="this.closest('dialog').remove()">close</button>
+  </form>
+</dialog>

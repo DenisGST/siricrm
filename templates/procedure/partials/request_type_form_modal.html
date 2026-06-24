@@ -1,0 +1,69 @@
+{% comment %}Модалка типа запроса. Контекст: form, obj.{% endcomment %}
+<dialog id="rtype-modal" class="modal modal-middle modal-open">
+  <div class="modal-box w-full max-w-xl">
+    <h3 class="font-bold text-lg mb-4">
+      {% if obj %}Редактирование типа запроса{% else %}Новый тип запроса{% endif %}
+    </h3>
+    <form hx-post="{% if obj %}{% url 'procedure:reference_request_type_edit' obj.pk %}{% else %}{% url 'procedure:reference_request_type_add' %}{% endif %}"
+          hx-target="#rtype-modal" hx-swap="outerHTML" class="space-y-3">
+      {% csrf_token %}
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="label py-1"><span class="label-text">Код</span></label>
+          <input type="text" name="code" value="{{ form.code.value|default:'' }}"
+                 class="input input-bordered w-full input-sm font-mono" required placeholder="req_rosreestr">
+        </div>
+        <div>
+          <label class="label py-1"><span class="label-text">Порядок</span></label>
+          <input type="number" name="order" value="{{ form.order.value|default:0 }}" min="0" class="input input-bordered w-full input-sm">
+        </div>
+      </div>
+      <div>
+        <label class="label py-1"><span class="label-text">Тип запроса</span></label>
+        <input type="text" name="name" value="{{ form.name.value|default:'' }}"
+               class="input input-bordered w-full input-sm" required placeholder="Запрос в Росреестр (недвижимость)">
+      </div>
+      <div class="grid grid-cols-2 gap-3 items-start">
+        <div style="position:relative" data-ta>
+          <label class="label py-1"><span class="label-text">Госорган по умолчанию</span></label>
+          <input type="text" data-ta-input autocomplete="off" class="input input-bordered input-sm w-full"
+                 placeholder="поиск по реестру…" name="q"
+                 value="{% if obj.default_recipient %}{{ obj.default_recipient.short_name|default:obj.default_recipient.name }}{% endif %}"
+                 data-ta-url="{% url 'procedure:reference_recipient_search' %}" oninput="taSearch(this)">
+          <input type="hidden" name="recipient_id" data-ta-id value="{{ obj.default_recipient_id|default:'' }}">
+          <div data-ta-results style="position:absolute;top:100%;left:0;right:0;z-index:60"></div>
+        </div>
+        <div>
+          <label class="label py-1"><span class="label-text">Срок ответа, дней</span></label>
+          <input type="number" name="response_days" value="{{ form.response_days.value|default:30 }}" min="0" class="input input-bordered input-sm w-full">
+        </div>
+      </div>
+      <div>
+        <label class="label py-1"><span class="label-text">Шаблон документа (.docx)</span></label>
+        <select name="template" class="select select-bordered select-sm w-full">
+          <option value="">— нет (формирование недоступно) —</option>
+          {% for t in doc_templates %}
+            <option value="{{ t.pk }}" {% if form.template.value|stringformat:'s' == t.pk|stringformat:'s' %}selected{% endif %}>{{ t.name }}</option>
+          {% endfor %}
+        </select>
+        <p class="text-xs text-base-content/60 mt-1">Шаблоны грузятся командой/в АФД (вид «Запрос в госорган»).</p>
+      </div>
+      <div class="flex flex-wrap gap-4">
+        <label class="label cursor-pointer justify-start gap-2">
+          <input type="checkbox" name="is_active" class="checkbox checkbox-sm" {% if form.is_active.value %}checked{% endif %}>
+          <span class="label-text">Активен</span>
+        </label>
+        <label class="label cursor-pointer justify-start gap-2">
+          <input type="checkbox" name="is_draft" class="checkbox checkbox-sm checkbox-warning" {% if form.is_draft.value %}checked{% endif %}>
+          <span class="label-text">🔶 Черновик</span>
+        </label>
+      </div>
+      {% if form.errors %}<div class="alert alert-error text-sm">{% for f, e in form.errors.items %}<div>{{ f }}: {{ e|join:", " }}</div>{% endfor %}</div>{% endif %}
+      <div class="modal-action">
+        <button type="submit" class="btn btn-primary btn-sm">Сохранить</button>
+        <button type="button" class="btn btn-sm" onclick="this.closest('dialog').remove()">Отмена</button>
+      </div>
+    </form>
+  </div>
+  <form method="dialog" class="modal-backdrop"><button onclick="this.closest('dialog').remove()">close</button></form>
+</dialog>

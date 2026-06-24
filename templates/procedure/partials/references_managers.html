@@ -1,0 +1,44 @@
+{% comment %}Справочник «Арбитражные управляющие». Контекст: items.{% endcomment %}
+<div id="managers-list"
+     hx-trigger="reloadManagers from:body"
+     hx-get="{% url 'procedure:references_managers' %}"
+     hx-swap="outerHTML">
+
+  <div class="flex flex-wrap justify-between items-center mb-3 gap-2">
+    <h3 class="font-semibold">Арбитражные управляющие ({{ items|length }})</h3>
+    <button class="btn btn-primary btn-sm"
+            hx-get="{% url 'procedure:reference_manager_add' %}"
+            hx-target="body" hx-swap="beforeend">+ Добавить АУ</button>
+  </div>
+
+  <p class="text-xs text-base-content/60 mb-3">
+    Реквизиты финуправляющего для документов-запросов (ИНН/СНИЛС/адрес/тел/email/СРО).
+    Подпись и печать (PNG) загружаются отдельно (для варианта «с подписью и печатью»).
+  </p>
+
+  <div class="overflow-x-auto">
+    <table class="table table-sm table-zebra">
+      <thead>
+        <tr><th>ФИО</th><th>ИНН</th><th>СНИЛС</th><th>Контакты</th><th>СРО</th><th class="w-20 text-center">Статус</th><th class="w-28 text-right"></th></tr>
+      </thead>
+      <tbody>
+        {% for it in items %}
+        <tr>
+          <td>{{ it.full_fio }}{% if it.employee %} <span class="badge badge-outline badge-xs">штатный</span>{% endif %}</td>
+          <td class="text-xs">{{ it.inn|default:"—" }}</td>
+          <td class="text-xs">{{ it.snils|default:"—" }}</td>
+          <td class="text-xs">{{ it.phone }}{% if it.phone and it.email %} · {% endif %}{{ it.email }}</td>
+          <td class="text-xs">{{ it.sro_display|default:"—" }}</td>
+          <td class="text-center">{% if it.is_active %}<span class="badge badge-success badge-xs">активен</span>{% else %}<span class="badge badge-ghost badge-xs">скрыт</span>{% endif %}</td>
+          <td class="text-right whitespace-nowrap">
+            <button class="btn btn-xs btn-outline" hx-get="{% url 'procedure:reference_manager_edit' it.pk %}" hx-target="body" hx-swap="beforeend">Изменить</button>
+            <button class="btn btn-xs btn-error btn-outline" hx-post="{% url 'procedure:reference_manager_delete' it.pk %}" hx-confirm="Удалить АУ «{{ it.short_fio }}»?">Удалить</button>
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="7" class="text-center text-base-content/60 py-6">АУ не заведены</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>

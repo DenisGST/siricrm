@@ -1,0 +1,118 @@
+{% load icons %}
+{% comment %}
+Внутренность панели уведомлений (вкладки + список). Только эта часть
+перерисовывается при смене вкладки / реакции — фиксированный шелл с шапкой
+остаётся на месте (без мигания). data-current-tab — для WS-рефреша.
+{% endcomment %}
+<div data-current-tab="{{ tab }}">
+  <!-- Вкладки -->
+  <div class="flex gap-1 px-2 pt-2" style="flex:0 0 auto">
+    {% for t in tabs %}
+      <button type="button"
+              class="btn btn-xs {% if tab == t.key %}btn-primary{% else %}btn-ghost{% endif %}"
+              hx-get="{% url 'notifications:list' %}?tab={{ t.key }}"
+              hx-target="#notif-inner" hx-swap="innerHTML">
+        {{ t.label }}
+        {% if t.count %}
+          <span class="badge badge-xs {% if t.key == 'new' %}badge-error{% else %}badge-ghost{% endif %} ml-1">{{ t.count }}</span>
+        {% endif %}
+      </button>
+    {% endfor %}
+  </div>
+
+  <!-- Список -->
+  <div id="notif-list" style="overflow-y:auto; padding:0.5rem; max-height:calc(82vh - 5.2rem)">
+    {% for n in items %}
+      <div class="rounded mb-1.5 px-2 py-1.5"
+           title="{{ n.hint|default:'' }}"
+           style="background:var(--ms-bg-soft,#f8fafc); border:1px solid var(--ms-border-light,#eef0f3)">
+        <div class="flex items-start justify-between gap-2">
+          <div style="min-width:0">
+            <div class="text-xs text-base-content/50">{{ n.created_at|date:"d.m H:i" }}</div>
+            <a class="font-semibold text-sm link link-hover"
+               hx-get="{% url 'chat' n.client_id %}" hx-target="#content-area"
+               onclick="window.__closeNotifPanel && window.__closeNotifPanel()"
+               style="cursor:pointer">{{ n.client.last_name }} {{ n.client.first_name }} {{ n.client.patronymic }}</a>
+            <div class="text-sm" style="color:#1e3a8a; word-break:break-word">{{ n.text }}</div>
+          </div>
+          {% if n.status == "accepted" %}<span class="badge badge-warning badge-xs">в работе</span>
+          {% elif n.status == "snoozed" %}<span class="badge badge-info badge-xs">отложено</span>
+          {% elif n.status == "done" %}<span class="badge badge-success badge-xs">исполнено</span>
+          {% elif n.status == "rejected" %}<span class="badge badge-ghost badge-xs">отклонено</span>
+          {% elif n.status == "acknowledged" %}<span class="badge badge-ghost badge-xs">ознакомлен</span>
+          {% endif %}
+        </div>
+
+        {% if n.is_active %}
+          <div class="nt-acts mt-1.5">
+            <button type="button" class="nt-act" title="Ознакомлен (без действий)"
+                    style="--nt-hc:#22c55e"
+                    hx-post="{% url 'notifications:respond' n.pk 'acknowledge' %}"
+                    hx-vals='{"tab": "{{ tab }}"}'
+                    hx-target="#notif-inner" hx-swap="innerHTML">{% icon "check" size=16 %}</button>
+            {% if n.status != "accepted" %}
+              <button type="button" class="nt-act" title="Принять в работу"
+                      style="--nt-hc:#f59e0b"
+                      hx-post="{% url 'notifications:respond' n.pk 'accept' %}"
+                      hx-vals='{"tab": "{{ tab }}"}'
+                      hx-target="#notif-inner" hx-swap="innerHTML">{% icon "thumbs-up" size=15 %}</button>
+            {% endif %}
+            <button type="button" class="nt-act" title="Исполнено"
+                    style="--nt-hc:#3b82f6"
+                    hx-post="{% url 'notifications:respond' n.pk 'done' %}"
+                    hx-vals='{"tab": "{{ tab }}"}'
+                    hx-target="#notif-inner" hx-swap="innerHTML">{% icon "check-check" size=17 %}</button>
+
+            <div class="dropdown dropdown-bottom">
+              <label tabindex="0" class="nt-act" title="Отклонить (с комментарием)"
+                     style="--nt-hc:#ef4444">{% icon "x" size=16 %}</label>
+              <ul tabindex="0" class="dropdown-content menu p-2 shadow bg-base-100 rounded-box"
+                  style="width:16rem; z-index:1001">
+                <li class="menu-title"><span>Отклонить — причина (необязательно)</span></li>
+                <li>
+                  <div class="flex flex-col gap-1 p-1" onclick="event.stopPropagation()">
+                    <textarea name="comment" rows="2"
+                              class="textarea textarea-bordered w-full text-sm"
+                              placeholder="Комментарий..."></textarea>
+                    <button type="button" class="btn btn-xs btn-error"
+                            hx-post="{% url 'notifications:respond' n.pk 'reject' %}"
+                            hx-vals='{"tab": "{{ tab }}"}'
+                            hx-include="closest .dropdown"
+                            hx-target="#notif-inner" hx-swap="innerHTML">Отклонить</button>
+                  </div>
+                </li>
+              </ul>
+            </div>
+
+            <div class="dropdown dropdown-bottom">
+              <label tabindex="0" class="nt-act" title="Напомнить позже"
+                     style="--nt-hc:#8b5cf6">{% icon "bell" size=15 %}</label>
+              <ul tabindex="0" class="dropdown-content menu p-1 shadow bg-base-100 rounded-box text-sm"
+                  style="width:15rem; z-index:1001">
+                {% for key, label in snooze_labels %}
+                  <li><a hx-post="{% url 'notifications:respond' n.pk 'snooze' %}"
+                         hx-vals='{"tab": "{{ tab }}", "preset": "{{ key }}"}'
+                         hx-target="#notif-inner" hx-swap="innerHTML">{{ label }}</a></li>
+                {% endfor %}
+                <li class="menu-title pt-1"><span>Указать дату и время</span></li>
+                <li>
+                  <div class="flex flex-col gap-1 p-1" onclick="event.stopPropagation()">
+                    <input type="datetime-local" name="snooze_at"
+                           class="input input-bordered input-xs w-full">
+                    <button type="button" class="btn btn-xs btn-primary"
+                            hx-post="{% url 'notifications:respond' n.pk 'snooze' %}"
+                            hx-vals='{"tab": "{{ tab }}", "preset": "custom"}'
+                            hx-include="closest .dropdown"
+                            hx-target="#notif-inner" hx-swap="innerHTML">Отложить до выбранного</button>
+                  </div>
+                </li>
+              </ul>
+            </div>
+          </div>
+        {% endif %}
+      </div>
+    {% empty %}
+      <div class="text-center text-sm text-base-content/40 py-8">Пусто</div>
+    {% endfor %}
+  </div>
+</div>

@@ -161,6 +161,39 @@ def push_messenger_status_update(client: Client):
         )
 
 
+def _notif_badge_html(employee):
+    """OOB-разметка бейджа колокола (число новых уведомлений сотрудника)."""
+    from apps.notifications.models import Notification
+    count = Notification.objects.filter(
+        recipient=employee, status=Notification.STATUS_NEW,
+    ).count()
+    return render_to_string("notifications/partials/badge_oob.html", {"count": count})
+
+
+def push_notification(notification):
+    """Живое появление уведомления у получателя: обновить бейдж + маркер для JS
+    (звук/подтянуть открытый список уведомлений)."""
+    if channel_layer is None:
+        return
+    emp = notification.recipient
+    if not emp.user_id:
+        return
+    html = _notif_badge_html(emp) + '<div data-notification-new="1" style="display:none"></div>'
+    async_to_sync(channel_layer.group_send)(
+        f"user_notifications_{emp.user_id}", {"type": "notify", "html": html},
+    )
+
+
+def push_notification_badge(employee):
+    """Просто пересчитать бейдж у сотрудника (после реакции на уведомление)."""
+    if channel_layer is None or not employee.user_id:
+        return
+    async_to_sync(channel_layer.group_send)(
+        f"user_notifications_{employee.user_id}",
+        {"type": "notify", "html": _notif_badge_html(employee)},
+    )
+
+
 def push_message_status(msg: Message):
     """
     Обновляет статус пузыря в чате через WS.

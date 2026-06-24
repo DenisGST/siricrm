@@ -56,6 +56,13 @@ def dept_sees_all_clients(user, _obj=None):
     )
 
 
+@rules.predicate
+def is_accountant(user, _obj=None):
+    """Роль accountant (бухгалтер) — видит всех клиентов и все услуги."""
+    emp = get_employee(user)
+    return bool(emp and emp.role == "accountant")
+
+
 # ─── Object-level предикаты: клиенты ───────────────────────
 @rules.predicate
 def is_responsible_for_client(user, client):
@@ -111,6 +118,7 @@ def is_allowed_service_type(user, service):
 view_client = (
     is_management_p                       # admin / head_dep / managing_partner / superuser
     | is_owner                            # Employee.is_owner
+    | is_accountant                       # роль accountant (бухгалтер)
     | dept_sees_all_clients               # Department.sees_all_clients=True
     | is_responsible_for_client           # Client.employees
     | is_responsible_for_client_service   # Service.employees услуг клиента
@@ -127,6 +135,7 @@ rules.add_perm("crm.delete_client", delete_client)
 view_service = (
     is_admin_p
     | is_references_access_p
+    | is_accountant                       # роль accountant (бухгалтер)
     | is_responsible_for_service
     | is_allowed_service_type
 )

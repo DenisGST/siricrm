@@ -13,6 +13,16 @@
 #   docker compose up -d
 # =============================================================================
 
+# Резервные DNS для контейнеров с исходящим трафиком (24.06.2026 outage:
+# Beget'овский 198.18.18.18 завис на 70 минут, MAX/WhatsApp/Telegram не отправлялись).
+# Docker daemon кэширует host'овский /etc/resolv.conf при старте — поэтому глобальный
+# фикс на /etc/resolv.conf хоста контейнерам не помогает. Передаём DNS явно.
+x-default-dns: &default-dns
+  - 198.18.18.18   # Beget primary (если живой — быстрее всех)
+  - 1.1.1.1        # Cloudflare fallback 1
+  - 1.0.0.1        # Cloudflare fallback 2
+  - 8.8.8.8        # Google fallback 3
+
 services:
   db:
     image: postgres:16-alpine
@@ -62,6 +72,7 @@ services:
       - ${ENV_FILE:-.env.prod}
     environment:
       DJANGO_ENV: prod
+    dns: *default-dns
     depends_on:
       db:
         condition: service_healthy
@@ -83,6 +94,7 @@ services:
       - ${ENV_FILE:-.env.prod}
     environment:
       DJANGO_ENV: prod
+    dns: *default-dns
     depends_on:
       - db
       - redis
@@ -103,6 +115,7 @@ services:
       - ${ENV_FILE:-.env.prod}
     environment:
       DJANGO_ENV: prod
+    dns: *default-dns
     depends_on:
       - db
       - redis
@@ -127,6 +140,7 @@ services:
     environment:
       DJANGO_ENV: prod
       CELERY_BROKER_URL: redis://redis:6379/0
+    dns: *default-dns
     depends_on:
       - redis
       - celery
@@ -168,6 +182,7 @@ services:
       TELEGRAM_PROXY_SECRET: ${TELEGRAM_PROXY_SECRET:-}
       TELEGRAM_PROXY_USER: ${TELEGRAM_PROXY_USER:-}
       TELEGRAM_PROXY_PASS: ${TELEGRAM_PROXY_PASS:-}
+    dns: *default-dns
     depends_on:
       db:
         condition: service_healthy
@@ -195,6 +210,7 @@ services:
       HOST_REPO_DIR: ${HOST_REPO_DIR}
       COMPOSE_FILE_NAME: ${COMPOSE_FILE_NAME:-docker-compose.prod-host.yml}
       ENV_FILE: ${ENV_FILE:-.env.prod}
+    dns: *default-dns
     depends_on:
       - db
       - redis
@@ -218,6 +234,7 @@ services:
       - ${ENV_FILE:-.env.prod}
     environment:
       DJANGO_ENV: prod
+    dns: *default-dns
     # Chromium любит большой /dev/shm — иначе падает на сложных страницах.
     shm_size: '2gb'
     depends_on:
@@ -245,6 +262,7 @@ services:
     environment:
       DJANGO_ENV: prod
       POSTGRES_HOST: db
+    dns: *default-dns
     depends_on:
       - db
     restart: unless-stopped

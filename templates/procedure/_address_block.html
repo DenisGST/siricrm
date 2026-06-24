@@ -1,0 +1,36 @@
+{% comment %}Адреса лица (должник/супруга) — список с add/edit/delete, как в карточке клиента.
+  Контекст: service, who, client, addresses.{% endcomment %}
+<div id="addr-section-{{ who }}">
+  <div class="flex items-center justify-between mb-2">
+    <span class="text-xs font-semibold text-base-content/70">Адреса</span>
+    <button type="button" class="btn btn-primary btn-xs"
+            hx-get="{% url 'procedure:address_add' service.id who %}"
+            hx-target="#addr-section-{{ who }}" hx-swap="innerHTML">
+      + Добавить адрес
+    </button>
+  </div>
+
+  {% for addr in addresses %}
+  <div class="flex items-start gap-2 p-2 rounded mb-1 bg-base-200 border border-base-300">
+    <div class="flex-1 min-w-0">
+      <div class="flex items-center gap-2">
+        <span class="badge badge-sm badge-outline">{{ addr.get_address_type_display }}</span>
+        {% if addr.comment %}<span class="text-xs text-base-content/50">({{ addr.comment }})</span>{% endif %}
+      </div>
+      <div class="text-xs mt-1 truncate" title="{{ addr.result }}">{{ addr.result|default:addr.source }}</div>
+      {% if addr.postal_code %}<div class="text-xs text-base-content/50">Индекс: {{ addr.postal_code }}</div>{% endif %}
+    </div>
+    <div class="flex gap-1 flex-shrink-0">
+      <button type="button" class="btn btn-xs btn-outline"
+              hx-get="{% url 'procedure:address_edit' service.id who addr.id %}"
+              hx-target="#addr-section-{{ who }}" hx-swap="innerHTML">✎</button>
+      <button type="button" class="btn btn-xs btn-error btn-outline"
+              hx-post="{% url 'procedure:address_delete' service.id who addr.id %}"
+              hx-target="#addr-section-{{ who }}" hx-swap="innerHTML"
+              hx-confirm="Удалить этот адрес?">✕</button>
+    </div>
+  </div>
+  {% empty %}
+  <div class="text-xs py-2 text-base-content/50">Адреса не добавлены</div>
+  {% endfor %}
+</div>

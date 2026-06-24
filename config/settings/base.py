@@ -51,6 +51,9 @@ INSTALLED_APPS = [
     "apps.arbitr",
     "apps.afd",
     "apps.scans",
+    "apps.accounting",
+    "apps.notifications",
+    "apps.procedure",
 
     # django-rules: object-level permissions (apps/<app>/rules.py авто-импортируются)
     "rules.apps.AutodiscoverRulesConfig",
@@ -67,6 +70,20 @@ AUTHENTICATION_BACKENDS = (
 # --- DevOps panel ---
 DEVOPS_AGENT_TOKEN = config("DEVOPS_AGENT_TOKEN", default="")
 DEVOPS_AGENT_TOKEN_PROD = config("DEVOPS_AGENT_TOKEN_PROD", default="")
+
+# --- Бухгалтерия / ТБанк (apps.accounting) ---
+# Секреты только из env. Пустой токен → поллинг no-op (источник «не настроен»).
+TBANK_BUSINESS_API_BASE = config("TBANK_BUSINESS_API_BASE", default="https://business.tbank.ru/openapi")
+TBANK_ACQUIRING_API_BASE = config("TBANK_ACQUIRING_API_BASE", default="https://securepay.tinkoff.ru/v2")
+TBANK_BUSINESS_API_TOKEN = config("TBANK_BUSINESS_API_TOKEN", default="")
+TBANK_ACCOUNT_NUMBER = config("TBANK_ACCOUNT_NUMBER", default="")
+TBANK_ACQUIRING_TERMINAL_KEY = config("TBANK_ACQUIRING_TERMINAL_KEY", default="")
+TBANK_ACQUIRING_PASSWORD = config("TBANK_ACQUIRING_PASSWORD", default="")
+# Гейты поллинга (по умолчанию выключены — включать когда заведены креды).
+ACCOUNTING_STATEMENT_POLL_ENABLED = config("ACCOUNTING_STATEMENT_POLL_ENABLED", default=False, cast=bool)
+ACCOUNTING_ACQUIRING_POLL_ENABLED = config("ACCOUNTING_ACQUIRING_POLL_ENABLED", default=False, cast=bool)
+# Минимальный интервал опроса выписки р/с (часы) — «не чаще раз в N часов».
+ACCOUNTING_POLL_MIN_INTERVAL_HOURS = config("ACCOUNTING_POLL_MIN_INTERVAL_HOURS", default=3, cast=int)
 
 MIDDLEWARE = [
     # Должна быть ПЕРВОЙ — её process_response вызывается последним и стирает

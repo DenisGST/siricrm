@@ -1,0 +1,6 @@
+[Unit]
+Description=Arbitr kad SNAT IP rotator (one-shot, called by timer)
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/arbitr-snat-rotate.sh

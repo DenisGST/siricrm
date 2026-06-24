@@ -1,0 +1,16 @@
+{% comment %}Результаты поиска клиента для выбора супруги.{% endcomment %}
+{% if query and clients %}
+  <ul class="menu bg-base-200 rounded-box p-1">
+    {% for c in clients %}
+      <li>
+        <button type="button" class="text-sm"
+                hx-get="{% url 'procedure:spouse_pick' service.id %}?client_id={{ c.id }}"
+                hx-target="#spouse-search-results" hx-swap="innerHTML">
+          {{ c.last_name }} {{ c.first_name }} {{ c.patronymic }}
+        </button>
+      </li>
+    {% endfor %}
+  </ul>
+{% elif query %}
+  <p class="text-xs text-base-content/50">Ничего не найдено.</p>
+{% endif %}

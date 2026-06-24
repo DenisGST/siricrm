@@ -4,12 +4,60 @@ from __future__ import annotations
 import logging
 
 from django.conf import settings
+from django.utils import timezone
 
 from apps.maxchat.sender import send_max_message
 
+from . import cooldown
 from .models import ArbitrCase
 
 logger = logging.getLogger("arbitr.notify")
+
+
+def send_parsed_alert(
+    case: ArbitrCase, *,
+    new_events: int,
+    new_files: int,
+    duration_sec: int,
+) -> bool:
+    """После успешного парсинга шлёт в MAX короткую сводку:
+    «А12-…/2025 — Иванов И. И. · скачано 3 новых записей, 1 новый файл · 67с»
+    """
+    chat_id = (settings.ARBITR_CAPTCHA_NOTIFY_MAX_CHAT_ID or "").strip()
+    token = (settings.MAX_BOT_TOKEN or "").strip()
+    if not chat_id or not token:
+        return False
+
+    client = case.service.client if case.service else None
+    fio = (
+        " ".join(filter(None, [
+            client.last_name if client else "",
+            client.first_name if client else "",
+            client.patronymic if client else "",
+        ])).strip() or "(без ФИО)"
+    )
+    case_number = case.case_number or "(номер не указан)"
+    text = (
+        f"✅ {case_number} · {fio}\n"
+        f"Скачано: {new_events} нов. записей, {new_files} нов. файл(ов) · {duration_sec}с"
+    )
+    ok, _msg_id, err = send_max_message(
+        access_token=token, chat_id=chat_id, text=text,
+    )
+    if not ok:
+        logger.error("Parsed alert MAX send failed: %s", err)
+    return ok
+
+
+def handle_captcha(case: ArbitrCase, *, page_url: str = "") -> None:
+    """Реакция на капчу от kad: активировать 12ч-cooldown и (если активировали
+    только что) — отправить одиночный алёрт в MAX.
+
+    Повторные капчи во время активного cooldown молчат — флудить смысла нет,
+    парсер всё равно остановлен.
+    """
+    if cooldown.activate():
+        send_captcha_alert(case, page_url=page_url)
 
 
 def send_captcha_alert(case: ArbitrCase, *, page_url: str = "") -> bool:
@@ -32,13 +80,25 @@ def send_captcha_alert(case: ArbitrCase, *, page_url: str = "") -> bool:
     client = case.service.client
     fio = " ".join(filter(None, [client.last_name, client.first_name, client.patronymic]))
     case_number = case.case_number or "(номер не указан)"
+
+    until_dt = cooldown.until()
+    if until_dt:
+        msk = timezone.localtime(until_dt)
+        resume_line = (
+            "⏸ Мониторинг арбитража приостановлен на 12 часов.\n"
+            f"Возобновится автоматически: {msk:%d.%m %H:%M} (МСК)\n"
+        )
+    else:
+        resume_line = ""
+
     text = (
-        "⚠️ kad.arbitr.ru показал капчу\n"
-        f"Дело: {case_number}\n"
+        "⚠️ kad.arbitr.ru показал капчу серверу\n"
+        f"{resume_line}"
+        f"Первое сорвавшееся дело: {case_number}\n"
         f"Клиент: {fio}\n"
-        f"Запустил мониторинг: {started_by}\n"
-        f"Открыть kad: {page_url or case.kad_url or 'https://kad.arbitr.ru'}\n"
-        "Зайди в браузере, реши капчу — следующий цикл парсера её подхватит."
+        f"Запустил мониторинг: {started_by}\n\n"
+        "ℹ️ Капчу из браузера НЕ решить — kad показывает её только на IP "
+        "сервера. Парсер сам подождёт 12ч и попробует снова."
     )
 
     ok, msg_id, err = send_max_message(

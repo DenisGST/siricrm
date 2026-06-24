@@ -14,6 +14,7 @@
 import logging
 
 from django.db import transaction
+from django.utils import timezone
 
 from apps.crm import client_log
 from apps.crm.kanban_inbox import ensure_inbox_status
@@ -109,4 +110,11 @@ def transfer_service(service, *, target_department=None, target_employee=None,
     client_log.record_event(
         service.client, event_code, comment=event_comment, employee=actor, parent=action,
     )
+
+    # Бизнес-логика: при первой передаче в отдел сбора документов — проставить
+    # дату передачи в услугу (п.3 дат услуги в карточке процедуры).
+    if getattr(department, "is_docs_collection", False) and not service.docs_dept_date:
+        service.docs_dept_date = timezone.localdate()
+        service.save(update_fields=["docs_dept_date"])
+
     return recipients

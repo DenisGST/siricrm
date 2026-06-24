@@ -142,6 +142,108 @@
   </script>
 
   <script>
+    // Typeahead-выбор (надёжно, без inline-script в модалках): результат-ссылка
+    // вызывает taPick(this); контейнер помечен data-ta, поля — data-ta-id /
+    // data-ta-input, результаты — data-ta-results. data-le-id/data-le-name на ссылке.
+    window.taPick = function (el) {
+      var ta = el.closest('[data-ta]');
+      if (!ta) return;
+      var idEl = ta.querySelector('[data-ta-id]');
+      var inEl = ta.querySelector('[data-ta-input]');
+      var resEl = ta.querySelector('[data-ta-results]');
+      if (idEl) idEl.value = el.getAttribute('data-le-id') || '';
+      if (inEl) inEl.value = el.getAttribute('data-le-name') || '';
+      if (resEl) resEl.innerHTML = '';
+    };
+
+    // Combobox с фильтром по первым буквам (опции уже отрендерены на клиенте).
+    // Контейнер data-combo; поле ввода data-combo-input; hidden data-combo-id;
+    // список data-combo-list; пункты data-combo-opt (data-id, data-text=lower).
+    window.comboFilter = function (input) {
+      var box = input.closest('[data-combo]'); if (!box) return;
+      var list = box.querySelector('[data-combo-list]');
+      var q = (input.value || '').trim().toLowerCase();
+      var any = false, exactId = '';
+      box.querySelectorAll('[data-combo-opt]').forEach(function (li) {
+        var t = li.getAttribute('data-text') || '';
+        var show = !q || t.indexOf(q) !== -1;
+        li.style.display = show ? '' : 'none';
+        if (show) any = true;
+        if (t === q) exactId = li.getAttribute('data-id');
+      });
+      if (list) list.style.display = any ? 'block' : 'none';
+      // точное совпадение текста → проставим id (на случай ввода без клика)
+      box.querySelector('[data-combo-id]').value = exactId;
+    };
+    window.comboPick = function (a) {
+      var box = a.closest('[data-combo]'); if (!box) return;
+      var li = a.closest('[data-combo-opt]');
+      box.querySelector('[data-combo-id]').value = li.getAttribute('data-id') || '';
+      box.querySelector('[data-combo-input]').value = a.textContent.trim();
+      box.querySelector('[data-combo-list]').style.display = 'none';
+    };
+    document.addEventListener('click', function (e) {
+      document.querySelectorAll('[data-combo-list]').forEach(function (list) {
+        var box = list.closest('[data-combo]');
+        if (box && !box.contains(e.target)) list.style.display = 'none';
+      });
+    });
+
+    // Серверный typeahead через fetch (надёжно и в модалках, в отличие от
+    // hx-get внутри динамически добавленной модалки). Результаты — HTML-партиал
+    // с onclick="taPick(this)". Контейнер data-ta; результаты data-ta-results.
+    window.taSearch = function (input) {
+      var box = input.closest('[data-ta]'); if (!box) return;
+      var res = box.querySelector('[data-ta-results]'); if (!res) return;
+      var url = input.getAttribute('data-ta-url'); if (!url) return;
+      clearTimeout(input._taTimer);
+      input._taTimer = setTimeout(function () {
+        var q = (input.value || '').trim();
+        if (q.length < 2) { res.innerHTML = ''; return; }
+        var params = 'q=' + encodeURIComponent(q);
+        // доп. параметры (тип/регион и т.п.) — элементы data-ta-param в контейнере
+        box.querySelectorAll('[data-ta-param]').forEach(function (el) {
+          var name = el.getAttribute('data-ta-param');
+          var val = el.type === 'checkbox' ? (el.checked ? '1' : '0') : el.value;
+          if (val !== '' && val != null) params += '&' + name + '=' + encodeURIComponent(val);
+        });
+        fetch(url + (url.indexOf('?') >= 0 ? '&' : '?') + params,
+              { headers: { 'X-Requested-With': 'XMLHttpRequest' }, credentials: 'same-origin' })
+          .then(function (r) { return r.text(); })
+          .then(function (html) { res.innerHTML = html; })
+          .catch(function () { res.innerHTML = ''; });
+      }, 300);
+    };
+    // Перезапуск поиска при смене типа/региона (находит поле ввода в контейнере).
+    window.taRefresh = function (el) {
+      var box = el.closest('[data-ta]'); if (!box) return;
+      var input = box.querySelector('[data-ta-input]');
+      if (input) window.taSearch(input);
+    };
+
+    // Запоминание раскрытия <details id=…> (чтобы htmx-перезагрузка фрагмента
+    // не сбрасывала открытый раздел). На <details>: ontoggle="_detToggle(this)".
+    window._detOpenState = window._detOpenState || {};
+    window._detToggle = function (d) { if (d && d.id) window._detOpenState[d.id] = d.open; };
+    document.body.addEventListener('htmx:afterSettle', function () {
+      Object.keys(window._detOpenState).forEach(function (id) {
+        var d = document.getElementById(id);
+        if (d && d.open !== window._detOpenState[id]) d.open = window._detOpenState[id];
+      });
+    });
+    // Парсинг kad завершился — тост (блок «Суд» уже перерисовался свежими данными).
+    document.body.addEventListener('courtParseDone', function () {
+      if (window.showToast) window.showToast('Готово — данные с kad.arbitr.ru обновлены', 'success');
+    });
+    document.addEventListener('click', function (e) {
+      document.querySelectorAll('[data-ta-results]').forEach(function (res) {
+        var box = res.closest('[data-ta]');
+        if (box && !box.contains(e.target)) res.innerHTML = '';
+      });
+    });
+  </script>
+
+  <script>
     // Форматирование телефона в «+7 (XXX) XXX-XX-XX» (8→7, 10 цифр→+7).
     // Навешивается на поля телефона через onblur="formatPhoneField(this)".
     // Серверная нормализация (ClientForm.clean_phone / sync) — основная гарантия.
@@ -283,15 +385,16 @@
       <div class="navbar-end gap-0">
         <div class="tooltip tooltip-bottom" data-tip="Уведомления">
           <button type="button" class="btn btn-ghost btn-xs btn-square indicator"
-                  onclick="toggleNotifications()">
+                  data-notif-bell onclick="toggleNotifications()">
             <span id="notif-count" class="indicator-item badge badge-error badge-xs hidden"></span>
             {% icon "bell" size=14 %}
           </button>
         </div>
         <span id="notif-count-poller" class="hidden"
-              hx-get="{% url 'notifications_count' %}"
+              hx-get="{% url 'notifications:badge' %}"
               hx-trigger="load, every 20s, refresh-count"
               hx-swap="none"></span>
+        <div id="notifications-panel-wrap"></div>
 
         <span class="navbar-divider"></span>
 
@@ -784,7 +887,13 @@ document.addEventListener('htmx:afterRequest', (event) => {
     if (inl) inl.value = this.value;
   });
   function toggleNotifications() {
-    openTelegramChatModal();
+    if (document.getElementById('notifications-panel')) {
+      if (window.__closeNotifPanel) window.__closeNotifPanel();
+      else document.getElementById('notifications-panel').remove();
+      return;
+    }
+    htmx.ajax('GET', "{% url 'notifications:panel' %}",
+              { target: '#notifications-panel-wrap', swap: 'innerHTML' });
   }
 
   // Глобальный поиск: открыть/закрыть dropdown
@@ -831,6 +940,40 @@ document.addEventListener('htmx:afterRequest', (event) => {
     const poller = document.getElementById('notif-count-poller');
     if (poller && window.htmx) htmx.trigger(poller, 'refresh-count');
   });
+
+  // ── Быстрый предпросмотр файла в модалке (глобально — не в HTMX-партиале,
+  // иначе при innerHTML-свопе вкладки скрипт мог не выполниться и onclick падал
+  // на дефолтный href = скачивание). procPreview(url) — iframe (PDF/картинки);
+  // procPreviewOffice(url) — тот же iframe (url ведёт на office_pdf → PDF-рендер). ──
+  window.procPreview = function (url, name) {
+    var dlg = document.createElement('dialog');
+    dlg.className = 'modal modal-open'; dlg.style.zIndex = '1200';
+    var box = document.createElement('div');
+    box.className = 'modal-box p-0 flex flex-col';
+    box.style.cssText = 'max-width:980px;width:92vw;height:88vh';
+    var bar = document.createElement('div');
+    bar.className = 'flex items-center gap-2 px-3 py-2 border-b border-base-300';
+    var ttl = document.createElement('span');
+    ttl.className = 'font-semibold text-sm truncate'; ttl.textContent = name || 'Просмотр документа';
+    var ext = document.createElement('a');
+    ext.className = 'btn btn-ghost btn-xs ml-auto'; ext.href = url; ext.target = '_blank';
+    ext.rel = 'noopener'; ext.title = 'Открыть в новой вкладке'; ext.textContent = '↗';
+    var cls = document.createElement('button');
+    cls.type = 'button'; cls.className = 'btn btn-ghost btn-xs'; cls.textContent = '✕';
+    cls.onclick = function () { dlg.remove(); };
+    bar.append(ttl, ext, cls);
+    var frame = document.createElement('iframe');
+    frame.src = url; frame.style.cssText = 'flex:1;width:100%;border:0';
+    box.append(bar, frame);
+    var bd = document.createElement('div');
+    bd.className = 'modal-backdrop'; bd.onclick = function () { dlg.remove(); };
+    dlg.append(box, bd);
+    document.addEventListener('keydown', function esc(e) {
+      if (e.key === 'Escape') { dlg.remove(); document.removeEventListener('keydown', esc); }
+    });
+    document.body.appendChild(dlg);
+  };
+  window.procPreviewOffice = function (url, name) { window.procPreview(url, name || 'Просмотр документа'); };
 </script>
 
 
@@ -1079,6 +1222,19 @@ document.addEventListener('htmx:afterRequest', (event) => {
 
     if (raw.includes('data-toast="1"')) {
       playToastSound();
+    }
+
+    // Новое уведомление (колокол): звук + если панель открыта — обновить тело
+    // текущей вкладки (без перерисовки всего шелла → без мигания).
+    if (raw.includes('data-notification-new')) {
+      playToastSound();
+      var notifInner = document.getElementById('notif-inner');
+      if (notifInner) {
+        var curEl = notifInner.querySelector('[data-current-tab]');
+        var curTab = (curEl && curEl.dataset.currentTab) || 'new';
+        htmx.ajax('GET', "{% url 'notifications:list' %}?tab=" + curTab,
+                  { target: '#notif-inner', swap: 'innerHTML' });
+      }
     }
 
     if (raw.includes('data-chat-message="1"')) {
