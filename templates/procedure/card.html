@@ -36,6 +36,9 @@
     <a class="tab" data-tab="correspondence"
        hx-get="{% url 'procedure:tab_correspondence' service.id %}"
        hx-target="#procedure-tab-body" hx-swap="innerHTML">Корреспонденция</a>
+    <a class="tab" data-tab="publications"
+       hx-get="{% url 'efrsb:tab_publications' service.id %}"
+       hx-target="#procedure-tab-body" hx-swap="innerHTML">Публикации</a>
     {% for slug, label in placeholder_tabs.items %}
       <a class="tab" data-tab="{{ slug }}"
          hx-get="{% url 'procedure:tab_placeholder' service.id slug %}"

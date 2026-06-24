@@ -235,6 +235,11 @@
     document.body.addEventListener('courtParseDone', function () {
       if (window.showToast) window.showToast('Готово — данные с kad.arbitr.ru обновлены', 'success');
     });
+    // Тост от действий ЕФРСБ (поиск должника / обновление публикаций).
+    document.body.addEventListener('efrsbToast', function (e) {
+      var d = (e && e.detail) || {};
+      if (window.showToast) window.showToast(d.msg || 'Готово', d.kind || 'info');
+    });
     document.addEventListener('click', function (e) {
       document.querySelectorAll('[data-ta-results]').forEach(function (res) {
         var box = res.closest('[data-ta]');

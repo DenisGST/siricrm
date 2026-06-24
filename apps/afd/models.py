@@ -73,10 +73,12 @@ class DocumentTemplate(models.Model):
 
     KIND_CONTRACT_BFL = "contract_bfl"
     KIND_REQUEST = "request"
+    KIND_EFRSB = "efrsb"
     KIND_OTHER = "other"
     KIND_CHOICES = [
         (KIND_CONTRACT_BFL, "Договор юруслуг (БФЛ)"),
         (KIND_REQUEST, "Запрос в госорган"),
+        (KIND_EFRSB, "Сообщение ЕФРСБ"),
         (KIND_OTHER, "Прочее"),
     ]
 

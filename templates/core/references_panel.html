@@ -62,6 +62,9 @@
     <a class="tab {% if active_tab == 'managers' %}tab-active{% endif %}"
        hx-get="{% url 'procedure:references_managers' %}" hx-target="#ref-content" hx-swap="innerHTML"
        onclick="setRefTab(this)">Арбитражные управляющие</a>
+    <a class="tab {% if active_tab == 'efrsb_types' %}tab-active{% endif %}"
+       hx-get="{% url 'efrsb:references_message_types' %}" hx-target="#ref-content" hx-swap="innerHTML"
+       onclick="setRefTab(this)">Типы сообщений ЕФРСБ</a>
   </div>
 
   <div id="ref-content"

@@ -53,7 +53,6 @@ from apps.core.permissions import is_references_access
 PLACEHOLDER_TABS = {
     "documents": "Документы",
     "creditors": "Кредиторы / РТК",
-    "publications": "Публикации",
 }
 
 

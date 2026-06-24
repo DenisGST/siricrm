@@ -1,0 +1,95 @@
+{% comment %}Модалка типа сообщения ЕФРСБ. Контекст: form, obj.{% endcomment %}
+<dialog id="efrsb-type-modal" class="modal modal-middle modal-open">
+  <div class="modal-box w-full max-w-xl">
+    <h3 class="font-bold text-lg mb-4">
+      {% if obj %}Редактирование типа сообщения{% else %}Новый тип сообщения ЕФРСБ{% endif %}
+    </h3>
+    <form hx-post="{% if obj %}{% url 'efrsb:reference_message_type_edit' obj.pk %}{% else %}{% url 'efrsb:reference_message_type_add' %}{% endif %}"
+          hx-target="#efrsb-type-modal" hx-swap="outerHTML" class="space-y-3">
+      {% csrf_token %}
+
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="label py-1"><span class="label-text">Код</span></label>
+          {{ form.code }}
+        </div>
+        <div>
+          <label class="label py-1"><span class="label-text">Порядок</span></label>
+          {{ form.order }}
+        </div>
+      </div>
+
+      <div>
+        <label class="label py-1"><span class="label-text">Тип сообщения</span></label>
+        {{ form.name }}
+      </div>
+
+      <div>
+        <label class="label py-1"><span class="label-text">Описание</span></label>
+        {{ form.description }}
+      </div>
+
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="label py-1"><span class="label-text">Раздел API</span></label>
+          {{ form.api_kind }}
+        </div>
+        <div>
+          <label class="label py-1"><span class="label-text">Тип в API ЕФРСБ</span></label>
+          {{ form.api_type }}
+        </div>
+      </div>
+
+      <div>
+        <label class="label py-1"><span class="label-text">{{ form.api_type_aliases_csv.label }}</span></label>
+        {{ form.api_type_aliases_csv }}
+      </div>
+
+      <div>
+        <label class="label py-1"><span class="label-text">{{ form.applicable_kinds_set.label }}</span></label>
+        <div class="flex gap-4">{{ form.applicable_kinds_set }}</div>
+        <p class="text-xs text-base-content/60 mt-1">{{ form.applicable_kinds_set.help_text }}</p>
+      </div>
+
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="label py-1"><span class="label-text">Шаблон .docx (kind=ЕФРСБ)</span></label>
+          {{ form.template }}
+        </div>
+        <div>
+          <label class="label py-1"><span class="label-text">Секционный шаблон</span></label>
+          {{ form.isk_template }}
+        </div>
+      </div>
+
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="label py-1"><span class="label-text">Базовая дата срока (якорь)</span></label>
+          {{ form.deadline_base_key }}
+        </div>
+        <div>
+          <label class="label py-1"><span class="label-text">Срок публикации, дней</span></label>
+          {{ form.deadline_offset_days }}
+        </div>
+      </div>
+
+      <div class="flex flex-wrap gap-4">
+        <label class="label cursor-pointer justify-start gap-2">
+          <input type="checkbox" name="is_active" class="checkbox checkbox-sm" {% if form.is_active.value %}checked{% endif %}>
+          <span class="label-text">Активен</span>
+        </label>
+        <label class="label cursor-pointer justify-start gap-2">
+          <input type="checkbox" name="is_draft" class="checkbox checkbox-sm checkbox-warning" {% if form.is_draft.value %}checked{% endif %}>
+          <span class="label-text">🔶 Черновик</span>
+        </label>
+      </div>
+
+      {% if form.errors %}<div class="alert alert-error text-sm">{% for f, e in form.errors.items %}<div>{{ f }}: {{ e|join:", " }}</div>{% endfor %}</div>{% endif %}
+      <div class="modal-action">
+        <button type="submit" class="btn btn-primary btn-sm">Сохранить</button>
+        <button type="button" class="btn btn-sm" onclick="this.closest('dialog').remove()">Отмена</button>
+      </div>
+    </form>
+  </div>
+  <form method="dialog" class="modal-backdrop"><button onclick="this.closest('dialog').remove()">close</button></form>
+</dialog>
