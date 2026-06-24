@@ -655,7 +655,8 @@ def parser_status(request):
     from django.utils.dateparse import parse_datetime
 
     now = timezone.now()
-    captcha_until = cooldown.until() if cooldown.is_active() else None
+    # Per-IP cooldown: {ip: until_datetime}
+    cooldown_by_ip = cooldown.all_active()
     BREAK_EVERY = 8
 
     # ── Per-runner state (3 параллельных контейнера arbitr-runner a/b/c) ──
@@ -701,9 +702,10 @@ def parser_status(request):
                 .first()
             )
         # state-string
-        if captcha_until:
+        ip_cooldown_until = cooldown_by_ip.get(out_ip) if out_ip else None
+        if ip_cooldown_until:
             state_r = "captcha"
-            label_r = f"Капча — пауза до {timezone.localtime(captcha_until):%H:%M}"
+            label_r = f"IP {out_ip} в капче до {timezone.localtime(ip_cooldown_until):%H:%M}"
         elif not out_ip:
             state_r = "disabled"
             label_r = "Не активен (нет IP в этом окне)"
@@ -734,15 +736,16 @@ def parser_status(request):
 
     # Глобальное «есть ли хоть кто-то парсит сейчас»
     any_working = any(r["state"] == "working" for r in runners)
-    any_active = any(r["out_ip"] for r in runners)
-    if captcha_until:
-        state = "captcha"
-        state_label = f"Капча — пауза до {timezone.localtime(captcha_until):%H:%M}"
-    elif any_working:
+    any_active = any(r["out_ip"] and r["state"] != "captcha" for r in runners)
+    n_captcha = sum(1 for r in runners if r["state"] == "captcha")
+    if any_working:
         state = "working"
         n = sum(1 for r in runners if r["state"] == "working")
         state_label = f"Парсит ({n}/{len(runners)})"
-    elif not any_active:
+    elif n_captcha and not any_active:
+        state = "captcha"
+        state_label = f"Все активные IP в капче ({n_captcha})"
+    elif not any_active and not n_captcha:
         state = "idle"
         state_label = "Все runner'ы выключены (нет активных IP в этом окне)"
     else:
@@ -804,12 +807,14 @@ def parser_status(request):
     ip_rows = []
     for ip, s, e in SCHEDULE:
         active_now = _is_active(s, e, msk_hour)
+        cd_until = cooldown_by_ip.get(ip)
         ip_rows.append({
             "ip": ip,
             "start": s,
             "end": e,
             "active_now": active_now,
             "is_current": (ip == current_ip),
+            "cooldown_until": cd_until,
         })
 
     ctx = {
@@ -817,7 +822,7 @@ def parser_status(request):
         "state_label": state_label,
         "runners": runners,
         "break_every": BREAK_EVERY,
-        "captcha_until": captcha_until,
+        "cooldown_by_ip": cooldown_by_ip,
         "ok_24h": stats.get("ok", 0),
         "nothing_24h": stats.get("nothing", 0),
         "error_24h": stats.get("error", 0),

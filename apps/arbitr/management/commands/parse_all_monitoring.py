@@ -110,8 +110,9 @@ class Command(BaseCommand):
         # Глобальный cooldown после недавней капчи от kad. Без флага
         # --ignore-cooldown — отказываемся стартовать, чтобы не нагенерить
         # пустых попыток + не флудить алёртами в MAX.
-        if cooldown.is_active() and not opts["ignore_cooldown"]:
-            until = cooldown.until()
+        any_active = cooldown.all_active()
+        if any_active and not opts["ignore_cooldown"]:
+            until = max(any_active.values())
             raise CommandError(
                 f"Активен глобальный cooldown после капчи. Возобновится: "
                 f"{until:%d.%m %H:%M} (МСК). Снять вручную: "

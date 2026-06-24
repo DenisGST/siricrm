@@ -49,18 +49,19 @@ def send_parsed_alert(
     return ok
 
 
-def handle_captcha(case: ArbitrCase, *, page_url: str = "") -> None:
-    """Реакция на капчу от kad: активировать 12ч-cooldown и (если активировали
-    только что) — отправить одиночный алёрт в MAX.
+def handle_captcha(case: ArbitrCase, *, page_url: str = "", ip: str = "") -> None:
+    """Реакция на капчу от kad: активировать 12ч-cooldown для ЭТОГО outbound IP
+    и (если активировали только что) — отправить одиночный алёрт в MAX.
 
-    Повторные капчи во время активного cooldown молчат — флудить смысла нет,
-    парсер всё равно остановлен.
+    Повторные капчи на том же IP во время активного cooldown молчат —
+    флудить смысла нет, runner'ы на этом IP всё равно остановлены.
+    Другие IP продолжают парсить как обычно.
     """
-    if cooldown.activate():
-        send_captcha_alert(case, page_url=page_url)
+    if cooldown.activate(ip):
+        send_captcha_alert(case, page_url=page_url, ip=ip)
 
 
-def send_captcha_alert(case: ArbitrCase, *, page_url: str = "") -> bool:
+def send_captcha_alert(case: ArbitrCase, *, page_url: str = "", ip: str = "") -> bool:
     """Шлёт в MAX уведомление о капче — чтобы человек зашёл и решил её.
 
     Возвращает True если отправили; False — если конфиг неполный или ошибка.
@@ -81,24 +82,25 @@ def send_captcha_alert(case: ArbitrCase, *, page_url: str = "") -> bool:
     fio = " ".join(filter(None, [client.last_name, client.first_name, client.patronymic]))
     case_number = case.case_number or "(номер не указан)"
 
-    until_dt = cooldown.until()
+    ip_label = ip or "неизвестный"
+    until_dt = cooldown.until(ip)
     if until_dt:
         msk = timezone.localtime(until_dt)
         resume_line = (
-            "⏸ Мониторинг арбитража приостановлен на 12 часов.\n"
+            f"⏸ IP {ip_label} приостановлен на 12 часов.\n"
             f"Возобновится автоматически: {msk:%d.%m %H:%M} (МСК)\n"
         )
     else:
         resume_line = ""
 
     text = (
-        "⚠️ kad.arbitr.ru показал капчу серверу\n"
+        f"⚠️ kad.arbitr.ru показал капчу на IP {ip_label}\n"
         f"{resume_line}"
         f"Первое сорвавшееся дело: {case_number}\n"
         f"Клиент: {fio}\n"
         f"Запустил мониторинг: {started_by}\n\n"
-        "ℹ️ Капчу из браузера НЕ решить — kad показывает её только на IP "
-        "сервера. Парсер сам подождёт 12ч и попробует снова."
+        "ℹ️ Парсинг через другие IP продолжается. Этот IP сам "
+        "разблокируется через 12ч."
     )
 
     ok, msg_id, err = send_max_message(

@@ -45,6 +45,10 @@
     background:#10b981 !important; border-color:#059669 !important; color:#fff !important;
     box-shadow:0 0 0 2px rgba(16,185,129,0.25);
   }
+  .arbitr-ip-chip.is-cooldown {
+    background:#fef2f2 !important; border-color:#ef4444 !important; color:#991b1b !important;
+  }
+  .arbitr-ip-chip.is-cooldown.is-used { box-shadow:0 0 0 2px rgba(239,68,68,0.3); }
   .arbitr-ip-chip .ip-addr { font-weight:700; font-family: ui-monospace, monospace; }
   .arbitr-ip-chip .ip-time { opacity:0.85; }
 </style>
@@ -141,14 +145,18 @@
     <span title="МСК-час сервера">🌐 IP {{ msk_hour }}:xx МСК</span>
   </div>
   {% for ip_row in ip_rows %}
-    {% with used=False %}
-      {% for r in runners %}{% if r.out_ip == ip_row.ip %}{% with used=True %}{% endwith %}{% endif %}{% endfor %}
-    {% endwith %}
-    <div class="arbitr-ip-chip{% if ip_row.active_now %} is-active{% endif %}{% for r in runners %}{% if r.out_ip == ip_row.ip %} is-used{% endif %}{% endfor %}"
-         title="{% if ip_row.active_now %}В активном окне{% else %}Неактивен в этом часу{% endif %}">
-      <span class="ip-addr">{{ ip_row.ip }}</span>
+    <div class="arbitr-ip-chip{% if ip_row.active_now %} is-active{% endif %}{% if ip_row.cooldown_until %} is-cooldown{% endif %}{% for r in runners %}{% if r.out_ip == ip_row.ip %} is-used{% endif %}{% endfor %}"
+         title="{% if ip_row.cooldown_until %}🚫 Капча — до {{ ip_row.cooldown_until|date:'d.m H:i' }} МСК{% elif ip_row.active_now %}В активном окне{% else %}Неактивен в этом часу{% endif %}">
+      <span class="ip-addr">
+        {% if ip_row.cooldown_until %}🚫{% endif %}
+        {{ ip_row.ip }}
+      </span>
       <span class="ip-time">
-        {{ ip_row.start|stringformat:"02d" }}:00 – {{ ip_row.end|stringformat:"02d" }}:00{% for r in runners %}{% if r.out_ip == ip_row.ip %} · Runner {{ r.id|upper }}{% endif %}{% endfor %}
+        {% if ip_row.cooldown_until %}
+          капча до {{ ip_row.cooldown_until|date:"H:i" }}
+        {% else %}
+          {{ ip_row.start|stringformat:"02d" }}:00 – {{ ip_row.end|stringformat:"02d" }}:00{% for r in runners %}{% if r.out_ip == ip_row.ip %} · Runner {{ r.id|upper }}{% endif %}{% endfor %}
+        {% endif %}
       </span>
     </div>
   {% endfor %}
