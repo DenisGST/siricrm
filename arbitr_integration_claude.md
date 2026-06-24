@@ -93,16 +93,75 @@ Search results (таблица `#b-cases` tbody, **не** `b-cases tablesorter`)
 
 kad на уровне шапки инстанции имя судьи не пишет — но в каждом событии `kind == "Событие"` ФИО судьи лежит в `case-subject`. `_fill_instance_judges` берёт самое частое ФИО (regex `^[А-Я][а-я]+(\s+[А-Я]\.\s*[А-Я]\.?)?$`) в рамках инстанции.
 
-## Окно работы + расписание
+## Smart-parser архитектура (2026-06-24, актуальное)
 
-- `arbitr.kad_monitor_pending` (поиск по ФИО, этап 1) — **круглосуточно**, расписание `0 */3 * * *` (каждые 3 часа). work-window в коде УБРАН для этого таска — поиск лёгкий (~12с/дело).
-- `arbitr.kad_monitor_case` (парсинг карточек + PDF, этап 2) — **только 18:00–08:00 МСК** (`WORK_WINDOW_*` в `tasks.py`), расписание `30 19,23,3,7 * * *` (4 раза в сутки).
-- **Ручной запуск** через UI кнопку «Парсить сейчас» → таск `arbitr.kad_monitor_one_case(case_id)` → **work-window игнорируется**. В зависимости от status: `_search_one` (SEARCHING) или `_parse_one` (MONITORING). PAUSED → отказ.
-- **Pause/Resume** (`case_toggle_pause` view) — флипает статус PAUSED ↔ (SEARCHING/MONITORING по наличию case_number). Автотаски уже фильтруют по статусу — PAUSED выпадает.
+Старые `kad_monitor_pending`/`kad_monitor_case` (батч-таски) **отключены** (`PeriodicTask.enabled=False`) — выгоняли всю пачку в один Chrome за раз, ловили капчу после ~20 PDF-download'ов, флудили алёртами. Сейчас работает **3 параллельных runner'а с динамическим throttle и ротацией outbound IP**.
 
-## MAX-уведомления о капче
+### Контейнеры
+- `arbitr-runner` (id=`a`, env `ARBITR_RUNNER_ID=a`, очередь `arbitr_a,arbitr`)
+- `arbitr-runner-b` (id=`b`, очередь `arbitr_b`) — `image: siricrm-arbitr-runner:latest` (переиспользует образ a, экономия диска)
+- `arbitr-runner-c` (id=`c`, очередь `arbitr_c`) — то же
 
-`apps/arbitr/notifications.py:send_captcha_alert(case)` шлёт сообщение в MAX через `apps.maxchat.sender.send_max_message` с `ARBITR_CAPTCHA_NOTIFY_MAX_CHAT_ID` (env, пока один на всех получатель — `chat_id` админа; позже разнесём на `Employee.max_chat_id`). Текст: дело, ФИО клиента, сотрудник запустивший мониторинг, ссылка на kad.
+Routes в `config/settings/base.py`: `arbitr.kad_smart_one_<a/b/c>` → `arbitr_<a/b/c>`. Beat-tasks `arbitr-kad-smart-one-<a/b/c>` interval 10с каждый.
+
+### Алгоритм каждого тика (`apps/arbitr/tasks.py:_kad_smart_one`)
+1. Прочитать `arbitr:runner_ip:<id>` из Redis (пишет rotator). Пусто → `skipped: runner_disabled`.
+2. `cooldown.is_active(runner_ip)` — этот IP в 12ч капче? → `skipped: captcha_cooldown`.
+3. Per-runner throttle `arbitr:smart_throttle_until:<id>` (ISO end-stamp) → `skipped: throttle`.
+4. Per-runner lock `arbitr:smart_lock:<id>` (TTL 10мин) → `skipped: lock_busy`.
+5. **Атомарный «забор» кейса**: `SELECT FOR UPDATE SKIP LOCKED` → SEARCHING приоритет (`next_search_at <= now OR NULL`), иначе MONITORING (`next_parse_at <= now OR NULL`). Сразу ставим `next_*_at = now + 30мин` («резерв»), чтоб другие runner'ы не взяли тот же кейс.
+6. Парсим (`_search_one`/`_parse_one`, оба принимают `runner_ip`). После парсинга `_parse_one` ставит финальный `next_parse_at = now + 24ч`.
+7. Per-runner throttle по результату:
+   - **ok + что-то новое** (events>0 OR files>0): `random.randint(180, 900)` = 3-15 мин
+   - **ok + ничего нового**: 10с
+   - **error/nothing**: 60с
+   - **captcha**: ничего не ставим — `handle_captcha` уже включил 12ч cooldown ДЛЯ ЭТОГО IP
+8. Каждые `BREAK_EVERY=8` успехов подряд (на этом runner'е, ключ `arbitr:smart_parse_count:<id>`) — `BREAK_SECONDS=1800` (30 мин) пауза, счётчик сбрасывается.
+9. На success — `send_parsed_alert(case, new_events, new_files, duration_sec)` шлёт «✅ № · ФИО · N записей, M файлов · Sс» в MAX.
+10. `finally`: снимает lock + чистит `arbitr:smart_current_case:<id>`.
+
+### IP-ротация (`ops/arbitr-snat-rotate.sh` + systemd `arbitr-snat-rotate.timer` каждую минуту)
+- 4 outbound IP на host eth0 alias: `45.90.35.187`, `31.128.40.116`, `45.12.239.248`, `109.172.47.2`.
+- Расписание (МСК): 21–5 → 187, 5–15 → 116, 9–17 → 248, 11–20 → 002. Пик 11–15 = 3 IP активно.
+- Скрипт каждую минуту: вычитывает hour, собирает `ACTIVE`-список IP, через `docker inspect` получает source-IP каждого runner-контейнера, ставит **per-runner SNAT**: `iptables -t nat -I POSTROUTING 1 -s <docker_ip> -d <kad_ip> -j SNAT --to-source <assigned_ip>`. Назначение IP runner'ам — по порядку (a=ACTIVE[0], b=ACTIVE[1], c=ACTIVE[2]); если активных < 3 — лишние runner'ы получают пусто в Redis и спят.
+- Записывает в Redis (TTL 120с, без Django-префикса `:1:` через `docker exec siricrm-redis-1 redis-cli`):
+  - `arbitr:runner_ip:<a/b/c>` — назначенный outbound IP (или пусто)
+  - `arbitr:runner_docker_ip:<a/b/c>` — source IP в docker-сети
+  - `arbitr:current_snat_ip` — первый активный (legacy)
+  - `arbitr:current_snat_active` — csv активных
+- Лог: `journalctl -t arbitr-snat -n 20`. Iptables: `iptables -t nat -L POSTROUTING -n -v`.
+- 🛑 Контейнеры пишут в Redis из bash напрямую → **БЕЗ префикса `:1:`**. Чтобы task/view увидели — читать через `redis.Redis.from_url(REDIS_URL).get(key)` (не `cache.get(key)`).
+
+### Per-IP captcha cooldown (`apps/arbitr/cooldown.py`)
+- Ключ `arbitr:captcha_cooldown_until:<ip>` (TTL 12ч).
+- API: `is_active(ip) / until(ip) / activate(ip) -> bool(только_что_активировали) / clear(ip|None) / all_active() -> {ip: dt}`.
+- `notifications.handle_captcha(case, page_url, ip)` — дедуплицирует алёрт через `activate()`; если True — `send_captcha_alert(case, page_url, ip)` шлёт в MAX «🚫 IP X в капче до HH:MM, парсинг через другие продолжается».
+- Снять вручную: `python manage.py arbitr_clear_cooldown [--ip 1.2.3.4]`. Без флага — все IP.
+- 🛑 Раньше cooldown был **глобальным** — капча на одном IP стопила все 3 runner'а. С 2026-06-24 — per-IP.
+
+### Real-time UI на `/arbitr/` (`apps/arbitr/views.py:parser_status`)
+- HTMX-полит каждые 5с → партиал `templates/arbitr/partials/_parser_status.html`.
+- Верх: бэйдж глобального state (🟢 «Парсит (N/3)» / 🚫 «Все активные IP в капче» / ⚪ «Все runner'ы выключены»).
+- Средняя секция: 3 runner-карточки (зелёная если working, серая если disabled), каждая показывает `out_ip`, текущий кейс `№ · ФИО`, счётчик до перерыва `N/8`.
+- Правее: статистика 24ч `✅ N ⏸ N ⚠ N 🚫 N`, готовых к парсингу/поиску.
+- Последние 3 спарсенных (время + № + ФИО).
+- Нижняя строка: 4 IP-чипа с расписанием. Светло-зелёный = активен в этом часу; ярко-зелёный с подписью «Runner X» = используется именно сейчас; красный «🚫 капча до HH:MM» = в cooldown.
+
+### Ловушки
+- **Region.arbitr_code ≠ Region.number** — Region.number это код субъекта РФ (Москва=77, Волгоград=34), а kad нумерует свои АС иначе (Москва=А40, Волгоград=А12). См. `apps/crm/migrations/0094_region_arbitr_code_data.py` — заполнено для популярных регионов. Пусто → фильтр выключен в `_search_one`.
+- **`_parse_one`/`_search_one` ранние return'ы** (kad_url пусто / ФИО пусто / NotImplementedError) — обязаны ставить `next_*_at = now+24ч`, иначе кейс зацикливается (NULL → снова первый в очереди → снова мгновенный return → ...). Был баг 23.06: 622 error-записи за сутки на одном пустом kad_url кейсе.
+- **Утечка Chrome** из `KadSession.__init__` — если spawn упал ДО входа в `with`, `__exit__` не вызывается → zombie Chrome копится → новые драйвера не стартуют. Признак: 6580 PID в контейнере. Лекарство: `docker compose restart arbitr-runner*`. Корневой фикс в `parsers/kad.py:__init__` через try/finally — отложен.
+- **`docker exec` в bash с круглыми скобками** — `echo --- (что-то) ---` ломает ssh-парсер. Не использовать скобки в bash echo-сообщениях.
+
+## Ручной запуск + Pause/Resume
+- **Ручной запуск** через UI кнопку «Парсить сейчас» → таск `arbitr.kad_monitor_one_case(case_id)` (очередь `arbitr` → runner-a). Читает `arbitr:current_snat_ip` для cooldown-проверки и алёрта. PAUSED → отказ.
+- **Pause/Resume** (`case_toggle_pause` view) — флипает PAUSED ↔ (SEARCHING/MONITORING по наличию case_number). Smart-таски фильтруют по статусу, PAUSED выпадает.
+
+## MAX-уведомления
+
+`apps/arbitr/notifications.py`:
+- `send_captcha_alert(case, page_url, ip)` — при первой капче на IP, шлёт в `ARBITR_CAPTCHA_NOTIFY_MAX_CHAT_ID` (env). Дедуп через `cooldown.activate(ip)` — повторные капчи молчат пока активен.
+- `send_parsed_alert(case, new_events, new_files, duration_sec)` — после каждого успешного парсинга (даже 0/0). Если будет спамить — добавить gate `if new_events+new_files > 0`.
 
 ## Сервисная UI `/arbitr/` — split-layout как чат-модалка
 
