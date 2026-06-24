@@ -46,4 +46,11 @@ IP="${ACTIVE[$IDX]}"
 iptables -t nat -I POSTROUTING 1 -d "$KAD_IP" -j SNAT --to-source "$IP"
 iptables-save > /etc/iptables/rules.v4
 
+# Для UI-панели парсера на /arbitr/. TTL=120с — таймер тикает раз/мин,
+# значение всегда свежее. Идём через docker exec, чтобы не зависеть от
+# наличия redis-cli на host.
+ACTIVE_CSV=$(IFS=,; echo "${ACTIVE[*]}")
+docker exec siricrm-redis-1 redis-cli SET arbitr:current_snat_ip "$IP" EX 120 >/dev/null 2>&1 || true
+docker exec siricrm-redis-1 redis-cli SET arbitr:current_snat_active "$ACTIVE_CSV" EX 120 >/dev/null 2>&1 || true
+
 logger -t arbitr-snat "hour=$HOUR active=[${ACTIVE[*]}] picked=$IP"

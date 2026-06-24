@@ -719,6 +719,36 @@ def parser_status(request):
         state = "idle"
         state_label = "Готов"
 
+    # Расписание IP-ротации (МСК) — должно совпадать со скриптом
+    # ops/arbitr-snat-rotate.sh.
+    SCHEDULE = [
+        ("45.90.35.187",  21,  5),  # «через полночь» — обрабатывается ниже
+        ("31.128.40.116",  5, 15),
+        ("45.12.239.248",  9, 17),
+        ("109.172.47.2",  11, 20),
+    ]
+    msk_hour = timezone.localtime().hour
+
+    def _is_active(start, end, h):
+        if start < end:
+            return start <= h < end
+        # окно «через полночь»
+        return h >= start or h < end
+
+    current_ip = cache.get("arbitr:current_snat_ip") or ""
+    # Если rotator ещё не отписался (Redis-key пустой) — оценим по расписанию:
+    # это просто хинт для UI «вероятно сейчас активен».
+    ip_rows = []
+    for ip, s, e in SCHEDULE:
+        active_now = _is_active(s, e, msk_hour)
+        ip_rows.append({
+            "ip": ip,
+            "start": s,
+            "end": e,
+            "active_now": active_now,
+            "is_current": (ip == current_ip),
+        })
+
     ctx = {
         "state": state,
         "state_label": state_label,
@@ -734,5 +764,8 @@ def parser_status(request):
         "ready_parse": ready_parse,
         "ready_search": ready_search,
         "last_parsed": last_parsed,
+        "ip_rows": ip_rows,
+        "current_ip": current_ip,
+        "msk_hour": msk_hour,
     }
     return render(request, "arbitr/partials/_parser_status.html", ctx)
