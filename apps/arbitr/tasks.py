@@ -551,10 +551,18 @@ def _kad_smart_one(runner_id: str):
         return {"skipped": "captcha_cooldown"}
 
     # Если rotator не назначил этому runner'у IP в этом часу (мало активных IP) —
-    # пропускаем тик. Ключ `arbitr:runner_ip:<id>` пишет ops/arbitr-snat-rotate.sh.
-    runner_ip = cache.get(f"arbitr:runner_ip:{runner_id}")
+    # пропускаем тик. Ключ `arbitr:runner_ip:<id>` пишет ops/arbitr-snat-rotate.sh
+    # НАПРЯМУЮ в Redis (без Django-префикса :1:), поэтому читаем через redis-py.
+    runner_ip = ""
+    try:
+        import redis as _redis  # noqa: WPS433
+        from django.conf import settings as _settings  # noqa: WPS433
+        _r = _redis.Redis.from_url(_settings.REDIS_URL)
+        _v = _r.get(f"arbitr:runner_ip:{runner_id}")
+        runner_ip = _v.decode("utf-8") if _v else ""
+    except Exception:
+        runner_ip = ""
     if not runner_ip:
-        # Падаем в более длинную паузу, чтоб не молотить SELECT впустую.
         return {"skipped": "runner_disabled", "runner": runner_id}
 
     THROTTLE_KEY = f"arbitr:smart_throttle_until:{runner_id}"
