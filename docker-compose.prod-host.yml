@@ -222,20 +222,70 @@ services:
         max-file: "3"
 
   arbitr-runner:
-    # Парсер kad.arbitr.ru на Playwright (отдельный образ — там Chromium).
-    # Celery worker, очередь `arbitr` (см. CELERY_TASK_ROUTES в base.py).
+    # Парсер kad.arbitr.ru (slot A). Один из 3-х параллельных воркеров —
+    # каждый ходит к kad через свой outbound IP (host-side iptables SNAT
+    # по docker source-IP контейнера, см. ops/arbitr-snat-rotate.sh).
+    # Очередь arbitr_a — beat шлёт сюда `arbitr.kad_smart_one_a`.
     build:
       context: .
       dockerfile: docker/arbitr/Dockerfile
-    command: celery -A config worker -Q arbitr -l info --concurrency=1 --max-tasks-per-child=20
+    command: celery -A config worker -Q arbitr_a,arbitr -l info --concurrency=1 --max-tasks-per-child=20
     volumes:
       - .:/app
     env_file:
       - ${ENV_FILE:-.env.prod}
     environment:
       DJANGO_ENV: prod
+      ARBITR_RUNNER_ID: a
     dns: *default-dns
-    # Chromium любит большой /dev/shm — иначе падает на сложных страницах.
+    shm_size: '2gb'
+    depends_on:
+      - db
+      - redis
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "5"
+
+  arbitr-runner-b:
+    build:
+      context: .
+      dockerfile: docker/arbitr/Dockerfile
+    command: celery -A config worker -Q arbitr_b -l info --concurrency=1 --max-tasks-per-child=20
+    volumes:
+      - .:/app
+    env_file:
+      - ${ENV_FILE:-.env.prod}
+    environment:
+      DJANGO_ENV: prod
+      ARBITR_RUNNER_ID: b
+    dns: *default-dns
+    shm_size: '2gb'
+    depends_on:
+      - db
+      - redis
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "5"
+
+  arbitr-runner-c:
+    build:
+      context: .
+      dockerfile: docker/arbitr/Dockerfile
+    command: celery -A config worker -Q arbitr_c -l info --concurrency=1 --max-tasks-per-child=20
+    volumes:
+      - .:/app
+    env_file:
+      - ${ENV_FILE:-.env.prod}
+    environment:
+      DJANGO_ENV: prod
+      ARBITR_RUNNER_ID: c
+    dns: *default-dns
     shm_size: '2gb'
     depends_on:
       - db

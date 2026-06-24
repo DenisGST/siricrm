@@ -2,14 +2,38 @@
 {# Real-time панель парсера kad. HTMX-полит каждые 5 сек.                  #}
 
 <style>
-  /* Цвета бэйджа состояния. */
   .arbitr-ps-badge { color:#fff; padding:2px 8px; border-radius:4px; font-weight:600; font-size:11px; }
   .arbitr-ps-working  { background:#10b981; }
   .arbitr-ps-captcha  { background:#ef4444; }
   .arbitr-ps-break    { background:#f59e0b; }
   .arbitr-ps-throttle { background:#eab308; }
   .arbitr-ps-idle     { background:#9ca3af; }
-  /* IP-плашка в расписании. */
+  .arbitr-ps-disabled { background:#6b7280; }
+
+  /* Runner-чип в средней секции */
+  .arbitr-runner-card {
+    flex: 1 1 0; min-width: 0;
+    padding: 4px 8px; border-radius: 6px;
+    border: 1px solid #e5e7eb; background: #f9fafb;
+    font-size: 11px; line-height: 1.25;
+  }
+  .arbitr-runner-card.is-working {
+    background: #ecfdf5; border-color: #10b981;
+    box-shadow: 0 0 0 2px rgba(16,185,129,0.15);
+  }
+  .arbitr-runner-card.is-disabled { opacity: 0.5; }
+  .arbitr-runner-card .rc-hdr {
+    display:flex; align-items:center; justify-content:space-between;
+    gap:6px; margin-bottom:2px;
+  }
+  .arbitr-runner-card .rc-ip {
+    font-family: ui-monospace, monospace; font-size:10px;
+    background:#fff; border:1px solid #d1d5db; padding:0 4px; border-radius:3px;
+  }
+  .arbitr-runner-card .rc-now { font-weight:600; }
+  .arbitr-runner-card .rc-meta { opacity:0.6; font-size:10px; }
+
+  /* IP-расписание (нижняя строка) */
   .arbitr-ip-chip {
     display:flex; flex-direction:column; gap:1px;
     padding:3px 8px; border-radius:5px; border:1px solid #e5e7eb;
@@ -17,7 +41,7 @@
     min-width:0;
   }
   .arbitr-ip-chip.is-active { background:#ecfdf5; border-color:#10b981; color:#065f46; }
-  .arbitr-ip-chip.is-current {
+  .arbitr-ip-chip.is-used {
     background:#10b981 !important; border-color:#059669 !important; color:#fff !important;
     box-shadow:0 0 0 2px rgba(16,185,129,0.25);
   }
@@ -28,43 +52,49 @@
 <div class="flex items-stretch gap-3 px-3 py-2 border-b bg-base-100 text-xs"
      style="border-color: var(--ms-blue-light, #dbeafe);">
 
-  {# ── Состояние ── #}
-  <div class="flex items-center gap-2 pr-3 border-r border-base-300">
+  {# ── Глобальное состояние ── #}
+  <div class="flex items-center gap-2 pr-3 border-r border-base-300 shrink-0">
     <span class="arbitr-ps-badge arbitr-ps-{{ state }}">
-      {% if state == "working" %}🟢{% elif state == "captcha" %}🚫{% elif state == "break" %}⏸{% elif state == "throttle" %}⏳{% else %}⚪{% endif %}
+      {% if state == "working" %}🟢{% elif state == "captcha" %}🚫{% else %}⚪{% endif %}
       {{ state_label }}
     </span>
-    <div class="text-[11px] opacity-70">
-      До перерыва: <b>{{ parse_count }}/{{ break_every }}</b>
-    </div>
   </div>
 
-  {# ── Что парсит сейчас ── #}
-  <div class="flex-1 min-w-0 px-2 flex flex-col justify-center">
-    {% if current_case %}
-      <div class="font-semibold truncate">
-        Сейчас: {{ current_case.case_number|default:"(без номера)" }} ·
-        {{ current_case.service.client }}
+  {# ── 3 runner-чипа ── #}
+  <div class="flex flex-1 gap-2 min-w-0">
+    {% for r in runners %}
+      <div class="arbitr-runner-card {% if r.state == 'working' %}is-working{% elif r.state == 'disabled' %}is-disabled{% endif %}"
+           title="Runner {{ r.id }}{% if r.out_ip %} → {{ r.out_ip }}{% else %} (нет IP){% endif %} · {{ r.label }}">
+        <div class="rc-hdr">
+          <span class="font-bold">Runner {{ r.id|upper }}</span>
+          {% if r.out_ip %}
+            <span class="rc-ip">{{ r.out_ip }}</span>
+          {% else %}
+            <span class="rc-ip opacity-50">—</span>
+          {% endif %}
+        </div>
+        <div class="rc-now truncate">
+          {% if r.current_case %}
+            🟢 {{ r.current_case.case_number|default:"(?)" }} · {{ r.current_case.service.client }}
+          {% elif r.state == "captcha" %}
+            🚫 капча
+          {% elif r.state == "disabled" %}
+            ⏸ выключен
+          {% elif r.state == "break" %}
+            ⏸ длинная пауза
+          {% elif r.state == "throttle" %}
+            ⏳ {{ r.label }}
+          {% else %}
+            <span class="opacity-50">ожидание</span>
+          {% endif %}
+        </div>
+        <div class="rc-meta">До перерыва: {{ r.parse_count }}/{{ break_every }}</div>
       </div>
-      <div class="opacity-60 text-[11px]">
-        {{ current_case.get_status_display }}
-      </div>
-    {% elif state == "captcha" %}
-      <div class="opacity-70">Парсинг остановлен после капчи — ждём {{ state_label|cut:"Капча — пауза до " }}</div>
-      <div class="opacity-50 text-[11px]">После окна возобновится автоматически с новым IP по расписанию</div>
-    {% elif state == "break" %}
-      <div class="opacity-70">Длинная пауза каждые {{ break_every }} парсингов — отдыхаем</div>
-      <div class="opacity-50 text-[11px]">{{ state_label }}</div>
-    {% elif state == "throttle" %}
-      <div class="opacity-70">Пауза между кейсами (rnd 3-15 мин при «есть новое», 10с при «без нового»)</div>
-      <div class="opacity-50 text-[11px]">{{ state_label }}</div>
-    {% else %}
-      <div class="opacity-50">— нет кейсов готовых к парсингу прямо сейчас —</div>
-    {% endif %}
+    {% endfor %}
   </div>
 
   {# ── Статистика за 24ч + готовые ── #}
-  <div class="px-3 border-l border-base-300 flex items-center gap-3 whitespace-nowrap">
+  <div class="px-3 border-l border-base-300 flex items-center gap-3 whitespace-nowrap shrink-0">
     <div class="text-[11px]">
       <div class="opacity-60">За 24ч</div>
       <div>
@@ -88,7 +118,7 @@
   </div>
 
   {# ── Последние 3 спарсенных ── #}
-  <div class="px-3 border-l border-base-300 flex items-center" style="min-width:280px;">
+  <div class="px-3 border-l border-base-300 flex items-center shrink-0" style="min-width:260px;">
     <div class="text-[11px] w-full">
       <div class="opacity-60 mb-0.5">Последние</div>
       {% for c in last_parsed|slice:":3" %}
@@ -104,23 +134,22 @@
   </div>
 </div>
 
-{# ── Расписание IP-ротации (SNAT). Полит вместе со статусом каждые 5с. ── #}
-<div class="flex items-center gap-2 px-3 py-1.5 bg-base-100 border-b text-[10px]"
+{# ── Расписание IP-ротации (SNAT). ── #}
+<div class="flex items-center gap-2 px-3 py-1.5 bg-base-100 border-b text-[10px] flex-wrap"
      style="border-color: var(--ms-blue-light, #dbeafe);">
   <div class="opacity-60 whitespace-nowrap pr-1">
     <span title="МСК-час сервера">🌐 IP {{ msk_hour }}:xx МСК</span>
   </div>
-  {% for r in ip_rows %}
-    <div class="arbitr-ip-chip{% if r.is_current %} is-current{% elif r.active_now %} is-active{% endif %}"
-         title="{% if r.is_current %}Используется сейчас (SNAT){% elif r.active_now %}Активен в этом окне (по расписанию){% else %}Неактивен в этом окне{% endif %}">
-      <span class="ip-addr">{{ r.ip }}</span>
+  {% for ip_row in ip_rows %}
+    {% with used=False %}
+      {% for r in runners %}{% if r.out_ip == ip_row.ip %}{% with used=True %}{% endwith %}{% endif %}{% endfor %}
+    {% endwith %}
+    <div class="arbitr-ip-chip{% if ip_row.active_now %} is-active{% endif %}{% for r in runners %}{% if r.out_ip == ip_row.ip %} is-used{% endif %}{% endfor %}"
+         title="{% if ip_row.active_now %}В активном окне{% else %}Неактивен в этом часу{% endif %}">
+      <span class="ip-addr">{{ ip_row.ip }}</span>
       <span class="ip-time">
-        {{ r.start|stringformat:"02d" }}:00 – {{ r.end|stringformat:"02d" }}:00
-        {% if r.is_current %} · сейчас{% endif %}
+        {{ ip_row.start|stringformat:"02d" }}:00 – {{ ip_row.end|stringformat:"02d" }}:00{% for r in runners %}{% if r.out_ip == ip_row.ip %} · Runner {{ r.id|upper }}{% endif %}{% endfor %}
       </span>
     </div>
   {% endfor %}
-  {% if not current_ip %}
-    <div class="opacity-50 italic ml-2">SNAT не выставлен (rotator не отписался?)</div>
-  {% endif %}
 </div>

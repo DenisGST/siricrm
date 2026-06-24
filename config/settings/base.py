@@ -54,6 +54,7 @@ INSTALLED_APPS = [
     "apps.accounting",
     "apps.notifications",
     "apps.procedure",
+    "apps.efrsb",
 
     # django-rules: object-level permissions (apps/<app>/rules.py авто-импортируются)
     "rules.apps.AutodiscoverRulesConfig",
@@ -238,8 +239,31 @@ CELERY_TASK_TIME_LIMIT = 30 * 60
 # Web/celery (общий worker) НЕ слушает эти очереди — задачи туда не попадут случайно.
 CELERY_TASK_ROUTES = {
     "devops.*": {"queue": "devops"},
+    # Per-runner smart_one — beat шлёт на свою очередь, чтоб 3 контейнера
+    # парсили параллельно через РАЗНЫЕ outbound IP (SNAT по docker source-IP).
+    "arbitr.kad_smart_one_a": {"queue": "arbitr_a"},
+    "arbitr.kad_smart_one_b": {"queue": "arbitr_b"},
+    "arbitr.kad_smart_one_c": {"queue": "arbitr_c"},
     "arbitr.*": {"queue": "arbitr"},
 }
+
+# --- ЕФРСБ (Федресурс) read-API (apps.efrsb) ---
+# Секреты только из env. Пустые креды → клиент не настроен (no-op).
+EFRSB_ENABLED = config("EFRSB_ENABLED", default=False, cast=bool)
+EFRSB_CONTOUR = config("EFRSB_CONTOUR", default="demo")  # demo | prod
+EFRSB_PROD_BASE_URL = config(
+    "EFRSB_PROD_BASE_URL", default="https://bank-publications-prod.fedresurs.ru")
+EFRSB_DEMO_BASE_URL = config(
+    "EFRSB_DEMO_BASE_URL", default="https://bank-publications-demo.fedresurs.ru")
+EFRSB_LOGIN = config("EFRSB_LOGIN", default="")
+EFRSB_PASSWORD = config("EFRSB_PASSWORD", default="")
+# Гейт фонового мониторинга (по умолчанию выключен — включать когда заведены креды).
+EFRSB_MONITOR_ENABLED = config("EFRSB_MONITOR_ENABLED", default=False, cast=bool)
+# Минимальный интервал синка дела (часы) и поиска должника при «промахе».
+EFRSB_SYNC_INTERVAL_HOURS = config("EFRSB_SYNC_INTERVAL_HOURS", default=4, cast=int)
+EFRSB_SEARCH_RETRY_HOURS = config("EFRSB_SEARCH_RETRY_HOURS", default=24, cast=int)
+# Скачивать ли приложенные к публикациям файлы при синке (S3-трафик).
+EFRSB_DOWNLOAD_FILES = config("EFRSB_DOWNLOAD_FILES", default=False, cast=bool)
 
 # --- Telegram ---
 TELEGRAM_API_ID = config("TELEGRAM_API_ID", default="")

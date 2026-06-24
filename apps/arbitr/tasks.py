@@ -522,39 +522,45 @@ def _download_new_attachments(
     return stats
 
 
-@shared_task(name="arbitr.kad_smart_one")
-def kad_smart_one():
-    """Динамический парсер kad — 1 кейс за тик, дальше пауза по результату.
+def _kad_smart_one(runner_id: str):
+    """Универсальный body для kad_smart_one_<runner_id>. Per-runner state
+    (lock/throttle/counter/current_case) — изолированный, чтобы 3 runner'а
+    парсили параллельно через разные outbound IP (см. ops/arbitr-snat-rotate.sh).
 
-    Алгоритм (раз в 10с дёргается beat'ом):
-      0. Если активен captcha-cooldown (12ч) — выйти молча.
-      1. Если активен smart-throttle (Redis-key с TTL) — выйти.
-      2. Global lock (`arbitr:smart_lock`, TTL 10мин) — выйти если занят.
-      3. Сначала SEARCHING-кейс с next_search_at <= now или NULL.
-         Иначе MONITORING-кейс с next_parse_at <= now или NULL.
-         (Каждое дело парсится не чаще 1 раз/сутки — это и есть next_parse_at.)
-      4. Парсим (SEARCHING → _search_one, MONITORING → _parse_one).
-         _parse_one сам ставит next_parse_at = now+24ч, качает до 5 файлов
-         за раз, остаток ждёт следующего парсинга.
-      5. После MONITORING-парсинга — ставим smart-throttle:
-           5 мин если что-то новое (events>0 или files>0),
-           10 сек если ничего нового,
-           60 сек на error/nothing.
-      6. При success (result=ok) шлём короткий алёрт в MAX.
-      7. captcha → handle_captcha (12ч cooldown + 1 алёрт), следующие тики
-         тихо пропускаются.
+    Алгоритм каждого тика (beat 1× в 10с по своей очереди arbitr_<id>):
+      0. captcha_cooldown (12ч глобально) → выйти молча.
+      1. runner_disabled или runner_ip пуст (rotator не назначил IP в
+         этом часу) → выйти.
+      2. Per-runner throttle → выйти.
+      3. Per-runner lock — выйти если занят (уже идёт парсинг).
+      4. Атомарно (SELECT … FOR UPDATE SKIP LOCKED) забрать кейс и сразу
+         поставить next_*_at = now+30мин («резерв», чтоб другие runners
+         не взяли тот же). После парсинга _parse_one/_search_one ставят
+         финальные next_*_at (24ч / 3ч / 1ч / 24ч).
+      5. Парсим.
+      6. Per-runner throttle по результату (3-15мин / 10с / 30мин / 60с).
+      7. На success — алёрт в MAX. На captcha — global cooldown.
     """
     import random  # noqa: WPS433
     from datetime import timedelta
     from django.core.cache import cache
+    from django.db import transaction
     from django.db.models import F, Q
 
     if cooldown.is_active():
         return {"skipped": "captcha_cooldown"}
 
-    THROTTLE_KEY = "arbitr:smart_throttle_until"
-    LOCK_KEY = "arbitr:smart_lock"
-    COUNTER_KEY = "arbitr:smart_parse_count"
+    # Если rotator не назначил этому runner'у IP в этом часу (мало активных IP) —
+    # пропускаем тик. Ключ `arbitr:runner_ip:<id>` пишет ops/arbitr-snat-rotate.sh.
+    runner_ip = cache.get(f"arbitr:runner_ip:{runner_id}")
+    if not runner_ip:
+        # Падаем в более длинную паузу, чтоб не молотить SELECT впустую.
+        return {"skipped": "runner_disabled", "runner": runner_id}
+
+    THROTTLE_KEY = f"arbitr:smart_throttle_until:{runner_id}"
+    LOCK_KEY = f"arbitr:smart_lock:{runner_id}"
+    COUNTER_KEY = f"arbitr:smart_parse_count:{runner_id}"
+    CURRENT_KEY = f"arbitr:smart_current_case:{runner_id}"
     BREAK_EVERY = 8       # каждые N успешных парсингов
     BREAK_SECONDS = 1800  # пауза 30 мин
 
@@ -570,42 +576,53 @@ def kad_smart_one():
 
     try:
         now = timezone.now()
-
-        candidate = (
-            ArbitrCase.objects
-            .filter(status=ArbitrCase.STATUS_SEARCHING)
-            .filter(Q(next_search_at__isnull=True) | Q(next_search_at__lte=now))
-            .select_related("service__client", "service__region", "started_by__user")
-            .order_by(F("next_search_at").asc(nulls_first=True))
-            .first()
-        )
-        kind = "search"
-
-        if candidate is None:
+        # Атомарный «забор» кейса: SELECT FOR UPDATE SKIP LOCKED + сразу
+        # сдвигаем next_*_at в будущее (30 мин «резерв»), чтобы остальные
+        # 2 runner'а не взяли тот же кейс. _parse_one/_search_one потом
+        # выставят финальное next_*_at.
+        RESERVE = timedelta(minutes=30)
+        with transaction.atomic():
             candidate = (
                 ArbitrCase.objects
-                .filter(status=ArbitrCase.STATUS_MONITORING)
-                .filter(Q(next_parse_at__isnull=True) | Q(next_parse_at__lte=now))
-                .select_related("service__client", "service__region", "started_by__user")
-                .order_by(F("next_parse_at").asc(nulls_first=True))
+                .select_for_update(skip_locked=True)
+                .filter(status=ArbitrCase.STATUS_SEARCHING)
+                .filter(Q(next_search_at__isnull=True) | Q(next_search_at__lte=now))
+                .order_by(F("next_search_at").asc(nulls_first=True))
                 .first()
             )
-            kind = "parse"
+            kind = "search"
+            if candidate is None:
+                candidate = (
+                    ArbitrCase.objects
+                    .select_for_update(skip_locked=True)
+                    .filter(status=ArbitrCase.STATUS_MONITORING)
+                    .filter(Q(next_parse_at__isnull=True) | Q(next_parse_at__lte=now))
+                    .order_by(F("next_parse_at").asc(nulls_first=True))
+                    .first()
+                )
+                kind = "parse" if candidate else None
+            if candidate is None:
+                _set_throttle(60)
+                return {"skipped": "nothing_ready", "runner": runner_id}
+            # Резервируем
+            if kind == "search":
+                candidate.next_search_at = now + RESERVE
+                candidate.save(update_fields=["next_search_at"])
+            else:
+                candidate.next_parse_at = now + RESERVE
+                candidate.save(update_fields=["next_parse_at"])
 
-        if candidate is None:
-            # Все кейсы спарсены/обысканы недавно — короткая пауза, чтобы
-            # не молотить SELECT каждые 10 секунд впустую.
-            _set_throttle(60)
-            return {"skipped": "nothing_ready"}
-
-        case = candidate
-        logger.info(
-            "kad_smart_one: case=%s number=%s kind=%s",
-            case.id, case.case_number, kind,
+        # Подгрузим related-поля отдельным запросом (внутри for-update нельзя).
+        case = (
+            ArbitrCase.objects
+            .select_related("service__client", "service__region", "started_by__user")
+            .get(pk=candidate.pk)
         )
-        # Для real-time панели на /arbitr/ — «парсит сейчас».
-        # Снимется в finally вместе с LOCK_KEY.
-        cache.set("arbitr:smart_current_case", str(case.id), timeout=600)
+        logger.info(
+            "kad_smart_one[%s]: case=%s number=%s kind=%s ip=%s",
+            runner_id, case.id, case.case_number, kind, runner_ip,
+        )
+        cache.set(CURRENT_KEY, str(case.id), timeout=600)
 
         try:
             with KadSession() as kad:
@@ -678,7 +695,25 @@ def kad_smart_one():
             return {"case_id": str(case.id), "result": "error", "exc": str(exc)[:200]}
     finally:
         cache.delete(LOCK_KEY)
-        cache.delete("arbitr:smart_current_case")
+        cache.delete(CURRENT_KEY)
+
+
+# Три отдельных task-имени для celery routing'а — каждый в свою очередь
+# arbitr_<a/b/c>. В docker-compose runner-a/b/c слушают свои очереди и идут
+# к kad с разных outbound IP (host-side iptables SNAT по source-IP контейнера).
+@shared_task(name="arbitr.kad_smart_one_a")
+def kad_smart_one_a():
+    return _kad_smart_one("a")
+
+
+@shared_task(name="arbitr.kad_smart_one_b")
+def kad_smart_one_b():
+    return _kad_smart_one("b")
+
+
+@shared_task(name="arbitr.kad_smart_one_c")
+def kad_smart_one_c():
+    return _kad_smart_one("c")
 
 
 @shared_task(name="arbitr.kad_monitor_one_case")
