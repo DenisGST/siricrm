@@ -626,8 +626,12 @@ def kad_smart_one():
                         pr["long_break"] = BREAK_SECONDS
                     else:
                         cache.set(COUNTER_KEY, count, timeout=86400)
-                        # Случайная пауза 1-10 мин если что-то новое, иначе 10с.
-                        delay = random.randint(60, 600) if something_new else 10
+                        # Случайная пауза 3-15 мин если что-то новое, иначе 10с.
+                        # Источник kad-трафика — iptables SNAT, который host-side
+                        # таймер `arbitr-snat-rotate.timer` ротирует раз в минуту
+                        # среди активных IP по расписанию (см. скрипт). За время
+                        # 3-15 мин паузы IP скорее всего успеет смениться.
+                        delay = random.randint(180, 900) if something_new else 10
                         _set_throttle(delay)
                         pr["delay"] = delay
                     pr["parse_count"] = count

@@ -1,0 +1,11 @@
+[Unit]
+Description=Arbitr kad SNAT rotation every minute (rebalance kad load across multiple IPs)
+
+[Timer]
+OnBootSec=30
+OnUnitActiveSec=60
+AccuracySec=1s
+Persistent=false
+
+[Install]
+WantedBy=timers.target
