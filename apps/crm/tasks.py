@@ -179,18 +179,40 @@ def send_telegram_message_task(message_id):
                 logger.warning(f"Failed to log messenger event: {e}")
         else:
             logger.error(f"❌ Task: Failed to send message {message_id}: {result['error']}")
+            # Без is_failed Message висит ⏳ «отправляется» вечно в UI.
+            # У TG-таски нет Celery-ретраев — провал = сразу финальный fail.
+            message.is_failed = True
+            message.error_text = (str(result.get('error') or 'unknown'))[:500]
+            message.save(update_fields=['is_failed', 'error_text'])
             try:
-                from apps.realtime.utils import push_toast
+                from apps.realtime.utils import push_toast, push_message_status
+                push_message_status(message)
                 if message.employee and message.employee.user:
                     push_toast(message.employee.user, f"Ошибка отправки: {result['error']}", level="error")
             except Exception as e:
                 logger.warning(f"Failed to push toast: {e}")
 
-            
+
     except Message.DoesNotExist:
         logger.error(f"❌ Task: Message {message_id} not found")
     except Exception as e:
         logger.exception(f"❌ Task error for message {message_id}: {e}")
+        # Поймали Exception на любом этапе (включая DNS-NameResolutionError
+        # как в инциденте 24.06.2026): помечаем Message failed, чтобы не висел в UI.
+        try:
+            from apps.crm.models import Message
+            from apps.realtime.utils import push_message_status
+            m = Message.objects.filter(id=message_id).first()
+            if m and not m.is_sent and not m.is_failed:
+                m.is_failed = True
+                m.error_text = (str(e) or 'send task crashed')[:500]
+                m.save(update_fields=['is_failed', 'error_text'])
+                try:
+                    push_message_status(m)
+                except Exception:
+                    pass
+        except Exception:
+            logger.exception("Failed to mark message %s as failed", message_id)
     finally:
         # Закрываем event loop
         loop.close()

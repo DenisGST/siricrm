@@ -162,6 +162,16 @@ def send_whatsapp_template_task(self, message_id: str):
         self.retry(exc=Exception(err or "wa template send failed"))
     except self.MaxRetriesExceededError:
         logger.error("WA template task: max retries exceeded for msg %s", msg.id)
+        # Без этого Message остаётся is_sent=False AND is_failed=False —
+        # UI показывает ⏳ «отправляется» вечно (инцидент 24.06.2026 с DNS).
+        msg.is_failed = True
+        msg.error_text = (err or "max retries exceeded")[:500]
+        msg.save(update_fields=["is_failed", "error_text"])
+        try:
+            from apps.realtime.utils import push_message_status
+            push_message_status(msg)
+        except Exception:
+            logger.exception("WA template task: push_message_status failed for msg %s", msg.id)
 
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=10)
@@ -268,3 +278,13 @@ def send_whatsapp_message_task(self, message_id: str):
         self.retry(exc=Exception(err or "wa send failed"))
     except self.MaxRetriesExceededError:
         logger.error("WA task: max retries exceeded for msg %s", msg.id)
+        # Без этого Message остаётся is_sent=False AND is_failed=False —
+        # UI показывает ⏳ «отправляется» вечно (инцидент 24.06.2026 с DNS).
+        msg.is_failed = True
+        msg.error_text = (err or "max retries exceeded")[:500]
+        msg.save(update_fields=["is_failed", "error_text"])
+        try:
+            from apps.realtime.utils import push_message_status
+            push_message_status(msg)
+        except Exception:
+            logger.exception("WA task: push_message_status failed for msg %s", msg.id)
