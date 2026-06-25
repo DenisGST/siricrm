@@ -66,5 +66,6 @@ urlpatterns = [
     path("scans/", include("apps.scans.urls", namespace="scans")),
     path("notifications/", include("apps.notifications.urls", namespace="notifications")),
     path("procedure/", include("apps.procedure.urls", namespace="procedure")),
+    path("efrsb/", include("apps.efrsb.urls", namespace="efrsb")),
     path("robots.txt", serve, {"document_root": settings.STATIC_ROOT, "path": "robots.txt"}),
 ]

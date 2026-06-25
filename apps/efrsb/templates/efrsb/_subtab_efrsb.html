@@ -1,0 +1,134 @@
+{% load icons %}
+{% comment %}
+  Под-вкладка ЕФРСБ: статус связки должника, генерация текста сообщения, реестр
+  публикаций (наши заготовки + обнаруженные). Самоперезагрузка по reloadEfrsb.
+  procPreview/procPreviewOffice — глобальные (dashboard.html).
+{% endcomment %}
+<div id="efrsb-pane"
+     hx-trigger="reloadEfrsb from:body"
+     hx-get="{% url 'efrsb:subtab_efrsb' service.id %}"
+     hx-swap="outerHTML">
+  <style>
+    #efrsb-pane .efrsb-act{display:inline-flex;align-items:center;justify-content:center;
+      width:26px;height:26px;border:none;background:transparent;border-radius:5px;cursor:pointer;
+      color:#94a3b8;transition:color .12s,background .12s}
+    #efrsb-pane .efrsb-act:hover{background:var(--ms-bg,#eef1f4);color:var(--act-hc,#2563eb)}
+  </style>
+
+  <div class="flex flex-col gap-3">
+
+    {% comment %} ── Статус связки должника с ЕФРСБ ── {% endcomment %}
+    <div class="flex items-center gap-2 flex-wrap text-sm border border-base-300 rounded p-2 bg-base-100">
+      <span class="font-semibold">Должник в ЕФРСБ:</span>
+      {% if link and link.bankrupt_guid %}
+        <span class="badge badge-success badge-sm">привязан</span>
+        <span class="text-xs text-base-content/60 font-mono">{{ link.bankrupt_guid }}</span>
+        {% if efrsb_monitor_enabled %}
+          <button class="btn btn-ghost btn-xs ml-auto"
+                  hx-post="{% url 'efrsb:refresh_now' service.id %}" hx-swap="none"
+                  title="Запросить свежие публикации из ЕФРСБ">⟳ Обновить из ЕФРСБ</button>
+        {% endif %}
+      {% else %}
+        <span class="badge badge-ghost badge-sm">не привязан</span>
+        {% if efrsb_monitor_enabled %}
+          <button class="btn btn-outline btn-xs"
+                  hx-post="{% url 'efrsb:resolve_bankrupt' service.id %}" hx-swap="none">
+            Найти должника в ЕФРСБ
+          </button>
+        {% else %}
+          <span class="text-xs text-base-content/50">мониторинг подключается после настройки доступа к API</span>
+        {% endif %}
+      {% endif %}
+    </div>
+
+    {% if link and link.candidates %}
+      {% include "efrsb/_bankrupt_candidates.html" %}
+    {% endif %}
+
+    {% comment %} ── Сформировать текст сообщения ── {% endcomment %}
+    <form class="flex flex-wrap items-end gap-2"
+          hx-post="{% url 'efrsb:publication_add' service.id %}" hx-swap="none">
+      {% csrf_token %}
+      <label class="form-control min-w-0">
+        <span class="label-text text-xs">Тип сообщения</span>
+        <select name="message_type" class="select select-bordered select-sm" required>
+          <option value="">— выберите тип —</option>
+          {% for t in message_types %}
+            <option value="{{ t.pk }}">{{ t.name }}{% if t.is_draft %} (черновик){% endif %}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <button type="submit" class="btn btn-primary btn-sm">➕ Добавить публикацию</button>
+      {% if not current_procedure %}
+        <span class="text-xs text-warning">Процедура не введена — типы показаны все.</span>
+      {% endif %}
+    </form>
+
+    {% comment %} ── Реестр публикаций ── {% endcomment %}
+    <div class="overflow-x-auto">
+      <table class="table table-sm table-zebra">
+        <thead>
+          <tr>
+            <th>Тип</th><th>Источник</th><th>Статус</th><th>Дата публикации</th>
+            <th>№ ЕФРСБ</th><th>Срок</th><th>Текст / файлы</th><th class="text-right"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for p in publications %}
+          <tr class="{% if p.has_violation %}bg-error/10{% endif %}">
+            <td class="text-xs">{{ p.type_label }}</td>
+            <td class="text-xs">
+              {% if p.origin == 'internal' %}<span class="badge badge-ghost badge-xs">наша</span>
+              {% else %}<span class="badge badge-info badge-xs">реестр</span>{% endif %}
+            </td>
+            <td>
+              {% if p.status == 'draft' %}<span class="badge badge-ghost badge-sm">черновик</span>
+              {% elif p.status == 'generated' %}<span class="badge badge-warning badge-sm">текст готов</span>
+              {% elif p.status == 'submitted' %}<span class="badge badge-info badge-sm">отправлено</span>
+              {% elif p.status == 'published' %}<span class="badge badge-success badge-sm">опубликовано</span>
+              {% elif p.status == 'annulled' %}<span class="badge badge-error badge-sm">аннулировано</span>
+              {% elif p.status == 'locked' %}<span class="badge badge-neutral badge-sm">заблокировано</span>{% endif %}
+            </td>
+            <td class="text-xs whitespace-nowrap">{% if p.date_publish %}{{ p.date_publish|date:"d.m.Y H:i" }}{% else %}<span class="text-base-content/40">—</span>{% endif %}</td>
+            <td class="text-xs whitespace-nowrap">
+              {% if p.fedresurs_guid %}<a class="link link-primary" href="{{ p.fedresurs_url }}" target="_blank" rel="noopener">{{ p.fedresurs_number|default:"открыть" }}</a>{% else %}<span class="text-base-content/40">—</span>{% endif %}
+            </td>
+            <td class="text-xs">
+              {% if p.has_violation %}<span class="badge badge-error badge-xs">нарушение срока</span>{% else %}<span class="text-base-content/40">—</span>{% endif %}
+            </td>
+            <td class="text-xs whitespace-nowrap align-middle">
+              {% if p.content_pdf_id or p.content_docx_id %}
+                {% if p.content_pdf_id %}<a class="link link-primary" href="{% url 'files:stored_download' p.content_pdf_id %}?inline=1" onclick="procPreview(this.href, '{{ p.title|escapejs }}'); return false">PDF</a>{% endif %}
+                {% if p.content_docx_id %}{% if p.content_pdf_id %} · {% endif %}<a class="link" href="{% url 'files:stored_download' p.content_docx_id %}" onclick="procPreviewOffice('{% url 'procedure:office_pdf' service.id p.content_docx_id %}', '{{ p.title|escapejs }} (docx)'); return false">docx</a>{% endif %}
+              {% else %}<span class="text-base-content/40">нет</span>{% endif %}
+              {% for f in p.files.all %}
+                {% if f.stored_file_id %}<div><a class="link text-xs" href="{% url 'files:stored_download' f.stored_file_id %}?inline=1" onclick="procPreview(this.href, '{{ f.name|escapejs }}'); return false">📎 {{ f.name|truncatechars:28 }}</a></div>{% endif %}
+              {% endfor %}
+            </td>
+            <td class="text-right whitespace-nowrap align-middle">
+              <div class="inline-flex flex-nowrap gap-1 align-middle">
+                {% if p.origin == 'internal' %}
+                <button type="button" class="efrsb-act" style="--act-hc:#2563eb"
+                        hx-get="{% url 'efrsb:publication_generate_form' service.id p.pk %}"
+                        hx-target="body" hx-swap="beforeend"
+                        title="{% if p.content_pdf_id %}Переформировать текст{% else %}Сформировать текст{% endif %}">{% if p.content_pdf_id %}{% icon "refresh-ccw" size=16 %}{% else %}{% icon "file-text" size=16 %}{% endif %}</button>
+                <button type="button" class="efrsb-act" style="--act-hc:#dc2626"
+                        hx-post="{% url 'efrsb:publication_delete' service.id p.pk %}"
+                        hx-confirm="Удалить публикацию «{{ p.title }}»?" title="Удалить">{% icon "trash" size=16 %}</button>
+                {% else %}
+                <span class="text-base-content/40 text-xs">из реестра</span>
+                {% endif %}
+              </div>
+            </td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="8" class="text-center text-base-content/50 py-4">
+            Публикаций пока нет. Добавьте публикацию и сформируйте её текст для ручной подачи на fedresurs.
+          </td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+  </div>
+</div>

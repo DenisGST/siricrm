@@ -1,0 +1,58 @@
+{% comment %}Справочник «Типы сообщений ЕФРСБ». Контекст: items (EfrsbMessageType).{% endcomment %}
+<div id="efrsb-types-list"
+     hx-trigger="reloadEfrsbTypes from:body"
+     hx-get="{% url 'efrsb:references_message_types' %}"
+     hx-swap="outerHTML">
+
+  <div class="flex flex-wrap justify-between items-center mb-3 gap-2">
+    <h3 class="font-semibold">Типы сообщений ЕФРСБ ({{ items|length }})</h3>
+    <button class="btn btn-primary btn-sm"
+            hx-get="{% url 'efrsb:reference_message_type_add' %}"
+            hx-target="body" hx-swap="beforeend">+ Добавить тип</button>
+  </div>
+
+  <p class="text-xs text-base-content/60 mb-3">
+    Тип сообщения сопоставляет наше событие процедуры с типом read-API ЕФРСБ
+    (поле «Тип в API») и шаблоном текста. 🔶 — черновик (соответствие/сроки
+    подтверждаются с АУ).
+  </p>
+
+  <div class="overflow-x-auto">
+    <table class="table table-sm table-zebra">
+      <thead>
+        <tr>
+          <th class="w-10">№</th>
+          <th>Тип сообщения</th>
+          <th>Тип в API</th>
+          <th>Раздел</th>
+          <th>Шаблон</th>
+          <th class="w-20 text-center">Статус</th>
+          <th class="w-28 text-right"></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for it in items %}
+        <tr>
+          <td class="text-xs text-base-content/50">{{ it.order }}</td>
+          <td>{% if it.is_draft %}<span title="Черновик">🔶</span> {% endif %}{{ it.name }}
+            <div class="text-xs font-mono text-base-content/40">{{ it.code }}</div></td>
+          <td class="text-xs font-mono">{{ it.api_type|default:"—" }}{% if it.api_type_aliases %} <span class="text-base-content/40">+{{ it.api_type_aliases|length }}</span>{% endif %}</td>
+          <td class="text-xs">{{ it.get_api_kind_display }}</td>
+          <td class="text-xs">{% if it.template_id %}{{ it.template.name|truncatechars:24 }}{% elif it.isk_template_id %}{{ it.isk_template.name|truncatechars:24 }}{% else %}<span class="text-warning">нет</span>{% endif %}</td>
+          <td class="text-center">{% if it.is_active %}<span class="badge badge-success badge-xs">активен</span>{% else %}<span class="badge badge-ghost badge-xs">скрыт</span>{% endif %}</td>
+          <td class="text-right whitespace-nowrap">
+            <button class="btn btn-xs btn-outline"
+                    hx-get="{% url 'efrsb:reference_message_type_edit' it.pk %}"
+                    hx-target="body" hx-swap="beforeend">Изменить</button>
+            <button class="btn btn-xs btn-error btn-outline"
+                    hx-post="{% url 'efrsb:reference_message_type_delete' it.pk %}"
+                    hx-confirm="Удалить тип «{{ it.name }}»?">Удалить</button>
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="7" class="text-center text-base-content/60 py-6">Типов сообщений нет — запустите <code>efrsb_seed</code></td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>

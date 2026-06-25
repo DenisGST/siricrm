@@ -655,27 +655,102 @@ def parser_status(request):
     from django.utils.dateparse import parse_datetime
 
     now = timezone.now()
-    captcha_until = cooldown.until() if cooldown.is_active() else None
-    throttle_ttl = None
-    throttle_val = cache.get("arbitr:smart_throttle_until")
-    if throttle_val:
-        end_dt = parse_datetime(throttle_val)
-        if end_dt:
-            throttle_ttl = int((end_dt - now).total_seconds())
-            if throttle_ttl <= 0:
-                throttle_ttl = None
-    parse_count = int(cache.get("arbitr:smart_parse_count") or 0)
+    # Per-IP cooldown: {ip: until_datetime}
+    cooldown_by_ip = cooldown.all_active()
     BREAK_EVERY = 8
 
-    current_case_id = cache.get("arbitr:smart_current_case")
-    current_case = None
-    if current_case_id:
-        current_case = (
-            ArbitrCase.objects
-            .select_related("service__client")
-            .filter(pk=current_case_id)
-            .first()
-        )
+    # ── Per-runner state (3 параллельных контейнера arbitr-runner a/b/c) ──
+    # Каждый runner имеет свой Lock/Throttle/Counter/CurrentCase в Redis и
+    # назначенный rotator'ом outbound-IP (`arbitr:runner_ip:<id>`).
+    RUNNERS = ["a", "b", "c"]
+
+    # IP назначения от rotator — пишутся без Django-префикса :1:, читаем напрямую.
+    runner_ip_by_id = {}
+    try:
+        import redis as _redis  # noqa: WPS433
+        from django.conf import settings as _settings  # noqa: WPS433
+        _r = _redis.Redis.from_url(_settings.REDIS_URL)
+        for rid in RUNNERS:
+            v = _r.get(f"arbitr:runner_ip:{rid}")
+            runner_ip_by_id[rid] = v.decode("utf-8") if v else ""
+    except Exception:
+        for rid in RUNNERS:
+            runner_ip_by_id[rid] = ""
+
+    runners = []
+    for rid in RUNNERS:
+        out_ip = runner_ip_by_id[rid]
+        # throttle TTL
+        thr_ttl = None
+        thr_val = cache.get(f"arbitr:smart_throttle_until:{rid}")
+        if thr_val:
+            end_dt = parse_datetime(thr_val)
+            if end_dt:
+                thr_ttl = int((end_dt - now).total_seconds())
+                if thr_ttl <= 0:
+                    thr_ttl = None
+        # parse_count
+        cnt = int(cache.get(f"arbitr:smart_parse_count:{rid}") or 0)
+        # current case
+        cur_id = cache.get(f"arbitr:smart_current_case:{rid}")
+        cur_case = None
+        if cur_id:
+            cur_case = (
+                ArbitrCase.objects
+                .select_related("service__client")
+                .filter(pk=cur_id)
+                .first()
+            )
+        # state-string
+        ip_cooldown_until = cooldown_by_ip.get(out_ip) if out_ip else None
+        if ip_cooldown_until:
+            state_r = "captcha"
+            label_r = f"IP {out_ip} в капче до {timezone.localtime(ip_cooldown_until):%H:%M}"
+        elif not out_ip:
+            state_r = "disabled"
+            label_r = "Не активен (нет IP в этом окне)"
+        elif thr_ttl and thr_ttl > 600:
+            state_r = "break"
+            label_r = f"Длинная пауза, осталось {thr_ttl//60}м"
+        elif cur_id and not thr_ttl:
+            state_r = "working"
+            label_r = "Парсит"
+        elif thr_ttl:
+            state_r = "throttle"
+            if thr_ttl >= 60:
+                label_r = f"Пауза {thr_ttl//60}м {thr_ttl%60:02d}с"
+            else:
+                label_r = f"Пауза {thr_ttl}с"
+        else:
+            state_r = "idle"
+            label_r = "Готов"
+        runners.append({
+            "id": rid,
+            "out_ip": out_ip,
+            "state": state_r,
+            "label": label_r,
+            "current_case": cur_case,
+            "parse_count": cnt,
+            "throttle_ttl": thr_ttl,
+        })
+
+    # Глобальное «есть ли хоть кто-то парсит сейчас»
+    any_working = any(r["state"] == "working" for r in runners)
+    any_active = any(r["out_ip"] and r["state"] != "captcha" for r in runners)
+    n_captcha = sum(1 for r in runners if r["state"] == "captcha")
+    if any_working:
+        state = "working"
+        n = sum(1 for r in runners if r["state"] == "working")
+        state_label = f"Парсит ({n}/{len(runners)})"
+    elif n_captcha and not any_active:
+        state = "captcha"
+        state_label = f"Все активные IP в капче ({n_captcha})"
+    elif not any_active and not n_captcha:
+        state = "idle"
+        state_label = "Все runner'ы выключены (нет активных IP в этом окне)"
+    else:
+        state = "idle"
+        state_label = "Ожидание"
 
     log_24h = ArbitrCheckLog.objects.filter(ts__gte=now - timedelta(hours=24))
     stats = Counter(log_24h.values_list("state", flat=True))
@@ -700,33 +775,54 @@ def parser_status(request):
         .count()
     )
 
-    if captcha_until:
-        state = "captcha"
-        state_label = f"Капча — пауза до {timezone.localtime(captcha_until):%H:%M}"
-    elif throttle_ttl and throttle_ttl > 600:
-        state = "break"
-        state_label = f"Длинная пауза, осталось {throttle_ttl//60}м"
-    elif current_case_id and not throttle_ttl:
-        state = "working"
-        state_label = "Парсит"
-    elif throttle_ttl:
-        state = "throttle"
-        if throttle_ttl >= 60:
-            state_label = f"Пауза до след. кейса: {throttle_ttl//60}м {throttle_ttl%60:02d}с"
-        else:
-            state_label = f"Пауза до след. кейса: {throttle_ttl}с"
-    else:
-        state = "idle"
-        state_label = "Готов"
+    # Расписание IP-ротации (МСК) — должно совпадать со скриптом
+    # ops/arbitr-snat-rotate.sh.
+    SCHEDULE = [
+        ("45.90.35.187",  21,  5),  # «через полночь» — обрабатывается ниже
+        ("31.128.40.116",  5, 15),
+        ("45.12.239.248",  9, 17),
+        ("109.172.47.2",  11, 20),
+    ]
+    msk_hour = timezone.localtime().hour
+
+    def _is_active(start, end, h):
+        if start < end:
+            return start <= h < end
+        # окно «через полночь»
+        return h >= start or h < end
+
+    # rotator (host-side bash скрипт) пишет ключ напрямую в Redis через
+    # `redis-cli SET arbitr:current_snat_ip …` — БЕЗ Django-префикса `:1:`.
+    # Django cache добавил бы префикс при .get() и не нашёл бы значение,
+    # поэтому читаем низкоуровнево через redis-py.
+    current_ip = ""
+    try:
+        import redis as _redis  # noqa: WPS433
+        from django.conf import settings as _settings  # noqa: WPS433
+        _r = _redis.Redis.from_url(_settings.REDIS_URL)
+        _v = _r.get("arbitr:current_snat_ip")
+        current_ip = _v.decode("utf-8") if _v else ""
+    except Exception:
+        current_ip = ""
+    ip_rows = []
+    for ip, s, e in SCHEDULE:
+        active_now = _is_active(s, e, msk_hour)
+        cd_until = cooldown_by_ip.get(ip)
+        ip_rows.append({
+            "ip": ip,
+            "start": s,
+            "end": e,
+            "active_now": active_now,
+            "is_current": (ip == current_ip),
+            "cooldown_until": cd_until,
+        })
 
     ctx = {
         "state": state,
         "state_label": state_label,
-        "current_case": current_case,
-        "parse_count": parse_count,
+        "runners": runners,
         "break_every": BREAK_EVERY,
-        "captcha_until": captcha_until,
-        "throttle_ttl": throttle_ttl,
+        "cooldown_by_ip": cooldown_by_ip,
         "ok_24h": stats.get("ok", 0),
         "nothing_24h": stats.get("nothing", 0),
         "error_24h": stats.get("error", 0),
@@ -734,5 +830,8 @@ def parser_status(request):
         "ready_parse": ready_parse,
         "ready_search": ready_search,
         "last_parsed": last_parsed,
+        "ip_rows": ip_rows,
+        "current_ip": current_ip,
+        "msk_hour": msk_hour,
     }
     return render(request, "arbitr/partials/_parser_status.html", ctx)

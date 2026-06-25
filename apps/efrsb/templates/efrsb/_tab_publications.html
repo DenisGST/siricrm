@@ -1,0 +1,35 @@
+{% comment %}
+  Вкладка «Публикации» карточки дела → под-вкладки ЕФРСБ / КоммерсантЪ.
+  Грузятся HTMX-партиалами в #pub-subtab-body. IIFE-переключатель активного таба
+  (top-layer-безопасно, как в card.html).
+{% endcomment %}
+<div class="flex flex-col gap-2" id="publications-tab">
+
+  <div class="tabs tabs-boxed w-fit" id="pub-subtabs">
+    <a class="tab tab-active" data-subtab="efrsb"
+       hx-get="{% url 'efrsb:subtab_efrsb' service.id %}"
+       hx-target="#pub-subtab-body" hx-swap="innerHTML">ЕФРСБ</a>
+    <a class="tab" data-subtab="kommersant"
+       hx-get="{% url 'efrsb:subtab_kommersant' service.id %}"
+       hx-target="#pub-subtab-body" hx-swap="innerHTML">КоммерсантЪ</a>
+  </div>
+
+  <div id="pub-subtab-body"
+       hx-get="{% url 'efrsb:subtab_efrsb' service.id %}"
+       hx-trigger="load" hx-swap="innerHTML">
+    <div class="p-6 text-base-content/50">Загрузка…</div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var tabs = document.getElementById('pub-subtabs');
+  if (!tabs) return;
+  tabs.addEventListener('click', function (e) {
+    var t = e.target.closest('.tab');
+    if (!t) return;
+    tabs.querySelectorAll('.tab').forEach(function (el) { el.classList.remove('tab-active'); });
+    t.classList.add('tab-active');
+  });
+})();
+</script>

@@ -14,6 +14,7 @@ URL-формат: ``{API_BASE}/{INSTANCE_ID}/<method>?token=<API_TOKEN>``.
 Возвращаемый кортеж: ``(ok: bool, wamid: str | None, err: str | None)``.
 """
 import logging
+import re
 from typing import Optional, Tuple
 
 import requests
@@ -21,6 +22,19 @@ import requests
 from apps.whatsapp import config as wa_conf
 
 logger = logging.getLogger("whatsapp")
+
+
+def sanitize_wa_text(text: str) -> str:
+    """Привести текст под ограничения 1msg.io: ``body``/``caption`` НЕ может
+    содержать табы или >4 пробелов подряд (иначе HTTP 500 «Param text cannot
+    have new-line/tab characters or more than 4 consecutive spaces»). Переносы
+    строк (`\\n`) 1msg принимает — их сохраняем (многострочные сообщения)."""
+    if not text:
+        return text
+    text = text.replace("\t", " ")        # табы → пробел
+    text = text.replace("\r", "")          # CR убираем (оставляем \n)
+    text = re.sub(r" {4,}", " ", text)     # 4+ пробелов подряд → один
+    return text
 
 
 _MEDIA_TYPE_TO_METHOD = {
@@ -92,6 +106,9 @@ def send_whatsapp_message(
         logger.info("WA send: TEST_MODE skip phone=%s (not in allow-list)", phone)
         return False, None, "test_mode_skip"
 
+    # 1msg отклоняет табы / >4 пробелов подряд в body/caption (HTTP 500)
+    text = sanitize_wa_text(text)
+
     # Текст
     if message_type == "text" or (not file_url and not message_type.startswith(("image", "video", "audio", "voice", "document"))):
         payload = {"phone": phone, "body": text or ""}
@@ -149,9 +166,12 @@ def send_whatsapp_template(
 
     params = []
     if body_params:
+        # Параметры шаблона Meta не допускают переносов/табов/4+ пробелов —
+        # схлопываем любой whitespace в одиночный пробел.
+        clean = [re.sub(r"\s+", " ", str(p)).strip() for p in body_params]
         params.append({
             "type": "body",
-            "parameters": [{"type": "text", "text": str(p)} for p in body_params],
+            "parameters": [{"type": "text", "text": p} for p in clean],
         })
 
     payload = {

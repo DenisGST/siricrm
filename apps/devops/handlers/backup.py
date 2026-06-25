@@ -1,6 +1,7 @@
 """Backup handler: pg_dump → gzip → S3 + локальная папка."""
 import gzip
 import os
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -11,6 +12,37 @@ from apps.devops.tasks import register_handler
 
 
 BACKUP_DIR = Path("/app/backups")
+
+# Сколько дней хранить локальные дампы (в S3 они в любом случае остаются).
+# 24.06.2026 backups/ дорос до 7.2 GB и съел диск до 90%. Перебдеть.
+LOCAL_BACKUP_RETENTION_DAYS = int(os.environ.get("LOCAL_BACKUP_RETENTION_DAYS", "14"))
+
+
+def _rotate_local_backups(log_lines: list[str]) -> None:
+    """Удаляет локальные db-*.sql.gz старше LOCAL_BACKUP_RETENTION_DAYS.
+
+    S3-копии не трогаем — там retention другой (опционально lifecycle policy на бакете).
+    Идемпотентно, безопасно — ошибки только логируем.
+    """
+    if not BACKUP_DIR.exists():
+        return
+    cutoff = time.time() - LOCAL_BACKUP_RETENTION_DAYS * 86400
+    deleted: list[str] = []
+    freed = 0
+    for p in BACKUP_DIR.glob("db-*.sql.gz"):
+        try:
+            stat = p.stat()
+            if stat.st_mtime < cutoff:
+                freed += stat.st_size
+                p.unlink()
+                deleted.append(p.name)
+        except Exception as e:
+            log_lines.append(f"  ⚠ ротация: не смог обработать {p.name}: {e}")
+    if deleted:
+        log_lines.append(
+            f"  Ротация: удалено {len(deleted)} файла(ов) старше {LOCAL_BACKUP_RETENTION_DAYS}d, "
+            f"освобождено {freed / 2**20:.1f} MB"
+        )
 
 
 def _docker_client():
@@ -113,6 +145,9 @@ def run_backup(params: dict) -> dict:
     download_url = s3.generate_presigned_url(
         "get_object", Params={"Bucket": bucket, "Key": s3_key}, ExpiresIn=3600
     )
+
+    # Чистим старые локальные дампы (S3 трогаем отдельной policy на бакете).
+    _rotate_local_backups(output_lines)
 
     return {
         "output": "\n".join(output_lines),

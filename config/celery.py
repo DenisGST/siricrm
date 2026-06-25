@@ -80,6 +80,12 @@ app.conf.beat_schedule = {
         'task': 'procedure.mark_overdue_requests',
         'schedule': crontab(hour=4, minute=10),
     },
+    # Мониторинг публикаций ЕФРСБ по активным делам. No-op, если
+    # EFRSB_MONITOR_ENABLED=false; внутренний throttle (next_sync_at) отсекает лишнее.
+    'efrsb-monitor-active-cases': {
+        'task': 'efrsb.monitor_active_cases',
+        'schedule': crontab(minute=15, hour='*/4'),
+    },
 }
 
 @setup_logging.connect

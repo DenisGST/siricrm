@@ -21,6 +21,7 @@
 - **Реально работающие методы отправки:** `sendMessage` (текст), `sendFile` (любое медиа — image/video/audio/voice/document, тип определяется по content-type), `sendLocation`, `sendContact`, `sendTemplate`.
 - **Не существуют** (404): `sendPTT`, `sendImage`, `sendVideo`, `sendDocument`, `sendAudio`, `sendMedia`, `sendInteractive`. Поэтому в `sender._MEDIA_TYPE_TO_METHOD` ВСЕ медиа маппятся на `sendFile` (включая `voice` — в 1msg нет отдельного PTT).
 - **Аудио без `caption`** — иначе 1msg возвращает `{sent:false, error:'Unexpected key "caption" on param "audio"'}`. Для других типов caption ОК.
+- 🛑 **`body`/`caption` НЕ может содержать табы или >4 пробелов подряд** → HTTP 500 `Param text cannot have new-line/tab characters or more than 4 consecutive spaces`. Переносы строк `\n` при этом 1msg **принимает** (проверено). `sender.sanitize_wa_text` чистит табы + 4+ пробелов (перенос сохраняет); параметры sendTemplate схлопывают любой whitespace. 🛑 Эта ошибка **перманентна — НЕ ретраить** (иначе оператор видит красный тост N раз; кейс Олейников Роман 25.06: отступ пробелами перед ссылкой).
 - **Сервисные методы:** `GET /status`, `GET /me`, `GET /webhook`, `POST /webhook` (body `{"webhookUrl": ["..."]}` или строкой — заменяет полностью).
 - **Ответ sendMessage/sendFile успешный:** `{"sent":true, "id":"<wamid>", ...}`. Ошибка: либо HTTP 4xx, либо HTTP 200 + `{"sent":false, "message":"..."}`. Sender ловит оба варианта.
 

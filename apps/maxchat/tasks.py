@@ -87,3 +87,13 @@ def send_max_message_task(self, message_id: str):
             self.retry(exc=Exception(err))
         except self.MaxRetriesExceededError:
             logger.error("MAX send: max retries exceeded for msg %s", msg.id)
+            # Без этого Message остаётся is_sent=False AND is_failed=False —
+            # UI показывает ⏳ «отправляется» вечно (см. инцидент 24.06.2026 с DNS).
+            msg.is_failed = True
+            msg.error_text = (err or "max retries exceeded")[:500]
+            msg.save(update_fields=["is_failed", "error_text"])
+            try:
+                from apps.realtime.utils import push_message_status
+                push_message_status(msg)
+            except Exception:
+                logger.exception("MAX task: push_message_status failed for msg %s", msg.id)

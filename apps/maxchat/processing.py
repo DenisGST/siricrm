@@ -180,6 +180,12 @@ def handle_max_event(data: dict):
             logger.warning("MAX webhook: attachment without url, att=%r", att)
             continue
 
+        # Не всякое вложение — файл: contact/share кладут в url email/телефон
+        # (напр. «gridyayev66@inbox.ru»). Качаем только http(s)-ссылки.
+        if not str(url).lower().startswith(("http://", "https://")):
+            logger.info("MAX webhook: вложение не ссылка (type=%s, url=%s) — пропуск", att_type, url)
+            continue
+
         if is_our_echo:
             continue
 
