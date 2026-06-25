@@ -234,6 +234,30 @@ def send_whatsapp_message_task(self, message_id: str):
     if err == "test_mode_skip":
         # TEST_MODE — это намеренный отказ, не retry
         return
+
+    # Перманентные ошибки (ретрай бессмысленен — текст/параметры не пройдут
+    # и со 2-й попытки). Помечаем failed один раз, без спама ретраями.
+    err_low = (err or "").lower()
+    permanent = (
+        "consecutive spaces" in err_low
+        or "new-line/tab" in err_low
+        or "invalid parameter" in err_low
+    )
+
+    from django.utils import timezone
+    if permanent:
+        msg.is_failed = True
+        msg.error_text = "Недопустимый текст (табы или 4+ пробелов подряд)"
+        msg.save(update_fields=["is_failed", "error_text"])
+        try:
+            from apps.realtime.utils import push_message_status, push_toast
+            push_message_status(msg)
+            if msg.employee and msg.employee.user:
+                push_toast(msg.employee.user, "WhatsApp: недопустимый текст (табы/много пробелов)", level="error")
+        except Exception:
+            logger.exception("WA task: toast failed for msg %s", msg.id)
+        return
+
     try:
         from apps.realtime.utils import push_toast
         if msg.employee and msg.employee.user:
