@@ -6,9 +6,12 @@ from typing import Optional, Tuple
 import requests
 from django.conf import settings
 
+from apps.maxchat.ca import max_ca_bundle
+
 logger = logging.getLogger(__name__)
 
-MAX_API_BASE_URL = "https://platform-api.max.ru"
+# С 19.07.2026 — platform-api2.max.ru (см. settings.MAX_API_BASE_URL + ca.py).
+MAX_API_BASE_URL = getattr(settings, "MAX_API_BASE_URL", "https://platform-api2.max.ru")
 
 
 def _get_upload_type(message_type: str) -> str:
@@ -39,6 +42,7 @@ def _upload_file_to_max(
             params={"type": upload_type},
             headers=headers_auth,
             timeout=10,
+            verify=max_ca_bundle(),
         )
         r.raise_for_status()
         upload_data = r.json()
@@ -63,6 +67,7 @@ def _upload_file_to_max(
             upload_url,
             files={"data": (filename, file_bytes, content_type)},
             timeout=60,
+            verify=max_ca_bundle(),
         )
         r2.raise_for_status()
         # MAX для audio/voice возвращает пустое тело — это нормально
@@ -125,6 +130,7 @@ def _wait_attachment_ready(
                 json=payload,
                 headers=headers,
                 timeout=15,
+                verify=max_ca_bundle(),
             )
         except Exception as e:
             logger.exception("MAX send_message network error: %s", e)
@@ -203,6 +209,7 @@ def send_max_message(
             json=payload,
             headers=headers,
             timeout=15,
+            verify=max_ca_bundle(),
         )
     except Exception as e:
         logger.exception("MAX send_message network error: %s", e)

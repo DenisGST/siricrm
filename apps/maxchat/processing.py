@@ -52,10 +52,11 @@ def _download_max_file(url: str, attempts: int = 3):
 
     Возвращает ``(bytes, content_type, err)``. Проверяем длину против
     ``Content-Length`` — обрезанный файл не сохраняем (лучше ретрай)."""
+    from apps.maxchat.ca import max_ca_bundle
     last_err = None
     for i in range(attempts):
         try:
-            resp = requests.get(url, timeout=(10, 90))
+            resp = requests.get(url, timeout=(10, 90), verify=max_ca_bundle())
             resp.raise_for_status()
             data = resp.content
             ctype = (resp.headers.get("Content-Type") or "").lower()
