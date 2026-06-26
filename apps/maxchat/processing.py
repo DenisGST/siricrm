@@ -70,6 +70,48 @@ def _download_max_file(url: str, attempts: int = 3):
     return None, None, str(last_err)
 
 
+def _create_download_pending(client, max_mid, att, att_uid, url, filename):
+    """Скачать сразу не удалось (сетевой/CDN-сбой) — НЕ теряем молча: создаём
+    запись со статусом «загружается» + ставим фоновый автоповтор. URL MAX
+    живёт долго, поэтому ретрай с бэкоффом ~час обычно дотягивает файл.
+    В чат пока НЕ пушим — покажем, когда скачается (или когда сдадимся)."""
+    msg = Message.objects.create(
+        client=client, content="", direction="incoming",
+        message_type=_determine_message_type(filename or "", ""),
+        max_message_id=max_mid, channel="max", telegram_date=timezone.now(),
+        file_name=filename or "",
+        raw_payload={
+            "channel": "max", "att_uid": att_uid, "download_pending": True,
+            "download_url": url, "download_retries": 0,
+            "attachment_type": att.get("type"), "payload": att.get("payload") or {},
+        },
+    )
+    from apps.maxchat.tasks import retry_max_attachment_download
+    retry_max_attachment_download.apply_async((str(msg.id),), countdown=30)
+    logger.warning("⏳ MAX download deferred → auto-retry: msg=%s url=%s", msg.id, url[:60])
+    return msg
+
+
+def _create_unhandled_placeholder(client, max_mid, body):
+    """Вложение пришло, но скачивать нечего (нет прямой ссылки — вероятно
+    ПЕРЕСЛАННЫЙ файл из другого мессенджера/почты или нестандартная структура).
+    НЕ теряем молча: видимая пометка оператору + ПОЛНЫЙ payload в raw_payload
+    (durable-диагностика — переживает рестарты контейнеров, в отличие от логов)."""
+    msg = Message.objects.create(
+        client=client,
+        content="📎 Клиент прислал вложение (возможно, пересланный файл), "
+                "которое не удалось загрузить автоматически. Попросите переслать "
+                "его обычным файлом.",
+        direction="incoming", message_type="text",
+        max_message_id=max_mid, channel="max", telegram_date=timezone.now(),
+        raw_payload={"channel": "max", "unhandled_attachment": True, "body": body},
+    )
+    _push(msg)
+    logger.warning("📎 MAX unhandled attachment (mid=%s) → placeholder %s (body stored for diag)",
+                   max_mid, msg.id)
+    return msg
+
+
 def handle_max_event(data: dict):
     """Обработать один webhook-payload MAX (текст + вложения)."""
     if not isinstance(data, dict):
@@ -166,6 +208,7 @@ def handle_max_event(data: dict):
     ).exists())
 
     # вложения
+    produced = 0  # сколько записей создали (файл/отложенная загрузка)
     for att in attachments:
         att_type = att.get("type")
         payload = att.get("payload") or {}
@@ -173,20 +216,24 @@ def handle_max_event(data: dict):
         size = att.get("size")
 
         if att_type == "link":
-            continue  # цитата-ссылка обработана выше, не файл
+            continue  # цитата/forward-ссылка обработана выше, не файл
 
         url = payload.get("url")
-        if not url:
-            logger.warning("MAX webhook: attachment without url, att=%r", att)
-            continue
 
         # Не всякое вложение — файл: contact/share кладут в url email/телефон
         # (напр. «gridyayev66@inbox.ru»). Качаем только http(s)-ссылки.
-        if not str(url).lower().startswith(("http://", "https://")):
+        if url and not str(url).lower().startswith(("http://", "https://")):
             logger.info("MAX webhook: вложение не ссылка (type=%s, url=%s) — пропуск", att_type, url)
             continue
 
         if is_our_echo:
+            continue
+
+        if not url:
+            # Нет прямой ссылки — вероятно ПЕРЕСЛАННЫЙ файл/нестандартная
+            # структура. Обработаем catch-all'ом после цикла (видимый
+            # плейсхолдер + полный payload), чтобы не потерять молча.
+            logger.warning("MAX webhook: attachment without url (type=%s) → диагностика", att_type)
             continue
 
         # 🛑 Дедуп ПО ВЛОЖЕНИЮ, а не по mid. Несколько файлов (страниц
@@ -198,12 +245,15 @@ def handle_max_event(data: dict):
             channel="max", direction="incoming", raw_payload__att_uid=att_uid,
         ).exists():
             logger.info("MAX webhook: duplicate attachment uid=%s, skipping", att_uid[:24])
+            produced += 1  # запись уже есть — не считаем потерей
             continue
 
         # качаем файл (ретраи + проверка полноты по Content-Length)
         file_bytes, content_type, derr = _download_max_file(url)
         if file_bytes is None:
-            logger.error("❌ MAX webhook: failed download from %s: %s", url, derr)
+            # НЕ теряем молча: запись «загружается» + фоновый автоповтор.
+            _create_download_pending(client, max_mid, att, att_uid, url, filename)
+            produced += 1
             continue
 
         if not filename:
@@ -277,3 +327,15 @@ def handle_max_event(data: dict):
             len(file_bytes),
         )
         _push(msg_obj)  # пушим только входящие
+        produced += 1
+
+    # Catch-all: вложения пришли, но ни одной записи не создано и нет текста —
+    # вероятно пересланный файл/нестандартная структура (нет прямой ссылки).
+    # НЕ теряем молча: видимая пометка + полный payload для диагностики.
+    if attachments and not is_our_echo and produced == 0 and not text:
+        already = Message.objects.filter(
+            channel="max", direction="incoming", max_message_id=max_mid,
+            raw_payload__unhandled_attachment=True,
+        ).exists()
+        if not already:
+            _create_unhandled_placeholder(client, max_mid, body)
