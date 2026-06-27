@@ -256,6 +256,233 @@ def _poll_monitor_once(token: str, allowed: set):
             logger.exception("monitor bot: handle update failed")
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# VPN-мониторинг: одна проверка с dev (VPN dev+prod через одного провайдера,
+# одного достаточно). Если 3 минуты подряд VPN недоступен → алёрт MAX+TG.
+# ─────────────────────────────────────────────────────────────────────────────
+
+_VPN_FAILS_KEY = "vpn_monitor:fails"
+_VPN_DOWN_KEY = "vpn_monitor:down"
+
+
+@shared_task
+def monitor_vpn():
+    """Раз в минуту проверяет VPN-туннель через vpn_status handler (тот же,
+    что используется в daily-отчёте). Алёрт идёт по той же схеме что
+    monitor_health: N неудач подряд → 🛑, при восстановлении → ✅.
+
+    Запускается на dev: исходящий HTTP к Telegram/Anthropic из dev-runner идёт
+    через хостовый awg0 (split-tunnel AllowedIPs покрывают эти подсети).
+    Если VPN на dev живой — peer-сервер (общий с prod) тоже живой →
+    отдельная проверка прода не нужна (см. диалог 27.06.2026).
+
+    Гейт MONITOR_BOT_POLL: на проде миграция PeriodicTask тоже создаст запись,
+    но без флага задача no-op — иначе будем дублировать алёрты.
+    """
+    if not getattr(settings, "MONITOR_BOT_POLL", False):
+        return
+    threshold = int(getattr(settings, "VPN_MONITOR_FAIL_THRESHOLD", 3) or 3)
+
+    # Запускаем тот же handler что использует ручная проверка / отчёт —
+    # один и тот же код, никаких расхождений диагнозов.
+    try:
+        from apps.devops.handlers.vpn_status import run_vpn_status
+        res = run_vpn_status({}) or {}
+        result = res.get("result") or {}
+        healthy = bool(result.get("healthy"))
+        probes = result.get("probes") or []
+        detail = "; ".join(f"{p['label']}={p['detail']}" for p in probes)
+    except Exception as e:
+        logger.exception("monitor_vpn: vpn_status handler упал")
+        healthy = False
+        detail = f"handler crashed: {e.__class__.__name__}"
+
+    down = bool(cache.get(_VPN_DOWN_KEY))
+
+    if healthy:
+        cache.set(_VPN_FAILS_KEY, 0, _STATE_TTL)
+        if down:
+            cache.set(_VPN_DOWN_KEY, False, _STATE_TTL)
+            _alert(f"✅ VPN ВОССТАНОВЛЕН: туннель снова отвечает.\n{detail}")
+        return
+
+    fails = int(cache.get(_VPN_FAILS_KEY) or 0) + 1
+    cache.set(_VPN_FAILS_KEY, fails, _STATE_TTL)
+    logger.warning("VPN monitor: недоступен (%s), подряд %d/%d", detail, fails, threshold)
+    if fails >= threshold and not down:
+        cache.set(_VPN_DOWN_KEY, True, _STATE_TTL)
+        now = timezone.localtime().strftime("%d.%m.%Y %H:%M:%S")
+        _alert(
+            f"🛑 VPN НЕДОСТУПЕН\n"
+            f"Туннель awg0/claude0 не пропускает трафик до Telegram/Anthropic.\n"
+            f"Userbot, leads-бот, sendMessage прода — не работают.\n\n"
+            f"Проверка: {detail}\n"
+            f"Неудач подряд: {fails}\n"
+            f"Время: {now} (МСК)\n\n"
+            f"Чек на хосте dev: `awg show awg0`, `systemctl status awg-quick@awg0`"
+        )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Daily report: сводный отчёт о работоспособности в 8:00, 13:00, 19:00 МСК.
+# Включает /health/ обоих серверов, контейнеры, диск, миграции, VPN +
+# бизнес-метрики (новые клиенты, консультации, сообщения по каналам, платежи).
+# Расписание задаётся PeriodicTask (cron) — см. apps/core/migrations.
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def _local_status_report() -> tuple[bool, str, dict]:
+    """Запускает status-handler локально (на этом сервере = dev) — возвращает
+    (ok, краткое summary для отчёта, raw_result)."""
+    try:
+        from apps.devops.handlers.status import run_status
+        out = run_status({}) or {}
+        res = out.get("result") or {}
+        return True, _summarize_status(res), res
+    except Exception as e:
+        return False, f"status: ошибка ({e.__class__.__name__})", {}
+
+
+def _summarize_status(res: dict) -> str:
+    """Из result status-handler'а собирает 4 коротких строки для daily-report."""
+    git = res.get("git") or {}
+    disk = res.get("disk") or {}
+    migs = res.get("migrations") or {}
+    running = res.get("containers_running")
+    total = res.get("containers_total")
+    cont_str = f"{running}/{total} up" if running is not None and total is not None else "?"
+    pending = migs.get("pending", 0)
+    mig_str = f"✅ 0 ждут" if pending == 0 else f"⚠ {pending} ждут"
+    return (
+        f"git: `{git.get('branch', '?')}` @ `{git.get('commit', '?')}`\n"
+        f"контейнеры: {cont_str}\n"
+        f"миграции: {mig_str}\n"
+        f"диск: {disk.get('used_pct', '?')}%, свободно {disk.get('free_gb', '?')}G"
+    )
+
+
+def _prod_via_agent(action: str, timeout: int = 30) -> tuple[bool, str, dict]:
+    """Дёргает прод-агента и возвращает (ok, output, result-dict)."""
+    base = (getattr(settings, "PROD_AGENT_URL", "") or "").rstrip("/")
+    token = (getattr(settings, "DEVOPS_AGENT_TOKEN_PROD", "") or "").strip()
+    if not base or not token:
+        return False, "PROD_AGENT_URL/DEVOPS_AGENT_TOKEN_PROD не заданы", {}
+    hdr = {"Authorization": f"Bearer {token}"}
+    try:
+        r = requests.post(f"{base}/devops/agent/jobs/", headers=hdr,
+                          json={"action_type": action, "params": {}}, timeout=20)
+    except requests.RequestException as e:
+        return False, f"прод недоступен ({e.__class__.__name__})", {}
+    if r.status_code >= 400:
+        return False, f"HTTP {r.status_code}", {}
+    job_id = (r.json() or {}).get("id")
+    if not job_id:
+        return False, "агент не вернул id задачи", {}
+    for _ in range(max(1, timeout // 2)):
+        _time.sleep(2)
+        try:
+            jr = requests.get(f"{base}/devops/agent/jobs/{job_id}/", headers=hdr, timeout=15).json()
+        except requests.RequestException:
+            continue
+        if jr.get("status") == "done":
+            return True, jr.get("output") or "", jr.get("result") or {}
+        if jr.get("status") == "failed":
+            return False, jr.get("output") or "agent failed", {}
+    return False, "таймаут ожидания агента", {}
+
+
+def _format_business(stats: dict) -> str:
+    """Бизнес-блок отчёта из daily_stats.result."""
+    if not stats:
+        return "(нет данных)"
+    new = stats.get("new_clients", 0)
+    cons = stats.get("consultations") or {}
+    msgs = stats.get("messages") or {}
+    by_chan = msgs.get("by_channel") or {}
+    pays = stats.get("payments") or {}
+
+    lines = [
+        f"🆕 Новых клиентов: {new}",
+        (
+            f"📅 Консультации: ✅ {cons.get('done', 0)} проведено · "
+            f"📌 {cons.get('booked', 0)} назначено · "
+            f"↻ {cons.get('transferred', 0)} перенесено · "
+            f"❌ {cons.get('cancelled', 0)} отменено"
+        ),
+        f"✉️ Сообщения: ↗{msgs.get('out', 0)} ↘{msgs.get('in', 0)}",
+    ]
+    for ch in sorted(by_chan):
+        c = by_chan[ch]
+        lines.append(f"   {ch}: ↗{c.get('out', 0)} ↘{c.get('in', 0)}")
+    lines += [
+        (
+            f"💰 Платежи: ↗{pays.get('incoming_sum', 0):,.0f} ₽ "
+            f"({pays.get('incoming_count', 0)} шт) · "
+            f"↘{pays.get('outgoing_sum', 0):,.0f} ₽ "
+            f"({pays.get('outgoing_count', 0)} шт)"
+        ),
+    ]
+    return "\n".join(lines)
+
+
+@shared_task(queue="devops")
+def daily_health_report():
+    """Собирает сводный отчёт по обоим серверам и шлёт в MAX+TG.
+
+    Запускается по cron 08:00, 13:00, 19:00 МСК (PeriodicTask). Очередь `devops`
+    нужна потому что _local_status_report() зовёт run_status handler, который
+    лезет в docker.sock — этот сокет смонтирован только в devops-runner
+    контейнер, не в обычный celery worker.
+
+    Гейт MONITOR_BOT_POLL: на проде миграция тоже сидит, но без флага no-op.
+    """
+    if not getattr(settings, "MONITOR_BOT_POLL", False):
+        return
+
+    now = timezone.localtime().strftime("%d.%m.%Y %H:%M")
+
+    # 1. dev — локально (мы и есть dev)
+    dev_ok, dev_summary, _ = _local_status_report()
+
+    # 2. prod — через DevOps-агент (он умеет даже когда web прода завис)
+    prod_ok, _prod_out, prod_status_res = _prod_via_agent("status", timeout=45)
+    prod_summary = _summarize_status(prod_status_res) if prod_ok else "❌ нет ответа от прод-агента"
+
+    # 3. VPN — одна проверка с dev (см. monitor_vpn)
+    try:
+        from apps.devops.handlers.vpn_status import run_vpn_status
+        vpn_res = (run_vpn_status({}) or {}).get("result") or {}
+        vpn_line = "✅ туннель работает" if vpn_res.get("healthy") else "🛑 туннель недоступен"
+        for p in vpn_res.get("probes") or []:
+            mark = "✓" if p["ok"] else "✗"
+            vpn_line += f"\n   {mark} {p['label']:<14s} {p['detail']}"
+    except Exception as e:
+        vpn_line = f"❌ ошибка проверки: {e.__class__.__name__}"
+
+    # 4. бизнес-метрики — берём с прода (там живут CRM-данные)
+    _, _, business_stats = _prod_via_agent("daily_stats", timeout=45)
+
+    lines = [
+        f"📋 Отчёт о работоспособности — {now} МСК",
+        "",
+        "🔵 DEV (crmsiri.ru)",
+        *("   " + ln for ln in dev_summary.splitlines()),
+        "",
+        "🟢 PROD (siricrm.ru)",
+        *("   " + ln for ln in prod_summary.splitlines()),
+        "",
+        f"🔒 VPN: {vpn_line}",
+        "",
+        "📊 Бизнес-метрики прода за сутки",
+        _format_business(business_stats),
+    ]
+    text = "\n".join(lines)
+
+    sent_max = _send_max_alert(text)
+    sent_tg = _send_telegram_alert(text)
+    logger.info("daily_health_report отправлен: MAX=%s TG=%s, len=%d", sent_max, sent_tg, len(text))
+
+
 @shared_task
 def poll_monitor_bot():
     if not getattr(settings, "MONITOR_BOT_POLL", False):

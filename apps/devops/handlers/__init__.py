@@ -15,3 +15,4 @@ from . import restore_db  # noqa: F401
 from . import rollback  # noqa: F401
 from . import s3_stats  # noqa: F401
 from . import status  # noqa: F401
+from . import vpn_status  # noqa: F401

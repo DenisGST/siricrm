@@ -279,7 +279,10 @@ DADATA_SECRET_KEY = config("DADATA_SECRET_KEY", default="")
 
 # --- MAX bot ---
 MAX_BOT_TOKEN = config("MAX_BOT_TOKEN", default="")
-MAX_API_BASE_URL = "https://platform-api.max.ru"
+# С 19.07.2026 MAX переводит API на platform-api2.max.ru (TLS от CA Минцифры —
+# нужен Russian Trusted Root CA, см. MAX_CA_BUNDLE + apps/maxchat/ca.py).
+MAX_API_BASE_URL = config("MAX_API_BASE_URL", default="https://platform-api2.max.ru")
+MAX_CA_BUNDLE = str(BASE_DIR / "certs" / "russian_trusted_ca.pem")
 MAX_WEBHOOK_SECRET = config("MAX_WEBHOOK_SECRET", default="")
 
 # Внешний публичный URL CRM — нужен для построения absolute-ссылок

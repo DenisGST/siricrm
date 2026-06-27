@@ -24,6 +24,83 @@ def process_incoming_max_event(data: dict):
         logger.exception("MAX: process_incoming_max_event failed")
 
 
+@shared_task(bind=True, max_retries=None)
+def retry_max_attachment_download(self, message_id: str):
+    """Повторное скачивание входящего MAX-вложения, не скачавшегося с первого
+    раза (сетевой/CDN/DNS-сбой). URL MAX (``i.oneme.ru``) живёт долго, поэтому
+    ретраим с нарастающим бэкоффом ~час. По успеху — привязываем файл к записи
+    и пушим в чат; по исчерпании — помечаем «не удалось, попросите переслать».
+    """
+    import mimetypes
+    from apps.maxchat import processing as mp
+    from apps.files.models import StoredFile
+    from apps.files.s3_utils import upload_file_to_s3
+
+    try:
+        msg = Message.objects.select_related("client").get(id=message_id)
+    except Message.DoesNotExist:
+        return
+    rp = msg.raw_payload or {}
+    if not rp.get("download_pending"):
+        return  # уже решено
+
+    url = rp.get("download_url")
+    file_bytes, ctype, err = mp._download_max_file(url)
+
+    if file_bytes is not None:
+        filename = msg.file_name or ""
+        if not filename:
+            ext = (mimetypes.guess_extension(ctype or "") or ".bin").lstrip(".")
+            filename = f"max_file_{msg.max_message_id}.{ext}"
+        try:
+            bucket, key = upload_file_to_s3(file_bytes, prefix="max/media", filename=filename)
+        except Exception:
+            logger.exception("MAX retry: S3 upload failed for msg %s", msg.id)
+            bucket = None
+        if bucket:
+            stored = StoredFile.objects.create(
+                bucket=bucket, key=key, filename=filename,
+                content_type=ctype or "application/octet-stream", size=len(file_bytes),
+            )
+            try:
+                from apps.files.folder_utils import get_chat_folder
+                from apps.files.models import ClientFile
+                cf = get_chat_folder(msg.client, "received")
+                ClientFile.objects.create(
+                    folder=cf, stored_file=stored, name=filename,
+                    size=len(file_bytes), content_type=ctype or "application/octet-stream",
+                )
+            except Exception:
+                pass
+            msg.file = stored
+            msg.file_name = filename
+            msg.message_type = mp._determine_message_type(filename, ctype or "")
+            rp["download_pending"] = False
+            msg.raw_payload = rp
+            msg.save(update_fields=["file", "file_name", "message_type", "raw_payload"])
+            mp._push(msg)
+            logger.info("✅ MAX retry: msg %s downloaded (%d bytes)", msg.id, len(file_bytes))
+            return
+
+    # неудача — бэкофф (1м,5м,15м,30м,60м), затем сдаёмся
+    retries = int(rp.get("download_retries", 0)) + 1
+    rp["download_retries"] = retries
+    BACKOFFS = [60, 300, 900, 1800, 3600]
+    if retries <= len(BACKOFFS):
+        msg.raw_payload = rp
+        msg.save(update_fields=["raw_payload"])
+        retry_max_attachment_download.apply_async((message_id,), countdown=BACKOFFS[retries - 1])
+        logger.warning("⏳ MAX retry %d for msg %s, next in %ds (%s)", retries, msg.id, BACKOFFS[retries - 1], err)
+    else:
+        rp["download_pending"] = False
+        msg.raw_payload = rp
+        msg.message_type = "text"
+        msg.content = "❌ Клиент прислал файл, но загрузить его не удалось. Попросите переслать ещё раз."
+        msg.save(update_fields=["raw_payload", "message_type", "content"])
+        mp._push(msg)
+        logger.error("❌ MAX retry exhausted for msg %s (url=%s)", msg.id, (url or "")[:60])
+
+
 @shared_task(bind=True, max_retries=3, default_retry_delay=10)
 def send_max_message_task(self, message_id: str):
     try:
