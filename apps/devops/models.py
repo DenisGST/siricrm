@@ -46,6 +46,7 @@ class DevopsAction(models.Model):
         LIST_BACKUPS = "list_backups", "Список бэкапов"
         S3_STATS = "s3_stats", "S3: статистика"
         DISK_USAGE = "disk_usage", "Диск: разбивка использования"
+        VPN_STATUS = "vpn_status", "VPN: проверка туннеля"
         PULL_DB = "pull_db", "Скопировать БД сюда (prod → dev)"
         PUSH_DB = "push_db", "Залить эту БД в цель (dev → prod)"
         DUMPDATA_TABLES = "dumpdata_tables", "Выгрузить выбранные таблицы (dumpdata)"
