@@ -239,6 +239,10 @@ services:
       ARBITR_RUNNER_ID: a
     dns: *default-dns
     shm_size: '2gb'
+    # PID 1 = tini → пожинает zombie от Selenium/Chrome subprocess'ов.
+    # Без этого celery (PID 1) не делает waitpid, и за сутки накапливается
+    # 10k+ zombie-процессов от Chrome renderer/GPU/zygote.
+    init: true
     depends_on:
       - db
       - redis
@@ -262,6 +266,10 @@ services:
       ARBITR_RUNNER_ID: b
     dns: *default-dns
     shm_size: '2gb'
+    # PID 1 = tini → пожинает zombie от Selenium/Chrome subprocess'ов.
+    # Без этого celery (PID 1) не делает waitpid, и за сутки накапливается
+    # 10k+ zombie-процессов от Chrome renderer/GPU/zygote.
+    init: true
     depends_on:
       - db
       - redis
@@ -284,6 +292,10 @@ services:
       ARBITR_RUNNER_ID: c
     dns: *default-dns
     shm_size: '2gb'
+    # PID 1 = tini → пожинает zombie от Selenium/Chrome subprocess'ов.
+    # Без этого celery (PID 1) не делает waitpid, и за сутки накапливается
+    # 10k+ zombie-процессов от Chrome renderer/GPU/zygote.
+    init: true
     depends_on:
       - db
       - redis
