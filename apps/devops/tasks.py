@@ -9,7 +9,7 @@ import traceback
 from celery import shared_task
 from django.utils import timezone as djtz
 
-from .agent_client import AgentClient
+from .agent_client import AgentClient, AgentError
 from .models import DevopsAction, DevopsAgentJob
 
 logger = logging.getLogger(__name__)
@@ -135,6 +135,15 @@ def sync_action_once(action: DevopsAction) -> bool:
             job = {"status": job_obj.status, "output": job_obj.output, "result": job_obj.result}
         else:
             job = AgentClient(action.environment).get_job(action.remote_job_id)
+    except AgentError as e:
+        # 502/503/504 — transient, типично при deploy-окне, когда daphne ещё
+        # не поднялся, а nginx уже возвращает Bad Gateway. Не шумим traceback'ом.
+        if e.status in (502, 503, 504):
+            logger.info("sync %s: %d %s — следующий тик повторит",
+                        action.pk, e.status, action.environment.name)
+        else:
+            logger.warning("sync error for action %s", action.pk, exc_info=True)
+        return False
     except Exception:
         logger.warning("sync error for action %s", action.pk, exc_info=True)
         return False

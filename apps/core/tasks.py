@@ -245,6 +245,11 @@ def _poll_monitor_once(token: str, allowed: set):
         resp = requests.get(f"https://api.telegram.org/bot{token}/getUpdates",
                             params=params, timeout=30)
         updates = (resp.json() or {}).get("result", [])
+    except (requests.exceptions.ReadTimeout, requests.exceptions.ConnectTimeout):
+        # Long-poll timeout — норма: getUpdates держит до timeout=20s, иногда
+        # сторона Telegram закрывает соединение позднее. Следующий тик повторит.
+        logger.info("monitor bot: long-poll timeout — повторим")
+        return
     except Exception:
         logger.exception("monitor bot: getUpdates failed")
         return
