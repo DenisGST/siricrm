@@ -729,6 +729,11 @@ def kad_smart_one_c():
     return _kad_smart_one("c")
 
 
+@shared_task(name="arbitr.kad_smart_one_d")
+def kad_smart_one_d():
+    return _kad_smart_one("d")
+
+
 @shared_task(name="arbitr.kad_monitor_one_case")
 def kad_monitor_one_case(case_id: str):
     """Ручной запуск парсинга ОДНОГО дела (минуя work-window).

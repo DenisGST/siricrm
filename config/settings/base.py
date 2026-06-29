@@ -244,6 +244,7 @@ CELERY_TASK_ROUTES = {
     "arbitr.kad_smart_one_a": {"queue": "arbitr_a"},
     "arbitr.kad_smart_one_b": {"queue": "arbitr_b"},
     "arbitr.kad_smart_one_c": {"queue": "arbitr_c"},
+    "arbitr.kad_smart_one_d": {"queue": "arbitr_d"},
     "arbitr.*": {"queue": "arbitr"},
 }
 

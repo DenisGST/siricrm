@@ -662,7 +662,7 @@ def parser_status(request):
     # ── Per-runner state (3 параллельных контейнера arbitr-runner a/b/c) ──
     # Каждый runner имеет свой Lock/Throttle/Counter/CurrentCase в Redis и
     # назначенный rotator'ом outbound-IP (`arbitr:runner_ip:<id>`).
-    RUNNERS = ["a", "b", "c"]
+    RUNNERS = ["a", "b", "c", "d"]
 
     # IP назначения от rotator — пишутся без Django-префикса :1:, читаем напрямую.
     runner_ip_by_id = {}
@@ -782,6 +782,7 @@ def parser_status(request):
         ("31.128.40.116",  5, 15),
         ("45.12.239.248",  9, 17),
         ("109.172.47.2",  11, 20),
+        ("45.84.225.250",  0,  8),
     ]
     msk_hour = timezone.localtime().hour
 

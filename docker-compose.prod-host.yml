@@ -306,6 +306,29 @@ services:
         max-size: "20m"
         max-file: "5"
 
+  arbitr-runner-d:
+    image: siricrm-arbitr-runner:latest
+    command: celery -A config worker -Q arbitr_d -l info --concurrency=1 --max-tasks-per-child=20
+    volumes:
+      - .:/app
+    env_file:
+      - ${ENV_FILE:-.env.prod}
+    environment:
+      DJANGO_ENV: prod
+      ARBITR_RUNNER_ID: d
+    dns: *default-dns
+    shm_size: '2gb'
+    init: true
+    depends_on:
+      - db
+      - redis
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "5"
+
   backup:
     build: .
     command: >

@@ -1,5 +1,5 @@
 #!/bin/bash
-# arbitr-snat-rotate.sh — назначает outbound IP трём параллельным
+# arbitr-snat-rotate.sh — назначает outbound IP четырём параллельным
 # arbitr-runner контейнерам по расписанию (МСК) и перевыставляет
 # per-runner iptables SNAT-правила (match по docker source-IP).
 #
@@ -8,11 +8,13 @@
 #   05:00–15:00 → 31.128.40.116
 #   09:00–17:00 → 45.12.239.248
 #   11:00–20:00 → 109.172.47.2
+#   00:00–08:00 → 45.84.225.250
 #
-# Раннеры (a/b/c) получают по одному IP из активных. Если активных меньше
-# трёх — лишние раннеры пишут в Redis `arbitr:runner_ip:<id>` пустую строку
-# (TTL 120с), сами таски это видят и спят тик. Если в пересекающемся окне
-# 11–15 активны все 4 IP — берём первые 3 (порядок: 187, 116, 248, 002).
+# Раннеры (a/b/c/d) получают по одному IP из активных. Если активных меньше
+# четырёх — лишние раннеры пишут в Redis `arbitr:runner_ip:<id>` пустую
+# строку (TTL 120с), сами таски это видят и спят тик. Порядок назначения
+# IP по списку ACTIVE: 187, 116, 248, 002, 250 (новый — в конце, чтоб не
+# сдвигать «насиженные» раннер-↔-IP в основных окнах).
 #
 # SNAT-правила (POSTROUTING table nat):
 #   -s <docker_ip_runner_a> -d <kad> -j SNAT --to-source <assigned_ip_a>
@@ -26,8 +28,8 @@
 set -e
 
 KAD_IP="185.129.103.123"
-RUNNERS=("a" "b" "c")
-CONTAINERS=("siricrm-arbitr-runner-1" "siricrm-arbitr-runner-b-1" "siricrm-arbitr-runner-c-1")
+RUNNERS=("a" "b" "c" "d")
+CONTAINERS=("siricrm-arbitr-runner-1" "siricrm-arbitr-runner-b-1" "siricrm-arbitr-runner-c-1" "siricrm-arbitr-runner-d-1")
 
 HOUR=$(TZ=Europe/Moscow date +%H)
 HOUR=$((10#$HOUR))
@@ -37,6 +39,7 @@ ACTIVE=()
 { [ $HOUR -ge 5 ] && [ $HOUR -lt 15 ]; } && ACTIVE+=("31.128.40.116")
 { [ $HOUR -ge 9 ] && [ $HOUR -lt 17 ]; } && ACTIVE+=("45.12.239.248")
 { [ $HOUR -ge 11 ] && [ $HOUR -lt 20 ]; } && ACTIVE+=("109.172.47.2")
+{ [ $HOUR -ge 0 ] && [ $HOUR -lt 8 ]; }  && ACTIVE+=("45.84.225.250")
 
 # Удаляем старые SNAT-правила для kad (по dst).
 while true; do
