@@ -29,3 +29,9 @@ def can_merge_clients(user):
 def can_access_procedures(user):
     from apps.procedure.permissions import can_access_procedures as _check
     return _check(user)
+
+
+@register.filter
+def can_access_reports(user):
+    from apps.reports.permissions import can_access_reports as _check
+    return _check(user)

@@ -58,6 +58,13 @@ class IncomeType(TimeStampedModel):
     )
     name = models.CharField("Наименование", max_length=255)
     is_active = models.BooleanField("Активен", default=True)
+    is_legal_services = models.BooleanField(
+        "Юруслуги (гонорар)",
+        default=False,
+        help_text="Доход по этому типу — гонорар фирмы (юруслуги), а не транзит "
+                  "(госпошлина / публикации / доп.расходы). Используется в отчёте "
+                  "«Результаты работы отдела продаж».",
+    )
 
     class Meta:
         verbose_name = "Тип дохода"

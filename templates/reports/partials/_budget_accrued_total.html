@@ -1,0 +1,2 @@
+{% comment %}Ответ онлайн-правки «Начислено»: обновляет верхний стат (цель swap)
+   и ячейку футера таблицы (OOB).{% endcomment %}{{ total_accrued|floatformat:2 }} ₽<span id="budget-accrued-foot" hx-swap-oob="innerHTML">{{ total_accrued|floatformat:2 }} ₽</span>

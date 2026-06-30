@@ -36,6 +36,17 @@
         </label>
       </div>
 
+      <div>
+        <label class="label cursor-pointer justify-start gap-2">
+          <input type="checkbox" name="is_legal_services" class="checkbox checkbox-sm"
+                 {% if form.is_legal_services.value %}checked{% endif %}>
+          <span class="label-text">Юруслуги (гонорар)</span>
+        </label>
+        <p class="text-xs text-base-content/50 pl-7 -mt-1">
+          Учитывается в отчёте «Результаты работы отдела продаж» (гонорар фирмы, не транзит).
+        </p>
+      </div>
+
       {% if form.non_field_errors %}
         <div class="alert alert-error text-sm">{{ form.non_field_errors }}</div>
       {% endif %}

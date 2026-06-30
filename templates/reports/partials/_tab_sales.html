@@ -1,0 +1,123 @@
+{% load icons %}
+{% comment %}
+  Отчёт «Результаты работы отдела продаж» за месяц.
+  Строка = операция-поступление; «Сумма платежа» = вся операция,
+  «Сумма» = зачтённая юруслуги-часть. Итог = Σ «Сумма».
+  Бюджет ОП: «Рассчитать» заполняет «Начислено» (= расчёт по правилу) и поле
+  «Бюджет отдела продаж»; «Начислено» правится онлайн, «Итого начислено» — Σ строк.
+{% endcomment %}
+<div class="space-y-4">
+
+  {# ── Период + кнопка «Рассчитать» ──────────────────────────────────────── #}
+  <div class="flex flex-wrap items-end gap-3">
+    <form hx-get="{% url 'reports:tab_sales' %}"
+          hx-target="#reports-tab" hx-swap="innerHTML"
+          hx-trigger="change"
+          class="flex items-end gap-2">
+      <label class="form-control">
+        <span class="label label-text !text-xs !py-0 !pb-1 opacity-70">Период (месяц)</span>
+        <input type="month" name="month" value="{{ month_value }}"
+               class="input input-bordered input-sm" max="2100-12">
+      </label>
+    </form>
+
+    <button class="btn btn-sm btn-primary"
+            hx-post="{% url 'reports:budget_calculate' %}"
+            hx-vals='{"month": "{{ month_value }}"}'
+            hx-target="#reports-tab" hx-swap="innerHTML"
+            hx-confirm="Рассчитать бюджет отдела продаж за выбранный месяц? Значения «Начислено» будут перезаписаны расчётными.">
+      {% icon "calculator" size=15 %}<span class="ml-1.5">Рассчитать</span>
+    </button>
+  </div>
+
+  {# ── Итоги ───────────────────────────────────────────────────────────── #}
+  <div class="flex flex-wrap items-end gap-3">
+    <div class="stat bg-base-100 border border-base-200 rounded-lg py-3 px-4">
+      <div class="stat-title text-xs">Итого (руб)</div>
+      <div class="stat-value text-success text-2xl">{{ total|floatformat:2 }} ₽</div>
+      <div class="stat-desc">юруслуги за месяц · поступлений: {{ count }}</div>
+    </div>
+
+    <div class="stat bg-base-100 border border-base-200 rounded-lg py-3 px-4">
+      <div class="stat-title text-xs">Поступило по операциям</div>
+      <div class="stat-value text-2xl">{{ total_full|floatformat:2 }} ₽</div>
+      <div class="stat-desc">сумма платежей целиком</div>
+    </div>
+
+    <div class="stat bg-base-100 border border-primary rounded-lg py-3 px-4">
+      <div class="stat-title text-xs">Бюджет отдела продаж</div>
+      <div class="stat-value text-primary text-2xl">
+        {% if budget_total is not None %}{{ budget_total|floatformat:2 }} ₽{% else %}—{% endif %}
+      </div>
+      <div class="stat-desc">
+        {% if calculated_at %}рассчитан {{ calculated_at|date:"d.m.Y H:i" }}{% else %}нажмите «Рассчитать»{% endif %}
+      </div>
+    </div>
+
+    <div class="stat bg-base-100 border border-base-200 rounded-lg py-3 px-4">
+      <div class="stat-title text-xs">Итого начислено в бюджет ОП</div>
+      <div class="stat-value text-2xl" id="budget-accrued-total">{{ total_accrued|floatformat:2 }} ₽</div>
+      <div class="stat-desc">сумма по строкам (редактируется)</div>
+    </div>
+  </div>
+
+  {# ── Таблица входящих платежей ───────────────────────────────────────── #}
+  <div class="card bg-base-100 shadow-sm">
+    <div class="overflow-x-auto">
+      <table class="table table-sm table-zebra">
+        <thead>
+          <tr>
+            <th class="w-10">№</th>
+            <th>ФИО клиента</th>
+            <th>Дата платежа</th>
+            <th class="text-right">Сумма платежа</th>
+            <th>Тип</th>
+            <th>Назначение платежа</th>
+            <th>Комментарии</th>
+            <th class="text-right">Сумма</th>
+            <th class="text-right">Начислено в бюджет ОП</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in rows %}
+          <tr>
+            <td class="text-base-content/50">{{ r.n }}</td>
+            <td class="font-medium">{{ r.client_fio }}</td>
+            <td class="whitespace-nowrap">{{ r.date|date:"d.m.Y" }}</td>
+            <td class="text-right whitespace-nowrap">{{ r.amount_full|floatformat:2 }}</td>
+            <td class="whitespace-nowrap">{{ r.type }}</td>
+            <td>{{ r.purpose|default:"—" }}</td>
+            <td class="text-base-content/70">{{ r.comments|default:"" }}</td>
+            <td class="text-right whitespace-nowrap font-semibold">{{ r.amount|floatformat:2 }}</td>
+            <td class="text-right whitespace-nowrap">
+              <input type="number" step="0.01" min="0" name="value"
+                     {% if r.accrued is not None %}value="{{ r.accrued|floatformat:2 }}"{% endif %}
+                     placeholder="{{ r.computed|floatformat:0 }}"
+                     hx-post="{% url 'reports:budget_entry_save' r.payment.id %}"
+                     hx-vals='{"month": "{{ month_value }}"}'
+                     hx-trigger="change"
+                     hx-target="#budget-accrued-total" hx-swap="innerHTML"
+                     class="input input-bordered input-xs w-24 text-right
+                            {% if r.decision_date is None %}border-warning{% endif %}"
+                     {% if r.decision_date is None %}title="Нет даты введения процедуры — расчёт по правилу «до 8 мес»"{% endif %}>
+            </td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="9" class="text-center text-base-content/50 py-8">
+            За выбранный месяц платежей по юруслугам не найдено.
+          </td></tr>
+          {% endfor %}
+        </tbody>
+        {% if rows %}
+        <tfoot>
+          <tr class="font-semibold">
+            <td colspan="7" class="text-right">Итого:</td>
+            <td class="text-right whitespace-nowrap text-success">{{ total|floatformat:2 }} ₽</td>
+            <td class="text-right whitespace-nowrap" id="budget-accrued-foot">{{ total_accrued|floatformat:2 }} ₽</td>
+          </tr>
+        </tfoot>
+        {% endif %}
+      </table>
+    </div>
+  </div>
+</div>

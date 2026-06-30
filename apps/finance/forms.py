@@ -12,7 +12,7 @@ class ExpenseTypeForm(forms.ModelForm):
 class IncomeTypeForm(forms.ModelForm):
     class Meta:
         model = models.IncomeType
-        fields = ["service_name", "name", "is_active"]
+        fields = ["service_name", "name", "is_active", "is_legal_services"]
 
 
 class IncomingAccountForm(forms.ModelForm):

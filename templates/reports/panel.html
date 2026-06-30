@@ -1,0 +1,40 @@
+{% load icons %}
+{% comment %}
+  Раздел «Отчёты». Грузится в #content-area (use_htmx-пункт меню), повторяет
+  chrome главной. Отчёты — вкладками (добавляются по мере готовности).
+{% endcomment %}
+<div class="p-4" id="reports-panel">
+
+  <div class="flex items-center gap-3 mb-4 flex-wrap">
+    <h2 class="text-xl font-bold flex items-center gap-2">
+      {% icon "bar-chart-3" size=22 %} Отчёты
+    </h2>
+    <span class="text-sm text-base-content/50">аналитика и отчётность</span>
+  </div>
+
+  {# ── Вкладки (по одному отчёту на вкладку) ──────────────────────────── #}
+  <div role="tablist" class="tabs tabs-boxed mb-4 flex-wrap">
+    <a class="tab tab-active" role="tab"
+       hx-get="{% url 'reports:tab_sales' %}" hx-target="#reports-tab" hx-swap="innerHTML"
+       onclick="reportsTab(this)">
+      {% icon "trending-up" size=15 %}<span class="ml-1.5">Отдел продаж</span>
+    </a>
+  </div>
+
+  {# Контент активной вкладки — «Отдел продаж» подгружается сразу #}
+  <div id="reports-tab" hx-get="{% url 'reports:tab_sales' %}" hx-trigger="load" hx-swap="innerHTML">
+    <div class="flex justify-center py-10 text-base-content/40">Загрузка…</div>
+  </div>
+
+  <script>
+  (function () {
+    // Переключение активной вкладки (подсветка). Контент грузит HTMX.
+    window.reportsTab = function (el) {
+      el.closest('.tabs').querySelectorAll('.tab').forEach(function (t) {
+        t.classList.remove('tab-active');
+      });
+      el.classList.add('tab-active');
+    };
+  })();
+  </script>
+</div>
