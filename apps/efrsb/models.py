@@ -98,6 +98,12 @@ class EfrsbMessageType(TimeStampedModel):
 
     order = models.PositiveIntegerField("Порядок", default=0)
     is_active = models.BooleanField("Активен", default=True)
+    is_bfl = models.BooleanField(
+        "Релевантен БФЛ (физлицо)", default=False,
+        help_text="Тип публикуется в банкротстве граждан. По умолчанию в селекторе "
+                  "показываются только такие (галочка «Показать все» открывает остальные). "
+                  "🛑 Первичная разметка — заготовка, подтверждается с АУ.",
+    )
     is_draft = models.BooleanField(
         "Черновик (не подтверждён)", default=True,
         help_text="Соответствие типу API / сроки подлежат подтверждению АУ. Бейдж в UI.",

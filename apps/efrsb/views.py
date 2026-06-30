@@ -25,6 +25,49 @@ from .models import EfrsbMessageType, EfrsbPublication
 
 log = logging.getLogger(__name__)
 
+import json
+import os
+
+_CATEGORIES_PATH = os.path.join(os.path.dirname(__file__), "reference_data", "categories.json")
+
+
+def _load_categories():
+    """Официальная группировка типов ЕФРСБ (дерево ЛК). [{title, codes:[...]}]."""
+    try:
+        with open(_CATEGORIES_PATH, encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        log.exception("efrsb: не прочитать categories.json")
+        return []
+
+
+def _build_type_tree(types):
+    """Сгруппировать активные типы по официальному дереву; остальное → «Прочее».
+
+    Возвращает список групп для JSON: [{title, items:[{id,name,bfl,draft}]}].
+    title=None — типы верхнего уровня (без группы).
+    """
+    by_code = {t.code: t for t in types}
+    used = set()
+    groups = []
+    for cat in _load_categories():
+        items = []
+        for code in cat.get("codes", []):
+            t = by_code.get(code)
+            if t is not None:
+                items.append(t)
+                used.add(code)
+        if items:
+            groups.append({"title": cat.get("title"), "items": items})
+    rest = [t for t in types if t.code not in used]
+    if rest:
+        groups.append({"title": "Прочее", "items": rest})
+
+    def _leaf(t):
+        return {"id": str(t.id), "name": t.name, "bfl": t.is_bfl, "draft": t.is_draft}
+
+    return [{"title": g["title"], "items": [_leaf(t) for t in g["items"]]} for g in groups]
+
 
 def _actor(request):
     return getattr(request.user, "employee", None)
@@ -83,11 +126,15 @@ def _efrsb_context(service, case) -> dict:
     )
     link = getattr(case, "efrsb_link", None)
     from . import config as efrsb_config
+    # Дерево типов (официальная группировка ЛК ЕФРСБ) для селектора.
+    tree_json = _build_type_tree(types)
     return {
         "service": service,
         "case": case,
         "current_procedure": proc,
         "message_types": types,
+        "tree_json": tree_json,
+        "bfl_count": sum(1 for t in types if t.is_bfl),
         "publications": publications,
         "link": link,
         "efrsb_monitor_enabled": efrsb_config.is_configured(),
@@ -114,7 +161,9 @@ def publication_add(request, service_id):
         service, case = _case(request, service_id)
     except _NotBFL as exc:
         return HttpResponseForbidden(str(exc))
-    mt = get_object_or_404(EfrsbMessageType, pk=request.POST.get("message_type"))
+    mt = EfrsbMessageType.objects.filter(pk=(request.POST.get("message_type") or None)).first()
+    if mt is None:
+        return _toast("Выберите тип сообщения.", "warning")
     EfrsbPublication.objects.create(
         case=case,
         procedure=case.current_procedure,

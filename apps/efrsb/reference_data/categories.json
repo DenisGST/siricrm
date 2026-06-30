@@ -1,0 +1,140 @@
+[
+  {
+    "title": null,
+    "codes": [
+      "ArbitralDecree",
+      "ExtraordinaryExpenses",
+      "ApplicationReviewCourtDecision",
+      "Other",
+      "Annul"
+    ]
+  },
+  {
+    "title": "Требования кредиторов",
+    "codes": [
+      "ReceivingCreditorDemand2",
+      "CreditorsDemandRegistered",
+      "IntentionOfDemandsFulfilment",
+      "IntentionOfDemandsFulfilmentReview",
+      "FulfilledDemandsRecognition",
+      "FulfilledDemandsRecognitionReview"
+    ]
+  },
+  {
+    "title": "Решения арбитражного суда",
+    "codes": [
+      "Rebuttal",
+      "DisqualificationArbitrationManager2"
+    ]
+  },
+  {
+    "title": "Собрания и комитеты кредиторов",
+    "codes": [
+      "Meeting2",
+      "MeetingResult",
+      "Committee2",
+      "CommitteeResult"
+    ]
+  },
+  {
+    "title": "Сообщения для участников строительства",
+    "codes": [
+      "CourtAcceptanceStatement",
+      "MeetingParticipantsBuilding2",
+      "MeetingPartBuildResult",
+      "PartBuildMonetaryClaim",
+      "TransferOwnershipRealEstate"
+    ]
+  },
+  {
+    "title": "Сведения об активах",
+    "codes": [
+      "PropertyInventoryResult",
+      "AssessmentReport",
+      "TransferInsurancePortfolio",
+      "BankOpenAccountDebtor"
+    ]
+  },
+  {
+    "title": "Организация и проведение реализации имущества",
+    "codes": [
+      "CourseOfSalePersonProperty",
+      "Auction2",
+      "TradeResult",
+      "SaleOrderPledgedProperty2",
+      "CancelAuctionTradeResult",
+      "ChangeAuction2",
+      "SaleContractResult2",
+      "RightUnsoldAsset",
+      "ProcedureGrantingIndemnity",
+      "MortgageSaleExclusion"
+    ]
+  },
+  {
+    "title": "Собрание работников должника",
+    "codes": [
+      "MeetingWorker2",
+      "MeetingWorkerResult"
+    ]
+  },
+  {
+    "title": "Оспаривание сделки",
+    "codes": [
+      "DealInvalid2",
+      "DealInvalidResult2"
+    ]
+  },
+  {
+    "title": "Ответственность контролирующих лиц",
+    "codes": [
+      "PersonResponsibilityDeclaration",
+      "PersonResponsibilityResult",
+      "CreditorChoiceRightSubsidiary",
+      "AccessionDeclarationSubsidiary",
+      "ChangeCreditorChoiceRightSubsidiary"
+    ]
+  },
+  {
+    "title": "Сообщения по финансовым организациям",
+    "codes": [
+      "AppointAdministration",
+      "IntentionCreditOrg",
+      "LiabilitiesCreditOrg",
+      "PerformanceCreditOrg",
+      "EstimatesCurrentExpenses",
+      "OrderAndTimingCalculations",
+      "ChangeEstimatesCurrentExpenses",
+      "InformationAboutBankruptcy",
+      "EstimatesAndUnsoldAssets",
+      "RemainingAssetsAndRight",
+      "StartSettlement",
+      "ProcessInventoryDebtor",
+      "RefusalOfIntentionCreditOrg",
+      "LiabilitiesCreditOrgAct"
+    ]
+  },
+  {
+    "title": "Сведения об исполнении плана реструктуризации",
+    "codes": [
+      "ViewDraftRestructuringPlan",
+      "ViewExecRestructuringPlan"
+    ]
+  },
+  {
+    "title": "Признаки преднамеренного или фиктивного банкротства",
+    "codes": [
+      "DeliberateBankruptcy",
+      "CancelDeliberateBankruptcy",
+      "ChangeDeliberateBankruptcy"
+    ]
+  },
+  {
+    "title": "Отчёты финансового управляющего",
+    "codes": [
+      "Final",
+      "Final2",
+      "Annulment",
+      "Annulment2"
+    ]
+  }
+]

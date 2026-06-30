@@ -45,24 +45,197 @@
       {% include "efrsb/_bankrupt_candidates.html" %}
     {% endif %}
 
-    {% comment %} ── Сформировать текст сообщения ── {% endcomment %}
+    {% comment %} ── Сформировать текст сообщения (searchable select) ── {% endcomment %}
     <form class="flex flex-wrap items-end gap-2"
           hx-post="{% url 'efrsb:publication_add' service.id %}" hx-swap="none">
       {% csrf_token %}
-      <label class="form-control min-w-0">
+      <div class="flex flex-col gap-1" id="efrsb-ss" style="min-width:380px;position:relative">
         <span class="label-text text-xs">Тип сообщения</span>
-        <select name="message_type" class="select select-bordered select-sm" required>
-          <option value="">— выберите тип —</option>
-          {% for t in message_types %}
-            <option value="{{ t.pk }}">{{ t.name }}{% if t.is_draft %} (черновик){% endif %}</option>
-          {% endfor %}
-        </select>
-      </label>
+        <input type="hidden" name="message_type" id="efrsb-ss-value">
+        <button type="button" id="efrsb-ss-trigger"
+                class="input input-bordered input-sm w-full flex items-center justify-between gap-2 font-normal">
+          <span id="efrsb-ss-label" class="truncate text-base-content/50">— выберите тип —</span>
+          <span class="opacity-50">▾</span>
+        </button>
+        <div id="efrsb-ss-menu" class="hidden" style="z-index:1000">
+          <div class="bg-base-100 border border-base-300 rounded-lg shadow-lg p-2"
+               style="display:flex;flex-direction:column;max-height:70vh">
+            <input type="text" id="efrsb-ss-search" autocomplete="off"
+                   class="input input-bordered input-sm w-full" placeholder="поиск по названию…">
+            <label class="label cursor-pointer justify-start gap-2 py-1 mt-1">
+              <input type="checkbox" id="efrsb-ss-all" class="checkbox checkbox-xs">
+              <span class="label-text text-xs">Показать все типы ЕФРСБ</span>
+            </label>
+            <div id="efrsb-ss-tree" class="efrsb-tree"
+                 style="overflow-y:auto;flex:1 1 auto;min-height:0;max-height:340px"></div>
+            <div id="efrsb-ss-empty" class="hidden text-xs text-base-content/50 px-2 py-3">Ничего не найдено</div>
+          </div>
+        </div>
+      </div>
       <button type="submit" class="btn btn-primary btn-sm">➕ Добавить публикацию</button>
-      {% if not current_procedure %}
-        <span class="text-xs text-warning">Процедура не введена — типы показаны все.</span>
-      {% endif %}
     </form>
+
+    <style>
+      .efrsb-tree .ss-leaf{padding:3px 8px;border-radius:5px;cursor:pointer;font-size:13px;line-height:1.3}
+      .efrsb-tree .ss-leaf:hover{background:var(--ms-bg,#eef1f4)}
+      .efrsb-tree .ss-leaf.active{background:#dbeafe;font-weight:600}
+      .efrsb-tree .ss-grp-hd{display:flex;align-items:flex-start;gap:6px;padding:4px 6px;cursor:pointer;font-weight:600;font-size:13px;border-radius:5px}
+      .efrsb-tree .ss-grp-hd:hover{background:var(--ms-bg,#eef1f4)}
+      .efrsb-tree .ss-caret{flex:0 0 auto;display:inline-block;width:12px;color:#64748b;transition:transform .12s}
+      .efrsb-tree .ss-grp.open > .ss-grp-hd .ss-caret{transform:rotate(90deg)}
+      .efrsb-tree .ss-grp-body{margin-left:16px}
+      .efrsb-tree .ss-grp:not(.open) > .ss-grp-body{display:none}
+      .efrsb-tree .ss-cnt{color:#94a3b8;font-weight:400;font-size:11px;margin-left:2px}
+    </style>
+
+    {{ tree_json|json_script:"efrsb-tree-data" }}
+    <script>
+    (function () {
+      // Searchable Select. Меню выносим в document.body (портал) и позиционируем
+      // fixed — чтобы оно не обрезалось overflow карточки/таблицы и рисовалось поверх.
+      // IIFE + поиск по id в момент события — безопасно при повторном swap'е #efrsb-pane.
+      var root = document.getElementById('efrsb-ss');
+      if (!root) return;
+
+      // Удаляем меню-портал от предыдущего swap'а (оно жило в body, HTMX его не снёс).
+      var prev = document.getElementById('efrsb-ss-menu-portal');
+      if (prev) prev.remove();
+
+      var data = [];
+      try { data = JSON.parse(document.getElementById('efrsb-tree-data').textContent); } catch (e) {}
+
+      var menu = document.getElementById('efrsb-ss-menu');
+      menu.id = 'efrsb-ss-menu-portal';
+      menu.style.position = 'fixed';
+      document.body.appendChild(menu);
+
+      function el(id) { return document.getElementById(id); }
+      function isOpen() { return !menu.classList.contains('hidden'); }
+
+      function position() {
+        var t = el('efrsb-ss-trigger'); if (!t) return;
+        var r = t.getBoundingClientRect();
+        menu.style.left = r.left + 'px';
+        menu.style.top = (r.bottom + 2) + 'px';
+        menu.style.width = r.width + 'px';
+      }
+
+      function selectLeaf(leaf) {
+        el('efrsb-ss-value').value = leaf.dataset.id;
+        var lbl = el('efrsb-ss-label');
+        lbl.textContent = leaf.dataset.label;
+        lbl.classList.remove('text-base-content/50');
+        var tree = el('efrsb-ss-tree');
+        Array.prototype.forEach.call(tree.querySelectorAll('.ss-leaf.active'),
+          function (n) { n.classList.remove('active'); });
+        leaf.classList.add('active');
+        close();
+      }
+      function leafEl(it) {
+        var d = document.createElement('div');
+        d.className = 'ss-leaf';
+        d.dataset.id = it.id;
+        d.dataset.bfl = it.bfl ? '1' : '0';
+        d.dataset.name = it.name.toLowerCase();
+        d.dataset.label = it.name;
+        d.textContent = it.name;
+        if (el('efrsb-ss-value').value === it.id) d.classList.add('active');
+        d.addEventListener('click', function () { selectLeaf(d); });
+        return d;
+      }
+      function buildTree() {
+        var tree = el('efrsb-ss-tree'); tree.innerHTML = '';
+        data.forEach(function (g) {
+          if (g.title === null || g.title === undefined) {
+            (g.items || []).forEach(function (it) { tree.appendChild(leafEl(it)); });
+            return;
+          }
+          var grp = document.createElement('div'); grp.className = 'ss-grp';
+          var hd = document.createElement('div'); hd.className = 'ss-grp-hd';
+          var car = document.createElement('span'); car.className = 'ss-caret'; car.textContent = '▸';
+          var ttl = document.createElement('span'); ttl.style.flex = '1'; ttl.textContent = g.title;
+          var cnt = document.createElement('span'); cnt.className = 'ss-cnt';
+          hd.appendChild(car); hd.appendChild(ttl); hd.appendChild(cnt);
+          var body = document.createElement('div'); body.className = 'ss-grp-body';
+          (g.items || []).forEach(function (it) { body.appendChild(leafEl(it)); });
+          hd.addEventListener('click', function () { grp.classList.toggle('open'); });
+          grp.appendChild(hd); grp.appendChild(body); tree.appendChild(grp);
+        });
+      }
+      function applyFilter() {
+        var q = (el('efrsb-ss-search').value || '').trim().toLowerCase();
+        var all = el('efrsb-ss-all').checked;
+        var tree = el('efrsb-ss-tree'); var anyShown = 0;
+        Array.prototype.forEach.call(tree.children, function (node) {
+          if (node.classList.contains('ss-leaf')) {
+            var vis = (all || node.dataset.bfl === '1') && (!q || node.dataset.name.indexOf(q) !== -1);
+            node.style.display = vis ? '' : 'none'; if (vis) anyShown++;
+            return;
+          }
+          var leaves = node.querySelectorAll('.ss-leaf'); var cnt = 0;
+          Array.prototype.forEach.call(leaves, function (lf) {
+            var vis = (all || lf.dataset.bfl === '1') && (!q || lf.dataset.name.indexOf(q) !== -1);
+            lf.style.display = vis ? '' : 'none'; if (vis) cnt++;
+          });
+          node.style.display = cnt ? '' : 'none';
+          var c = node.querySelector('.ss-cnt'); if (c) c.textContent = cnt ? ('(' + cnt + ')') : '';
+          node.classList.toggle('open', !!cnt && (!!q || !all));
+          anyShown += cnt;
+        });
+        el('efrsb-ss-empty').classList.toggle('hidden', anyShown > 0);
+      }
+      function open() {
+        menu.classList.remove('hidden');
+        position();
+        applyFilter();
+        setTimeout(function () { var s = el('efrsb-ss-search'); if (s) s.focus(); }, 0);
+      }
+      function close() { menu.classList.add('hidden'); }
+
+      buildTree();
+
+      el('efrsb-ss-trigger').addEventListener('click', function (e) {
+        e.stopPropagation(); isOpen() ? close() : open();
+      });
+      el('efrsb-ss-search').addEventListener('input', applyFilter);
+      el('efrsb-ss-all').addEventListener('change', applyFilter);
+      el('efrsb-ss-search').addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') { close(); el('efrsb-ss-trigger').focus(); }
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          var leaves = el('efrsb-ss-tree').querySelectorAll('.ss-leaf');
+          for (var i = 0; i < leaves.length; i++) {
+            if (leaves[i].style.display !== 'none') { selectLeaf(leaves[i]); break; }
+          }
+        }
+      });
+
+      // Клик вне меню/триггера — закрыть. Единый листенер, переустанавливаем при swap'е.
+      if (window.__efrsbSSDocClose) document.removeEventListener('mousedown', window.__efrsbSSDocClose);
+      window.__efrsbSSDocClose = function (e) {
+        var m = document.getElementById('efrsb-ss-menu-portal');
+        var t = document.getElementById('efrsb-ss-trigger');
+        if (!m || m.classList.contains('hidden')) return;
+        if (m.contains(e.target) || (t && t.contains(e.target))) return;
+        m.classList.add('hidden');
+      };
+      document.addEventListener('mousedown', window.__efrsbSSDocClose);
+
+      // Закрываем при скролле СТРАНИЦЫ (не внутреннего списка) и ресайзе.
+      if (window.__efrsbSSReflow) {
+        window.removeEventListener('scroll', window.__efrsbSSReflow, true);
+        window.removeEventListener('resize', window.__efrsbSSReflow);
+      }
+      window.__efrsbSSReflow = function (e) {
+        var m = document.getElementById('efrsb-ss-menu-portal');
+        if (!m || m.classList.contains('hidden')) return;
+        if (e && e.target && e.target.nodeType === 1 && m.contains(e.target)) return; // скролл внутри меню
+        m.classList.add('hidden');
+      };
+      window.addEventListener('scroll', window.__efrsbSSReflow, true);
+      window.addEventListener('resize', window.__efrsbSSReflow);
+    })();
+    </script>
 
     {% comment %} ── Реестр публикаций ── {% endcomment %}
     <div class="overflow-x-auto">

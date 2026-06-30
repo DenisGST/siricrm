@@ -1,19 +1,27 @@
 """Идемпотентный сидинг ЕФРСБ.
 
   • базовая .docx-заготовка сообщения (kind=efrsb) → S3 + DocumentTemplate;
-  • DRAFT-каталог типов сообщений (EfrsbMessageType) с привязкой к заготовке;
+  • ПОЛНЫЙ каталог типов сообщений (EfrsbMessageType) из официального справочника
+    ЕФРСБ (снапшот apps/efrsb/reference_data/message_types.json, метод read-API
+    v1/reference-books/message-types) — код = официальный код, api_type = код;
+  • типы отчётов (Приложение 3 спецификации) как api_kind=report;
   • типы лога (EventType/ActionType) для событийки.
 
 🛑 НЕ входит в deploy-handler — гонять вручную (как procedure_seed):
     docker exec siricrm-web-1 python manage.py efrsb_seed
 
-🛑 Соответствие наших кодов ↔ типам API ЕФРСБ и сроки (deadline_offset_days) —
-   ЗАГОТОВКА (is_draft=True). Подтверждается с АУ при наполнении каталога.
-   Все .docx-шаблоны и тексты — черновики-заготовки, заменяются в разделе АФД.
+🛑 Каталог грузится в статусе DRAFT (is_draft=True). Поля, специфичные для БФЛ
+   (applicable_kinds, sets_efrsb_date, привязка пер-типового шаблона, сроки) —
+   подтверждаются с АУ и правятся в Справочниках; повторный сид их НЕ затирает.
+
+Обновление снапшота (на dev, с demo-контура), если ЕФРСБ добавит типы:
+    python manage.py efrsb_pull_reference   # см. отдельную команду
 """
 from __future__ import annotations
 
 import io
+import json
+import os
 
 from django.core.management.base import BaseCommand
 
@@ -24,6 +32,10 @@ from apps.files.s3_utils import upload_file_to_s3
 
 _DOCX_CT = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 _TEMPLATE_NAME = "Сообщение ЕФРСБ — базовая заготовка (черновик)"
+
+_REF_DIR = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "reference_data")
+_MESSAGE_TYPES_JSON = os.path.join(_REF_DIR, "message_types.json")
 
 # Нейтральная структурная «рыба» сообщения. Содержательную часть («Текст сообщения»)
 # вводит АУ при формировании; реквизиты должника/АУ/дела подставляются из CRM.
@@ -43,54 +55,65 @@ _SKELETON_PARAS = [
     ("Финансовый управляющий ________________ {ФамилияИО АУ}", "both", False),
 ]
 
-# DRAFT-каталог: (code, name, api_kind, api_type, aliases, applicable_kinds,
-#                 deadline_base_key, deadline_offset_days)
-# 🛑 ВСЁ — заготовка, подтверждается с АУ.
-_MESSAGE_TYPES = [
-    ("arbitral_decree", "Судебный акт (о введении процедуры)", "message",
-     "ArbitralDecree", [], [], "proc_intro_date", 0),
-    ("meeting_creditors", "Сообщение о собрании кредиторов", "message",
-     "Meeting", ["Meeting2"], [], "", 0),
-    ("meeting_result", "Результаты собрания кредиторов", "message",
-     "MeetingResult", [], [], "", 0),
-    ("inventory", "Сведения о результатах инвентаризации имущества", "message",
-     "PropertyInventoryResult", [], ["realization"], "", 0),
-    ("evaluation", "Отчёт об оценке имущества должника", "message",
-     "AssessmentReport", ["PropertyEvaluationReport"], ["realization"], "", 0),
-    ("auction", "Объявление о проведении торгов", "message",
-     "Auction", ["Auction2", "ChangeAuction", "ChangeAuction2"], ["realization"], "", 0),
-    ("trade_result", "Сообщение о результатах торгов", "message",
-     "TradeResult", [], ["realization"], "", 0),
-    ("sale_contract", "Сведения о заключении договора купли-продажи", "message",
-     "SaleContractResult", ["SaleContractResult2"], ["realization"], "", 0),
-    ("demand_announcement", "Извещение о возможности предъявления требований", "message",
-     "DemandAnnouncement", [], [], "proc_publication_efrsb_date", 0),
-    ("fin_state", "Информация о финансовом состоянии", "message",
-     "FinancialStateInformation", [], [], "", 0),
-    ("deliberate_bankruptcy", "Признаки преднамеренного/фиктивного банкротства", "message",
-     "DeliberateBankruptcy", [], [], "", 0),
-    ("calc_order", "Сведения о порядке и сроках расчётов с кредиторами", "message",
-     "OrderAndTimingCalculations", [], [], "", 0),
-    ("restr_plan_view", "Ознакомление с проектом плана реструктуризации", "message",
-     "ViewDraftRestructuringPlan", [], ["restructuring"], "", 0),
-    ("final_report", "Финальный отчёт финансового управляющего", "report",
-     "Final", ["Final2"], [], "", 0),
-    ("other", "Иное сообщение", "message",
-     "Other", [], [], "", 0),
+# Типы отчётов ФУ — Приложение 3 спецификации (нет в reference-books/message-types).
+# (code, name, is_old)
+_REPORT_TYPES = [
+    ("Final", "Финальный отчёт", False),
+    ("Final2", "Финальный отчёт", False),
+    ("Annulment", "Аннулирование ранее опубликованного отчёта", False),
+    ("Annulment2", "Аннулирование ранее опубликованного отчёта", False),
+    ("SignificantEvent", "Отчёт по существенным фактам (устаревший)", True),
+    ("Periodic", "Периодический отчёт (устаревший)", True),
 ]
 
 # 🛑 «Вводные» типы — проставляют Procedure.publication_efrsb_date. ЗАГОТОВКА, TO CONFIRM:
 # судебный акт о введении процедуры публикуется в ЕФРСБ как «Сообщение о судебном акте».
-_SETS_DATE_CODES = {"arbitral_decree"}
+_SETS_DATE_CODES = {"ArbitralDecree"}
+
+# 🛑 БФЛ-шортлист (релевантно банкротству ГРАЖДАН) — первичная разметка, TO CONFIRM с АУ.
+# По умолчанию в селекторе показываются только эти; остальные активные — по «Показать все».
+# Исключены типы для юрлиц/банков/застройщиков/субсидиарки/внесудебного банкротства.
+_BFL_CODES = {
+    # старт дела / акты / реестр требований
+    "ArbitralDecree", "CourtAcceptanceStatement", "DemandAnnouncement",
+    "CreditorsDemandRegistered", "FinancialStateInformation",
+    "DeliberateBankruptcy", "CancelDeliberateBankruptcy", "ChangeDeliberateBankruptcy",
+    # собрания кредиторов
+    "Meeting2", "MeetingResult",
+    # имущество: опись/оценка/реализация
+    "PropertyInventoryResult", "ProcessInventoryDebtor", "AssessmentReport",
+    "CourseOfSalePersonProperty", "SaleOrderPledgedProperty2", "MortgageSaleExclusion",
+    "TransferAssertsForImplementation",
+    # торги
+    "Auction2", "ChangeAuction2", "CancelAuctionTradeResult", "TradeResult",
+    "SaleContractResult2",
+    # расчёты с кредиторами
+    "OrderAndTimingCalculations", "StartSettlement", "ProcedureGrantingIndemnity",
+    # реструктуризация
+    "ViewDraftRestructuringPlan", "ViewExecRestructuringPlan",
+    # оспаривание сделок гражданина
+    "DealInvalid2", "DealInvalidResult2",
+    # служебные
+    "Annul", "Other",
+    # отчёты ФУ
+    "Final", "Final2", "Annulment", "Annulment2",
+}
+
+# Старые наши «ручные» коды из первой версии сида (до перехода на официальные коды) —
+# удаляем при наличии, чтобы не было дублей концепций.
+_LEGACY_CODES = [
+    "arbitral_decree", "meeting_creditors", "meeting_result", "inventory",
+    "evaluation", "auction", "trade_result", "sale_contract", "demand_announcement",
+    "fin_state", "deliberate_bankruptcy", "calc_order", "restr_plan_view",
+    "final_report", "other",
+]
 
 _EVENT_TYPES = [
-    # code, name, source, notifies, hint
     ("efrsb_published_detected", "Публикация в ЕФРСБ обнаружена", "system", False, ""),
     ("efrsb_violation", "Публикация ЕФРСБ с нарушением срока", "system", True,
      "ЕФРСБ отметил публикацию как сделанную с нарушением срока — проверьте."),
 ]
 _ACTION_TYPES = [
-    # code, name, notifies
     ("efrsb_text_generated", "Сформирован текст сообщения ЕФРСБ", False),
 ]
 
@@ -116,13 +139,23 @@ def _build_skeleton_docx() -> bytes:
 
 
 class Command(BaseCommand):
-    help = "Идемпотентный сидинг ЕФРСБ (заготовка-шаблон + DRAFT-каталог типов + типы лога)."
+    help = "Идемпотентный сидинг ЕФРСБ (заготовка-шаблон + ПОЛНЫЙ каталог типов из справочника + типы лога)."
 
     def handle(self, *args, **opts):
+        self._cleanup_legacy()
         tpl = self._seed_template()
-        self._seed_types(tpl)
+        self._load_message_types(tpl)
+        self._load_report_types(tpl)
         self._seed_log_types()
         self.stdout.write(self.style.SUCCESS("ЕФРСБ: сидинг завершён."))
+
+    def _cleanup_legacy(self):
+        qs = EfrsbMessageType.objects.filter(code__in=_LEGACY_CODES)
+        n = qs.count()
+        if n:
+            qs.delete()
+            self.stdout.write(self.style.WARNING(
+                f"• Удалены {n} старых «ручных» типов (перешли на официальные коды ЕФРСБ)."))
 
     def _seed_template(self) -> DocumentTemplate | None:
         tpl = DocumentTemplate.objects.filter(
@@ -136,17 +169,14 @@ class Command(BaseCommand):
         except Exception as exc:  # noqa: BLE001
             self.stdout.write(self.style.ERROR(
                 f"• Не удалось собрать заготовку .docx ({exc}). "
-                "Заведите шаблон вручную в разделе АФД."
-            ))
+                "Заведите шаблон вручную в разделе АФД."))
             return None
         bucket, key = upload_file_to_s3(
             data, prefix="afd/efrsb_templates",
-            filename="efrsb_message_skeleton.docx", content_type=_DOCX_CT,
-        )
+            filename="efrsb_message_skeleton.docx", content_type=_DOCX_CT)
         sf = StoredFile.objects.create(
             bucket=bucket, key=key, filename=f"{_TEMPLATE_NAME}.docx",
-            content_type=_DOCX_CT, size=len(data),
-        )
+            content_type=_DOCX_CT, size=len(data))
         tpl = DocumentTemplate.objects.create(
             name=_TEMPLATE_NAME,
             kind=DocumentTemplate.KIND_EFRSB,
@@ -157,42 +187,62 @@ class Command(BaseCommand):
                 "{место рождения} {ИНН} {СНИЛС} {адрес регистрации} "
                 "{ФИО Финансовый управляющий} {ФамилияИО АУ} {ИНН АУ} {СНИЛС АУ} "
                 "{Адрес арбитражного управляющего} {Реквизиты СРО} {арбитражный суд} "
-                "{номер дела} {дата}. Замените на пер-типовые шаблоны в разделе АФД."
-            ),
-        )
+                "{номер дела} {дата}. Замените на пер-типовые шаблоны в разделе АФД."))
         self.stdout.write(self.style.WARNING(
-            "• Создана базовая заготовка-шаблон ЕФРСБ (черновик) — "
-            "доработайте/разнесите по типам в разделе АФД."
-        ))
+            "• Создана базовая заготовка-шаблон ЕФРСБ (черновик)."))
         return tpl
 
-    def _seed_types(self, tpl):
-        created = updated = 0
-        for (code, name, api_kind, api_type, aliases, kinds, base_key, offset) in _MESSAGE_TYPES:
-            obj, was_created = EfrsbMessageType.objects.update_or_create(
-                code=code,
-                defaults={
-                    "name": name,
-                    "api_kind": api_kind,
-                    "api_type": api_type,
-                    "api_type_aliases": aliases,
-                    "applicable_kinds": kinds,
-                    "deadline_base_key": base_key,
-                    "deadline_offset_days": offset,
-                    "sets_efrsb_date": code in _SETS_DATE_CODES,
-                    "is_active": True,
-                    "is_draft": True,
-                },
+    def _upsert(self, *, code, name, api_kind, is_old, tpl):
+        """UPSERT типа по коду. На создании — дефолты + шаблон; на обновлении —
+        только name/is_active (официальная истина), БФЛ-поля не трогаем."""
+        obj = EfrsbMessageType.objects.filter(code=code).first()
+        if obj is None:
+            EfrsbMessageType.objects.create(
+                code=code, name=name, api_kind=api_kind, api_type=code,
+                is_active=(not is_old), is_draft=True,
+                is_bfl=(code in _BFL_CODES),
+                sets_efrsb_date=(code in _SETS_DATE_CODES),
+                template=tpl if tpl else None,
             )
-            # Шаблон привязываем только если ещё не задан (не перетираем ручную правку).
-            if tpl and obj.template_id is None:
-                obj.template = tpl
-                obj.save(update_fields=["template", "updated_at"])
-            created += int(was_created)
-            updated += int(not was_created)
+            return "created"
+        # обновляем «истину» из справочника, не затирая правки АУ
+        changed = False
+        if obj.name != name:
+            obj.name, changed = name, True
+        if obj.is_active != (not is_old):
+            obj.is_active, changed = (not is_old), True
+        if obj.api_type != code:
+            obj.api_type, changed = code, True
+        if obj.template_id is None and tpl:
+            obj.template, changed = tpl, True
+        if changed:
+            obj.save()
+            return "updated"
+        return "kept"
+
+    def _load_message_types(self, tpl):
+        with open(_MESSAGE_TYPES_JSON, encoding="utf-8") as f:
+            items = json.load(f)
+        stats = {"created": 0, "updated": 0, "kept": 0}
+        for it in items:
+            res = self._upsert(code=it["code"], name=it["name"],
+                               api_kind=EfrsbMessageType.API_KIND_MESSAGE,
+                               is_old=bool(it.get("isOld")), tpl=tpl)
+            stats[res] += 1
         self.stdout.write(self.style.SUCCESS(
-            f"• Типы сообщений ЕФРСБ: создано {created}, обновлено {updated} (все DRAFT)."
-        ))
+            f"• Типы сообщений ({len(items)}): создано {stats['created']}, "
+            f"обновлено {stats['updated']}, без изменений {stats['kept']} (DRAFT)."))
+
+    def _load_report_types(self, tpl):
+        stats = {"created": 0, "updated": 0, "kept": 0}
+        for code, name, is_old in _REPORT_TYPES:
+            res = self._upsert(code=code, name=name,
+                               api_kind=EfrsbMessageType.API_KIND_REPORT,
+                               is_old=is_old, tpl=tpl)
+            stats[res] += 1
+        self.stdout.write(self.style.SUCCESS(
+            f"• Типы отчётов ({len(_REPORT_TYPES)}): создано {stats['created']}, "
+            f"обновлено {stats['updated']}, без изменений {stats['kept']}."))
 
     def _seed_log_types(self):
         from apps.crm.models import ActionType, EventType
@@ -201,12 +251,10 @@ class Command(BaseCommand):
                 code=code,
                 defaults={"name": name, "source": source, "is_system": True,
                           "is_manual": False, "is_active": True,
-                          "notifies": notifies, "notify_hint": hint},
-            )
+                          "notifies": notifies, "notify_hint": hint})
         for code, name, notifies in _ACTION_TYPES:
             ActionType.objects.update_or_create(
                 code=code,
                 defaults={"name": name, "is_system": True, "is_manual": False,
-                          "is_active": True, "notifies": notifies},
-            )
+                          "is_active": True, "notifies": notifies})
         self.stdout.write("• Типы лога (EventType/ActionType) ЕФРСБ обновлены.")

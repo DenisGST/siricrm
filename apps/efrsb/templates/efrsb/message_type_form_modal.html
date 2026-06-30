@@ -79,6 +79,10 @@
           <span class="label-text">Активен</span>
         </label>
         <label class="label cursor-pointer justify-start gap-2">
+          <input type="checkbox" name="is_bfl" class="checkbox checkbox-sm checkbox-success" {% if form.is_bfl.value %}checked{% endif %}>
+          <span class="label-text">Релевантен БФЛ (физлицо)</span>
+        </label>
+        <label class="label cursor-pointer justify-start gap-2">
           <input type="checkbox" name="is_draft" class="checkbox checkbox-sm checkbox-warning" {% if form.is_draft.value %}checked{% endif %}>
           <span class="label-text">🔶 Черновик</span>
         </label>

@@ -27,7 +27,7 @@ class EfrsbMessageTypeForm(forms.ModelForm):
             "code", "name", "description", "api_kind", "api_type",
             "template", "isk_template",
             "deadline_base_key", "deadline_offset_days",
-            "order", "is_active", "is_draft",
+            "order", "is_active", "is_bfl", "is_draft",
         ]
         widgets = {
             "code": forms.TextInput(attrs={"class": "input input-bordered input-sm w-full"}),

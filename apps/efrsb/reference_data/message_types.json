@@ -1,0 +1,609 @@
+[
+  {
+    "code": "AccessionDeclarationSubsidiary",
+    "name": "Предложение о присоединении к заявлению о привлечении контролирующих лиц должника к субсидиарной ответственности",
+    "isOld": false
+  },
+  {
+    "code": "ActDealInvalid",
+    "name": "Судебный акт по результатам рассмотрения заявления об оспаривании сделки должника",
+    "isOld": true,
+    "unionType": "DealInvalidResult2"
+  },
+  {
+    "code": "ActDealInvalid2",
+    "name": "Судебный акт по результатам рассмотрения заявления об оспаривании сделки должника",
+    "isOld": true,
+    "unionType": "DealInvalidResult2"
+  },
+  {
+    "code": "ActPersonDamages",
+    "name": "Судебный акт по результатам рассмотрения заявления о привлечении контролирующих должника лиц, а также иных лиц, к ответственности в виде возмещения убытков",
+    "isOld": true,
+    "unionType": "PersonResponsibilityResult"
+  },
+  {
+    "code": "ActPersonSubsidiary",
+    "name": "Судебный акт по результатам рассмотрения заявления о привлечении контролирующих должника лиц к субсидиарной ответственности",
+    "isOld": true,
+    "unionType": "PersonResponsibilityResult"
+  },
+  {
+    "code": "ActPersonSubsidiary2",
+    "name": "Судебный акт по результатам рассмотрения заявления о привлечении контролирующих должника лиц к субсидиарной ответственности",
+    "isOld": true,
+    "unionType": "PersonResponsibilityResult"
+  },
+  {
+    "code": "ActReviewDealInvalid",
+    "name": "Судебный акт по результатам пересмотра рассмотрения заявления об оспаривании сделки должника",
+    "isOld": true,
+    "unionType": "DealInvalidResult2"
+  },
+  {
+    "code": "ActReviewDealInvalid2",
+    "name": "Судебный акт по результатам пересмотра рассмотрения заявления об оспаривании сделки должника",
+    "isOld": true,
+    "unionType": "DealInvalidResult2"
+  },
+  {
+    "code": "ActReviewPersonDamages",
+    "name": "Судебный акт по результатам пересмотра рассмотрения заявления о привлечении контролирующих должника лиц, а также иных лиц, к ответственности в виде возмещения убытков",
+    "isOld": true,
+    "unionType": "PersonResponsibilityResult"
+  },
+  {
+    "code": "ActReviewPersonSubsidiary",
+    "name": "Судебный акт по результатам пересмотра рассмотрения заявления о привлечении контролирующих должника лиц к субсидиарной ответственности",
+    "isOld": true,
+    "unionType": "PersonResponsibilityResult"
+  },
+  {
+    "code": "ActReviewPersonSubsidiary2",
+    "name": "Судебный акт по результатам пересмотра рассмотрения заявления о привлечении контролирующих должника лиц к субсидиарной ответственности",
+    "isOld": true,
+    "unionType": "PersonResponsibilityResult"
+  },
+  {
+    "code": "Annul",
+    "name": "Аннулирование ранее опубликованного сообщения",
+    "isOld": false
+  },
+  {
+    "code": "ApplicationReviewCourtDecision",
+    "name": "Сведения о подаче заявления о пересмотре судебного акта по вновь открывшимся обстоятельствам",
+    "isOld": false
+  },
+  {
+    "code": "AppointAdministration",
+    "name": "Решение о назначении временной администрации",
+    "isOld": false
+  },
+  {
+    "code": "ArbitralDecree",
+    "name": "Сообщение о судебном акте",
+    "isOld": false
+  },
+  {
+    "code": "AssessmentReport",
+    "name": "Отчет оценщика об оценке имущества должника",
+    "isOld": false,
+    "unionType": "PropertyEvaluationReport"
+  },
+  {
+    "code": "AssetsReturning",
+    "name": "Объявление о возврате ценных бумаг и иного имущества",
+    "isOld": false
+  },
+  {
+    "code": "Auction",
+    "name": "Объявление о проведении торгов",
+    "isOld": true,
+    "unionType": "Auction2"
+  },
+  {
+    "code": "Auction2",
+    "name": "Объявление о проведении торгов",
+    "isOld": false,
+    "unionType": "Auction"
+  },
+  {
+    "code": "BankOpenAccountDebtor",
+    "name": "Сведения о кредитной организации, в которой открыт специальный банковский счет должника",
+    "isOld": false
+  },
+  {
+    "code": "BankPayment",
+    "name": "Объявление о выплатах Банка России",
+    "isOld": false
+  },
+  {
+    "code": "BeginExecutoryProcess",
+    "name": "Начало исполнительного производства",
+    "isOld": false
+  },
+  {
+    "code": "BuyingProperty",
+    "name": "Сообщение о преимущественном праве выкупа имущества",
+    "isOld": false
+  },
+  {
+    "code": "CancelAuctionTradeResult",
+    "name": "Сообщение об отмене сообщения об объявлении торгов или сообщения о результатах торгов",
+    "isOld": false
+  },
+  {
+    "code": "CancelDeliberateBankruptcy",
+    "name": "Сообщение об отмене сообщения о наличии или об отсутствии признаков преднамеренного или фиктивного банкротства",
+    "isOld": false
+  },
+  {
+    "code": "ChangeAdministration",
+    "name": "Изменение состава временной администрации",
+    "isOld": false
+  },
+  {
+    "code": "ChangeAuction",
+    "name": "Сообщение об изменении объявления о проведении торгов",
+    "isOld": true,
+    "unionType": "ChangeAuction2"
+  },
+  {
+    "code": "ChangeAuction2",
+    "name": "Сообщение об изменении объявления о проведении торгов",
+    "isOld": false,
+    "unionType": "ChangeAuction"
+  },
+  {
+    "code": "ChangeCreditorChoiceRightSubsidiary",
+    "name": "Сообщение о праве изменить способ распоряжения правом требования о привлечении к субсидиарной ответственности",
+    "isOld": false
+  },
+  {
+    "code": "ChangeDeliberateBankruptcy",
+    "name": "Сообщение об изменении сообщения о наличии или об отсутствии признаков преднамеренного или фиктивного банкротства",
+    "isOld": false
+  },
+  {
+    "code": "ChangeEstimatesCurrentExpenses",
+    "name": "Сведения о скорректированной смете текущих расходов кредитной организации или иной финансовой организации",
+    "isOld": false
+  },
+  {
+    "code": "ChangeSaleContractResult",
+    "name": "Сообщение об изменении сведений о заключении договора купли-продажи",
+    "isOld": true
+  },
+  {
+    "code": "Committee",
+    "name": "Уведомление о проведении комитета кредиторов",
+    "isOld": true,
+    "unionType": "Committee2"
+  },
+  {
+    "code": "Committee2",
+    "name": "Уведомление о проведении комитета кредиторов",
+    "isOld": false,
+    "unionType": "Committee"
+  },
+  {
+    "code": "CommitteeResult",
+    "name": "Сообщение о результатах проведения комитета кредиторов",
+    "isOld": false
+  },
+  {
+    "code": "CompletionOfExtrajudicialBankruptcy",
+    "name": "Сообщение о завершении процедуры внесудебного банкротства гражданина",
+    "isOld": false
+  },
+  {
+    "code": "CourseOfSalePersonProperty",
+    "name": "Сведения об утверждении положения о порядке, об условиях и о сроках реализации имущества гражданина",
+    "isOld": false
+  },
+  {
+    "code": "CourtAcceptanceStatement",
+    "name": "Сведения о принятии заявления о признании должника банкротом",
+    "isOld": false
+  },
+  {
+    "code": "CourtAssertAcceptance",
+    "name": "Объявление о принятии арбитражным судом заявления",
+    "isOld": false
+  },
+  {
+    "code": "CreditorChoiceRightSubsidiary",
+    "name": "Сообщение о праве кредитора выбрать способ распоряжения правом требования о привлечении к субсидиарной ответственности",
+    "isOld": false
+  },
+  {
+    "code": "CreditorsDemandRegistered",
+    "name": "Сообщение о включении заявленных требований в реестр требований кредиторов",
+    "isOld": false
+  },
+  {
+    "code": "DealInvalid",
+    "name": "Заявление о признании сделки должника недействительной",
+    "isOld": true,
+    "unionType": "DealInvalid2"
+  },
+  {
+    "code": "DealInvalid2",
+    "name": "Заявление о признании сделки должника недействительной",
+    "isOld": false,
+    "unionType": "DealInvalid"
+  },
+  {
+    "code": "DealInvalidResult",
+    "name": "Результаты рассмотрения/пересмотра заявлений об оспаривании сделок",
+    "isOld": true,
+    "unionType": "DealInvalidResult2"
+  },
+  {
+    "code": "DealInvalidResult2",
+    "name": "Результаты рассмотрения/пересмотра заявлений об оспаривании сделок",
+    "isOld": false,
+    "unionType": "DealInvalidResult"
+  },
+  {
+    "code": "DeclarationPersonDamages",
+    "name": "Заявление о привлечении контролирующих должника лиц, а также иных лиц, к ответственности в виде возмещения убытков",
+    "isOld": true,
+    "unionType": "PersonResponsibilityDeclaration"
+  },
+  {
+    "code": "DeclarationPersonSubsidiary",
+    "name": "Заявление о привлечении контролирующих должника лиц к субсидиарной ответственности",
+    "isOld": true,
+    "unionType": "PersonResponsibilityDeclaration"
+  },
+  {
+    "code": "DeliberateBankruptcy",
+    "name": "Сообщение о наличии или об отсутствии признаков преднамеренного или фиктивного банкротства",
+    "isOld": false
+  },
+  {
+    "code": "DemandAnnouncement",
+    "name": "Извещение о возможности предъявления требований",
+    "isOld": false
+  },
+  {
+    "code": "DisqualificationArbitrationManager",
+    "name": "Сообщение о дисквалификации арбитражного управляющего",
+    "isOld": true,
+    "unionType": "DisqualificationArbitrationManager2"
+  },
+  {
+    "code": "DisqualificationArbitrationManager2",
+    "name": "Сообщение о дисквалификации арбитражного управляющего",
+    "isOld": false,
+    "unionType": "DisqualificationArbitrationManager"
+  },
+  {
+    "code": "EstimatesAndUnsoldAssets",
+    "name": "Сведения об исполнении сметы текущих расходов и стоимости нереализованного имущества кредитной организации",
+    "isOld": false
+  },
+  {
+    "code": "EstimatesCurrentExpenses",
+    "name": "Сведения о смете текущих расходов кредитной организации или иной финансовой организации",
+    "isOld": false
+  },
+  {
+    "code": "ExtensionAdministration",
+    "name": "Продление срока деятельности временной администрации",
+    "isOld": false
+  },
+  {
+    "code": "ExtraordinaryExpenses",
+    "name": "Сведения об осуществлении внеочередных расходов",
+    "isOld": false
+  },
+  {
+    "code": "FinancialStateInformation",
+    "name": "Информация о финансовом состоянии",
+    "isOld": false
+  },
+  {
+    "code": "FulfilledDemandsRecognition",
+    "name": "Сведения о вынесении судебного акта о признании требований кредиторов удовлетворенными",
+    "isOld": false
+  },
+  {
+    "code": "FulfilledDemandsRecognitionReview",
+    "name": "Сведения о пересмотре судебного акта о признании требований кредиторов удовлетворенными",
+    "isOld": false
+  },
+  {
+    "code": "ImpendingTransferAssets",
+    "name": "Сообщение о предстоящей передаче приобретателю имущества (активов) и обязательств кредитной организации или их части",
+    "isOld": false
+  },
+  {
+    "code": "InformationAboutBankruptcy",
+    "name": "Информация о ходе конкурсного производства",
+    "isOld": false
+  },
+  {
+    "code": "IntentionCreditOrg",
+    "name": "Сообщение о намерении исполнить обязательства",
+    "isOld": false
+  },
+  {
+    "code": "IntentionOfDemandsFulfilment",
+    "name": "Сведения о вынесении судебного акта об удовлетворении заявления о намерении удовлетворить требования кредиторов к должнику",
+    "isOld": false
+  },
+  {
+    "code": "IntentionOfDemandsFulfilmentReview",
+    "name": "Сведения о пересмотре судебного акта об удовлетворении заявления о намерении удовлетворить требования кредиторов к должнику",
+    "isOld": false
+  },
+  {
+    "code": "LiabilitiesCreditOrg",
+    "name": "Сообщение о признании исполнения заявителем обязательств несостоявшимся",
+    "isOld": false
+  },
+  {
+    "code": "LiabilitiesCreditOrgAct",
+    "name": "Определение о признании исполнения заявителем обязательств несостоявшимся",
+    "isOld": false
+  },
+  {
+    "code": "Meeting",
+    "name": "Сообщение о собрании кредиторов",
+    "isOld": true,
+    "unionType": "Meeting2"
+  },
+  {
+    "code": "Meeting2",
+    "name": "Сообщение о собрании кредиторов",
+    "isOld": false,
+    "unionType": "Meeting"
+  },
+  {
+    "code": "MeetingPartBuildResult",
+    "name": "Сообщение о результатах проведения собрания участников строительства",
+    "isOld": false
+  },
+  {
+    "code": "MeetingParticipantsBuilding",
+    "name": "Уведомление о проведении собрания участников строительства",
+    "isOld": true,
+    "unionType": "MeetingParticipantsBuilding2"
+  },
+  {
+    "code": "MeetingParticipantsBuilding2",
+    "name": "Уведомление о проведении собрания участников строительства",
+    "isOld": false,
+    "unionType": "MeetingParticipantsBuilding"
+  },
+  {
+    "code": "MeetingResult",
+    "name": "Сообщение о результатах проведения собрания кредиторов",
+    "isOld": false
+  },
+  {
+    "code": "MeetingWorker",
+    "name": "Уведомление о проведении собрания работников, бывших работников должника",
+    "isOld": true,
+    "unionType": "MeetingWorker2"
+  },
+  {
+    "code": "MeetingWorker2",
+    "name": "Уведомление о проведении собрания работников, бывших работников должника",
+    "isOld": false,
+    "unionType": "MeetingWorker"
+  },
+  {
+    "code": "MeetingWorkerResult",
+    "name": "Сведения о решениях, принятых собранием работников, бывших работников должника",
+    "isOld": false
+  },
+  {
+    "code": "MortgageSaleExclusion",
+    "name": "Исключение из конкурсной массы выручки от продажи единственного ипотечного жилья",
+    "isOld": false
+  },
+  {
+    "code": "OrderAndTimingCalculations",
+    "name": "Сведения о порядке и сроках расчетов с кредиторами",
+    "isOld": false
+  },
+  {
+    "code": "Other",
+    "name": "Иное сообщение",
+    "isOld": false
+  },
+  {
+    "code": "PartBuildMonetaryClaim",
+    "name": "Извещение участникам строительства о возможности предъявления требований",
+    "isOld": false
+  },
+  {
+    "code": "PerformanceCreditOrg",
+    "name": "Сообщение об исполнении обязательств",
+    "isOld": false
+  },
+  {
+    "code": "PersonResponsibilityDeclaration",
+    "name": "Заявление о привлечении контролирующих должника и иных лиц к ответственности",
+    "isOld": false,
+    "unionType": "DeclarationPersonSubsidiary"
+  },
+  {
+    "code": "PersonResponsibilityResult",
+    "name": "Результаты рассмотрения/пересмотра заявлений о привлечении контролирующих должника и иных лиц к ответственности",
+    "isOld": false,
+    "unionType": "ActReviewPersonSubsidiary2"
+  },
+  {
+    "code": "ProcedureGrantingIndemnity",
+    "name": "Предложение о погашении требований кредиторов путем предоставления отступного",
+    "isOld": false
+  },
+  {
+    "code": "ProcessInventoryDebtor",
+    "name": "Сведения о ходе инвентаризации имущества должника",
+    "isOld": false
+  },
+  {
+    "code": "PropertyEvaluationReport",
+    "name": "Отчет оценщика об оценке имущества должника",
+    "isOld": true,
+    "unionType": "AssessmentReport"
+  },
+  {
+    "code": "PropertyInventoryResult",
+    "name": "Сведения о результатах инвентаризации имущества должника",
+    "isOld": false
+  },
+  {
+    "code": "Rebuttal",
+    "name": "Опровержение по решению суда опубликованных ранее сведений",
+    "isOld": false
+  },
+  {
+    "code": "ReceivingCreditorDemand",
+    "name": "Уведомление о получении требований кредитора",
+    "isOld": true,
+    "unionType": "ReceivingCreditorDemand2"
+  },
+  {
+    "code": "ReceivingCreditorDemand2",
+    "name": "Уведомление о получении требований кредитора ",
+    "isOld": false,
+    "unionType": "ReceivingCreditorDemand"
+  },
+  {
+    "code": "ReducingSizeShareCapital",
+    "name": "Сообщение об уменьшении размера уставного капитала банка",
+    "isOld": false
+  },
+  {
+    "code": "RefusalOfIntentionCreditOrg",
+    "name": "Решение об отказе в принятии заявления о намерении предоставить денежные средства для исполнения обязательств",
+    "isOld": false
+  },
+  {
+    "code": "RemainingAssetsAndRight",
+    "name": "Объявление о наличии у кредитной организации оставшегося имущества и праве ее учредителей (участников) получить указанное имущество",
+    "isOld": false
+  },
+  {
+    "code": "ReturnOfApplicationOnExtrajudicialBankruptcy",
+    "name": "Сообщение о возврате гражданину поданного им заявления о признании гражданина банкротом во внесудебном порядке",
+    "isOld": true,
+    "unionType": "ReturnOfApplicationOnExtrajudicialBankruptcy2"
+  },
+  {
+    "code": "ReturnOfApplicationOnExtrajudicialBankruptcy2",
+    "name": "Сообщение о возврате гражданину поданного им заявления о признании гражданина банкротом во внесудебном порядке",
+    "isOld": false,
+    "unionType": "ReturnOfApplicationOnExtrajudicialBankruptcy"
+  },
+  {
+    "code": "RightOfAcquisitionExecution",
+    "name": "Сообщение о реализации права приобрести право требования о привлечении к субсидиарной ответственности",
+    "isOld": false
+  },
+  {
+    "code": "RightUnsoldAsset",
+    "name": "Объявление о наличии непроданного имущества и праве собственника имущества должника – унитарного предприятия, учредителей (участников) должника получить такое имущество",
+    "isOld": false
+  },
+  {
+    "code": "SaleContractResult",
+    "name": "Сведения о заключении договора купли-продажи",
+    "isOld": true,
+    "unionType": "SaleContractResult2"
+  },
+  {
+    "code": "SaleContractResult2",
+    "name": "Сведения о заключении договора купли-продажи",
+    "isOld": false,
+    "unionType": "SaleContractResult"
+  },
+  {
+    "code": "SaleOrderPledgedProperty",
+    "name": "Об определении начальной продажной цены, утверждении порядка и условий проведения торгов по реализации предмета залога, порядка и условий обеспечения сохранности предмета залога",
+    "isOld": true,
+    "unionType": "SaleOrderPledgedProperty2"
+  },
+  {
+    "code": "SaleOrderPledgedProperty2",
+    "name": "Об определении начальной продажной цены, утверждении порядка и условий проведения торгов по реализации предмета залога, порядка и условий обеспечения сохранности предмета залога",
+    "isOld": false,
+    "unionType": "SaleOrderPledgedProperty"
+  },
+  {
+    "code": "SelectionPurchaserAssets",
+    "name": "Сведения о проведении отбора приобретателей имущества (активов) и обязательств кредитной организации",
+    "isOld": false
+  },
+  {
+    "code": "StartOfExtrajudicialBankruptcy",
+    "name": "Сообщение о возбуждении процедуры внесудебного банкротства гражданина",
+    "isOld": false
+  },
+  {
+    "code": "StartOfExtrajudicialBankruptcyProject",
+    "name": "Сообщение о возбуждении процедуры внесудебного банкротства гражданина (проект)",
+    "isOld": false
+  },
+  {
+    "code": "StartSettlement",
+    "name": "Сообщение о начале расчетов",
+    "isOld": false
+  },
+  {
+    "code": "TerminationAdministration",
+    "name": "Прекращение деятельности временной администрации",
+    "isOld": false
+  },
+  {
+    "code": "TerminationOfExtrajudicialBankruptcy",
+    "name": "Сообщение о прекращении процедуры внесудебного банкротства гражданина",
+    "isOld": false
+  },
+  {
+    "code": "TradeResult",
+    "name": "Сообщение о результатах торгов",
+    "isOld": false
+  },
+  {
+    "code": "TransferAssertsForImplementation",
+    "name": "Передача имущества на реализацию",
+    "isOld": false
+  },
+  {
+    "code": "TransferAssets",
+    "name": "Сообщение о передаче приобретателю имущества и обязательств кредитной организации",
+    "isOld": false
+  },
+  {
+    "code": "TransferInsurancePortfolio",
+    "name": "Уведомление о передаче страхового портфеля страховой организации",
+    "isOld": false
+  },
+  {
+    "code": "TransferOwnershipRealEstate",
+    "name": "Сообщение о переходе права собственности на объект незавершенного строительства и прав на земельный участок",
+    "isOld": false
+  },
+  {
+    "code": "TransferResponsibilitiesFund",
+    "name": "Решение о передаче обязанности по выплате пожизненных негосударственных пенсий и средств пенсионных резервов другому негосударственному пенсионному фонду",
+    "isOld": false
+  },
+  {
+    "code": "ViewDraftRestructuringPlan",
+    "name": "Сведения о порядке и месте ознакомления с проектом плана реструктуризации",
+    "isOld": false
+  },
+  {
+    "code": "ViewExecRestructuringPlan",
+    "name": "Сведения о порядке и месте ознакомления с отчетом о результатах исполнения плана реструктуризации",
+    "isOld": false
+  }
+]

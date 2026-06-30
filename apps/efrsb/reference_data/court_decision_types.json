@@ -1,0 +1,137 @@
+[
+  {
+    "code": "ArbitrManagerActionsIllegal",
+    "name": "о признании действий (бездействий) арбитражного управляющего незаконными",
+    "isOld": false
+  },
+  {
+    "code": "ArbitrManagerApproval",
+    "name": "об утверждении арбитражного управляющего",
+    "isOld": false
+  },
+  {
+    "code": "ArbitrManagerLossesRecovery",
+    "name": "о взыскании с арбитражного управляющего убытков в связи с неисполнением или ненадлежащим исполнением обязанностей",
+    "isOld": false
+  },
+  {
+    "code": "ArbitrManagerRelease",
+    "name": "об освобождении или отстранении арбитражного управляющего",
+    "isOld": false
+  },
+  {
+    "code": "BankruptcyRefusal",
+    "name": "об отказе в признании должника банкротом",
+    "isOld": false
+  },
+  {
+    "code": "CancelArbitralDecree",
+    "name": "об отмене судебного акта",
+    "isOld": false
+  },
+  {
+    "code": "CaseTransfer",
+    "name": "о передаче дела на рассмотрение другого арбитражного суда",
+    "isOld": false
+  },
+  {
+    "code": "ChangeArbitralDecree",
+    "name": "об изменении судебного акта",
+    "isOld": false
+  },
+  {
+    "code": "ChangeCourtAct",
+    "name": "об отмене или изменении судебных актов",
+    "isOld": true
+  },
+  {
+    "code": "DebtRestructuring",
+    "name": "о признании обоснованным заявления о признании гражданина банкротом и введении реструктуризации его долгов",
+    "isOld": false
+  },
+  {
+    "code": "DebtRestructuringComplete",
+    "name": "о завершении реструктуризации долгов гражданина",
+    "isOld": false
+  },
+  {
+    "code": "DebtRestructuringPlan",
+    "name": "об утверждении плана реструктуризации долгов гражданина",
+    "isOld": false
+  },
+  {
+    "code": "DeveloperBankruptcy",
+    "name": "о применении при банкротстве должника правил параграфа «Банкротство застройщиков»",
+    "isOld": false
+  },
+  {
+    "code": "ExtensionProcedure",
+    "name": "о продлении срока процедуры",
+    "isOld": false
+  },
+  {
+    "code": "ExternalManagement",
+    "name": "о введении внешнего управления",
+    "isOld": false
+  },
+  {
+    "code": "FinancialRecovery",
+    "name": "о введении финансового оздоровления",
+    "isOld": false
+  },
+  {
+    "code": "LegalCaseEnd",
+    "name": "о завершении конкурсного производства",
+    "isOld": false
+  },
+  {
+    "code": "LegalCaseResume",
+    "name": "о возобновлении производства по делу о несостоятельности (банкротстве)",
+    "isOld": false
+  },
+  {
+    "code": "LegalCaseTermination",
+    "name": "о прекращении производства по делу",
+    "isOld": false
+  },
+  {
+    "code": "ObligationsDischargeRefusal",
+    "name": "о неприменении в отношении гражданина правила об освобождении от исполнения обязательств",
+    "isOld": false
+  },
+  {
+    "code": "Observation",
+    "name": "о введении наблюдения",
+    "isOld": false
+  },
+  {
+    "code": "OtherAct",
+    "name": "Другие судебные акты",
+    "isOld": false
+  },
+  {
+    "code": "OtherDefinition",
+    "name": "Другие определения",
+    "isOld": true
+  },
+  {
+    "code": "PropertySale",
+    "name": "о признании гражданина банкротом и введении реализации имущества гражданина",
+    "isOld": false
+  },
+  {
+    "code": "PropertySaleComplete",
+    "name": "о завершении реализации имущества гражданина",
+    "isOld": false
+  },
+  {
+    "code": "Receivership",
+    "name": "о признании должника банкротом и открытии конкурсного производства",
+    "isOld": false
+  },
+  {
+    "code": "ThirdPartyPayoffRequestApproval",
+    "name": "об удовлетворении заявлений третьих лиц о намерении погасить обязательства должника",
+    "isOld": true
+  }
+]
