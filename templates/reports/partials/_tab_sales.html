@@ -94,6 +94,11 @@
                 hx-vals='{"month": "{{ month_value }}", "emp": "{{ emp }}", "sort": "date", "dir": "{% if sort == 'date' and direction == 'asc' %}desc{% else %}asc{% endif %}"}'>
               Дата платежа {% if sort == 'date' %}<span class="text-primary">{% if direction == 'asc' %}↑{% else %}↓{% endif %}</span>{% endif %}
             </th>
+            <th class="cursor-pointer select-none whitespace-nowrap"
+                hx-get="{% url 'reports:tab_sales' %}" hx-target="#reports-tab" hx-swap="innerHTML"
+                hx-vals='{"month": "{{ month_value }}", "emp": "{{ emp }}", "sort": "decision_date", "dir": "{% if sort == 'decision_date' and direction == 'asc' %}desc{% else %}asc{% endif %}"}'>
+              Дата введения процедуры {% if sort == 'decision_date' %}<span class="text-primary">{% if direction == 'asc' %}↑{% else %}↓{% endif %}</span>{% endif %}
+            </th>
             <th class="cursor-pointer select-none whitespace-nowrap text-right"
                 hx-get="{% url 'reports:tab_sales' %}" hx-target="#reports-tab" hx-swap="innerHTML"
                 hx-vals='{"month": "{{ month_value }}", "emp": "{{ emp }}", "sort": "amount_full", "dir": "{% if sort == 'amount_full' and direction == 'asc' %}desc{% else %}asc{% endif %}"}'>
@@ -131,12 +136,13 @@
           <tr>
             <td class="text-base-content/50">{{ r.n }}</td>
             <td class="font-medium">{{ r.client_fio }}</td>
-            <td class="whitespace-nowrap">{{ r.date|date:"d.m.Y" }}</td>
+            <td class="whitespace-nowrap"{% if r.is_late %} style="color:#8b0000;font-weight:600"{% endif %}>{{ r.date|date:"d.m.Y" }}</td>
+            <td class="whitespace-nowrap">{% if r.decision_date %}{{ r.decision_date|date:"d.m.Y" }}{% else %}<span class="text-base-content/40">—</span>{% endif %}</td>
             <td class="text-right whitespace-nowrap">{{ r.amount_full|floatformat:2 }}</td>
             <td class="whitespace-nowrap">{{ r.type }}</td>
             <td>{{ r.purpose|default:"—" }}</td>
             <td class="text-base-content/70">{{ r.comments|default:"" }}</td>
-            <td class="text-right whitespace-nowrap font-semibold">{{ r.amount|floatformat:2 }}</td>
+            <td class="text-right whitespace-nowrap font-semibold"{% if r.is_late %} style="color:#8b0000"{% endif %}>{{ r.amount|floatformat:2 }}</td>
             <td class="text-right whitespace-nowrap">
               <input type="number" step="0.01" min="0" name="value"
                      {% if r.accrued is not None %}value="{{ r.accrued|floatformat:2 }}"{% endif %}
@@ -151,7 +157,7 @@
             </td>
           </tr>
           {% empty %}
-          <tr><td colspan="9" class="text-center text-base-content/50 py-8">
+          <tr><td colspan="10" class="text-center text-base-content/50 py-8">
             {% if emp %}У выбранного сотрудника за месяц платежей по юруслугам не найдено.{% else %}За выбранный месяц платежей по юруслугам не найдено.{% endif %}
           </td></tr>
           {% endfor %}
@@ -159,7 +165,7 @@
         {% if rows %}
         <tfoot>
           <tr class="font-semibold">
-            <td colspan="7" class="text-right">Итого:</td>
+            <td colspan="8" class="text-right">Итого:</td>
             <td class="text-right whitespace-nowrap text-success">{{ total|floatformat:2 }} ₽</td>
             <td class="text-right whitespace-nowrap" id="budget-accrued-foot">{{ total_accrued|floatformat:2 }} ₽</td>
           </tr>

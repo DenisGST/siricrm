@@ -47,6 +47,7 @@ ACCRUAL_MONTHS = 8
 SORT_KEYS = {
     "fio": lambda o: o["client_fio"].lower(),
     "date": lambda o: o["date"],
+    "decision_date": lambda o: o["decision_date"] or datetime.date.min,
     "amount_full": lambda o: o["amount_full"],
     "type": lambda o: (o["type"] or "").lower(),
     "purpose": lambda o: (o["purpose"] or "").lower(),
@@ -210,6 +211,9 @@ def _compute_operations(year, month, employee_id=None):
             purpose = p.income_type.name
         else:
             purpose = ""
+        # «Просрочка» = платёж позже, чем через 8 мес от даты введения процедуры
+        # (ветка 400 ₽). Для подсветки суммы/даты платежа тёмно-красным.
+        is_late = dd is not None and p.payment_date >= _add_months(dd, ACCRUAL_MONTHS)
         ops.append({
             "payment": p,
             "client_fio": _client_fio(p.client),
@@ -220,6 +224,7 @@ def _compute_operations(year, month, employee_id=None):
             "comments": p.comments,
             "amount": g["credited"],
             "decision_date": dd,
+            "is_late": is_late,
             "computed": _accrual(g["credited"], p.payment_date, dd),
         })
 
