@@ -3,11 +3,20 @@ from .models import ClientFolder
 
 
 def _mk(client, parent, name, slug, order=0):
-    f, _ = ClientFolder.objects.get_or_create(
-        client=client, slug=slug,
-        defaults={"parent": parent, "name": name, "order": order},
-    )
-    return f
+    # 🛑 НЕ используем get_or_create: у части клиентов задвоены папки (напр. две
+    # slug="root" после объединения карточек) → get_or_create падает с
+    # MultipleObjectsReturned и ломает любое прикрепление файла (договор/иск/скан).
+    # Устойчиво: берём самую старую подходящую папку, иначе создаём.
+    qs = ClientFolder.objects.filter(client=client, slug=slug)
+    if not slug:
+        # Пустой slug — уточняем по имени/родителю, чтобы не схлопнуть разные
+        # именованные папки клиента.
+        qs = qs.filter(name=name, parent=parent)
+    existing = qs.order_by("created_at").first()
+    if existing is not None:
+        return existing
+    return ClientFolder.objects.create(
+        client=client, parent=parent, name=name, slug=slug, order=order)
 
 
 def get_or_create_root(client):
