@@ -1,3 +1,4 @@
+{% load permissions_tags %}
 {% comment %}Прогресс-бар парсинга kad для встроенного блока «Суд». Сам себя
   поллит (every 2s) → block-status: пока таск активен — этот же блок с новой
   фразой/процентом; завершился — _case_block.html (поллинг прекращается).{% endcomment %}
@@ -8,6 +9,12 @@
   <div class="flex items-center gap-2 mb-2">
     <span class="loading loading-spinner loading-xs text-primary"></span>
     <span class="text-sm font-medium">{{ phase }}</span>
+    {% if user|can_access_procedures %}
+    <button type="button" class="btn btn-xs btn-ghost ml-auto"
+            hx-post="{% url 'arbitr:case_run_abort' case.id %}" hx-vals='{"stay": "1"}'
+            hx-target="#arbitr-block-{{ service.id }}" hx-swap="outerHTML"
+            hx-confirm="Остановить текущий парсинг?">⏹ Остановить</button>
+    {% endif %}
   </div>
   <div style="background:#e5e7eb;border-radius:9999px;height:8px;overflow:hidden">
     <div style="background:#3b82f6;height:100%;width:{{ pct }}%;transition:width .6s ease"></div>

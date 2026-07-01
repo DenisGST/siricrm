@@ -1,25 +1,38 @@
 {% load icons %}
+{% load permissions_tags %}
 <div id="arbitr-block-{{ service.id }}" class="border rounded p-3 mt-3 bg-base-100">
   <h4 class="font-semibold text-sm mb-2">⚖ Арбитражное дело</h4>
 
   {% if not case %}
-    {% if user.is_superuser %}
-    <button type="button" class="btn btn-xs btn-warning"
-            hx-post="{% url 'arbitr:mark_iskotpravlen' service.id %}"
-            hx-target="#arbitr-block-{{ service.id }}"
-            hx-swap="outerHTML"
-            hx-confirm="Поставить «Иск отправлен в суд»? Запустится мониторинг kad.arbitr.ru.">
-      Иск отправлен в суд
-    </button>
-    <p class="text-xs text-base-content/60 mt-1">
-      Появится после подачи иска. Кнопка временно видна только администраторам.
-    </p>
+    {% comment %} Иск ещё не отправлен — можно включить мониторинг {% endcomment %}
+    {% if user|can_access_procedures %}
+    <p class="text-xs text-base-content/60 mb-2">Дело ещё не поставлено на мониторинг kad.arbitr.ru.</p>
+    <form hx-post="{% url 'arbitr:court_start' service.id %}"
+          hx-target="#arbitr-block-{{ service.id }}" hx-swap="outerHTML">
+      {% csrf_token %}
+      <button type="submit" class="btn btn-xs btn-warning"
+              hx-confirm="Включить мониторинг дела на kad.arbitr.ru (поиск по ФИО)?">
+        ▶ Включить мониторинг</button>
+    </form>
+    <details class="text-xs mt-2">
+      <summary class="cursor-pointer">Номер дела уже известен — указать вручную</summary>
+      <form class="mt-2 flex flex-wrap gap-2 items-end"
+            hx-post="{% url 'arbitr:court_start' service.id %}"
+            hx-target="#arbitr-block-{{ service.id }}" hx-swap="outerHTML">
+        {% csrf_token %}
+        <input type="text" name="case_number" placeholder="А12-1234/2026"
+               class="input input-bordered input-xs">
+        <input type="url" name="kad_url" placeholder="https://kad.arbitr.ru/Card/..."
+               class="input input-bordered input-xs w-72">
+        <button type="submit" class="btn btn-xs btn-primary">Поставить на мониторинг</button>
+      </form>
+    </details>
     {% else %}
     <p class="text-xs text-base-content/60">Иск ещё не отправлен в суд.</p>
     {% endif %}
 
   {% elif case.status == "searching" %}
-    {% if user.is_superuser %}
+    {% if user|can_access_procedures %}
     <div class="flex flex-wrap gap-2 mb-2">
       <button type="button" class="btn btn-xs btn-primary"
               hx-post="{% url 'arbitr:case_run' case.id %}" hx-vals='{"block": "1"}'
@@ -28,6 +41,10 @@
       <button type="button" class="btn btn-xs btn-ghost"
               hx-get="{% url 'arbitr:case_block' service.id %}"
               hx-target="#arbitr-block-{{ service.id }}" hx-swap="outerHTML">⟳ Обновить</button>
+      <button type="button" class="btn btn-xs btn-ghost"
+              hx-post="{% url 'arbitr:case_toggle_pause' case.id %}" hx-vals='{"stay": "1"}'
+              hx-target="#arbitr-block-{{ service.id }}" hx-swap="outerHTML"
+              hx-confirm="Остановить мониторинг этого дела?">⏸ Остановить</button>
     </div>
     {% endif %}
     <div class="alert alert-warning text-xs mb-2">
@@ -47,7 +64,7 @@
         {% if hit.court_name %}<span>{{ hit.court_name }}</span>{% endif %}
         {% if hit.parties %}<span class="text-base-content/60 truncate">{{ hit.parties|truncatechars:70 }}</span>{% endif %}
         {% if hit.filed_at %}<span class="text-base-content/50">{{ hit.filed_at }}</span>{% endif %}
-        {% if user.is_superuser %}
+        {% if user|can_access_procedures %}
         <button type="button" class="btn btn-xs btn-success ml-auto"
                 hx-post="{% url 'arbitr:case_confirm_hit' case.id forloop.counter0 %}"
                 hx-vals='{"stay": "1"}'
@@ -59,6 +76,7 @@
     </div>
     {% endif %}
 
+    {% if user|can_access_procedures %}
     <details class="text-xs">
       <summary class="cursor-pointer">Привязать дело вручную</summary>
       <form class="mt-2 flex flex-wrap gap-2 items-end"
@@ -73,14 +91,32 @@
         <button type="submit" class="btn btn-xs btn-primary">Привязать</button>
       </form>
     </details>
+    {% endif %}
+
+  {% elif case.status == "paused" %}
+    <div class="flex flex-wrap items-center gap-2 mb-2">
+      <span class="badge badge-warning">Мониторинг остановлен</span>
+      {% if case.case_number %}<a class="link link-primary text-sm font-mono" href="{{ case.kad_url }}" target="_blank" rel="noopener">{{ case.case_number }}</a>{% endif %}
+    </div>
+    {% if user|can_access_procedures %}
+    <button type="button" class="btn btn-xs btn-warning"
+            hx-post="{% url 'arbitr:case_toggle_pause' case.id %}" hx-vals='{"stay": "1"}'
+            hx-target="#arbitr-block-{{ service.id }}" hx-swap="outerHTML"
+            hx-confirm="Возобновить мониторинг дела?">▶ Включить мониторинг</button>
+    {% endif %}
 
   {% else %}
-    {% if user.is_superuser %}
+    {% comment %} monitoring / closed {% endcomment %}
+    {% if user|can_access_procedures %}
     <div class="flex flex-wrap gap-2 mb-2">
       <button type="button" class="btn btn-xs btn-primary"
               hx-post="{% url 'arbitr:case_run' case.id %}" hx-vals='{"block": "1"}'
               hx-target="#arbitr-block-{{ service.id }}" hx-swap="outerHTML">
         ⟳ Парсить сейчас</button>
+      <button type="button" class="btn btn-xs btn-ghost"
+              hx-post="{% url 'arbitr:case_toggle_pause' case.id %}" hx-vals='{"stay": "1"}'
+              hx-target="#arbitr-block-{{ service.id }}" hx-swap="outerHTML"
+              hx-confirm="Остановить парсинг (приостановить мониторинг дела)?">⏸ Остановить парсинг</button>
       <button type="button" class="btn btn-xs btn-ghost"
               hx-get="{% url 'arbitr:case_block' service.id %}"
               hx-target="#arbitr-block-{{ service.id }}" hx-swap="outerHTML">⟳ Обновить</button>
@@ -93,6 +129,22 @@
       </a>
       {% if case.judge %}<span class="text-xs text-base-content/60">Судья: {{ case.judge }}</span>{% endif %}
     </div>
+
+    {% if user|can_access_procedures %}
+    <details class="text-xs mb-2">
+      <summary class="cursor-pointer">Изменить номер дела / ссылку</summary>
+      <form class="mt-2 flex flex-wrap gap-2 items-end"
+            hx-post="{% url 'arbitr:confirm_case' case.id %}"
+            hx-target="#arbitr-block-{{ service.id }}" hx-swap="outerHTML">
+        {% csrf_token %}
+        <input type="text" name="case_number" value="{{ case.case_number }}" placeholder="А12-1234/2026"
+               class="input input-bordered input-xs">
+        <input type="url" name="kad_url" value="{{ case.kad_url }}" placeholder="https://kad.arbitr.ru/Card/..."
+               class="input input-bordered input-xs w-72">
+        <button type="submit" class="btn btn-xs btn-primary">Сохранить</button>
+      </form>
+    </details>
+    {% endif %}
 
     {% with events=case.events.all %}
       {% if events %}

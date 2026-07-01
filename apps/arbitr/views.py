@@ -36,13 +36,19 @@ def _log_is_fresh(case: "ArbitrCase") -> bool:
     return (timezone.now() - last.ts).total_seconds() < LOG_FRESH_SECONDS
 
 
+def _can_manage(user):
+    """Управление мониторингом дела: админы + юристы/АУ (вкладка «Суд» карточки БФЛ)."""
+    from apps.procedure.permissions import can_access_procedures
+    return is_admin(user) or can_access_procedures(user)
+
+
 @login_required
 @require_POST
 def mark_iskotpravlen(request, service_id):
     """Создаёт ArbitrCase(status='searching') для услуги. На время отладки
     доступно только админам — потом этот вход переедет в отдельную страницу
     сотрудников отдела сбора документов."""
-    if not is_admin(request.user):
+    if not _can_manage(request.user):
         return HttpResponse("forbidden", status=403)
     service = get_object_or_404(Service, pk=service_id)
     if hasattr(service, "arbitr_case"):
@@ -76,7 +82,7 @@ def mark_iskotpravlen(request, service_id):
 def confirm_case(request, case_id):
     """Сотрудник вписывает случае номер дела + ссылку → переход в monitoring."""
     case = get_object_or_404(ArbitrCase, pk=case_id)
-    if not is_admin(request.user):
+    if not _can_manage(request.user):
         return HttpResponse("forbidden", status=403)
     case_number = (request.POST.get("case_number") or "").strip()
     kad_url = (request.POST.get("kad_url") or "").strip()
@@ -94,6 +100,41 @@ def confirm_case(request, case_id):
     return render(request, "arbitr/_case_block.html", {
         "case": case, "service": case.service,
     })
+
+
+@login_required
+@require_POST
+def court_start(request, service_id):
+    """Вкладка «Суд»: включить мониторинг дела. Если переданы номер дела + ссылка
+    kad — сразу MONITORING; иначе SEARCHING (ищем по ФИО). Идемпотентно."""
+    if not _can_manage(request.user):
+        return HttpResponse("forbidden", status=403)
+    service = get_object_or_404(Service, pk=service_id)
+    emp = Employee.objects.filter(user=request.user).first()
+    case = getattr(service, "arbitr_case", None)
+    created = case is None
+    if created:
+        case = ArbitrCase.objects.create(
+            service=service, started_by=emp, status=ArbitrCase.STATUS_SEARCHING,
+        )
+    case_number = (request.POST.get("case_number") or "").strip()
+    kad_url = (request.POST.get("kad_url") or "").strip()
+    if case_number and kad_url:
+        case.case_number = case_number
+        case.kad_url = kad_url
+        case.status = ArbitrCase.STATUS_MONITORING
+        case.save(update_fields=["case_number", "kad_url", "status", "updated_at"])
+    elif case.status == ArbitrCase.STATUS_PAUSED:
+        case.status = (ArbitrCase.STATUS_MONITORING
+                       if (case.case_number and case.kad_url) else ArbitrCase.STATUS_SEARCHING)
+        case.save(update_fields=["status", "updated_at"])
+    if created:
+        client_log.record_action(
+            service.client, "claim_filed", employee=emp,
+            comment=("Включён мониторинг дела на kad.arbitr.ru"
+                     + (f" (№ {case_number})" if case_number else " — поиск по ФИО")),
+        )
+    return render(request, "arbitr/_case_block.html", {"case": case, "service": service})
 
 
 @login_required
@@ -278,7 +319,7 @@ def case_run(request, case_id):
     дашбордную карточку. Повторный запуск при активном таске — отдаёт прогресс
     (block) или 409 (карточка), второй параллельный таск не стартует.
     """
-    if not is_admin(request.user):
+    if not _can_manage(request.user):
         return HttpResponse("forbidden", status=403)
     case = get_object_or_404(ArbitrCase, pk=case_id)
     as_block = bool(request.POST.get("block"))
@@ -323,7 +364,7 @@ def case_run_abort(request, case_id):
     чистит кэш, пишет в лог. Если активного таска нет — просто триггерит
     HX-Refresh (UI рассинхронизировался, перерендеримся).
     """
-    if not is_admin(request.user):
+    if not _can_manage(request.user):
         return HttpResponse("forbidden", status=403)
     case = get_object_or_404(ArbitrCase, pk=case_id)
     key = _active_task_cache_key(case.id)
@@ -341,6 +382,9 @@ def case_run_abort(request, case_id):
             case=case, state=ArbitrCheckLog.STATE_ERROR,
             notes=f"Парсинг прерван пользователем (user={request.user.username})",
         )
+    # Встроенная вкладка «Суд» — вернуть перерисованный блок (без HX-Refresh).
+    if request.POST.get("stay"):
+        return render(request, "arbitr/_case_block.html", {"case": case, "service": case.service})
     response = HttpResponse(status=204)
     response["HX-Refresh"] = "true"
     return response
@@ -361,7 +405,7 @@ def case_toggle_pause(request, case_id):
     HX-Refresh: true → dashboard перезагружается, дело попадает в нужную
     секцию sidebar'а с новым статусом.
     """
-    if not is_admin(request.user):
+    if not _can_manage(request.user):
         return HttpResponse("forbidden", status=403)
     case = get_object_or_404(ArbitrCase, pk=case_id)
     if case.status == ArbitrCase.STATUS_PAUSED:
@@ -377,6 +421,9 @@ def case_toggle_pause(request, case_id):
     ArbitrCheckLog.objects.create(
         case=case, state=ArbitrCheckLog.STATE_OK, notes=note,
     )
+    # Встроенная вкладка «Суд» — вернуть перерисованный блок (без HX-Refresh).
+    if request.POST.get("stay"):
+        return render(request, "arbitr/_case_block.html", {"case": case, "service": case.service})
     if request.headers.get("HX-Request"):
         response = HttpResponse(status=204)
         response["HX-Refresh"] = "true"
@@ -445,7 +492,7 @@ def case_confirm_hit(request, case_id, hit_index):
     Возвращает HX-Redirect на ту же страницу — нужна полная перезагрузка,
     т.к. меняется status и весь блок карточки рендерится по-другому.
     """
-    if not is_admin(request.user):
+    if not _can_manage(request.user):
         return HttpResponse("forbidden", status=403)
     case = get_object_or_404(ArbitrCase, pk=case_id)
     if case.status != ArbitrCase.STATUS_SEARCHING:

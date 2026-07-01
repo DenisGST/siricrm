@@ -9,6 +9,7 @@ urlpatterns = [
     path("service/<uuid:service_id>/iskotpravlen/", views.mark_iskotpravlen, name="mark_iskotpravlen"),
     path("case/<uuid:case_id>/confirm/", views.confirm_case, name="confirm_case"),
     path("service/<uuid:service_id>/case-block/", views.case_block, name="case_block"),
+    path("service/<uuid:service_id>/court-start/", views.court_start, name="court_start"),
 
     # Сервисная страница мониторинга
     path("", views.dashboard, name="dashboard"),
