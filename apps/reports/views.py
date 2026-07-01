@@ -4,7 +4,8 @@
 главной. Раздел расширяемый — отчёты добавляются вкладками.
 
 Отчёт «Отдел продаж» — реестр входящих платежей-юруслуг (гонорар фирмы) за
-месяц + бюджет отдела продаж.
+месяц + бюджет отдела продаж. Поддерживает сортировку по столбцам и фильтр по
+закреплённому за клиентом сотруднику (Client.employees).
 
 Бюджет ОП начисляется по правилу на каждую операцию-поступление (S = «Сумма»,
 юруслуги-часть строки):
@@ -29,6 +30,7 @@ from django.utils import timezone
 from django.views.decorators.http import require_POST
 
 from apps.accounting.models import IncomingPayment
+from apps.core.models import Employee
 from apps.core.permissions import get_employee
 from apps.finance.models import Payment
 from apps.procedure.models import BankruptcyCase
@@ -41,6 +43,18 @@ ACCRUAL_MIN_PAYMENT = Decimal("5000")   # порог суммы платежа
 ACCRUAL_EARLY = Decimal("1000")         # до 8 мес с даты введения процедуры
 ACCRUAL_LATE = Decimal("400")           # после 8 мес
 ACCRUAL_MONTHS = 8
+
+SORT_KEYS = {
+    "fio": lambda o: o["client_fio"].lower(),
+    "date": lambda o: o["date"],
+    "amount_full": lambda o: o["amount_full"],
+    "type": lambda o: (o["type"] or "").lower(),
+    "purpose": lambda o: (o["purpose"] or "").lower(),
+    "comments": lambda o: (o["comments"] or "").lower(),
+    "amount": lambda o: o["amount"],
+    "accrued": lambda o: o["accrued"] if o["accrued"] is not None else Decimal("-1"),
+}
+DEFAULT_SORT = "date"
 
 
 @login_required
@@ -91,6 +105,22 @@ def _accrual(credited, pay_date, decision_date) -> Decimal:
     return ACCRUAL_EARLY if pay_date < threshold else ACCRUAL_LATE
 
 
+def _assigned_employees():
+    """Сотрудники, закреплённые хотя бы за одним клиентом (для фильтра)."""
+    qs = (
+        Employee.objects
+        .filter(clients__isnull=False, user__is_active=True)
+        .select_related("user")
+        .distinct()
+        .order_by("user__last_name", "user__first_name")
+    )
+    out = []
+    for e in qs:
+        label = (e.user.get_full_name() or e.user.username).strip()
+        out.append({"id": str(e.id), "label": label})
+    return out
+
+
 def _decision_dates(pays):
     """Карты дат введения ПЕРВОЙ процедуры дела (min Procedure.intro_date):
     {service_id: date} и {client_id: date} (fallback, если платёж без услуги)."""
@@ -116,24 +146,26 @@ def _decision_dates(pays):
     return svc, cli
 
 
-def _compute_operations(year, month):
+def _compute_operations(year, month, employee_id=None):
     """Список операций-поступлений за месяц с расчётным начислением.
 
-    Возвращает (month_start, ops, total_credited, total_full).
-    ops — список dict с ключами: n, payment, client_fio, date, amount_full,
-    type, purpose, comments, amount (юруслуги-часть), decision_date, computed.
+    employee_id — фильтр по закреплённому за клиентом сотруднику (Client.employees).
+    Возвращает (month_start, ops, total_credited, total_full). ops — без «n»/«accrued»
+    (проставляются на этапе рендера после сортировки/оверлея начислений).
     """
     month_start = datetime.date(year, month, 1)
     month_end = datetime.date(year, month, calendar.monthrange(year, month)[1])
 
+    qs = Payment.objects.filter(
+        direction="in",
+        income_type__is_legal_services=True,
+        payment_date__gte=month_start,
+        payment_date__lte=month_end,
+    )
+    if employee_id:
+        qs = qs.filter(client__employees=employee_id).distinct()
     pays = list(
-        Payment.objects.filter(
-            direction="in",
-            income_type__is_legal_services=True,
-            payment_date__gte=month_start,
-            payment_date__lte=month_end,
-        )
-        .select_related("client", "income_type", "incoming_account", "charge")
+        qs.select_related("client", "income_type", "incoming_account", "charge")
         .order_by("payment_date", "created_at")
     )
 
@@ -165,7 +197,7 @@ def _compute_operations(year, month):
         g["credited"] += (p.amount_in or ZERO)
 
     ops = []
-    for i, g in enumerate(groups.values(), 1):
+    for g in groups.values():
         p = g["first"]
         dd = None
         if p.service_id and p.service_id in svc_date:
@@ -179,7 +211,6 @@ def _compute_operations(year, month):
         else:
             purpose = ""
         ops.append({
-            "n": i,
             "payment": p,
             "client_fio": _client_fio(p.client),
             "date": p.payment_date,
@@ -197,8 +228,16 @@ def _compute_operations(year, month):
     return month_start, ops, total_credited, total_full
 
 
-def _render_sales_tab(request, year, month):
-    month_start, ops, total, total_full = _compute_operations(year, month)
+def _render_sales_tab(request, year, month, emp="", sort=DEFAULT_SORT, direction="asc"):
+    employees = _assigned_employees()
+    valid_ids = {e["id"] for e in employees}
+    emp = emp if emp in valid_ids else ""
+    sort = sort if sort in SORT_KEYS else DEFAULT_SORT
+    direction = direction if direction in ("asc", "desc") else "asc"
+
+    month_start, ops, total, total_full = _compute_operations(
+        year, month, employee_id=(emp or None),
+    )
 
     budget = (
         SalesBudget.objects.filter(month=month_start)
@@ -213,6 +252,10 @@ def _render_sales_tab(request, year, month):
         if acc is not None:
             total_accrued += acc
 
+    ops.sort(key=SORT_KEYS[sort], reverse=(direction == "desc"))
+    for i, o in enumerate(ops, 1):
+        o["n"] = i
+
     ctx = {
         "month_value": f"{year:04d}-{month:02d}",
         "rows": ops,
@@ -222,6 +265,10 @@ def _render_sales_tab(request, year, month):
         "budget_total": budget.budget_total if budget else None,
         "calculated_at": budget.calculated_at if budget else None,
         "total_accrued": total_accrued,
+        "employees": employees,
+        "emp": emp,
+        "sort": sort,
+        "direction": direction,
     }
     return render(request, "reports/partials/_tab_sales.html", ctx)
 
@@ -233,7 +280,12 @@ def _render_sales_tab(request, year, month):
 def tab_sales(request):
     """Отчёт «Результаты работы отдела продаж» за выбранный месяц."""
     year, month = _parse_month(request.GET.get("month", ""))
-    return _render_sales_tab(request, year, month)
+    return _render_sales_tab(
+        request, year, month,
+        emp=(request.GET.get("emp") or "").strip(),
+        sort=(request.GET.get("sort") or DEFAULT_SORT),
+        direction=(request.GET.get("dir") or "asc"),
+    )
 
 
 @login_required
@@ -241,7 +293,11 @@ def tab_sales(request):
 @require_POST
 def budget_calculate(request):
     """«Рассчитать»: проставить расчётное начисление в строки и заполнить
-    поле «Бюджет отдела продаж» (= сумма расчётных начислений)."""
+    поле «Бюджет отдела продаж» (= сумма расчётных начислений).
+
+    Считается по ВСЕМ операциям месяца (без фильтра сотрудника) — бюджет
+    относится к отделу целиком. Отображение потом фильтруется/сортируется.
+    """
     year, month = _parse_month(request.POST.get("month", ""))
     month_start, ops, _total, _full = _compute_operations(year, month)
     emp = get_employee(request.user)
@@ -265,7 +321,12 @@ def budget_calculate(request):
         budget.calculated_by = emp
         budget.save()
 
-    return _render_sales_tab(request, year, month)
+    return _render_sales_tab(
+        request, year, month,
+        emp=(request.POST.get("emp") or "").strip(),
+        sort=(request.POST.get("sort") or DEFAULT_SORT),
+        direction=(request.POST.get("dir") or "asc"),
+    )
 
 
 @login_required
@@ -275,6 +336,7 @@ def budget_entry_save(request, payment_id):
     """Онлайн-правка поля «Начислено в бюджет ОП» по строке."""
     year, month = _parse_month(request.POST.get("month", ""))
     month_start = datetime.date(year, month, 1)
+    emp = (request.POST.get("emp") or "").strip()
     payment = get_object_or_404(Payment, pk=payment_id)
 
     raw = (request.POST.get("value") or "").strip().replace(" ", "").replace(",", ".")
@@ -290,7 +352,11 @@ def budget_entry_save(request, payment_id):
         SalesBudgetEntry.objects.update_or_create(
             budget=budget, payment=payment, defaults={"accrued": value},
         )
-        total_accrued = budget.entries.aggregate(s=Sum("accrued"))["s"] or ZERO
+        # «Итого начислено» — с учётом текущего фильтра сотрудника.
+        entries = budget.entries.all()
+        if emp:
+            entries = entries.filter(payment__client__employees=emp)
+        total_accrued = entries.aggregate(s=Sum("accrued"))["s"] or ZERO
 
     return render(request, "reports/partials/_budget_accrued_total.html",
                   {"total_accrued": total_accrued})

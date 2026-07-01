@@ -5,25 +5,39 @@
   «Сумма» = зачтённая юруслуги-часть. Итог = Σ «Сумма».
   Бюджет ОП: «Рассчитать» заполняет «Начислено» (= расчёт по правилу) и поле
   «Бюджет отдела продаж»; «Начислено» правится онлайн, «Итого начислено» — Σ строк.
+  Сортировка по столбцам (sort/dir) + фильтр по закреплённому сотруднику (emp).
 {% endcomment %}
 <div class="space-y-4">
 
-  {# ── Период + кнопка «Рассчитать» ──────────────────────────────────────── #}
+  {# ── Период + фильтр по сотруднику + «Рассчитать» ──────────────────────── #}
   <div class="flex flex-wrap items-end gap-3">
-    <form hx-get="{% url 'reports:tab_sales' %}"
-          hx-target="#reports-tab" hx-swap="innerHTML"
-          hx-trigger="change"
-          class="flex items-end gap-2">
-      <label class="form-control">
-        <span class="label label-text !text-xs !py-0 !pb-1 opacity-70">Период (месяц)</span>
-        <input type="month" name="month" value="{{ month_value }}"
-               class="input input-bordered input-sm" max="2100-12">
-      </label>
-    </form>
+    <label class="form-control">
+      <span class="label label-text !text-xs !py-0 !pb-1 opacity-70">Период (месяц)</span>
+      <input type="month" name="month" value="{{ month_value }}"
+             class="input input-bordered input-sm" max="2100-12"
+             hx-get="{% url 'reports:tab_sales' %}"
+             hx-target="#reports-tab" hx-swap="innerHTML"
+             hx-vals='{"emp": "{{ emp }}", "sort": "{{ sort }}", "dir": "{{ direction }}"}'
+             hx-trigger="change">
+    </label>
+
+    <label class="form-control">
+      <span class="label label-text !text-xs !py-0 !pb-1 opacity-70">Сотрудник (закреплён за клиентом)</span>
+      <select name="emp" class="select select-bordered select-sm" style="min-width:13rem"
+              hx-get="{% url 'reports:tab_sales' %}"
+              hx-target="#reports-tab" hx-swap="innerHTML"
+              hx-vals='{"month": "{{ month_value }}", "sort": "{{ sort }}", "dir": "{{ direction }}"}'
+              hx-trigger="change">
+        <option value="">Все сотрудники</option>
+        {% for e in employees %}
+          <option value="{{ e.id }}" {% if emp == e.id %}selected{% endif %}>{{ e.label }}</option>
+        {% endfor %}
+      </select>
+    </label>
 
     <button class="btn btn-sm btn-primary"
             hx-post="{% url 'reports:budget_calculate' %}"
-            hx-vals='{"month": "{{ month_value }}"}'
+            hx-vals='{"month": "{{ month_value }}", "emp": "{{ emp }}", "sort": "{{ sort }}", "dir": "{{ direction }}"}'
             hx-target="#reports-tab" hx-swap="innerHTML"
             hx-confirm="Рассчитать бюджет отдела продаж за выбранный месяц? Значения «Начислено» будут перезаписаны расчётными.">
       {% icon "calculator" size=15 %}<span class="ml-1.5">Рассчитать</span>
@@ -35,7 +49,7 @@
     <div class="stat bg-base-100 border border-base-200 rounded-lg py-3 px-4">
       <div class="stat-title text-xs">Итого (руб)</div>
       <div class="stat-value text-success text-2xl">{{ total|floatformat:2 }} ₽</div>
-      <div class="stat-desc">юруслуги за месяц · поступлений: {{ count }}</div>
+      <div class="stat-desc">юруслуги{% if emp %} (по фильтру){% endif %} · поступлений: {{ count }}</div>
     </div>
 
     <div class="stat bg-base-100 border border-base-200 rounded-lg py-3 px-4">
@@ -50,32 +64,66 @@
         {% if budget_total is not None %}{{ budget_total|floatformat:2 }} ₽{% else %}—{% endif %}
       </div>
       <div class="stat-desc">
-        {% if calculated_at %}рассчитан {{ calculated_at|date:"d.m.Y H:i" }}{% else %}нажмите «Рассчитать»{% endif %}
+        {% if calculated_at %}рассчитан {{ calculated_at|date:"d.m.Y H:i" }} · месяц целиком{% else %}нажмите «Рассчитать»{% endif %}
       </div>
     </div>
 
     <div class="stat bg-base-100 border border-base-200 rounded-lg py-3 px-4">
       <div class="stat-title text-xs">Итого начислено в бюджет ОП</div>
       <div class="stat-value text-2xl" id="budget-accrued-total">{{ total_accrued|floatformat:2 }} ₽</div>
-      <div class="stat-desc">сумма по строкам (редактируется)</div>
+      <div class="stat-desc">сумма по строкам{% if emp %} (по фильтру){% endif %} (редактируется)</div>
     </div>
   </div>
 
   {# ── Таблица входящих платежей ───────────────────────────────────────── #}
+  {% comment %}Заголовки-сортировка: клик по <th> перерисовывает вкладку с новым sort/dir,
+     сохраняя месяц и фильтр сотрудника. Активный столбец помечен стрелкой.{% endcomment %}
   <div class="card bg-base-100 shadow-sm">
     <div class="overflow-x-auto">
       <table class="table table-sm table-zebra">
         <thead>
           <tr>
             <th class="w-10">№</th>
-            <th>ФИО клиента</th>
-            <th>Дата платежа</th>
-            <th class="text-right">Сумма платежа</th>
-            <th>Тип</th>
-            <th>Назначение платежа</th>
-            <th>Комментарии</th>
-            <th class="text-right">Сумма</th>
-            <th class="text-right">Начислено в бюджет ОП</th>
+            <th class="cursor-pointer select-none whitespace-nowrap"
+                hx-get="{% url 'reports:tab_sales' %}" hx-target="#reports-tab" hx-swap="innerHTML"
+                hx-vals='{"month": "{{ month_value }}", "emp": "{{ emp }}", "sort": "fio", "dir": "{% if sort == 'fio' and direction == 'asc' %}desc{% else %}asc{% endif %}"}'>
+              ФИО клиента {% if sort == 'fio' %}<span class="text-primary">{% if direction == 'asc' %}↑{% else %}↓{% endif %}</span>{% endif %}
+            </th>
+            <th class="cursor-pointer select-none whitespace-nowrap"
+                hx-get="{% url 'reports:tab_sales' %}" hx-target="#reports-tab" hx-swap="innerHTML"
+                hx-vals='{"month": "{{ month_value }}", "emp": "{{ emp }}", "sort": "date", "dir": "{% if sort == 'date' and direction == 'asc' %}desc{% else %}asc{% endif %}"}'>
+              Дата платежа {% if sort == 'date' %}<span class="text-primary">{% if direction == 'asc' %}↑{% else %}↓{% endif %}</span>{% endif %}
+            </th>
+            <th class="cursor-pointer select-none whitespace-nowrap text-right"
+                hx-get="{% url 'reports:tab_sales' %}" hx-target="#reports-tab" hx-swap="innerHTML"
+                hx-vals='{"month": "{{ month_value }}", "emp": "{{ emp }}", "sort": "amount_full", "dir": "{% if sort == 'amount_full' and direction == 'asc' %}desc{% else %}asc{% endif %}"}'>
+              Сумма платежа {% if sort == 'amount_full' %}<span class="text-primary">{% if direction == 'asc' %}↑{% else %}↓{% endif %}</span>{% endif %}
+            </th>
+            <th class="cursor-pointer select-none whitespace-nowrap"
+                hx-get="{% url 'reports:tab_sales' %}" hx-target="#reports-tab" hx-swap="innerHTML"
+                hx-vals='{"month": "{{ month_value }}", "emp": "{{ emp }}", "sort": "type", "dir": "{% if sort == 'type' and direction == 'asc' %}desc{% else %}asc{% endif %}"}'>
+              Тип {% if sort == 'type' %}<span class="text-primary">{% if direction == 'asc' %}↑{% else %}↓{% endif %}</span>{% endif %}
+            </th>
+            <th class="cursor-pointer select-none whitespace-nowrap"
+                hx-get="{% url 'reports:tab_sales' %}" hx-target="#reports-tab" hx-swap="innerHTML"
+                hx-vals='{"month": "{{ month_value }}", "emp": "{{ emp }}", "sort": "purpose", "dir": "{% if sort == 'purpose' and direction == 'asc' %}desc{% else %}asc{% endif %}"}'>
+              Назначение платежа {% if sort == 'purpose' %}<span class="text-primary">{% if direction == 'asc' %}↑{% else %}↓{% endif %}</span>{% endif %}
+            </th>
+            <th class="cursor-pointer select-none whitespace-nowrap"
+                hx-get="{% url 'reports:tab_sales' %}" hx-target="#reports-tab" hx-swap="innerHTML"
+                hx-vals='{"month": "{{ month_value }}", "emp": "{{ emp }}", "sort": "comments", "dir": "{% if sort == 'comments' and direction == 'asc' %}desc{% else %}asc{% endif %}"}'>
+              Комментарии {% if sort == 'comments' %}<span class="text-primary">{% if direction == 'asc' %}↑{% else %}↓{% endif %}</span>{% endif %}
+            </th>
+            <th class="cursor-pointer select-none whitespace-nowrap text-right"
+                hx-get="{% url 'reports:tab_sales' %}" hx-target="#reports-tab" hx-swap="innerHTML"
+                hx-vals='{"month": "{{ month_value }}", "emp": "{{ emp }}", "sort": "amount", "dir": "{% if sort == 'amount' and direction == 'asc' %}desc{% else %}asc{% endif %}"}'>
+              Сумма {% if sort == 'amount' %}<span class="text-primary">{% if direction == 'asc' %}↑{% else %}↓{% endif %}</span>{% endif %}
+            </th>
+            <th class="cursor-pointer select-none whitespace-nowrap text-right"
+                hx-get="{% url 'reports:tab_sales' %}" hx-target="#reports-tab" hx-swap="innerHTML"
+                hx-vals='{"month": "{{ month_value }}", "emp": "{{ emp }}", "sort": "accrued", "dir": "{% if sort == 'accrued' and direction == 'asc' %}desc{% else %}asc{% endif %}"}'>
+              Начислено в бюджет ОП {% if sort == 'accrued' %}<span class="text-primary">{% if direction == 'asc' %}↑{% else %}↓{% endif %}</span>{% endif %}
+            </th>
           </tr>
         </thead>
         <tbody>
@@ -94,7 +142,7 @@
                      {% if r.accrued is not None %}value="{{ r.accrued|floatformat:2 }}"{% endif %}
                      placeholder="{{ r.computed|floatformat:0 }}"
                      hx-post="{% url 'reports:budget_entry_save' r.payment.id %}"
-                     hx-vals='{"month": "{{ month_value }}"}'
+                     hx-vals='{"month": "{{ month_value }}", "emp": "{{ emp }}"}'
                      hx-trigger="change"
                      hx-target="#budget-accrued-total" hx-swap="innerHTML"
                      class="input input-bordered input-xs w-24 text-right
@@ -104,7 +152,7 @@
           </tr>
           {% empty %}
           <tr><td colspan="9" class="text-center text-base-content/50 py-8">
-            За выбранный месяц платежей по юруслугам не найдено.
+            {% if emp %}У выбранного сотрудника за месяц платежей по юруслугам не найдено.{% else %}За выбранный месяц платежей по юруслугам не найдено.{% endif %}
           </td></tr>
           {% endfor %}
         </tbody>
