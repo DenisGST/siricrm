@@ -131,13 +131,14 @@ rules.add_perm("crm.view_client", view_client)
 rules.add_perm("crm.edit_client", edit_client)
 rules.add_perm("crm.delete_client", delete_client)
 
-# Услуга
+# Услуга — согласовано с Service.objects.visible_to.
 view_service = (
-    is_admin_p
-    | is_references_access_p
+    is_management_p                       # admin / head_dep / managing_partner / superuser
+    | is_owner                            # Employee.is_owner
     | is_accountant                       # роль accountant (бухгалтер)
-    | is_responsible_for_service
-    | is_allowed_service_type
+    | dept_sees_all_clients               # Department.sees_all_clients=True
+    | is_responsible_for_service          # Service.employees
+    | is_allowed_service_type             # тип услуги в services_allowed
 )
 edit_service = view_service
 delete_service = is_references_access_p   # admin/head_dep/superuser

@@ -55,16 +55,24 @@ class ServiceQuerySet(models.QuerySet):
     def visible_to(self, user) -> "ServiceQuerySet":
         """Услуги, доступные пользователю.
 
-        * elevated (admin/head_dep/superuser) + accountant (бухгалтер) — все;
-        * остальные — услуги, на которые сотрудник назначен
-          (``Service.employees``) ИЛИ чей тип услуги в ``services_allowed``.
+        Видят все услуги (согласовано с ``Client.objects.visible_to``):
+          * superuser / admin / head_dep (``is_references_access``);
+          * managing_partner / accountant (роль);
+          * Employee.is_owner (root);
+          * сотрудник отдела с ``Department.sees_all_clients=True``.
+        Остальные — услуги, на которые сотрудник назначен (``Service.employees``)
+        ИЛИ чей тип услуги в ``services_allowed``.
         """
         if is_references_access(user):
             return self
         emp = get_employee(user)
         if not emp:
             return self.none()
-        if emp.role == "accountant":
+        if getattr(emp, "is_owner", False):
+            return self
+        if emp.role in ("managing_partner", "accountant"):
+            return self
+        if emp.department_id and getattr(emp.department, "sees_all_clients", False):
             return self
         return self.filter(
             models.Q(employees=emp)
