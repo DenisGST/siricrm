@@ -354,6 +354,36 @@ def _all_folder_ids(folder):
 
 # ── Старый download_file для StoredFile (чат) ─────────────────────────────────
 
+# Сигнатуры для сниффа реального типа по первым байтам (octet-stream из
+# Bubble-импорта: имя без расширения, ключ *.bin, content_type octet-stream).
+_MAGIC = [
+    (b"%PDF", ("application/pdf", "pdf")),
+    (b"\xff\xd8\xff", ("image/jpeg", "jpg")),
+    (b"\x89PNG\r\n\x1a\n", ("image/png", "png")),
+    (b"GIF87a", ("image/gif", "gif")),
+    (b"GIF89a", ("image/gif", "gif")),
+]
+
+
+def _sniff_stored_type(stored):
+    """Определить реальный тип файла по первым байтам из S3 и запомнить его в БД.
+    Нужен для octet-stream без расширения (Bubble-импорт). → (content_type, ext) | None."""
+    try:
+        import requests
+        url = get_presigned_url(stored.bucket, stored.key, expiration=60)
+        head = requests.get(url, headers={"Range": "bytes=0-31"}, timeout=(5, 15)).content
+    except Exception:
+        return None
+    match = next((sig for magic, sig in _MAGIC if head.startswith(magic)), None)
+    if match:
+        try:
+            stored.content_type = match[0]
+            stored.save(update_fields=["content_type"])
+        except Exception:
+            pass
+    return match
+
+
 @login_required
 def download_stored_file(request, file_id):
     stored = get_object_or_404(StoredFile, pk=file_id)
@@ -362,17 +392,21 @@ def download_stored_file(request, file_id):
     # Beget отдаёт attachment + octet-stream и браузер скачивает вместо показа.
     inline = request.GET.get("inline") == "1"
     kwargs = {"expiration": 300}
-    if inline and _preview_type(stored.filename, stored.content_type):
-        # Тип для inline-показа: берём сохранённый, но если он отсутствует или
-        # «application/octet-stream» (так шлёт scan-agent), угадываем по имени —
-        # иначе браузер получит octet-stream и СКАЧАЕТ вместо предпросмотра.
+    if inline:
+        ptype = _preview_type(stored.filename, stored.content_type)
         ctype = (stored.content_type or "").lower()
-        if not ctype or ctype == "application/octet-stream":
-            ctype = mimetypes.guess_type(stored.filename or "")[0] or None
-        kwargs.update(
-            inline=True,
-            content_type=ctype,
-            filename=stored.filename or None,
-        )
+        fname = stored.filename or None
+        if not ptype and (not ctype or ctype == "application/octet-stream"):
+            # Метаданные не помогают → сниффим первые байты (Bubble-импорт).
+            sniff = _sniff_stored_type(stored)
+            if sniff:
+                ctype, ext = sniff
+                ptype = ext
+                if fname and "." not in fname:
+                    fname = f"{fname}.{ext}"  # имя без расширения → добавим
+        if ptype:
+            if not ctype or ctype == "application/octet-stream":
+                ctype = mimetypes.guess_type(stored.filename or "")[0] or None
+            kwargs.update(inline=True, content_type=ctype, filename=fname)
     url = get_presigned_url(stored.bucket, stored.key, **kwargs)
     return redirect(url)
