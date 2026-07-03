@@ -22,6 +22,9 @@ from apps.files.s3_utils import upload_file_to_s3
 
 logger = logging.getLogger("maxbot")
 
+# Типы вложений, которые ОЖИДАЕМ сохранить как файл (для детекции «потеряли файл»).
+_FILE_ATT_TYPES = {"image", "photo", "video", "audio", "voice", "file", "document"}
+
 
 def _determine_message_type(filename: str | None, content_type: str) -> str:
     name = filename or ""
@@ -209,7 +212,8 @@ def handle_max_event(data: dict):
     ).exists())
 
     # вложения
-    produced = 0  # сколько записей создали (файл/отложенная загрузка)
+    produced = 0    # создано записей (файл/отложенная загрузка/дубль)
+    file_like = 0   # вложений, которые ОЖИДАЛИ сохранить как файл
     for att in attachments:
         att_type = att.get("type")
         payload = att.get("payload") or {}
@@ -220,10 +224,12 @@ def handle_max_event(data: dict):
             continue  # цитата/forward-ссылка обработана выше, не файл
 
         url = payload.get("url")
+        http_url = bool(url and str(url).lower().startswith(("http://", "https://")))
+        is_file = att_type in _FILE_ATT_TYPES or http_url
 
         # Не всякое вложение — файл: contact/share кладут в url email/телефон
         # (напр. «gridyayev66@inbox.ru»). Качаем только http(s)-ссылки.
-        if url and not str(url).lower().startswith(("http://", "https://")):
+        if url and not http_url:
             logger.info("MAX webhook: вложение не ссылка (type=%s, url=%s) — пропуск", att_type, url)
             continue
 
@@ -232,10 +238,16 @@ def handle_max_event(data: dict):
 
         if not url:
             # Нет прямой ссылки — вероятно ПЕРЕСЛАННЫЙ файл/нестандартная
-            # структура. Обработаем catch-all'ом после цикла (видимый
-            # плейсхолдер + полный payload), чтобы не потерять молча.
+            # структура. Считаем «ожидали файл», поймаем catch-all'ом после
+            # цикла (видимый плейсхолдер + полный payload) — даже если рядом
+            # был текст-подпись (иначе документ-с-подписью терялся молча).
+            if is_file:
+                file_like += 1
             logger.warning("MAX webhook: attachment without url (type=%s) → диагностика", att_type)
             continue
+
+        # http(s)-ссылка — это файл
+        file_like += 1
 
         # 🛑 Дедуп ПО ВЛОЖЕНИЮ, а не по mid. Несколько файлов (страниц
         # договора) в одном сообщении имеют ОБЩИЙ mid — старый дедуп по mid
@@ -330,13 +342,22 @@ def handle_max_event(data: dict):
         _push(msg_obj)  # пушим только входящие
         produced += 1
 
-    # Catch-all: вложения пришли, но ни одной записи не создано и нет текста —
-    # вероятно пересланный файл/нестандартная структура (нет прямой ссылки).
-    # НЕ теряем молча: видимая пометка + полный payload для диагностики.
-    if attachments and not is_our_echo and produced == 0 and not text:
+    # Catch-all: не теряем файлы молча.
+    #  • lost_file  — ожидали файл, но сохранили меньше (нет прямой ссылки /
+    #    документ-с-подписью — раньше терялся, т.к. рядом был текст);
+    #  • forward_only — сообщение состоит только из forward-ссылки без текста
+    #    (пересланный файл, который MAX кладёт в связанное сообщение, а не в
+    #    attachments) — ловим для диагностики (полный body в raw_payload).
+    # Обычную цитату-ответ (link + текст) НЕ трогаем.
+    non_link = [a for a in attachments if a.get("type") != "link"]
+    lost_file = file_like > produced
+    forward_only = bool(attachments) and not non_link and not text
+    if not is_our_echo and (lost_file or forward_only):
         already = Message.objects.filter(
             channel="max", direction="incoming", max_message_id=max_mid,
             raw_payload__unhandled_attachment=True,
         ).exists()
         if not already:
             _create_unhandled_placeholder(client, max_mid, body)
+            logger.error("📎 MAX: возможна потеря файла mid=%s (file_like=%d produced=%d forward_only=%s)",
+                         max_mid, file_like, produced, forward_only)
