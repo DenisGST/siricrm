@@ -575,7 +575,7 @@
       var btn = document.createElement("button");
       btn.type = "button";
       btn.className = "wa-tpl-suggest btn btn-xs bg-success/10 text-success border-success mt-1";
-      btn.textContent = "📋 Окно 24ч закрыто — отправить шаблон";
+      btn.textContent = "📋 Meta не доставила — выбрать шаблон (лучше UTILITY)";
       btn.onclick = function() {
         if (window.htmx) htmx.ajax("GET", url, {target: "body", swap: "beforeend"});
       };

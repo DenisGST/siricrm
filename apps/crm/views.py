@@ -314,7 +314,10 @@ def whatsapp_template_picker(request, client_id):
             if key == "whatsapp" and t.whatsapp_meta_status != "approved":
                 continue
             tid = str(t.id)
-            ch["items"].append({"id": tid, "name": t.name})
+            ch["items"].append({
+                "id": tid, "name": t.name,
+                "category": t.whatsapp_category if key == "whatsapp" else "",
+            })
             if tid in tpl_fields:
                 continue
             if key == "whatsapp":

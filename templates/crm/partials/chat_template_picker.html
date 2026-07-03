@@ -31,9 +31,15 @@
         <select class="select select-bordered select-sm w-full ctpl-select" data-ch="{{ ch.key }}">
           <option value="">— выберите шаблон —</option>
           {% for it in ch.items %}
-          <option value="{{ it.id }}">{{ it.name }}</option>
+          <option value="{{ it.id }}">{{ it.name }}{% if it.category %} · {{ it.category }}{% endif %}</option>
           {% endfor %}
         </select>
+        {% if ch.key == 'whatsapp' and ch.items %}
+        <div class="text-xs text-base-content/60 mt-1">
+          💡 Клиент не отвечает / долго молчит → берите <b>UTILITY</b> (сервисные).
+          <b>MARKETING</b> Meta может не доставить неактивным («healthy ecosystem engagement»).
+        </div>
+        {% endif %}
         {% if not ch.items %}
         <div class="text-xs text-base-content/50 mt-1">
           {% if ch.key == 'whatsapp' %}Нет одобренных WhatsApp-шаблонов.{% else %}Нет шаблонов для этого канала — заведите в «Справочники → Шаблоны».{% endif %}

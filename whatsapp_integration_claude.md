@@ -98,6 +98,15 @@ PUBLIC_BASE_URL=https://siricrm.ru       # prod; dev — https://crmsiri.ru
 приходит `status=failed`, `error="This message was not delivered to maintain
 healthy ecosystem engagement."`. Отправлять можно **только approved-шаблоны**.
 
+🛑 **«healthy ecosystem engagement» ≠ только окно 24ч.** Эта же ошибка приходит на
+**MARKETING-шаблон** (даже approved!), если Meta режет маркетинг неактивному
+получателю (не отвечает / низкая вовлечённость) — это **маркетинговый throttle**,
+не окно. **UTILITY-шаблоны его НЕ трогает** (сервисные, по делу клиента —
+доставляются и неотвечающим). Поэтому для «молчунов» (кейс Олейников Роман 03.07)
+брать UTILITY (`document_request`/`payment_reminder`/`urgent_contact_request`), а не
+MARKETING (`missed_call_followup`/`reactivation_no_reply`/`first_contact_intro`).
+В picker'е (`chat_template_picker.html`) у WA-опций показана категория + подсказка.
+
 - **Namespace** WABA общий для инстанса: `config.NAMESPACE`
   (`991ceaad_9bf3_4128_b815_54d706ed24a4`, env `WHATSAPP_NAMESPACE`).
 - **sender.py:** `send_whatsapp_template(phone, template_name, body_params, language_code)`
