@@ -58,6 +58,10 @@ services:
 
   web:
     build: .
+    # init: true — Docker ставит tini как PID 1, оно reap'ает зомби автоматически.
+    # Без этого LibreOffice (docx_to_pdf в AFD) при каждой генерации оставляет
+    # 5 зомби (gpg/gpgconf/gpgsm), которые daphne не подбирает. См. todo.md.
+    init: true
     command: >
       bash -c "
         python manage.py collectstatic --noinput &&
@@ -87,6 +91,7 @@ services:
 
   celery:
     build: .
+    init: true  # tini как PID 1 — reap зомби от subprocess-вызовов в тасках
     command: celery -A config worker -l info --max-tasks-per-child=100 --time-limit=300 -E
     volumes:
       - .:/app
@@ -108,6 +113,7 @@ services:
 
   celery-beat:
     build: .
+    init: true  # tini как PID 1 — reap зомби
     command: celery -A config beat -l info --scheduler django_celery_beat.schedulers:DatabaseScheduler
     volumes:
       - .:/app
@@ -169,6 +175,7 @@ services:
 
   userbot:
     build: .
+    init: true  # tini как PID 1 — reap зомби (Telethon может спавнить subprocess'ы)
     command: python manage.py run_userbot
     volumes:
       - .:/app
@@ -197,6 +204,7 @@ services:
 
   devops-runner:
     build: .
+    init: true  # tini как PID 1 — reap зомби (docker exec/subprocess в handler'ах)
     command: celery -A config worker -Q devops -l info --concurrency=2
     volumes:
       - .:/app

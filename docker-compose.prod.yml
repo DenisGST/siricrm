@@ -61,6 +61,7 @@ services:
         max-file: "3"
 
   web:
+    init: true  # tini как PID 1 — reap зомби
     build: .
     command: >
       bash -c "
@@ -91,6 +92,7 @@ services:
         max-file: "5"
 
   celery:
+    init: true  # tini как PID 1 — reap зомби
     build: .
     command: celery -A config worker -l info --max-tasks-per-child=100 --time-limit=300 -E
     volumes:
@@ -112,6 +114,7 @@ services:
         max-file: "5"
 
   celery-beat:
+    init: true  # tini как PID 1 — reap зомби
     build: .
     command: celery -A config beat -l info --scheduler django_celery_beat.schedulers:DatabaseScheduler
     volumes:
@@ -133,6 +136,7 @@ services:
         max-file: "3"
 
   userbot:
+    init: true  # tini как PID 1 — reap зомби
     build: .
     command: python manage.py run_userbot
     volumes:
@@ -187,6 +191,7 @@ services:
     restart: always
 
   devops-runner:
+    init: true  # tini как PID 1 — reap зомби
     build: .
     command: celery -A config worker -Q devops -l info --concurrency=2
     volumes:
