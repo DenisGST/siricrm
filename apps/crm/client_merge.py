@@ -268,6 +268,15 @@ def merge_clients(survivor, other, *, scalar_take_other=None, collection_actions
     if leftovers:
         raise RuntimeError(f"Не перенесены связи: {leftovers}")
 
+    # 7) Пересинк кэша телефонов survivor'а: _move_phones переносит номера как
+    #    'additional', а кэш Client.phone/whatsapp_phone мог остаться None →
+    #    пропадала кнопка WhatsApp в чате (кейс Соболь Ольга).
+    try:
+        from apps.crm.phone_utils import sync_client_phone_cache
+        sync_client_phone_cache(survivor, save=True)
+    except Exception:
+        pass
+
     other_id = str(other.id)
     other.delete()
     return other_id

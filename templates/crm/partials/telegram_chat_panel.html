@@ -190,7 +190,7 @@
             MAX
           </button>
           {% endif %}
-          {% if client.whatsapp_phone or client.phone %}
+          {% if can_whatsapp %}
           <button
             type="submit"
             id="btn-send-whatsapp"
@@ -243,7 +243,7 @@
         <button type="button" id="btn-stop" class="btn btn-sm gap-1 border border-orange-300 bg-orange-50 hover:bg-orange-100 text-orange-600 hidden" title="Остановить запись">{% icon "x" size=16 %} <span class="text-xs font-normal">Стоп</span></button>
         <button type="button" id="btn-cancel" class="btn btn-ghost btn-xs hidden" title="Отменить">Отмена</button>
         <button type="button" id="btn-emoji-toggle" class="btn btn-sm gap-1 border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-600" title="Эмодзи" onclick="toggleEmojiBar()">{% icon "smile" size=16 %} <span class="text-xs font-normal">Эмодзи</span></button>
-        {% if client.telegram_id or client.max_chat_id or client.whatsapp_phone or client.phone %}
+        {% if client.telegram_id or client.max_chat_id or can_whatsapp %}
         <button
           type="button"
           id="btn-wa-template"

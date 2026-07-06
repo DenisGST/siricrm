@@ -301,7 +301,8 @@ def whatsapp_template_picker(request, client_id):
         channels.append({"key": "telegram", "label": "Telegram", "color": "#0078d4", "items": []})
     if client.max_chat_id:
         channels.append({"key": "max", "label": "MAX", "color": "#8764b8", "items": []})
-    if client.whatsapp_phone or client.phone:
+    if (client.whatsapp_phone or client.phone
+            or client.phones.filter(purpose__in=["whatsapp", "primary"]).exists()):
         channels.append({"key": "whatsapp", "label": "WhatsApp", "color": "#22c55e", "items": []})
 
     tpl_qs = MessageTemplate.objects.filter(is_active=True).order_by("name")
@@ -512,6 +513,14 @@ def telegram_chat_for_client(request, client_id):
     except Employee.DoesNotExist:
         pass
 
+    # WA-доступность — по реальным ClientPhone (whatsapp/primary), не только по
+    # кэш-полям: после мерджа кэш phone/whatsapp_phone бывает None, а whatsapp-
+    # номер жив в ClientPhone → иначе кнопка WA пропадала (кейс Соболь Ольга).
+    can_whatsapp = bool(
+        client.whatsapp_phone or client.phone
+        or client.phones.filter(purpose__in=["whatsapp", "primary"]).exists()
+    )
+
     # Канал отправки по Enter = канал последнего входящего (по нему пришло
     # последнее сообщение), затем последнего вообще; только среди доступных.
     avail = []
@@ -519,7 +528,7 @@ def telegram_chat_for_client(request, client_id):
         avail.append("telegram")
     if client.max_chat_id:
         avail.append("max")
-    if client.whatsapp_phone or client.phone:
+    if can_whatsapp:
         avail.append("whatsapp")
     last_in = (
         Message.objects.filter(client=client, direction="incoming")
@@ -542,7 +551,7 @@ def telegram_chat_for_client(request, client_id):
         "crm/partials/telegram_chat_panel.html",
         {"client": client, "page_obj": page_obj, "messages": page_obj.object_list,
          "search_q": search_q, "messenger_status": messenger_status,
-         "default_channel": default_channel},
+         "default_channel": default_channel, "can_whatsapp": can_whatsapp},
     )
 
 
