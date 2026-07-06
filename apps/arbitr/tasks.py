@@ -30,6 +30,45 @@ logger = logging.getLogger("arbitr")
 WORK_WINDOW_START = dtime(18, 0)
 WORK_WINDOW_END = dtime(8, 0)
 
+# Авто-пауза: если у дела в MONITORING последнее событие старше N дней,
+# переводим его в PAUSED — дело «мёртвое», незачем ходить каждые сутки.
+# Юрист руками через UI может вернуть в MONITORING если нужно.
+AUTO_PAUSE_STALE_DAYS = 365
+
+
+def _maybe_auto_pause(case: ArbitrCase) -> bool:
+    """Если у дела нет свежих событий (>= AUTO_PAUSE_STALE_DAYS) — переводим
+    в PAUSED и пишем причину в ArbitrCheckLog. Возвращает True если поставили.
+
+    Требует что у case есть хотя бы одно событие с event_date — новые дела
+    без парсенной хронологии не трогаем.
+    """
+    from django.db.models import Max
+    if case.status != ArbitrCase.STATUS_MONITORING:
+        return False
+    max_dt = case.events.aggregate(m=Max("event_date"))["m"]
+    if max_dt is None:
+        return False
+    from datetime import timedelta
+    threshold_date = timezone.now().date() - timedelta(days=AUTO_PAUSE_STALE_DAYS)
+    if max_dt >= threshold_date:
+        return False
+    # Ставим PAUSED
+    case.status = ArbitrCase.STATUS_PAUSED
+    case.save(update_fields=["status"])
+    _log_check(
+        case, ArbitrCheckLog.STATE_OK,
+        notes=(
+            f"Авто-пауза: последнее событие {max_dt:%d.%m.%Y}, "
+            f"нет активности > {AUTO_PAUSE_STALE_DAYS} дней"
+        ),
+    )
+    logger.info(
+        "auto_pause: case=%s number=%s max_event=%s",
+        case.id, case.case_number, max_dt,
+    )
+    return True
+
 
 def _in_work_window() -> bool:
     now = timezone.localtime().time()
@@ -406,12 +445,16 @@ def _parse_one(kad: KadSession, case: ArbitrCase, runner_ip: str = "") -> dict:
         "court_name", "judge", "instances",
         "last_check_at", "last_check_ok", "next_parse_at",
     ])
+    # Авто-пауза мёртвых дел: если самое свежее событие старше года —
+    # переводим в PAUSED, больше не парсим (юрист может вернуть вручную).
+    paused = _maybe_auto_pause(case)
     return {
         "result": "ok",
         "new_events": persisted["new_events"],
         "new_files": downloaded["ok"],
         "remaining_files": downloaded["remaining"],
         "duration_sec": int(time.monotonic() - started),
+        "auto_paused": paused,
     }
 
 
