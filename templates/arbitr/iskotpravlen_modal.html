@@ -1,0 +1,60 @@
+{% comment %}Модалка «Иск отправлен в суд»: дата отправки + способ.
+Открывается через .showModal() (top-layer). Submit постит в mark_iskotpravlen,
+меняет кнопку на чип (#isk-btn-<service.pk>) и убирает модалку.{% endcomment %}
+<dialog id="isk-modal-{{ service.pk }}" class="modal">
+  <div class="modal-box w-full max-w-md">
+    <div class="flex items-center justify-between mb-3">
+      <h3 class="text-lg font-bold">⚖ Иск отправлен в суд</h3>
+      <button type="button" class="btn btn-sm btn-ghost btn-circle"
+              onclick="this.closest('dialog').remove()">✕</button>
+    </div>
+
+    <div class="text-sm mb-3 opacity-70">
+      Клиент: <b>{{ service.client.last_name }} {{ service.client.first_name }} {{ service.client.patronymic }}</b>
+    </div>
+
+    <form hx-post="{% url 'arbitr:mark_iskotpravlen' service.pk %}?partial=chip"
+          hx-target="#isk-btn-{{ service.pk }}"
+          hx-swap="outerHTML"
+          hx-on::after-request="if(event.detail.successful){document.getElementById('isk-modal-{{ service.pk }}')?.remove();}"
+          class="space-y-3">
+      {% csrf_token %}
+
+      <div class="form-control">
+        <label class="label py-1"><span class="label-text text-sm">Дата отправки иска в суд</span></label>
+        <input type="date" name="filing_date" value="{{ today }}" required
+               class="input input-bordered input-sm w-full">
+      </div>
+
+      <div class="form-control">
+        <label class="label py-1"><span class="label-text text-sm">Способ отправки</span></label>
+        <select name="filing_method" class="select select-bordered select-sm w-full">
+          {% for val, label in method_choices %}
+            <option value="{{ val }}" {% if val == default_method %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="alert alert-info text-xs py-2">
+        После подтверждения: дата и способ запишутся в дело, будет создано событие
+        «Иск отправлен в суд» с уведомлением закреплённым сотрудникам и запущен
+        мониторинг дела на kad.arbitr.ru.
+      </div>
+
+      <div class="modal-action mt-2">
+        <button type="button" class="btn btn-sm btn-ghost"
+                onclick="document.getElementById('isk-modal-{{ service.pk }}').remove()">Отмена</button>
+        <button type="submit" class="btn btn-sm btn-primary">⚖ Подтвердить</button>
+      </div>
+    </form>
+  </div>
+  <form method="dialog" class="modal-backdrop">
+    <button type="button" onclick="this.closest('dialog').remove()">close</button>
+  </form>
+</dialog>
+<script>
+  (function() {
+    var dlg = document.getElementById('isk-modal-{{ service.pk }}');
+    if (dlg && !dlg.open) dlg.showModal();
+  })();
+</script>

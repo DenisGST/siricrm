@@ -11,7 +11,7 @@ from django.utils import timezone
 from django.views.decorators.http import require_POST
 
 from apps.core.models import Employee
-from apps.core.permissions import is_admin
+from apps.core.permissions import is_admin, can_send_claim
 from apps.crm.models import Service
 from apps.crm import client_log
 
@@ -43,37 +43,76 @@ def _can_manage(user):
 
 
 @login_required
-@require_POST
-def mark_iskotpravlen(request, service_id):
-    """Создаёт ArbitrCase(status='searching') для услуги. На время отладки
-    доступно только админам — потом этот вход переедет в отдельную страницу
-    сотрудников отдела сбора документов."""
-    if not _can_manage(request.user):
+def iskotpravlen_modal(request, service_id):
+    """Модалка «Иск отправлен в суд»: выбор даты отправки + способа."""
+    if not can_send_claim(request.user):
         return HttpResponse("forbidden", status=403)
     service = get_object_or_404(Service, pk=service_id)
-    if hasattr(service, "arbitr_case"):
-        return render(request, "arbitr/_case_block.html", {
-            "case": service.arbitr_case, "service": service,
-        })
+    from apps.procedure.models import BankruptcyCase
+    return render(request, "arbitr/iskotpravlen_modal.html", {
+        "service": service,
+        "today": timezone.localdate().isoformat(),
+        "method_choices": BankruptcyCase.FILING_METHOD_CHOICES,
+        "default_method": "kad",
+    })
+
+
+@login_required
+@require_POST
+def mark_iskotpravlen(request, service_id):
+    """«Иск отправлен в суд»: фиксирует дату+способ в деле (BankruptcyCase),
+    пишет событийку (с уведомлением всем закреплённым) и запускает мониторинг
+    дела на kad.arbitr.ru. Доступ — Юр.отдел БФЛ / Отдел сбора документов / админ."""
+    if not can_send_claim(request.user):
+        return HttpResponse("forbidden", status=403)
+    service = get_object_or_404(Service, pk=service_id)
     emp = Employee.objects.filter(user=request.user).first()
-    case = ArbitrCase.objects.create(
-        service=service, started_by=emp,
-        status=ArbitrCase.STATUS_SEARCHING,
-    )
-    client_log.record_action(
-        service.client, "claim_filed",
-        employee=emp,
+
+    from datetime import date as _date
+    from apps.procedure.models import BankruptcyCase
+    from apps.procedure.services import ensure_case, recompute_due_dates
+
+    # Дата отправки (по умолчанию сегодня) + способ (по умолчанию kad).
+    raw_date = (request.POST.get("filing_date") or "").strip()
+    try:
+        filing_date = _date.fromisoformat(raw_date) if raw_date else timezone.localdate()
+    except ValueError:
+        filing_date = timezone.localdate()
+    valid = dict(BankruptcyCase.FILING_METHOD_CHOICES)
+    method = (request.POST.get("filing_method") or "").strip()
+    if method not in valid:
+        method = "kad"
+
+    # 1) Дело процедуры: дата подачи иска + способ отправки; пересчёт сроков.
+    case_proc = ensure_case(service)
+    case_proc.filing_date = filing_date
+    case_proc.filing_method = method
+    case_proc.save(update_fields=["filing_date", "filing_method", "updated_at"])
+    recompute_due_dates(case_proc)
+
+    # 2) Мониторинг kad.arbitr.ru — запускаем, если ещё не запущен.
+    if hasattr(service, "arbitr_case"):
+        acase = service.arbitr_case
+    else:
+        acase = ArbitrCase.objects.create(
+            service=service, started_by=emp, status=ArbitrCase.STATUS_SEARCHING,
+        )
+
+    # 3) Событийка «Иск отправлен в суд» (EventType claim_sent, notifies=True →
+    #    уведомление всем сотрудникам, закреплённым за клиентом).
+    client_log.record_event(
+        service.client, "claim_sent", employee=emp,
         comment=(
-            f"Иск отправлен в суд. Запущен мониторинг дела на kad.arbitr.ru "
-            f"(услуга {service.name.short_name if service.name else '—'})"
+            f"Иск отправлен в суд {filing_date:%d.%m.%Y}, способ: {valid[method]}. "
+            f"Запущен мониторинг дела на kad.arbitr.ru."
         ),
     )
-    # Канбан-карточка ждёт компактный бейдж (chip), а полная карточка
-    # услуги — расширенный блок. Различаем по параметру partial.
+
+    # Канбан-карточка ждёт компактный бейдж (chip), полная карточка — блок.
     if request.GET.get("partial") == "chip":
-        return render(request, "arbitr/_case_chip.html", {"case": case})
+        return render(request, "arbitr/_case_chip.html", {"case": acase})
     return render(request, "arbitr/_case_block.html", {
-        "case": case, "service": service,
+        "case": acase, "service": service,
     })
 
 

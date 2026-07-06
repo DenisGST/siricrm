@@ -26,6 +26,11 @@ def can_merge_clients(user):
 
 
 @register.filter
+def can_send_claim(user):
+    return permissions.can_send_claim(user)
+
+
+@register.filter
 def can_access_procedures(user):
     from apps.procedure.permissions import can_access_procedures as _check
     return _check(user)

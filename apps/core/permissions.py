@@ -115,6 +115,22 @@ def can_merge_clients(user) -> bool:
                          or getattr(emp, "can_merge_clients", False)))
 
 
+# Отделы, чьи сотрудники могут ставить «Иск отправлен в суд».
+CLAIM_SEND_DEPARTMENTS = ("Юридический отдел БФЛ", "Отдел сбора документов БФЛ")
+
+
+def can_send_claim(user) -> bool:
+    """Право ставить «Иск отправлен в суд»: admin/суперюзер или сотрудник
+    Юридического отдела БФЛ / Отдела сбора документов БФЛ."""
+    if not user or not user.is_authenticated:
+        return False
+    if is_admin(user):
+        return True
+    emp = get_employee(user)
+    return bool(emp and getattr(emp, "department", None)
+                and emp.department.name in CLAIM_SEND_DEPARTMENTS)
+
+
 # ─── Декораторы для Django view-функций ──────────────────────
 def _make_require(predicate, message):
     def decorator(view_func):

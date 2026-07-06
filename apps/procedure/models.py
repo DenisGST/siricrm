@@ -190,6 +190,15 @@ class BankruptcyCase(TimeStampedModel):
     # В сводке дела показываем ФУ последней процедуры (см. fm_display).
     # Общие даты дела (якоря сроков общих стадий).
     filing_date = models.DateField("Дата подачи иска в суд", null=True, blank=True)
+    FILING_METHOD_CHOICES = [
+        ("post", "Почта России"),
+        ("court_office", "Канцелярия суда"),
+        ("kad", "Сайт суда (kad.arbitr.ru)"),
+    ]
+    filing_method = models.CharField(
+        "Способ отправки иска", max_length=16,
+        choices=FILING_METHOD_CHOICES, blank=True,
+    )
     claim_accept_date = models.DateField("Дата приёма иска в суде", null=True, blank=True)
     first_hearing_date = models.DateField("Дата первого судебного заседания", null=True, blank=True)
     first_hearing_outcome = models.CharField(
