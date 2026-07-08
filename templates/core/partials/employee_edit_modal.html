@@ -127,6 +127,13 @@
                  class="toggle toggle-info toggle-sm">
           <span class="label-text text-xs">Редактирование финансов</span>
         </label>
+        <label for="emp-view-all" class="cursor-pointer flex items-center gap-2"
+               title="Доступ ко всем клиентам компании без смены роли — обычно для managing_partner-ов с нестандартной ролью (напр. arbitration).">
+          <input type="checkbox" id="emp-view-all" name="can_view_all_clients"
+                 {% if form.can_view_all_clients.value %}checked{% endif %}
+                 class="toggle toggle-info toggle-sm">
+          <span class="label-text text-xs">Видит всех клиентов</span>
+        </label>
         <label for="emp-dismissed" class="cursor-pointer flex items-center gap-2">
           <input type="checkbox" id="emp-dismissed" name="is_dismissed"
                  {% if form.is_dismissed.value %}checked{% endif %}

@@ -42,6 +42,9 @@ class ClientQuerySet(models.QuerySet):
             return self
         if emp.department_id and getattr(emp.department, "sees_all_clients", False):
             return self
+        # Точечный флаг Employee.can_view_all_clients — доступ ко всем без смены роли.
+        if getattr(emp, "can_view_all_clients", False):
+            return self
         return self.filter(
             models.Q(employees=emp)
             | models.Q(services__employees=emp)
@@ -73,6 +76,9 @@ class ServiceQuerySet(models.QuerySet):
         if emp.role in ("managing_partner", "accountant"):
             return self
         if emp.department_id and getattr(emp.department, "sees_all_clients", False):
+            return self
+        # Точечный флаг Employee.can_view_all_clients — согласуем с Client.visible_to.
+        if getattr(emp, "can_view_all_clients", False):
             return self
         return self.filter(
             models.Q(employees=emp)

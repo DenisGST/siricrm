@@ -227,6 +227,13 @@ class Employee(models.Model):
                   "Точечный флаг — обычно даётся бухгалтерии; можно выдать "
                   "руководству (managing_partner) без изменения роли.",
     )
+    can_view_all_clients = models.BooleanField(
+        "Видит всех клиентов", default=False,
+        help_text="Точечный доступ ко всей клиентской базе без смены роли. "
+                  "Даётся сотрудникам, чьи роли не входят в MANAGEMENT_ROLES "
+                  "(admin/head_dep/managing_partner), но которым нужен общий обзор "
+                  "(например, arbitration-АУ, помогающий с общей загрузкой).",
+    )
     bubble_id = models.CharField(
         "Bubble ID", max_length=64, blank=True, null=True, unique=True,
         help_text="ID записи User в исходной CRM на bubble.io",

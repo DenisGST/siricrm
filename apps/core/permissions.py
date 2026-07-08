@@ -89,6 +89,9 @@ def can_view_all_clients(user) -> bool:
         return True
     if emp.department_id and getattr(emp.department, "sees_all_clients", False):
         return True
+    # Точечный флаг Employee.can_view_all_clients — доступ без смены роли.
+    if getattr(emp, "can_view_all_clients", False):
+        return True
     return False
 
 
