@@ -120,6 +120,13 @@
                  class="toggle toggle-info toggle-sm">
           <span class="label-text text-xs">Обработка входящих сканов</span>
         </label>
+        <label for="emp-finance" class="cursor-pointer flex items-center gap-2"
+               title="Право создавать и изменять платежи (входящие/исходящие) в разделе «Финансы» / «Бухучёт».">
+          <input type="checkbox" id="emp-finance" name="can_edit_finance"
+                 {% if form.can_edit_finance.value %}checked{% endif %}
+                 class="toggle toggle-info toggle-sm">
+          <span class="label-text text-xs">Редактирование финансов</span>
+        </label>
         <label for="emp-dismissed" class="cursor-pointer flex items-center gap-2">
           <input type="checkbox" id="emp-dismissed" name="is_dismissed"
                  {% if form.is_dismissed.value %}checked{% endif %}

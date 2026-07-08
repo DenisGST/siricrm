@@ -40,7 +40,13 @@ def can_edit_finance(user) -> bool:
     if user.is_superuser:
         return True
     emp = getattr(user, "employee", None)
-    return bool(emp and emp.role in EDIT_ROLES)
+    if not emp:
+        return False
+    if emp.role in EDIT_ROLES:
+        return True
+    # Точечный флаг Employee.can_edit_finance — можно выдать любому
+    # без смены роли (типично для managing_partner, кто занимается финансами).
+    return bool(getattr(emp, "can_edit_finance", False))
 
 
 def can_edit_schedule(user) -> bool:

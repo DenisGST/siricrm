@@ -221,6 +221,12 @@ class Employee(models.Model):
         help_text="Доступ к кнопке «Объединить» в карточке клиента — "
                   "самостоятельное слияние карточек-дублей.",
     )
+    can_edit_finance = models.BooleanField(
+        "Редактирование финансов", default=False,
+        help_text="Право создавать и изменять платежи (входящие/исходящие). "
+                  "Точечный флаг — обычно даётся бухгалтерии; можно выдать "
+                  "руководству (managing_partner) без изменения роли.",
+    )
     bubble_id = models.CharField(
         "Bubble ID", max_length=64, blank=True, null=True, unique=True,
         help_text="ID записи User в исходной CRM на bubble.io",
