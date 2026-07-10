@@ -1,4 +1,8 @@
-<dialog id="emp-edit-modal" class="modal modal-middle modal-open">
+{% comment %}Модалка правки сотрудника. Открывается через .showModal() и дедуплицируется
+скриптом внизу: строка таблицы дописывает её в <body> при каждом клике, а «залипшие»
+копии давали дубли id — label резолвился в скрытую копию, и галочки (напр.
+can_edit_finance) не уходили в POST.{% endcomment %}
+<dialog id="emp-edit-modal" class="modal modal-middle">
   <div class="modal-box w-full max-w-lg">
     <h3 class="font-bold text-lg mb-4">
       {{ emp.user.last_name }} {{ emp.user.first_name }}
@@ -6,7 +10,7 @@
     </h3>
 
     <form hx-post="{% url 'core:admin_employee_edit' emp.pk %}"
-          hx-target="#emp-edit-modal" hx-swap="outerHTML"
+          hx-target="closest dialog" hx-swap="outerHTML"
           class="space-y-3">
       {% csrf_token %}
 
@@ -101,47 +105,47 @@
 
       <div class="divider text-xs">Статус</div>
       <div class="flex flex-wrap gap-x-8 gap-y-2">
-        <label for="emp-messenger-access" class="cursor-pointer flex items-center gap-2">
+        <label class="cursor-pointer flex items-center gap-2">
           <input type="checkbox" id="emp-messenger-access" name="has_messenger_access"
                  {% if form.has_messenger_access.value %}checked{% endif %}
                  class="toggle toggle-primary toggle-sm">
           <span class="label-text text-xs">Доступ к мессенджеру</span>
         </label>
-        <label for="emp-tg-leads" class="cursor-pointer flex items-center gap-2">
+        <label class="cursor-pointer flex items-center gap-2">
           <input type="checkbox" id="emp-tg-leads" name="accept_telegram_leads"
                  {% if form.accept_telegram_leads.value %}checked{% endif %}
                  class="toggle toggle-info toggle-sm">
           <span class="label-text text-xs">Принимать лиды из Telegram</span>
         </label>
-        <label for="emp-scans" class="cursor-pointer flex items-center gap-2"
+        <label class="cursor-pointer flex items-center gap-2"
                title="Доступ к лотку «Входящие сканы»: видеть присланные со сканера документы и привязывать их к клиентам.">
           <input type="checkbox" id="emp-scans" name="can_handle_scans"
                  {% if form.can_handle_scans.value %}checked{% endif %}
                  class="toggle toggle-info toggle-sm">
           <span class="label-text text-xs">Обработка входящих сканов</span>
         </label>
-        <label for="emp-finance" class="cursor-pointer flex items-center gap-2"
+        <label class="cursor-pointer flex items-center gap-2"
                title="Право создавать и изменять платежи (входящие/исходящие) в разделе «Финансы» / «Бухучёт».">
           <input type="checkbox" id="emp-finance" name="can_edit_finance"
                  {% if form.can_edit_finance.value %}checked{% endif %}
                  class="toggle toggle-info toggle-sm">
           <span class="label-text text-xs">Редактирование финансов</span>
         </label>
-        <label for="emp-view-all" class="cursor-pointer flex items-center gap-2"
+        <label class="cursor-pointer flex items-center gap-2"
                title="Доступ ко всем клиентам компании без смены роли — обычно для managing_partner-ов с нестандартной ролью (напр. arbitration).">
           <input type="checkbox" id="emp-view-all" name="can_view_all_clients"
                  {% if form.can_view_all_clients.value %}checked{% endif %}
                  class="toggle toggle-info toggle-sm">
           <span class="label-text text-xs">Видит всех клиентов</span>
         </label>
-        <label for="emp-dismissed" class="cursor-pointer flex items-center gap-2">
+        <label class="cursor-pointer flex items-center gap-2">
           <input type="checkbox" id="emp-dismissed" name="is_dismissed"
                  {% if form.is_dismissed.value %}checked{% endif %}
                  class="toggle toggle-error toggle-sm">
           <span class="label-text text-xs">Уволен</span>
         </label>
         {% if user.is_superuser %}
-        <label for="emp-owner" class="cursor-pointer flex items-center gap-2"
+        <label class="cursor-pointer flex items-center gap-2"
                title="Видит всё, включая Django-admin. Только для основателя.">
           <input type="checkbox" id="emp-owner" name="is_owner"
                  {% if form.is_owner.value %}checked{% endif %}
@@ -151,7 +155,7 @@
         {% endif %}
       </div>
 
-      <label for="emp-scanner" class="block mt-2">
+      <label class="block mt-2">
         <span class="label-text text-xs">Имя сканера (метка устройства scan-agent)</span>
         <input type="text" id="emp-scanner" name="scanner_name"
                value="{{ form.scanner_name.value|default:'' }}"
@@ -177,3 +181,13 @@
     <button onclick="this.closest('dialog').remove()">close</button>
   </form>
 </dialog>
+<script>
+  (function () {
+    var copies = document.querySelectorAll('#emp-edit-modal');
+    if (!copies.length) return;
+    var dlg = copies[copies.length - 1];          // только что вставленная
+    copies.forEach(function (el) { if (el !== dlg) el.remove(); });
+    dlg.addEventListener('close', function () { dlg.remove(); });
+    if (!dlg.open) dlg.showModal();
+  })();
+</script>

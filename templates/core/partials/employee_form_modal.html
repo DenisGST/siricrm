@@ -3,8 +3,11 @@
     <h3 class="font-bold text-lg mb-4">
       Настройки: {{ emp.user.get_full_name }}
     </h3>
-    <form hx-post="{% url 'core:admin_employee_edit' emp.pk %}"
-          hx-target="#emp-modal" hx-swap="outerHTML"
+    {% comment %}Постим в admin_employee_settings (EmployeeAdminForm — те же 5 полей).
+    Раньше форма постила в admin_employee_edit (полная форма), где last_name/first_name
+    обязательны и не рендерятся тут → сохранение молча не проходило.{% endcomment %}
+    <form hx-post="{% url 'core:admin_employee_settings' emp.pk %}"
+          hx-target="closest dialog" hx-swap="outerHTML"
           class="space-y-3">
       {% csrf_token %}
 
