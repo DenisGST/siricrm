@@ -305,9 +305,17 @@ def add_manual_milestone(
 
 @transaction.atomic
 def create_request(case, request_type, *, recipient=None, employee=None) -> Request:
-    """Создать запрос по типу (госорган — из типа по умолчанию или переданный).
-    Исходящий № присваивается сразу (сквозной по делу)."""
-    rec = recipient or request_type.default_recipient
+    """Создать запрос по типу.
+
+    Адресат: явно переданный → авто-подбор по типу+региону/адресу/правилам →
+    госорган типа по умолчанию. Исходящий № присваивается сразу (сквозной по делу).
+    """
+    rec = recipient
+    if rec is None:
+        from .recipient_resolver import resolve_recipient
+        res = resolve_recipient(request_type, case.service.client, case.service)
+        rec = res["recipient"]
+    rec = rec or request_type.default_recipient
     next_num = (case.requests.aggregate(m=Max("outgoing_number"))["m"] or 0) + 1
     return Request.objects.create(
         case=case,
@@ -322,12 +330,40 @@ def create_request(case, request_type, *, recipient=None, employee=None) -> Requ
 
 
 @transaction.atomic
-def create_request_package(case, package, *, employee=None) -> list:
-    """Создать запросы по всем активным типам пакета."""
+def create_request_package(case, package, *, employee=None, recipients=None) -> list:
+    """Создать запросы по всем активным типам пакета.
+
+    `recipients` — необязательный dict {request_type_id: LegalEntity|None} с
+    выбранными в модалке адресатами (перекрывают авто-подбор для этих типов).
+    """
+    recipients = recipients or {}
     created = []
     for rt in package.types.filter(is_active=True).order_by("order"):
-        created.append(create_request(case, rt, employee=employee))
+        rec = recipients.get(str(rt.pk))
+        created.append(create_request(case, rt, recipient=rec, employee=employee))
     return created
+
+
+def save_recipient_rule(request_type, client, service, recipient, *, employee=None):
+    """Запомнить ручной выбор адресата для (вид ЮЛ + регион [+ район]).
+
+    Переиспользуется резолвером у других клиентов того же региона/района.
+    Возвращает RecipientRule или None (если нет вида/региона/адресата).
+    """
+    from .models import RecipientRule
+    from .recipient_resolver import client_region, locality_key
+    kind = request_type.recipient_kind if request_type else None
+    if not (kind and recipient):
+        return None
+    region = client_region(client, service)
+    if not region:
+        return None
+    district = locality_key(client)
+    obj, _created = RecipientRule.objects.update_or_create(
+        kind=kind, region=region, district=district,
+        defaults={"recipient": recipient, "created_by": employee},
+    )
+    return obj
 
 
 @transaction.atomic

@@ -74,8 +74,10 @@ def sender_from_executor(executor=None):
 
 
 def party_from_legal_entity(le):
-    addr = (le.postal_address or le.legal_address or "").strip()
-    return _party(le.name or le.short_name, addr, extract_index(addr))
+    addr = (le.postal_address or le.legal_address or le.actual_address or "").strip()
+    # Индекс: сохранённый postal_code (напр. добит DaData у МРЭО) → из текста адреса.
+    idx = (getattr(le, "postal_code", "") or "").strip() or extract_index(addr)
+    return _party(le.name or le.short_name, addr, idx)
 
 
 def party_from_address(addr, name=""):
@@ -95,6 +97,32 @@ def party_from_client(client):
     fio = " ".join(p for p in [client.last_name, client.first_name,
                                client.patronymic] if p).strip()
     return party_from_address(addr, name=fio)
+
+
+def party_from_manager(am):
+    """Отправитель — финансовый (арбитражный) управляющий: ФИО + адрес корреспонденции.
+
+    Для конвертов запросов, которые ФУ шлёт в госорганы от своего имени.
+    Duck-typed: ждёт `full_fio` / `corr_address`.
+    """
+    if am is None:
+        return _party()
+    fio = (getattr(am, "full_fio", "") or "").strip()
+    addr = (getattr(am, "corr_address", "") or "").strip()
+    name = (f"Финансовый управляющий {fio}").strip() if fio else ""
+    return _party(name, addr, extract_index(addr))
+
+
+def party_from_request(req):
+    """Сторона-получатель из запроса procedure.Request.
+
+    Приоритет — связанный госорган (LegalEntity, есть адрес/индекс), иначе
+    текстовое имя адресата (recipient_name) без адреса.
+    """
+    if getattr(req, "recipient_id", None) and req.recipient:
+        return party_from_legal_entity(req.recipient)
+    name = (req.recipient_name or "").strip()
+    return _party(name)
 
 
 def recipients_for_case_creditors(service):

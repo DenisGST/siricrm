@@ -533,6 +533,17 @@ class LegalEntity(TimeStampedModel):
                   "2 буквы — тип, 4 цифры — порядковый). Для идемпотентного "
                   "импорта из sudrf.ru.",
     )
+    ifns_code = models.CharField(
+        "Код ИФНС", max_length=4, blank=True, null=True, db_index=True,
+        help_text="4-значный код инспекции ФНС (из open data nalog.ru). "
+                  "Для автоподбора инспекции по адресу клиента (Address.tax_office). "
+                  "Не unique — у УФНС и МИФНС коды могут повторяться/отсутствовать.",
+    )
+    postal_code = models.CharField(
+        "Почтовый индекс", max_length=6, blank=True,
+        help_text="Индекс для конвертов Почты РФ. Заполняется из адреса или "
+                  "через DaData, если в адресе индекса нет (напр. у МРЭО).",
+    )
 
     def __str__(self):
         return self.short_name or self.name

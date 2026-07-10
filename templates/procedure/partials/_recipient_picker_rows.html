@@ -1,0 +1,17 @@
+{% comment %}Строки таблицы выбора госоргана. Контекст: items (LegalEntity), service_id.
+Клик по строке → pickRecipient(service_id, le_id, row); адрес/имя — в data-атрибутах.{% endcomment %}
+{% for le in items %}
+{% with addr=le.legal_address|default:le.actual_address|default:le.postal_address %}
+<tr class="hover cursor-pointer"
+    onclick="pickRecipient('{{ service_id }}', '{{ le.pk }}', this)"
+    data-name="{{ le.short_name|default:le.name }}" data-addr="{{ addr }}">
+  <td class="text-xs">{{ le.name }}</td>
+  <td class="text-xs whitespace-nowrap">{{ le.region.name|default:"—" }}</td>
+  <td class="text-xs">{{ addr|default:"—"|truncatechars:56 }}</td>
+  <td class="text-xs whitespace-nowrap">{{ le.inn|default:"—" }}</td>
+  <td class="text-right"><button type="button" class="btn btn-xs btn-primary">Выбрать</button></td>
+</tr>
+{% endwith %}
+{% empty %}
+<tr><td colspan="5" class="text-center text-base-content/50 py-4">Ничего не найдено — измените фильтр или запрос.</td></tr>
+{% endfor %}

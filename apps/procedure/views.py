@@ -16,6 +16,7 @@ from django.http import HttpResponse, HttpResponseBadRequest, HttpResponseForbid
 from django.shortcuts import get_object_or_404, render
 from django.utils import timezone
 from django.views.decorators.cache import never_cache
+from django.views.decorators.clickjacking import xframe_options_sameorigin
 from django.views.decorators.http import require_POST
 
 from apps.core.models import Employee
@@ -993,34 +994,153 @@ def tab_correspondence(request, service_id):
     return render(request, "procedure/_tab_correspondence.html", _correspondence_context(case))
 
 
+def _resolve_hint(reason: str, n: int) -> str:
+    """Человекочитаемая подсказка по итогу автоподбора адресата."""
+    return {
+        "none": "Адресат не требуется (Росреестр — через СМЭВ).",
+        "fns_code": "Инспекция подобрана по коду ИФНС из адреса клиента.",
+        "remembered": "Адресат из запомненного правила для региона/района.",
+        "region_unique": "Единственный орган вида в регионе клиента.",
+        "district_unique": "Подобран по району/городу клиента.",
+        "district_many": f"В районе клиента подходит {n} — уточните выбор из списка.",
+        "region_many": f"В регионе {n} органов — выберите из списка (фильтр по типу уже задан).",
+        "no_region": "У клиента не определён регион — выберите адресата вручную.",
+        "manual": "Выберите адресата вручную из реестра.",
+    }.get(reason, "")
+
+
 @login_required
 @require_procedures
 def recipient_search(request, service_id):
-    """Typeahead госоргана — поиск по реестру LegalEntity (имя/ИНН).
-    Доп. фильтр по типу (kind) и приоритет региона дела (region=1)."""
+    """Typeahead госоргана по реестру LegalEntity — с фильтром по типу запроса.
+
+    `type` (RequestType) → вид ЮЛ (kind) фильтром + регион клиента приоритетом.
+    Пустой `q` при заданном типе → короткий список органов вида в регионе клиента
+    (тот самый удобный отфильтрованный выбор). Явный `kind` тоже поддерживается.
+    """
+    from django.db.models import Case, IntegerField, When
+    from .recipient_resolver import client_region
+
     q = (request.GET.get("q") or "").strip()
+    kind_id = (request.GET.get("kind") or "").strip()
+
+    type_id = (request.GET.get("type") or "").strip()
+    if type_id:
+        rt = RequestType.objects.filter(pk=type_id).select_related("recipient_kind").first()
+        if rt and rt.recipient_kind_id:
+            kind_id = str(rt.recipient_kind_id)
+
+    service = (Service.objects.filter(pk=service_id)
+               .select_related("client").first())
+    region = client_region(service.client, service) if service else None
+
+    qs = LegalEntity.objects.filter(is_active=True)
+    if kind_id:
+        qs = qs.filter(kind_id=kind_id)
+
     items = []
-    if len(q) >= 2:
-        qs = LegalEntity.objects.filter(
+    if q:
+        qs = qs.filter(
             Q(name__icontains=q) | Q(short_name__icontains=q) | Q(inn__icontains=q)
         )
-        kind = (request.GET.get("kind") or "").strip()
-        if kind:
-            qs = qs.filter(kind_id=kind)
-        if request.GET.get("region") == "1":
-            region_id = (Service.objects.filter(pk=service_id)
-                         .values_list("region_id", flat=True).first())
-            if region_id:
-                from django.db.models import Case, IntegerField, When
-                qs = qs.annotate(_rm=Case(
-                    When(region_id=region_id, then=0), default=1,
-                    output_field=IntegerField())).order_by("_rm", "name")
-            else:
-                qs = qs.order_by("name")
+        if region:
+            qs = qs.annotate(_rm=Case(
+                When(region_id=region.id, then=0), default=1,
+                output_field=IntegerField())).order_by("_rm", "name")
         else:
             qs = qs.order_by("name")
-        items = list(qs.select_related("region")[:10])
+        items = list(qs.select_related("region")[:12])
+    elif kind_id and region:
+        # Без текста, но задан тип+регион → показать органы вида в регионе.
+        items = list(qs.filter(region=region)
+                     .select_related("region").order_by("name")[:40])
     return render(request, "procedure/_recipient_results.html", {"items": items, "q": q})
+
+
+@login_required
+@require_procedures
+def recipient_picker(request, service_id):
+    """Большая модалка выбора госоргана из справочника (фильтр по виду+региону, поиск)."""
+    try:
+        service = _bfl_service(request, service_id)
+    except _NotBFL as exc:
+        return HttpResponseForbidden(str(exc))
+    from .recipient_resolver import client_region
+    rt = (RequestType.objects.filter(pk=request.GET.get("type"))
+          .select_related("recipient_kind").first())
+    region = client_region(service.client, service)
+    return render(request, "procedure/partials/recipient_picker_modal.html", {
+        "service": service, "rt": rt,
+        "kind": rt.recipient_kind if (rt and rt.recipient_kind_id) else None,
+        "region": region,
+    })
+
+
+@login_required
+@require_procedures
+def recipient_picker_search(request, service_id):
+    """Строки таблицы госорганов для модалки выбора (имя/регион/адрес/ИНН)."""
+    from django.db.models import Case, IntegerField, When
+    from .recipient_resolver import client_region
+    q = (request.GET.get("q") or "").strip()
+    kind_id = (request.GET.get("kind") or "").strip()
+    only_region = request.GET.get("region") == "1"
+    service = (Service.objects.filter(pk=service_id).select_related("client").first())
+    region = client_region(service.client, service) if service else None
+
+    qs = LegalEntity.objects.filter(is_active=True).select_related("region", "kind")
+    if kind_id:
+        qs = qs.filter(kind_id=kind_id)
+    if q:
+        qs = qs.filter(
+            Q(name__icontains=q) | Q(short_name__icontains=q) | Q(inn__icontains=q))
+    if only_region and region:
+        qs = qs.filter(region=region).order_by("name")
+    elif region:
+        qs = qs.annotate(_rm=Case(
+            When(region_id=region.id, then=0), default=1,
+            output_field=IntegerField())).order_by("_rm", "name")
+    else:
+        qs = qs.order_by("name")
+    items = list(qs[:80])
+    return render(request, "procedure/partials/_recipient_picker_rows.html",
+                  {"items": items, "service_id": service_id})
+
+
+@login_required
+@require_procedures
+def request_resolve(request, service_id):
+    """Автоподбор адресата для выбранного типа запроса (JSON для префилла в UI)."""
+    from django.http import JsonResponse
+    from .recipient_resolver import resolve_recipient
+    try:
+        service = _bfl_service(request, service_id)
+    except _NotBFL as exc:
+        return HttpResponseForbidden(str(exc))
+    rt = RequestType.objects.filter(pk=request.GET.get("type")).select_related("recipient_kind").first()
+    if not rt:
+        return JsonResponse({"ok": False})
+    res = resolve_recipient(rt, service.client, service)
+    rec = res["recipient"]
+    reason = res["reason"]
+    n = len(res["candidates"])
+    rec_addr = ""
+    if rec:
+        rec_addr = rec.legal_address or rec.actual_address or rec.postal_address or ""
+    return JsonResponse({
+        "ok": True,
+        "recipient_id": str(rec.pk) if rec else "",
+        "recipient_name": ((rec.short_name or rec.name) if rec else ""),
+        "recipient_address": rec_addr,
+        "hint": _resolve_hint(reason, n),
+        "reason": reason,
+        "count": n,
+        # «Запомнить для региона/района» имеет смысл только для подбора по
+        # региону (МРЭО/ЗАГС/суд/ДМИ/ГИМС…). Банк (manual) и ФНС (по адресу) —
+        # не региональные, для них запоминание правила бессмысленно.
+        "can_remember": (bool(rt.recipient_kind_id)
+                         and rt.recipient_lookup == RequestType.LOOKUP_REGION),
+    })
 
 
 @login_required
@@ -1038,7 +1158,41 @@ def request_add(request, service_id):
     if rid:
         recipient = LegalEntity.objects.filter(pk=rid).first()
     services.create_request(case, rt, recipient=recipient, employee=_actor(request))
+    # Запомнить ручной выбор адресата для (вид + регион/район) → переиспользуется.
+    if recipient and (request.POST.get("remember") in ("1", "on", "true")):
+        services.save_recipient_rule(
+            rt, service.client, service, recipient, employee=_actor(request))
     return _req_trigger()
+
+
+@login_required
+@require_procedures
+def request_package_modal(request, service_id):
+    """Модалка формирования пакета: по каждому типу — авто-подобранный адресат
+    с возможностью изменить/запомнить перед созданием запросов."""
+    from .recipient_resolver import resolve_recipient
+    try:
+        service = _bfl_service(request, service_id)
+    except _NotBFL as exc:
+        return HttpResponseForbidden(str(exc))
+    services.ensure_case(service)
+    pkg = get_object_or_404(RequestPackage, pk=request.GET.get("package"))
+    rows = []
+    for rt in pkg.types.filter(is_active=True).order_by("order", "name"):
+        res = resolve_recipient(rt, service.client, service)
+        rec = res["recipient"]
+        rows.append({
+            "type": rt,
+            "recipient": rec,
+            "recipient_name": ((rec.short_name or rec.name) if rec else ""),
+            "hint": _resolve_hint(res["reason"], len(res["candidates"])),
+            "lookup": rt.recipient_lookup,
+            "can_remember": (bool(rt.recipient_kind_id)
+                             and rt.recipient_lookup == RequestType.LOOKUP_REGION),
+        })
+    return render(request, "procedure/partials/request_package_modal.html", {
+        "service": service, "package": pkg, "rows": rows,
+    })
 
 
 @login_required
@@ -1051,7 +1205,20 @@ def request_package_add(request, service_id):
         return HttpResponseForbidden(str(exc))
     case = services.ensure_case(service)
     pkg = get_object_or_404(RequestPackage, pk=request.POST.get("package"))
-    services.create_request_package(case, pkg, employee=_actor(request))
+    # Адресаты, выбранные в модалке (по типу), + какие запомнить.
+    recipients = {}
+    to_remember = []
+    for rt in pkg.types.filter(is_active=True):
+        rid = (request.POST.get(f"recipient_id_{rt.pk}") or "").strip()
+        rec = LegalEntity.objects.filter(pk=rid).first() if rid else None
+        recipients[str(rt.pk)] = rec
+        if rec and (request.POST.get(f"remember_{rt.pk}") in ("1", "on", "true")):
+            to_remember.append((rt, rec))
+    services.create_request_package(
+        case, pkg, employee=_actor(request), recipients=recipients)
+    for rt, rec in to_remember:
+        services.save_recipient_rule(
+            rt, service.client, service, rec, employee=_actor(request))
     return _req_trigger()
 
 
@@ -1066,6 +1233,57 @@ def request_delete(request, service_id, req_id):
     case = services.ensure_case(service)
     get_object_or_404(Request, pk=req_id, case=case).delete()
     return _req_trigger()
+
+
+@xframe_options_sameorigin
+@login_required
+@require_procedures
+def request_envelope(request, service_id, req_id):
+    """Почтовый конверт (Почта РФ) для одного запроса — inline PDF + в файлы клиента.
+
+    🛑 xframe_options_sameorigin — глобально X_FRAME_OPTIONS=DENY, а PDF отдаём
+    прямо из Django (не редиректом на S3, как stored_download), и он открывается
+    в iframe модалки procPreview с нашего же домена.
+    """
+    try:
+        service = _bfl_service(request, service_id)
+    except _NotBFL as exc:
+        return HttpResponseForbidden(str(exc))
+    case = services.ensure_case(service)
+    req = get_object_or_404(Request, pk=req_id, case=case)
+    from .request_envelopes import envelope_for_request
+    size = (request.GET.get("size") or "C5").strip()
+    pdf = envelope_for_request(req, size=size, employee=_actor(request))
+    resp = HttpResponse(pdf, content_type="application/pdf")
+    resp["Content-Disposition"] = 'inline; filename="envelope.pdf"'
+    return resp
+
+
+@xframe_options_sameorigin
+@login_required
+@require_procedures
+def case_envelopes(request, service_id):
+    """Конверты на все запросы дела (у кого есть адресат) — один многостраничный PDF.
+
+    🛑 xframe_options_sameorigin — см. request_envelope (PDF в iframe procPreview).
+    """
+    try:
+        service = _bfl_service(request, service_id)
+    except _NotBFL as exc:
+        return HttpResponseForbidden(str(exc))
+    case = services.ensure_case(service)
+    from .request_envelopes import envelopes_for_case
+    size = (request.GET.get("size") or "C5").strip()
+    pdf, made, skipped = envelopes_for_case(case, size=size, employee=_actor(request))
+    if not pdf:
+        return HttpResponse(
+            "<div style='padding:24px;font-family:sans-serif'>Нет запросов с указанным "
+            "адресатом — сначала подберите госорганы в запросах.</div>",
+            content_type="text/html; charset=utf-8",
+        )
+    resp = HttpResponse(pdf, content_type="application/pdf")
+    resp["Content-Disposition"] = 'inline; filename="envelopes.pdf"'
+    return resp
 
 
 @never_cache
@@ -1175,10 +1393,13 @@ def reference_request_type_edit(request, pk=None):
     else:
         form = RequestTypeForm(instance=obj)
     from apps.afd.models import DocumentTemplate
+    from apps.crm.models import LegalEntityKind
     return render(request, "procedure/partials/request_type_form_modal.html", {
         "form": form, "obj": obj,
         "doc_templates": DocumentTemplate.objects.filter(
             kind=DocumentTemplate.KIND_REQUEST, is_active=True).order_by("name"),
+        "entity_kinds": LegalEntityKind.objects.order_by("short_name"),
+        "lookup_choices": RequestType.LOOKUP_CHOICES,
     })
 
 
@@ -1313,7 +1534,8 @@ def request_generate(request, service_id, req_id):
         logging.getLogger(__name__).exception("request_generate failed")
         return render(request, "procedure/_request_generate_modal.html",
                       {"service": service, "req": req,
-                       "error": "Не удалось сформировать документ (ошибка конвертации). Попробуйте ещё раз."})
+                       "error": "Не удалось сформировать документ (внутренняя ошибка). "
+                                "Подробности — в логах web."})
     return _req_trigger()
 
 

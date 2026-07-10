@@ -28,7 +28,8 @@ class RequestTypeForm(forms.ModelForm):
     # default_recipient ставится во вью из typeahead (recipient_id), не как select.
     class Meta:
         model = RequestType
-        fields = ["code", "name", "response_days", "template", "order", "is_active", "is_draft"]
+        fields = ["code", "name", "recipient_kind", "recipient_lookup",
+                  "response_days", "template", "order", "is_active", "is_draft"]
 
 
 class RequestPackageForm(forms.ModelForm):

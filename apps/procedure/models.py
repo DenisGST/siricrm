@@ -403,12 +403,33 @@ class RequestType(TimeStampedModel):
     Сроки/состав — ДАННЫЕ, правятся юристом/АУ в Справочниках (DRAFT-сид).
     AFD-шаблон документа подключается на Этапе 2 (генерация).
     """
+    # Способ определения адресата по типу запроса + региону/адресу клиента.
+    LOOKUP_NONE = "none"            # адресат не нужен (Росреестр — через СМЭВ)
+    LOOKUP_REGION = "region"        # подбор по виду ЮЛ + региону (+ район гибридом)
+    LOOKUP_FNS = "fns_by_address"   # ФНС по коду ИФНС из адреса клиента
+    LOOKUP_MANUAL = "manual"        # только ручной выбор (Банк и пр.)
+    LOOKUP_CHOICES = [
+        (LOOKUP_NONE, "Не требуется (СМЭВ)"),
+        (LOOKUP_REGION, "По виду и региону клиента"),
+        (LOOKUP_FNS, "ФНС по адресу клиента"),
+        (LOOKUP_MANUAL, "Только вручную"),
+    ]
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     code = models.SlugField("Код", max_length=60, unique=True)
     name = models.CharField("Тип запроса", max_length=255)
     default_recipient = models.ForeignKey(
         "crm.LegalEntity", on_delete=models.SET_NULL, null=True, blank=True,
         related_name="+", verbose_name="Госорган по умолчанию",
+    )
+    recipient_kind = models.ForeignKey(
+        "crm.LegalEntityKind", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="+", verbose_name="Вид госоргана (для подбора)",
+        help_text="Какой вид ЮЛ подбирать в адресаты (МРЭО/ГИМС/ФНС/ЗАГС/суд…).",
+    )
+    recipient_lookup = models.CharField(
+        "Способ определения адресата", max_length=16,
+        choices=LOOKUP_CHOICES, default=LOOKUP_MANUAL,
     )
     response_days = models.PositiveSmallIntegerField(
         "Срок ответа, дней", default=30,
@@ -453,6 +474,55 @@ class RequestPackage(TimeStampedModel):
 
     def __str__(self):
         return self.name
+
+
+class RecipientRule(TimeStampedModel):
+    """Запомненный выбор госоргана для (вид ЮЛ + регион [+ район/город]).
+
+    Когда юрист вручную выбирает адресата, можно сохранить выбор — и он
+    переиспользуется при формировании запросов у ДРУГИХ клиентов того же
+    региона/района. Так справочник районного уровня (МРЭО/ЗАГС/суд) постепенно
+    «обучается» без ручного поиска каждый раз.
+
+    `district` — нормализованное (lower) название района/города; пусто →
+    правило на весь регион. Резолвер сначала ищет точное (регион+район),
+    затем правило на весь регион.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    kind = models.ForeignKey(
+        "crm.LegalEntityKind", on_delete=models.CASCADE,
+        related_name="+", verbose_name="Вид госоргана",
+    )
+    region = models.ForeignKey(
+        "crm.Region", on_delete=models.CASCADE,
+        related_name="+", verbose_name="Регион",
+    )
+    district = models.CharField(
+        "Район/город (нормализованный)", max_length=255, blank=True, default="",
+    )
+    recipient = models.ForeignKey(
+        "crm.LegalEntity", on_delete=models.CASCADE,
+        related_name="+", verbose_name="Госорган",
+    )
+    created_by = models.ForeignKey(
+        "core.Employee", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="+", verbose_name="Кто сохранил",
+    )
+
+    class Meta:
+        verbose_name = "Правило адресата"
+        verbose_name_plural = "Правила адресатов"
+        ordering = ["kind__short_name", "region__number", "district"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["kind", "region", "district"],
+                name="uniq_recipient_rule_kind_region_district",
+            ),
+        ]
+
+    def __str__(self):
+        loc = f"/{self.district}" if self.district else ""
+        return f"{self.kind} · {self.region.number}{loc} → {self.recipient}"
 
 
 class Request(TimeStampedModel):

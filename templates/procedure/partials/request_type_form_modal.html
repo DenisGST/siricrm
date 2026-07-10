@@ -38,6 +38,26 @@
           <input type="number" name="response_days" value="{{ form.response_days.value|default:30 }}" min="0" class="input input-bordered input-sm w-full">
         </div>
       </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="label py-1"><span class="label-text">Способ определения адресата</span></label>
+          <select name="recipient_lookup" class="select select-bordered select-sm w-full">
+            {% for val, lbl in lookup_choices %}
+              <option value="{{ val }}" {% if form.recipient_lookup.value == val %}selected{% endif %}>{{ lbl }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <label class="label py-1"><span class="label-text">Вид госоргана (для подбора)</span></label>
+          <select name="recipient_kind" class="select select-bordered select-sm w-full">
+            <option value="">— не задан —</option>
+            {% for k in entity_kinds %}
+              <option value="{{ k.pk }}" {% if form.recipient_kind.value|stringformat:'s' == k.pk|stringformat:'s' %}selected{% endif %}>{{ k.short_name }} — {{ k.name|truncatechars:40 }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+      <p class="text-xs text-base-content/60 -mt-1">Адресат подбирается по виду + региону/адресу клиента; «ФНС по адресу» — по коду ИФНС. «Госорган по умолчанию» — фолбэк, если подбор не дал результата.</p>
       <div>
         <label class="label py-1"><span class="label-text">Шаблон документа (.docx)</span></label>
         <select name="template" class="select select-bordered select-sm w-full">

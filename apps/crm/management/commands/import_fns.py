@@ -131,6 +131,9 @@ class Command(BaseCommand):
                     "legal_address": address,
                     "phone": phone[:20],
                     "notes": notes,
+                    # Код ИФНС — в структурное поле (для автоподбора инспекции по
+                    # адресу клиента: Address.tax_office → LegalEntity.ifns_code).
+                    "ifns_code": (code_ifns[:4] or None),
                     "director_name": "",
                     "director_title": "",
                 }

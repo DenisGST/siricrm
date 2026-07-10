@@ -199,7 +199,11 @@
       clearTimeout(input._taTimer);
       input._taTimer = setTimeout(function () {
         var q = (input.value || '').trim();
-        if (q.length < 2) { res.innerHTML = ''; return; }
+        // Разрешаем «просмотр» без текста, если задан тип (data-ta-param=type):
+        // сервер вернёт органы вида в регионе клиента (удобный короткий список).
+        var typeParam = box.querySelector('[data-ta-param="type"]');
+        var browse = typeParam && typeParam.value;
+        if (q.length < 2 && !browse) { res.innerHTML = ''; return; }
         var params = 'q=' + encodeURIComponent(q);
         // доп. параметры (тип/регион и т.п.) — элементы data-ta-param в контейнере
         box.querySelectorAll('[data-ta-param]').forEach(function (el) {
@@ -219,6 +223,67 @@
       var box = el.closest('[data-ta]'); if (!box) return;
       var input = box.querySelector('[data-ta-input]');
       if (input) window.taSearch(input);
+    };
+
+    // Автоподбор адресата запроса при выборе типа: фетчит procedure:request_resolve,
+    // заполняет бокс «Госорган» (наименование+адрес), подсказку, «запомнить».
+    // На <select name=request_type>: onchange="procResolveRecipient(this)".
+    function _recipBox(form) { return form.querySelector('[id^="recip-box-"]'); }
+    function _setRecipBox(box, name, addr, muted) {
+      if (!box) return;
+      var nEl = box.querySelector('[data-recip-name]');
+      var aEl = box.querySelector('[data-recip-addr]');
+      if (nEl) { nEl.textContent = name || ''; nEl.classList.toggle('text-base-content/40', !!muted); }
+      if (aEl) aEl.textContent = addr || '';
+    }
+    window.procResolveRecipient = function (sel) {
+      var form = sel.closest('form'); if (!form) return;
+      var url = form.getAttribute('data-resolve-url'); if (!url) return;
+      var box = _recipBox(form);
+      var idEl = form.querySelector('input[name="recipient_id"]');
+      var hint = form.querySelector('[data-resolve-hint]');
+      var rememberWrap = form.querySelector('[data-remember-wrap]');
+      var typeId = sel.value || '';
+      if (idEl) idEl.value = '';
+      if (hint) hint.textContent = '';
+      if (rememberWrap) rememberWrap.style.display = 'none';
+      if (!typeId) { _setRecipBox(box, '— выберите тип запроса —', '', true); return; }
+      _setRecipBox(box, 'подбираем адресата…', '', true);
+      fetch(url + '?type=' + encodeURIComponent(typeId),
+            { headers: { 'X-Requested-With': 'XMLHttpRequest' }, credentials: 'same-origin' })
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+          if (!d || !d.ok) { _setRecipBox(box, 'нажмите, чтобы выбрать адресата', '', true); return; }
+          if (d.recipient_id) {
+            if (idEl) idEl.value = d.recipient_id;
+            _setRecipBox(box, d.recipient_name, d.recipient_address, false);
+          } else {
+            _setRecipBox(box, 'нажмите, чтобы выбрать адресата', '', true);
+          }
+          if (hint) hint.textContent = d.hint || '';
+          if (rememberWrap) rememberWrap.style.display = d.can_remember ? '' : 'none';
+        })
+        .catch(function () { _setRecipBox(box, 'нажмите, чтобы выбрать адресата', '', true); });
+    };
+
+    // Открыть большую модалку выбора госоргана (фильтр по виду выбранного типа +
+    // региону клиента). data-picker-url + data-type-sel на боксе.
+    window.openRecipientPicker = function (box) {
+      var url = box.getAttribute('data-picker-url'); if (!url) return;
+      var selId = box.getAttribute('data-type-sel');
+      var sel = selId && document.getElementById(selId);
+      var typeId = sel ? (sel.value || '') : '';
+      window.htmx.ajax('GET', url + '?type=' + encodeURIComponent(typeId),
+                       { target: 'body', swap: 'beforeend' });
+    };
+
+    // Выбор строки в модалке: проставить id + бокс формы, закрыть модалку.
+    window.pickRecipient = function (serviceId, leId, row) {
+      var idEl = document.getElementById('recip-id-' + serviceId);
+      var box = document.getElementById('recip-box-' + serviceId);
+      if (idEl) idEl.value = leId;
+      _setRecipBox(box, row.getAttribute('data-name') || '', row.getAttribute('data-addr') || '', false);
+      var dlg = document.getElementById('recip-picker'); if (dlg) dlg.remove();
     };
 
     // Запоминание раскрытия <details id=…> (чтобы htmx-перезагрузка фрагмента
