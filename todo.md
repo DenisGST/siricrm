@@ -50,54 +50,32 @@ webhook, `channel_post` (лиды) тихо теряются из `allowed_updat
 
 ---
 
-## 🟡 Автоопределение адресата запросов + конверты — деплой (на dev, не выкачено)
+## 🟢 Запросы в госорганы: остаток (ЦЗН + пробелы справочников)
 
-**Сделано на dev (не коммичено, не задеплоено; ветка feat/production-ready):**
-Автоподбор госоргана-адресата в запросах (`apps/procedure`) по типу+региону/адресу
-клиента + запомненные правила, модалка адресатов пакета, конверты Почты РФ,
-импорт ОСФР+Гостехнадзор.
+**Выкачено на прод 10.07.2026** (коммит `2786731`): автоопределение адресата
+запросов, модалка выбора госоргана, модалка пакета, конверты Почты РФ, импорт
+ОСФР/Гостехнадзор, индексы МРЭО. Данные перенесены dev→prod, `wire_recipient_kinds`
+прогнан, всё проверено на реальном деле.
 
-**Шаги при выкатке на прод:**
-1. `deploy` (миграции авто): `crm 0096/0097` (LegalEntity.ifns_code + бэкфилл из
-   notes — на проде ФНС те же), `procedure 0016/0017` (RequestType.recipient_kind/
-   recipient_lookup + разметка каталога), новая модель `RecipientRule`. Новых
-   зависимостей нет — именно `deploy`, не `rebuild`. Конверты — на reportlab
-   (LibreOffice не нужен).
-2. **dev→prod sync справочников СФР/Гостехнадзор** (на проде DaData НЕ гонять —
-   квота): `dumpdata` видов `LegalEntityKind` (СФР, Гостехнадзор) + их
-   `LegalEntity` (kind СФР=79, Гостехнадзор=72) → scp → `loaddata` на проде
-   (сохраняет UUID). Пример:
-   ```
-   # на dev:
-   docker exec siricrm-web-1 python manage.py dumpdata crm.LegalEntityKind \
-     --pks <uuid_СФР>,<uuid_Гостех> > /tmp/kinds.json
-   docker exec siricrm-web-1 python manage.py shell -c "…serialize LegalEntity filter kind__short_name in (СФР,Гостехнадзор)…" > /tmp/osfr_gosteh.json
-   # scp на прод, затем loaddata обоих файлов
-   ```
-3. **На проде** после sync: `python manage.py wire_recipient_kinds` — привяжет
-   `req_sfr`→СФР, `req_gostehnadzor`→Гостехнадзор (миграция 0017 их не привязала,
-   т.к. видов ещё не было). Без DaData, идемпотентно.
-4. **Почтовый индекс госорганов** (`LegalEntity.postal_code`, миграция crm 0098):
-   у МРЭО в адресе индекса нет → на конверте пусто. Добито на dev командой
-   `enrich_legal_entity_postal_code --kinds МРЭО` (DaData clean/address, ~3151).
-   🛑 На проде DaData НЕ гонять — перенести `postal_code` в составе МРЭО-записей
-   dev→prod (dumpdata/loaddata LegalEntity kind=МРЭО, или update только колонки
-   postal_code по pk). Прочие виды (ФНС/ЗАГС/суд/ОСФР/ГИМС/ДМИ) индекс имеют в
-   адресе — им enrich не нужен.
-5. Рестарт `web`/`celery` (шаблоны кэшируются cached.Loader). Юзеру — `Ctrl+Shift+R`.
+**Осталось:**
+1. **ЦЗН (центры занятости)** — вида нет в справочнике, `req_employment` на ручном
+   вводе. Районного уровня (сотни на страну) → источник трудвсем/открытые данные,
+   не DaData. Отдельная итерация.
+2. **Гостехнадзор — 18 регионов без органа** (вкл. Волгоград): в ЕГРЮЛ названы иначе
+   (комитет сельского хозяйства и т.п.), DaData по «гостехнадзор» их не находит.
+   Заполняются вручную из модалки выбора и запоминаются `RecipientRule`.
+3. **153 МРЭО без индекса** — DaData не геокодировала слишком общие адреса;
+   индекс на конверте пустой, вписывается вручную.
+4. **Чечня/новые территории** — гочча KLADR-95 (наш `Region.number=95`=Чечня,
+   а KLADR-95=Херсон): ОСФР/гостехнадзор для них не заведены, ручной ввод.
 
-**Осталось (Фаза 3b, отложено):** импорт **ЦЗН** (центры занятости, районного
-уровня — с трудвсем/открытых данных, не DaData). Пока req_employment на ручном
-вводе. Волгоград (и ~18 регионов) без гостехнадзора в DaData — тоже ручной ввод
-(орган назван иначе, напр. комитет сельского хозяйства); добавляются вручную и
-запоминаются правилом.
+**🛑 Гочча dev:** после `pull_db` с прода шаблоны запросов (`DocumentTemplate`)
+указывают на prod-бакет S3 → генерация документа падает `AccessDenied`. Фикс:
+`python manage.py load_request_templates --force` на dev.
 
-**Файлы:** `apps/procedure/{recipient_resolver,services,views,request_envelopes}.py`,
-`apps/procedure/models.py` (RequestType поля, RecipientRule), `apps/afd/envelope.py`
-(party_from_request), `apps/crm/management/commands/{import_osfr,import_gostehnadzor}.py`,
-`apps/procedure/management/commands/wire_recipient_kinds.py`, шаблоны корреспонденции/пакета/типа.
-
----
+**Команды:** `import_osfr`, `import_gostehnadzor`, `enrich_legal_entity_postal_code
+--kinds МРЭО`, `wire_recipient_kinds`. 🛑 DaData гонять только на dev (квота), потом
+переносить в prod.
 
 ## 🟢 Дедуп задвоенных папок файл-менеджера клиентов
 
