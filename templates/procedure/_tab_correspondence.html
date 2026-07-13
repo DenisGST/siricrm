@@ -6,6 +6,7 @@
 <div id="requests-list"
      hx-trigger="reloadRequests from:body"
      hx-get="{% url 'procedure:tab_correspondence' service.id %}"
+     hx-include="#req-q, #req-sort, #req-dir"
      hx-swap="outerHTML">
   <style>
     /* Иконки-действия запроса: серые по умолчанию, цветные при наведении (как в поиске CRM) */
@@ -13,6 +14,15 @@
       width:26px;height:26px;border:none;background:transparent;border-radius:5px;cursor:pointer;
       color:#94a3b8;transition:color .12s,background .12s}
     #procedure-correspondence .req-act:hover{background:var(--ms-bg,#eef1f4);color:var(--act-hc,#2563eb)}
+    /* Заголовки-сортировка: выглядят как обычный текст, но кликабельны */
+    #procedure-correspondence .req-sort-th{background:none;border:none;padding:0;margin:0;font:inherit;
+      font-weight:600;color:inherit;cursor:pointer;white-space:nowrap;display:inline-flex;align-items:center;gap:3px}
+    #procedure-correspondence .req-sort-th:hover{color:var(--act-hc,#2563eb)}
+    /* Изящный указатель сортировки: бледно-серый, темнеет на активной колонке, синеет при наведении */
+    #procedure-correspondence .req-sort-ic{font-size:8px;line-height:1;color:#cbd5e1;
+      transition:color .12s;transform:translateY(.5px)}
+    #procedure-correspondence .req-sort-ic.on{color:#64748b}
+    #procedure-correspondence .req-sort-th:hover .req-sort-ic{color:var(--act-hc,#2563eb)}
   </style>
   {% comment %}procPreview/procPreviewOffice определены глобально в dashboard.html
     (надёжнее, чем инлайн-скрипт в HTMX-партиале).{% endcomment %}
@@ -88,83 +98,14 @@
           </div>
         </div>
 
-        <div class="overflow-x-auto">
-          <table class="table table-sm table-zebra">
-            <thead>
-              <tr>
-                <th>№</th><th>Создан</th><th>Госорган</th><th>Тип запроса</th><th>Запрос</th><th>Отправлен</th>
-                <th>Срок ответа</th><th>Статус</th><th class="text-right"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for r in requests %}
-              <tr class="{% if r.is_late %}bg-error/10{% endif %}">
-                <td class="text-xs font-semibold whitespace-nowrap">{{ r.outgoing_number|default:"—" }}</td>
-                <td class="text-xs whitespace-nowrap">{{ r.created_at|date:"d.m.Y" }}</td>
-                <td>{{ r.recipient_display }}</td>
-                <td class="text-xs">{{ r.title }}</td>
-                <td class="text-xs whitespace-nowrap align-middle">
-                  {% if r.document_pdf_id or r.document_docx_id %}
-                    {% if r.document_pdf_id %}<a class="link link-primary" href="{% url 'files:stored_download' r.document_pdf_id %}?inline=1" onclick="procPreview(this.href, 'Запрос № {{ r.outgoing_number|default:'' }}'); return false">PDF</a>{% endif %}
-                    {% if r.document_docx_id %}{% if r.document_pdf_id %} · {% endif %}<a class="link" href="{% url 'files:stored_download' r.document_docx_id %}" onclick="procPreviewOffice('{% url 'procedure:office_pdf' service.id r.document_docx_id %}', 'Запрос № {{ r.outgoing_number|default:'' }} (docx)'); return false">docx</a>{% endif %}
-                  {% else %}<span class="text-base-content/40">нет</span>{% endif %}
-                </td>
-                <td class="text-xs">
-                  {% if r.sent_date %}{{ r.sent_date|date:"d.m.Y" }}{% if r.sent_method %} · {{ r.get_sent_method_display }}{% endif %}{% else %}<span class="text-base-content/40">—</span>{% endif %}
-                </td>
-                <td class="text-xs">
-                  {% if r.due_date %}{{ r.due_date|date:"d.m.Y" }}{% if r.is_late %} <span class="badge badge-error badge-xs">просрочен</span>{% endif %}{% else %}<span class="text-base-content/40">—</span>{% endif %}
-                </td>
-                <td>
-                  {% if r.status == 'draft' %}<span class="badge badge-ghost badge-sm">черновик</span>
-                  {% elif r.status == 'sent' %}<span class="badge badge-info badge-sm">отправлен</span>
-                  {% elif r.status == 'answered' %}<span class="badge badge-success badge-sm">ответ{% if r.response_date %} {{ r.response_date|date:"d.m.Y" }}{% endif %}</span>
-                  {% elif r.status == 'no_answer' %}<span class="badge badge-warning badge-sm">без ответа</span>{% endif %}
-                  {% if r.response_scan_id %}<br><a class="link text-xs" href="{% url 'files:stored_download' r.response_scan_id %}?inline=1" onclick="procPreview(this.href, 'Скан ответа'); return false">скан ответа</a>{% endif %}
-                </td>
-                <td class="text-right whitespace-nowrap align-middle">
-                  <div class="inline-flex flex-nowrap gap-1 align-middle">
-                    <button type="button" class="req-act" style="--act-hc:#2563eb"
-                            hx-get="{% url 'procedure:request_generate_form' service.id r.pk %}"
-                            hx-target="body" hx-swap="beforeend"
-                            title="{% if r.document_pdf_id %}Переформировать документ по шаблону{% else %}Сформировать документ по шаблону{% endif %}">{% if r.document_pdf_id %}{% icon "refresh-ccw" size=16 %}{% else %}{% icon "file-text" size=16 %}{% endif %}</button>
-                    <button type="button" class="req-act" style="--act-hc:#16a34a"
-                            hx-get="{% url 'procedure:request_upload_form' service.id r.pk %}"
-                            hx-target="body" hx-swap="beforeend" title="Подгрузить готовый PDF / DOCX">{% icon "upload" size=16 %}</button>
-                    {% if r.document_docx_id %}
-                    <button type="button" class="req-act" style="--act-hc:#d97706"
-                            hx-get="{% url 'procedure:request_edit_form' service.id r.pk %}"
-                            hx-target="body" hx-swap="beforeend" title="Редактировать текст документа">{% icon "pencil" size=16 %}</button>
-                    {% endif %}
-                    {% if r.status == 'draft' or r.status == 'no_answer' %}
-                    <button type="button" class="req-act" style="--act-hc:#0891b2"
-                            hx-get="{% url 'procedure:request_sent_form' service.id r.pk %}"
-                            hx-target="body" hx-swap="beforeend" title="Отметить как отправленный">{% icon "send" size=16 %}</button>
-                    {% endif %}
-                    {% if r.status == 'sent' or r.status == 'answered' %}
-                    <button type="button" class="req-act" style="--act-hc:#7c3aed"
-                            hx-get="{% url 'procedure:request_response_form' service.id r.pk %}"
-                            hx-target="body" hx-swap="beforeend" title="Внести ответ">{% icon "download" size=16 %}</button>
-                    {% endif %}
-                    {% if r.recipient_id or r.recipient_name %}
-                    <a class="req-act" style="--act-hc:#0d9488"
-                       href="{% url 'procedure:request_envelope' service.id r.pk %}?size=C5"
-                       onclick="procPreview(this.href, 'Конверт № {{ r.outgoing_number|default:'' }}'); return false"
-                       title="Конверт Почты РФ (C5) — печать + в файлы клиента">{% icon "mail" size=16 %}</a>
-                    {% endif %}
-                    <button type="button" class="req-act" style="--act-hc:#dc2626"
-                            hx-post="{% url 'procedure:request_delete' service.id r.pk %}"
-                            hx-confirm="Удалить запрос «{{ r.title }}»?" title="Удалить запрос">{% icon "trash" size=16 %}</button>
-                  </div>
-                </td>
-              </tr>
-              {% empty %}
-              <tr><td colspan="9" class="text-center text-base-content/50 py-4">
-                Запросов пока нет. Создайте запрос или сформируйте пакет.
-              </td></tr>
-              {% endfor %}
-            </tbody>
-          </table>
+        {% comment %} Таблица запросов — самоперезагрузка по reqReload (поиск/сортировка),
+          чтобы не дёргать всю вкладку. Внутри — поиск, чекбоксы, пакетное удаление. {% endcomment %}
+        <div id="req-table-wrap"
+             hx-get="{% url 'procedure:requests_table' service.id %}"
+             hx-trigger="reqReload"
+             hx-include="#req-q, #req-sort, #req-dir"
+             hx-target="#req-table-wrap" hx-swap="innerHTML">
+          {% include "procedure/_requests_table.html" %}
         </div>
       </div>
     </details>

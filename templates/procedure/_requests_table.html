@@ -1,0 +1,158 @@
+{% load icons %}
+{% comment %}Таблица запросов дела (Запросы/Ответы вкладки «Корреспонденция»).
+  Отдельный партиал — перезагружается сам по поиску/сортировке (reqReload),
+  не трогая остальную вкладку. Порядок колонок: № · Создан · Тип запроса ·
+  Госорган · Запрос · Отправлен · Срок ответа · Статус · действия.
+  Скрытые поля req_sort/req_dir читаются через hx-include контейнером/поиском.{% endcomment %}
+<input type="hidden" id="req-sort" name="req_sort" value="{{ req_sort }}">
+<input type="hidden" id="req-dir" name="req_dir" value="{{ req_dir }}">
+
+{% comment %} Панель: поиск слева + пакетные действия справа {% endcomment %}
+<div class="flex items-center gap-2 mb-2 flex-wrap">
+  <input type="text" id="req-q" name="req_q" value="{{ req_q }}" hx-preserve="true"
+         placeholder="Поиск: № / тип / госорган / статус…"
+         class="input input-bordered input-sm" style="max-width:280px"
+         hx-get="{% url 'procedure:requests_table' service.id %}"
+         hx-trigger="keyup changed delay:350ms, search"
+         hx-target="#req-table-wrap" hx-swap="innerHTML"
+         hx-include="#req-sort, #req-dir">
+  <div class="ml-auto flex items-center gap-2">
+    <span id="req-sel-count" class="text-xs text-base-content/60"></span>
+    <button id="req-batch-del" type="button" class="btn btn-sm btn-outline btn-error" disabled
+            hx-post="{% url 'procedure:request_batch_delete' service.id %}"
+            hx-include="#req-table-wrap input[name=req_ids]:checked"
+            hx-confirm="Удалить выбранные запросы? Действие необратимо."
+            hx-swap="none">{% icon "trash" size=15 %} Удалить выбранные</button>
+  </div>
+</div>
+
+<div class="overflow-x-auto">
+  <table class="table table-zebra">
+    <thead>
+      <tr class="text-sm">
+        <th class="w-8"><input type="checkbox" id="req-check-all" class="checkbox checkbox-sm"
+                               title="Выбрать все"></th>
+        {% comment %} Заголовки-сортировка: клик по кнопке меняет req_sort/req_dir и шлёт reqReload.
+          Указатель — изящный каре́т: ▴ (по возр.) на активной колонке, иначе ▾; цвет — из CSS. {% endcomment %}
+        <th><button type="button" class="req-sort-th" onclick="reqSetSort('number')">№<span class="req-sort-ic{% if req_sort == 'number' %} on{% endif %}">{% if req_sort == 'number' and req_dir == 'asc' %}▲{% else %}▼{% endif %}</span></button></th>
+        <th><button type="button" class="req-sort-th" onclick="reqSetSort('created')">Создан<span class="req-sort-ic{% if req_sort == 'created' %} on{% endif %}">{% if req_sort == 'created' and req_dir == 'asc' %}▲{% else %}▼{% endif %}</span></button></th>
+        <th><button type="button" class="req-sort-th" onclick="reqSetSort('type')">Тип запроса<span class="req-sort-ic{% if req_sort == 'type' %} on{% endif %}">{% if req_sort == 'type' and req_dir == 'asc' %}▲{% else %}▼{% endif %}</span></button></th>
+        <th><button type="button" class="req-sort-th" onclick="reqSetSort('recipient')">Госорган<span class="req-sort-ic{% if req_sort == 'recipient' %} on{% endif %}">{% if req_sort == 'recipient' and req_dir == 'asc' %}▲{% else %}▼{% endif %}</span></button></th>
+        <th>Запрос</th>
+        <th><button type="button" class="req-sort-th" onclick="reqSetSort('sent')">Отправлен<span class="req-sort-ic{% if req_sort == 'sent' %} on{% endif %}">{% if req_sort == 'sent' and req_dir == 'asc' %}▲{% else %}▼{% endif %}</span></button></th>
+        <th><button type="button" class="req-sort-th" onclick="reqSetSort('due')">Срок ответа<span class="req-sort-ic{% if req_sort == 'due' %} on{% endif %}">{% if req_sort == 'due' and req_dir == 'asc' %}▲{% else %}▼{% endif %}</span></button></th>
+        <th><button type="button" class="req-sort-th" onclick="reqSetSort('status')">Статус<span class="req-sort-ic{% if req_sort == 'status' %} on{% endif %}">{% if req_sort == 'status' and req_dir == 'asc' %}▲{% else %}▼{% endif %}</span></button></th>
+        <th class="text-right"></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in requests %}
+      <tr class="{% if r.is_late %}bg-error/10{% endif %}">
+        <td><input type="checkbox" name="req_ids" value="{{ r.pk }}" class="checkbox checkbox-sm req-check"></td>
+        <td class="text-sm font-semibold whitespace-nowrap">{{ r.outgoing_number|default:"—" }}</td>
+        <td class="text-sm whitespace-nowrap">{{ r.created_at|date:"d.m.Y" }}</td>
+        <td class="text-sm">{{ r.title }}</td>
+        <td class="text-sm">{{ r.recipient_display }}</td>
+        <td class="text-sm whitespace-nowrap align-middle">
+          {% if r.document_pdf_id or r.document_docx_id %}
+            {% if r.document_pdf_id %}<a class="link link-primary" href="{% url 'files:stored_download' r.document_pdf_id %}?inline=1" onclick="procPreview(this.href, 'Запрос № {{ r.outgoing_number|default:'' }}'); return false">PDF</a>{% endif %}
+            {% if r.document_docx_id %}{% if r.document_pdf_id %} · {% endif %}<a class="link" href="{% url 'files:stored_download' r.document_docx_id %}" onclick="procPreviewOffice('{% url 'procedure:office_pdf' service.id r.document_docx_id %}', 'Запрос № {{ r.outgoing_number|default:'' }} (docx)'); return false">docx</a>{% endif %}
+          {% else %}<span class="text-base-content/40">нет</span>{% endif %}
+        </td>
+        <td class="text-sm">
+          {% if r.sent_date %}{{ r.sent_date|date:"d.m.Y" }}{% if r.sent_method %} · {{ r.get_sent_method_display }}{% endif %}{% else %}<span class="text-base-content/40">—</span>{% endif %}
+        </td>
+        <td class="text-sm">
+          {% if r.due_date %}{{ r.due_date|date:"d.m.Y" }}{% if r.is_late %} <span class="badge badge-error badge-xs">просрочен</span>{% endif %}{% else %}<span class="text-base-content/40">—</span>{% endif %}
+        </td>
+        <td class="text-sm">
+          {% if r.status == 'draft' %}<span class="badge badge-ghost badge-sm">черновик</span>
+          {% elif r.status == 'sent' %}<span class="badge badge-info badge-sm">отправлен</span>
+          {% elif r.status == 'answered' %}<span class="badge badge-success badge-sm">ответ{% if r.response_date %} {{ r.response_date|date:"d.m.Y" }}{% endif %}</span>
+          {% elif r.status == 'no_answer' %}<span class="badge badge-warning badge-sm">без ответа</span>{% endif %}
+          {% if r.response_scan_id %}<br><a class="link text-xs" href="{% url 'files:stored_download' r.response_scan_id %}?inline=1" onclick="procPreview(this.href, 'Скан ответа'); return false">скан ответа</a>{% endif %}
+        </td>
+        <td class="text-right whitespace-nowrap align-middle">
+          <div class="inline-flex flex-nowrap gap-1 align-middle">
+            <button type="button" class="req-act" style="--act-hc:#2563eb"
+                    hx-get="{% url 'procedure:request_generate_form' service.id r.pk %}"
+                    hx-target="body" hx-swap="beforeend"
+                    title="{% if r.document_pdf_id %}Переформировать документ по шаблону{% else %}Сформировать документ по шаблону{% endif %}">{% if r.document_pdf_id %}{% icon "refresh-ccw" size=16 %}{% else %}{% icon "file-text" size=16 %}{% endif %}</button>
+            <button type="button" class="req-act" style="--act-hc:#16a34a"
+                    hx-get="{% url 'procedure:request_upload_form' service.id r.pk %}"
+                    hx-target="body" hx-swap="beforeend" title="Подгрузить готовый PDF / DOCX">{% icon "upload" size=16 %}</button>
+            {% if r.document_docx_id %}
+            <button type="button" class="req-act" style="--act-hc:#d97706"
+                    hx-get="{% url 'procedure:request_edit_form' service.id r.pk %}"
+                    hx-target="body" hx-swap="beforeend" title="Редактировать текст документа">{% icon "pencil" size=16 %}</button>
+            {% endif %}
+            {% if r.status == 'draft' or r.status == 'no_answer' %}
+            <button type="button" class="req-act" style="--act-hc:#0891b2"
+                    hx-get="{% url 'procedure:request_sent_form' service.id r.pk %}"
+                    hx-target="body" hx-swap="beforeend" title="Отметить как отправленный">{% icon "send" size=16 %}</button>
+            {% endif %}
+            {% if r.status == 'sent' or r.status == 'answered' %}
+            <button type="button" class="req-act" style="--act-hc:#7c3aed"
+                    hx-get="{% url 'procedure:request_response_form' service.id r.pk %}"
+                    hx-target="body" hx-swap="beforeend" title="Внести ответ">{% icon "download" size=16 %}</button>
+            {% endif %}
+            {% if r.recipient_id or r.recipient_name %}
+            <a class="req-act" style="--act-hc:#0d9488"
+               href="{% url 'procedure:request_envelope' service.id r.pk %}?size=C5"
+               onclick="procPreview(this.href, 'Конверт № {{ r.outgoing_number|default:'' }}'); return false"
+               title="Конверт Почты РФ (C5) — печать + в файлы клиента">{% icon "mail" size=16 %}</a>
+            {% endif %}
+            <button type="button" class="req-act" style="--act-hc:#dc2626"
+                    hx-post="{% url 'procedure:request_delete' service.id r.pk %}"
+                    hx-confirm="Удалить запрос «{{ r.title }}»?" title="Удалить запрос">{% icon "trash" size=16 %}</button>
+          </div>
+        </td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="10" class="text-center text-base-content/50 py-4">
+        {% if req_q %}Ничего не найдено по запросу «{{ req_q }}».{% else %}Запросов пока нет. Создайте запрос или сформируйте пакет.{% endif %}
+      </td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<script>
+{% comment %} Сортировка + чекбоксы. Определяется один раз (guard), логика на делегировании —
+  переживает перезагрузку таблицы без переустановки обработчиков. {% endcomment %}
+(function () {
+  if (window.__reqTblInit) { if (window.reqUpdCount) window.reqUpdCount(); return; }
+  window.__reqTblInit = true;
+
+  window.reqSetSort = function (field) {
+    var s = document.getElementById('req-sort'), d = document.getElementById('req-dir');
+    if (!s || !d) return;
+    if (s.value === field) { d.value = (d.value === 'asc' ? 'desc' : 'asc'); }
+    else { s.value = field; d.value = 'asc'; }
+    var wrap = document.getElementById('req-table-wrap');
+    if (wrap) htmx.trigger(wrap, 'reqReload');
+  };
+
+  window.reqUpdCount = function () {
+    var checks = document.querySelectorAll('#req-table-wrap input.req-check');
+    var n = document.querySelectorAll('#req-table-wrap input.req-check:checked').length;
+    var c = document.getElementById('req-sel-count'), b = document.getElementById('req-batch-del');
+    if (c) c.textContent = n ? ('Выбрано: ' + n) : '';
+    if (b) b.disabled = (n === 0);
+    var all = document.getElementById('req-check-all');
+    if (all) all.checked = (checks.length > 0 && n === checks.length);
+  };
+
+  document.addEventListener('change', function (e) {
+    var t = e.target;
+    if (!t) return;
+    if (t.id === 'req-check-all') {
+      document.querySelectorAll('#req-table-wrap input.req-check').forEach(function (c) { c.checked = t.checked; });
+    }
+    if (t.classList && (t.classList.contains('req-check') || t.id === 'req-check-all')) window.reqUpdCount();
+  });
+  document.body.addEventListener('htmx:afterSwap', function () {
+    if (document.getElementById('req-table-wrap')) window.reqUpdCount();
+  });
+})();
+</script>

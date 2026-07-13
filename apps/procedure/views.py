@@ -950,11 +950,67 @@ def _req_trigger():
     return HttpResponse(headers={"HX-Trigger": "reloadRequests"})
 
 
-def _correspondence_context(case) -> dict:
+# Разрешённые поля сортировки таблицы запросов → ключ сортировки.
+# None-значения всегда в хвосте (независимо от направления).
+_REQ_STATUS_ORDER = {s[0]: i for i, s in enumerate(Request.STATUS_CHOICES)}
+
+
+def _req_sort_key(field):
+    """Возвращает функцию-ключ (значение, is_none) для сортировки списка запросов."""
+    def by(val_getter):
+        def key(r):
+            v = val_getter(r)
+            return (v is None or v == "", v)
+        return key
+    getters = {
+        "number": lambda r: r.outgoing_number,
+        "created": lambda r: r.created_at,
+        "type": lambda r: (r.title or "").lower(),
+        "recipient": lambda r: (r.recipient_display or "").lower(),
+        "sent": lambda r: r.sent_date,
+        "due": lambda r: r.due_date,
+        "status": lambda r: _REQ_STATUS_ORDER.get(r.status, 99),
+    }
+    return by(getters.get(field, getters["created"]))
+
+
+def _requests_context(case, req_q="", req_sort="created", req_dir="desc") -> dict:
+    """Отфильтрованный + отсортированный список запросов дела для таблицы.
+
+    Общая логика для полной вкладки и отдельной перезагрузки таблицы
+    (поиск/сортировка). Фильтрация/сортировка — в Python (запросов по делу
+    немного), т.к. recipient_display — property, а не поле БД.
+    """
     today = timezone.localdate()
+    if req_sort not in {"number", "created", "type", "recipient", "sent", "due", "status"}:
+        req_sort = "created"
+    if req_dir not in ("asc", "desc"):
+        req_dir = "desc"
     requests = list(case.requests.select_related("recipient", "request_type").all())
     for r in requests:
         r.is_late = bool(r.status == Request.STATUS_SENT and r.due_date and r.due_date < today)
+    q = (req_q or "").strip().lower()
+    if q:
+        def _match(r):
+            hay = " ".join(str(x) for x in (
+                r.outgoing_number or "", r.title or "", r.recipient_display or "",
+                r.get_status_display(), r.response_number or "",
+            )).lower()
+            return q in hay
+        requests = [r for r in requests if _match(r)]
+    requests.sort(key=_req_sort_key(req_sort), reverse=(req_dir == "desc"))
+    return {
+        "today": today,
+        "requests": requests,
+        "req_q": req_q,
+        "req_sort": req_sort,
+        "req_dir": req_dir,
+    }
+
+
+def _correspondence_context(case, req_q="", req_sort="created", req_dir="desc") -> dict:
+    today = timezone.localdate()
+    req_ctx = _requests_context(case, req_q, req_sort, req_dir)
     corr = (Correspondence.objects.filter(service=case.service)
             .select_related("counterparty", "stored_file", "request")
             .order_by("-sent_at", "-created_at"))
@@ -970,8 +1026,6 @@ def _correspondence_context(case) -> dict:
     return {
         "service": case.service,
         "case": case,
-        "today": today,
-        "requests": requests,
         "incoming": [c for c in corr if c.direction == "incoming"],
         "outgoing": [c for c in corr if c.direction == "outgoing"],
         "court_acts": court_acts,
@@ -979,7 +1033,17 @@ def _correspondence_context(case) -> dict:
         "request_types": RequestType.objects.filter(is_active=True).order_by("order", "name"),
         "request_packages": RequestPackage.objects.filter(is_active=True).order_by("order", "name"),
         "method_choices": Request.METHOD_CHOICES,
+        **req_ctx,
     }
+
+
+def _req_params(request):
+    """Читает параметры поиска/сортировки таблицы запросов из GET."""
+    return (
+        (request.GET.get("req_q") or "").strip(),
+        (request.GET.get("req_sort") or "created").strip(),
+        (request.GET.get("req_dir") or "desc").strip(),
+    )
 
 
 @never_cache
@@ -991,7 +1055,23 @@ def tab_correspondence(request, service_id):
     except _NotBFL as exc:
         return HttpResponseForbidden(str(exc))
     case = services.ensure_case(service)
-    return render(request, "procedure/_tab_correspondence.html", _correspondence_context(case))
+    ctx = _correspondence_context(case, *_req_params(request))
+    return render(request, "procedure/_tab_correspondence.html", ctx)
+
+
+@never_cache
+@login_required
+@require_procedures
+def requests_table(request, service_id):
+    """Только таблица запросов (для поиска/сортировки без перезагрузки всей вкладки)."""
+    try:
+        service = _bfl_service(request, service_id)
+    except _NotBFL as exc:
+        return HttpResponseForbidden(str(exc))
+    case = services.ensure_case(service)
+    ctx = _requests_context(case, *_req_params(request))
+    ctx["service"] = service
+    return render(request, "procedure/_requests_table.html", ctx)
 
 
 def _resolve_hint(reason: str, n: int) -> str:
@@ -1232,6 +1312,22 @@ def request_delete(request, service_id, req_id):
         return HttpResponseForbidden(str(exc))
     case = services.ensure_case(service)
     get_object_or_404(Request, pk=req_id, case=case).delete()
+    return _req_trigger()
+
+
+@login_required
+@require_procedures
+@require_POST
+def request_batch_delete(request, service_id):
+    """Пакетное удаление запросов (чекбоксы в таблице)."""
+    try:
+        service = _bfl_service(request, service_id)
+    except _NotBFL as exc:
+        return HttpResponseForbidden(str(exc))
+    case = services.ensure_case(service)
+    ids = request.POST.getlist("req_ids")
+    if ids:
+        Request.objects.filter(case=case, pk__in=ids).delete()
     return _req_trigger()
 
 
