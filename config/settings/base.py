@@ -347,6 +347,7 @@ LOGGING = {
         },
     },
     "handlers": {
+        "null": {"class": "logging.NullHandler"},
         "console": {"level": "DEBUG", "class": "logging.StreamHandler", "formatter": "simple"},
         "file": {
             "level": "INFO",
@@ -384,6 +385,12 @@ LOGGING = {
     },
     "loggers": {
         "django": {"handlers": ["console", "file"], "level": "INFO", "propagate": False},
+        # Сканеры регулярно стучатся с фейковым Host (напр. Exchange-эндпоинты
+        # /owa/, /ews/exchange.asmx). Django раньше писал полный traceback на
+        # КАЖДЫЙ такой запрос в файл-лог. На 13.07.2026 — 33k traceback'ов в
+        # web-log за 6ч. Клиент получает 400 в любом случае, Sentry уже
+        # фильтрован (см. prod.py:_sentry_drop_noise) — глушим до конца.
+        "django.security.DisallowedHost": {"handlers": ["null"], "propagate": False},
         "celery": {"handlers": ["console", "celery_file"], "level": "INFO", "propagate": False},
         "userbot": {"handlers": ["console", "userbot_file"], "level": "INFO", "propagate": False},
         "maxbot": {"handlers": ["maxbot_file"], "level": "INFO", "propagate": False},

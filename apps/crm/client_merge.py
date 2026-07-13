@@ -201,6 +201,18 @@ def merge_clients(survivor, other, *, scalar_take_other=None, collection_actions
             setattr(survivor, name, getattr(other, name))
             changed.append(name)
     if changed:
+        # 🛑 Обнуляем у other все переносимые поля ДО save(survivor) — иначе
+        # UNIQUE-констрейнты (telegram_id, phone, snils, и т.п.) сработают,
+        # потому что новое значение survivor уже сидит у other. Обходим
+        # через .update() чтобы не запускать пользовательский save() у other
+        # (он всё равно удалится в конце merge). Всё в @transaction.atomic —
+        # если что-то упадёт, откатится единой транзакцией.
+        Client = type(other)  # локальный алиас чтобы не тащить импорт вверх
+        empty_values = {}
+        for name in changed:
+            field = Client._meta.get_field(name)
+            empty_values[name] = None if field.null else ""
+        Client.objects.filter(pk=other.pk).update(**empty_values)
         survivor.save(update_fields=changed)
 
     # 2) Коллекции
