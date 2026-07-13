@@ -346,9 +346,17 @@ LOGGING = {
             "datefmt": "%Y-%m-%d %H:%M:%S",
         },
     },
+    "filters": {
+        "no_disallowed_host": {
+            "()": "config.logging_filters.NoDisallowedHostFilter",
+        },
+    },
     "handlers": {
         "null": {"class": "logging.NullHandler"},
-        "console": {"level": "DEBUG", "class": "logging.StreamHandler", "formatter": "simple"},
+        "console": {
+            "level": "DEBUG", "class": "logging.StreamHandler", "formatter": "simple",
+            "filters": ["no_disallowed_host"],
+        },
         "file": {
             "level": "INFO",
             "class": "logging.handlers.RotatingFileHandler",
@@ -356,6 +364,7 @@ LOGGING = {
             "maxBytes": 10 * 1024 * 1024,
             "backupCount": 5,
             "formatter": "verbose",
+            "filters": ["no_disallowed_host"],
         },
         "celery_file": {
             "level": "INFO",
