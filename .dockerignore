@@ -1,0 +1,33 @@
+# Контекст сборки и слои образов. Без этого файла `COPY . .` затаскивал в
+# КАЖДЫЙ образ (web/celery/userbot/backup/runner'ы) папку backups/ на 3+ ГБ —
+# 14.07.2026 из-за этого rebuild на проде упал с «no space left on device».
+
+# Дампы БД — гигабайты, в образе не нужны (бэкапы живут на хосте и в S3).
+backups/
+*.sql
+*.sql.gz
+
+# История git — в образе не нужна.
+.git/
+.gitignore
+
+# Собирается при старте контейнера (`collectstatic`), в образ не кладём.
+staticfiles/
+# Медиа клиентов — в S3, локальная папка это volume.
+media/
+
+node_modules/
+
+# Секреты: env приходит из compose env_file, settings читают os.environ —
+# файлы .env в слоях образа не нужны (и не должны там лежать).
+.env
+.env.*
+
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+.vscode/
+.idea/
+*.log
