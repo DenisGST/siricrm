@@ -132,14 +132,18 @@ def _clean(params: dict) -> dict:
 # ── messages ───────────────────────────────────────────────────────────────
 
 def get_messages(*, bankrupt_guid=None, date_begin=None, date_end=None, type=None,
-                 number=None, guid=None, is_annulled=None, is_locked=None,
+                 number=None, guid=None, court_decision_type=None,
+                 is_annulled=None, is_locked=None,
                  include_content=False, sort="DatePublish:asc",
                  limit=500, offset=0) -> dict:
+    """Список сообщений. `court_decision_type` (тип судебного акта) — фильтр,
+    который по спецификации работает ТОЛЬКО для type=ArbitralDecree."""
     params = _clean({
         "bankruptGUID": bankrupt_guid,
         "datePublishBegin": _fmt_dt(date_begin, "gte"),
         "datePublishEnd": _fmt_dt(date_end, "lte"),
         "type": type, "number": number, "guid": guid,
+        "courtDecisionType": court_decision_type,
         "IsAnnulled": _bool(is_annulled), "IsLocked": _bool(is_locked),
         "includeContent": _bool(include_content),
         "sort": sort, "limit": limit, "offset": offset,

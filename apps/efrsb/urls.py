@@ -15,8 +15,11 @@ urlpatterns = [
     path("service/<uuid:service_id>/efrsb/refresh/", views.refresh_now, name="refresh_now"),
     # Публикации (наши заготовки)
     path("service/<uuid:service_id>/efrsb/add/", views.publication_add, name="publication_add"),
-    path("service/<uuid:service_id>/efrsb/<uuid:pub_id>/generate/", views.publication_generate_form, name="publication_generate_form"),
-    path("service/<uuid:service_id>/efrsb/<uuid:pub_id>/generate/save/", views.publication_generate, name="publication_generate"),
+    path("service/<uuid:service_id>/efrsb/gen-text/", views.publication_gen_text, name="publication_gen_text"),
+    path("service/<uuid:service_id>/efrsb/save/", views.publication_save, name="publication_save"),
+    path("service/<uuid:service_id>/efrsb/<uuid:pub_id>/edit/", views.publication_edit, name="publication_edit"),
+    path("service/<uuid:service_id>/efrsb/<uuid:pub_id>/text/", views.publication_text, name="publication_text"),
+    path("service/<uuid:service_id>/efrsb/<uuid:pub_id>/check/", views.publication_check, name="publication_check"),
     path("service/<uuid:service_id>/efrsb/<uuid:pub_id>/delete/", views.publication_delete, name="publication_delete"),
     # Справочник «Типы сообщений ЕФРСБ»
     path("references/message-types/", views.references_message_types, name="references_message_types"),

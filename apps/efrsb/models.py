@@ -72,9 +72,15 @@ class EfrsbMessageType(TimeStampedModel):
         help_text="В каком разделе ЕФРСБ публикуется/ищется: сообщения или отчёты.",
     )
 
+    text_template = models.TextField(
+        "Шаблон текста сообщения", blank=True,
+        help_text="Плейсхолдеры {…} подставляются из CRM (должник, ФУ, СРО, дело, суд). "
+                  "По нему кнопка «Сгенерировать текст» заполняет поле в модалке. "
+                  "У подтипа шаблон приоритетнее, чем у типа.",
+    )
     template = models.ForeignKey(
         "afd.DocumentTemplate", on_delete=models.SET_NULL, null=True, blank=True,
-        related_name="+", verbose_name="Шаблон текста (.docx)",
+        related_name="+", verbose_name="Шаблон документа (.docx)",
     )
     isk_template = models.ForeignKey(
         "afd.IskTemplate", on_delete=models.SET_NULL, null=True, blank=True,
@@ -127,6 +133,62 @@ class EfrsbMessageType(TimeStampedModel):
             if a and a not in out:
                 out.append(a)
         return out
+
+    def applies_to_kind(self, kind: str) -> bool:
+        ak = self.applicable_kinds or []
+        return (not ak) or (kind in ak)
+
+
+class EfrsbMessageSubtype(TimeStampedModel):
+    """Подтип сообщения ЕФРСБ.
+
+    Единственный официальный справочник подтипов — «типы судебных актов»
+    (`courtDecisionType`, 27 шт.), применим ТОЛЬКО к «Сообщению о судебном акте»
+    (`ArbitralDecree`): read-API фильтр `courtDecisionType`, справочник
+    `v1/reference-books/court-decision-types`, в XML — `<CourtDecision><DecisionType>`.
+    Модель сделана общей — если оператор заведёт подтипы у других типов.
+
+    🛑 `applicable_kinds`/`is_bfl` — заготовка, подтверждается с АУ.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    message_type = models.ForeignKey(
+        EfrsbMessageType, on_delete=models.CASCADE,
+        related_name="subtypes", verbose_name="Тип сообщения",
+    )
+    code = models.CharField(
+        "Код", max_length=64,
+        help_text="Значение courtDecisionType в read-API (напр. PropertySale).",
+    )
+    name = models.CharField("Подтип", max_length=500)
+    text_template = models.TextField(
+        "Шаблон текста сообщения", blank=True,
+        help_text="Приоритетнее шаблона типа. Плейсхолдеры {…} — из CRM.",
+    )
+    applicable_kinds = models.JSONField(
+        "Применим к видам процедур", default=list, blank=True,
+        help_text="restructuring / realization. Пусто — применим к обоим.",
+    )
+    is_bfl = models.BooleanField(
+        "Релевантен БФЛ (физлицо)", default=False,
+        help_text="Подтипы для банкротства граждан. Процедуры ЮЛ (наблюдение, "
+                  "внешнее управление, конкурсное производство) — снять флаг.",
+    )
+    order = models.PositiveIntegerField("Порядок", default=0)
+    is_active = models.BooleanField("Активен", default=True)
+    is_draft = models.BooleanField("Черновик (не подтверждён)", default=True)
+
+    class Meta:
+        verbose_name = "Подтип сообщения ЕФРСБ"
+        verbose_name_plural = "Подтипы сообщений ЕФРСБ"
+        ordering = ["message_type__order", "order", "name"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["message_type", "code"], name="uniq_efrsb_subtype_code",
+            ),
+        ]
+
+    def __str__(self):
+        return self.name
 
     def applies_to_kind(self, kind: str) -> bool:
         ak = self.applicable_kinds or []
@@ -232,6 +294,10 @@ class EfrsbPublication(TimeStampedModel):
         EfrsbMessageType, on_delete=models.SET_NULL, null=True, blank=True,
         related_name="publications", verbose_name="Тип сообщения",
     )
+    subtype = models.ForeignKey(
+        "EfrsbMessageSubtype", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="publications", verbose_name="Подтип (тип судебного акта)",
+    )
     kind = models.CharField("Вид", max_length=16, choices=KIND_CHOICES, default=KIND_MESSAGE)
     origin = models.CharField("Источник", max_length=16, choices=ORIGIN_CHOICES, default=ORIGIN_INTERNAL)
     status = models.CharField("Статус", max_length=16, choices=STATUS_CHOICES, default=STATUS_DRAFT)
@@ -299,9 +365,11 @@ class EfrsbPublication(TimeStampedModel):
 
     @property
     def type_label(self) -> str:
-        if self.message_type_id and self.message_type:
-            return self.message_type.name
-        return self.api_type or "—"
+        base = self.message_type.name if (self.message_type_id and self.message_type) \
+            else (self.api_type or "—")
+        if self.subtype_id and self.subtype:
+            return f"{base} — {self.subtype.name}"
+        return base
 
     @property
     def fedresurs_url(self) -> str:

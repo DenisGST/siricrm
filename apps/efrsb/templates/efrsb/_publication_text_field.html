@@ -1,0 +1,6 @@
+{% comment %}Редактируемое поле текста сообщения. Обновляется целиком (outerHTML)
+  ответом кнопки «Сгенерировать текст». Контекст: text_value.{% endcomment %}
+<textarea id="efrsb-msg-text" name="text" rows="12"
+          class="textarea textarea-bordered w-full text-sm"
+          style="line-height:1.45"
+          placeholder="Текст сообщения — нажмите «Сгенерировать текст» или введите вручную">{{ text_value }}</textarea>

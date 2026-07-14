@@ -46,12 +46,17 @@
     {% endif %}
 
     {% comment %} ── Сформировать текст сообщения (searchable select) ── {% endcomment %}
+    {% comment %}Добавление публикации сразу открывает формирование текста
+      (модалка приходит в ответе; реестр перерисуется по HX-Trigger reloadEfrsb).{% endcomment %}
     <form class="flex flex-wrap items-end gap-2"
-          hx-post="{% url 'efrsb:publication_add' service.id %}" hx-swap="none">
+          hx-post="{% url 'efrsb:publication_add' service.id %}"
+          hx-target="body" hx-swap="beforeend">
       {% csrf_token %}
-      <div class="flex flex-col gap-1" id="efrsb-ss" style="min-width:380px;position:relative">
+      <div class="flex flex-col gap-1" id="efrsb-ss" style="min-width:380px;position:relative"
+           data-proc-kind="{{ proc_kind }}">
         <span class="label-text text-xs">Тип сообщения</span>
         <input type="hidden" name="message_type" id="efrsb-ss-value">
+        <input type="hidden" name="subtype" id="efrsb-ss-subtype">
         <button type="button" id="efrsb-ss-trigger"
                 class="input input-bordered input-sm w-full flex items-center justify-between gap-2 font-normal">
           <span id="efrsb-ss-label" class="truncate text-base-content/50">— выберите тип —</span>
@@ -72,19 +77,23 @@
           </div>
         </div>
       </div>
-      <button type="submit" class="btn btn-primary btn-sm">➕ Добавить публикацию</button>
+      <button type="submit" class="btn btn-primary btn-sm" id="efrsb-add-btn" disabled>
+        ➕ Добавить сообщение
+      </button>
     </form>
 
     <style>
       .efrsb-tree .ss-leaf{padding:3px 8px;border-radius:5px;cursor:pointer;font-size:13px;line-height:1.3}
       .efrsb-tree .ss-leaf:hover{background:var(--ms-bg,#eef1f4)}
       .efrsb-tree .ss-leaf.active{background:#dbeafe;font-weight:600}
-      .efrsb-tree .ss-grp-hd{display:flex;align-items:flex-start;gap:6px;padding:4px 6px;cursor:pointer;font-weight:600;font-size:13px;border-radius:5px}
-      .efrsb-tree .ss-grp-hd:hover{background:var(--ms-bg,#eef1f4)}
+      .efrsb-tree .ss-node-hd{display:flex;align-items:flex-start;gap:6px;padding:4px 6px;cursor:pointer;font-size:13px;border-radius:5px;line-height:1.3}
+      .efrsb-tree .ss-node-hd:hover{background:var(--ms-bg,#eef1f4)}
+      .efrsb-tree .ss-grp-hd{font-weight:600}
+      .efrsb-tree .ss-type-hd{font-weight:500;color:#334155}
       .efrsb-tree .ss-caret{flex:0 0 auto;display:inline-block;width:12px;color:#64748b;transition:transform .12s}
-      .efrsb-tree .ss-grp.open > .ss-grp-hd .ss-caret{transform:rotate(90deg)}
-      .efrsb-tree .ss-grp-body{margin-left:16px}
-      .efrsb-tree .ss-grp:not(.open) > .ss-grp-body{display:none}
+      .efrsb-tree .ss-node.open > .ss-node-hd .ss-caret{transform:rotate(90deg)}
+      .efrsb-tree .ss-node-body{margin-left:16px}
+      .efrsb-tree .ss-node:not(.open) > .ss-node-body{display:none}
       .efrsb-tree .ss-cnt{color:#94a3b8;font-weight:400;font-size:11px;margin-left:2px}
     </style>
 
@@ -120,69 +129,119 @@
         menu.style.width = r.width + 'px';
       }
 
+      var procKind = root.dataset.procKind || '';
+
       function selectLeaf(leaf) {
-        el('efrsb-ss-value').value = leaf.dataset.id;
+        el('efrsb-ss-value').value = leaf.dataset.tid;
+        el('efrsb-ss-subtype').value = leaf.dataset.sid || '';
         var lbl = el('efrsb-ss-label');
         lbl.textContent = leaf.dataset.label;
         lbl.classList.remove('text-base-content/50');
+        // Тип выбран — кнопка «Добавить сообщение» становится активной.
+        var addBtn = el('efrsb-add-btn');
+        if (addBtn) addBtn.disabled = false;
         var tree = el('efrsb-ss-tree');
         Array.prototype.forEach.call(tree.querySelectorAll('.ss-leaf.active'),
           function (n) { n.classList.remove('active'); });
         leaf.classList.add('active');
         close();
       }
-      function leafEl(it) {
+      // it: {sid?, name, bfl, kinds}; parentName — имя типа (для подтипов)
+      function leafEl(tid, it, parentName) {
         var d = document.createElement('div');
         d.className = 'ss-leaf';
-        d.dataset.id = it.id;
+        d.dataset.tid = tid;
+        d.dataset.sid = it.sid || '';
         d.dataset.bfl = it.bfl ? '1' : '0';
+        d.dataset.kinds = (it.kinds || []).join(',');
         d.dataset.name = it.name.toLowerCase();
-        d.dataset.label = it.name;
+        d.dataset.label = parentName ? (parentName + ' — ' + it.name) : it.name;
         d.textContent = it.name;
-        if (el('efrsb-ss-value').value === it.id) d.classList.add('active');
+        if (el('efrsb-ss-value').value === tid &&
+            (el('efrsb-ss-subtype').value || '') === (it.sid || '')) d.classList.add('active');
         d.addEventListener('click', function () { selectLeaf(d); });
         return d;
+      }
+      function nodeEl(cls, title) {
+        var n = document.createElement('div'); n.className = 'ss-node ' + cls;
+        var hd = document.createElement('div'); hd.className = 'ss-node-hd ' + cls + '-hd';
+        var car = document.createElement('span'); car.className = 'ss-caret'; car.textContent = '▸';
+        var ttl = document.createElement('span'); ttl.style.flex = '1'; ttl.textContent = title;
+        var cnt = document.createElement('span'); cnt.className = 'ss-cnt';
+        hd.appendChild(car); hd.appendChild(ttl); hd.appendChild(cnt);
+        var body = document.createElement('div'); body.className = 'ss-node-body';
+        hd.addEventListener('click', function () { n.classList.toggle('open'); });
+        n.appendChild(hd); n.appendChild(body);
+        n.dataset.name = (title || '').toLowerCase();
+        return n;
+      }
+      // Тип: с подтипами — раскрывающийся узел; без — обычный лист.
+      function typeEl(t) {
+        if (!t.subs || !t.subs.length) {
+          return leafEl(t.tid, { sid: '', name: t.name, bfl: t.bfl, kinds: t.kinds }, null);
+        }
+        var n = nodeEl('ss-type', t.name);
+        var body = n.querySelector('.ss-node-body');
+        t.subs.forEach(function (s) { body.appendChild(leafEl(t.tid, s, t.name)); });
+        return n;
       }
       function buildTree() {
         var tree = el('efrsb-ss-tree'); tree.innerHTML = '';
         data.forEach(function (g) {
           if (g.title === null || g.title === undefined) {
-            (g.items || []).forEach(function (it) { tree.appendChild(leafEl(it)); });
+            (g.items || []).forEach(function (t) { tree.appendChild(typeEl(t)); });
             return;
           }
-          var grp = document.createElement('div'); grp.className = 'ss-grp';
-          var hd = document.createElement('div'); hd.className = 'ss-grp-hd';
-          var car = document.createElement('span'); car.className = 'ss-caret'; car.textContent = '▸';
-          var ttl = document.createElement('span'); ttl.style.flex = '1'; ttl.textContent = g.title;
-          var cnt = document.createElement('span'); cnt.className = 'ss-cnt';
-          hd.appendChild(car); hd.appendChild(ttl); hd.appendChild(cnt);
-          var body = document.createElement('div'); body.className = 'ss-grp-body';
-          (g.items || []).forEach(function (it) { body.appendChild(leafEl(it)); });
-          hd.addEventListener('click', function () { grp.classList.toggle('open'); });
-          grp.appendChild(hd); grp.appendChild(body); tree.appendChild(grp);
+          var grp = nodeEl('ss-grp', g.title);
+          var body = grp.querySelector('.ss-node-body');
+          (g.items || []).forEach(function (t) { body.appendChild(typeEl(t)); });
+          tree.appendChild(grp);
         });
+      }
+      // Лист проходит: по режиму (БФЛ + релевантность процедуре) и по поиску.
+      function leafPasses(lf, q, all) {
+        if (!all) {
+          if (lf.dataset.bfl !== '1') return false;
+          var kinds = lf.dataset.kinds || '';
+          if (procKind && kinds && kinds.split(',').indexOf(procKind) === -1) return false;
+        }
+        if (!q) return true;
+        if (lf.dataset.name.indexOf(q) !== -1) return true;
+        var pt = lf.closest('.ss-type');           // совпало имя родительского типа
+        return !!(pt && pt.dataset.name && pt.dataset.name.indexOf(q) !== -1);
       }
       function applyFilter() {
         var q = (el('efrsb-ss-search').value || '').trim().toLowerCase();
         var all = el('efrsb-ss-all').checked;
-        var tree = el('efrsb-ss-tree'); var anyShown = 0;
-        Array.prototype.forEach.call(tree.children, function (node) {
-          if (node.classList.contains('ss-leaf')) {
-            var vis = (all || node.dataset.bfl === '1') && (!q || node.dataset.name.indexOf(q) !== -1);
-            node.style.display = vis ? '' : 'none'; if (vis) anyShown++;
-            return;
-          }
-          var leaves = node.querySelectorAll('.ss-leaf'); var cnt = 0;
-          Array.prototype.forEach.call(leaves, function (lf) {
-            var vis = (all || lf.dataset.bfl === '1') && (!q || lf.dataset.name.indexOf(q) !== -1);
-            lf.style.display = vis ? '' : 'none'; if (vis) cnt++;
-          });
-          node.style.display = cnt ? '' : 'none';
-          var c = node.querySelector('.ss-cnt'); if (c) c.textContent = cnt ? ('(' + cnt + ')') : '';
-          node.classList.toggle('open', !!cnt && (!!q || !all));
-          anyShown += cnt;
+        var tree = el('efrsb-ss-tree');
+        var shown = 0;
+
+        Array.prototype.forEach.call(tree.querySelectorAll('.ss-leaf'), function (lf) {
+          var vis = leafPasses(lf, q, all);
+          lf.style.display = vis ? '' : 'none';
+          if (vis) shown++;
         });
-        el('efrsb-ss-empty').classList.toggle('hidden', anyShown > 0);
+        // Узлы-типы: видимы, если есть видимые подтипы; раскрыты — только при поиске.
+        Array.prototype.forEach.call(tree.querySelectorAll('.ss-type'), function (n) {
+          var cnt = 0;
+          Array.prototype.forEach.call(n.querySelectorAll('.ss-leaf'), function (lf) {
+            if (lf.style.display !== 'none') cnt++;
+          });
+          n.style.display = cnt ? '' : 'none';
+          var c = n.querySelector('.ss-cnt'); if (c) c.textContent = cnt ? ('(' + cnt + ')') : '';
+          n.classList.toggle('open', !!cnt && !!q);
+        });
+        // Категории: по видимым прямым детям; раскрыты при поиске и в БФЛ-режиме.
+        Array.prototype.forEach.call(tree.querySelectorAll('.ss-grp'), function (g) {
+          var body = g.querySelector('.ss-node-body'); var cnt = 0;
+          Array.prototype.forEach.call(body.children, function (ch) {
+            if (ch.style.display !== 'none') cnt++;
+          });
+          g.style.display = cnt ? '' : 'none';
+          var c = g.querySelector('.ss-cnt'); if (c) c.textContent = cnt ? ('(' + cnt + ')') : '';
+          g.classList.toggle('open', !!cnt && (!!q || !all));
+        });
+        el('efrsb-ss-empty').classList.toggle('hidden', shown > 0);
       }
       function open() {
         menu.classList.remove('hidden');
@@ -281,10 +340,21 @@
             <td class="text-right whitespace-nowrap align-middle">
               <div class="inline-flex flex-nowrap gap-1 align-middle">
                 {% if p.origin == 'internal' %}
-                <button type="button" class="efrsb-act" style="--act-hc:#2563eb"
-                        hx-get="{% url 'efrsb:publication_generate_form' service.id p.pk %}"
+                {% if p.generated_text %}
+                <button type="button" class="efrsb-act" style="--act-hc:#16a34a"
+                        hx-get="{% url 'efrsb:publication_text' service.id p.pk %}"
                         hx-target="body" hx-swap="beforeend"
-                        title="{% if p.content_pdf_id %}Переформировать текст{% else %}Сформировать текст{% endif %}">{% if p.content_pdf_id %}{% icon "refresh-ccw" size=16 %}{% else %}{% icon "file-text" size=16 %}{% endif %}</button>
+                        title="Показать текст — скопировать для вставки в ЛК ЕФРСБ">{% icon "copy" size=16 %}</button>
+                {% endif %}
+                {% if efrsb_monitor_enabled and not p.fedresurs_guid %}
+                <button type="button" class="efrsb-act" style="--act-hc:#7c3aed"
+                        hx-post="{% url 'efrsb:publication_check' service.id p.pk %}" hx-swap="none"
+                        title="Проверить в ЕФРСБ — опубликовано ли это сообщение">{% icon "search" size=16 %}</button>
+                {% endif %}
+                <button type="button" class="efrsb-act" style="--act-hc:#2563eb"
+                        hx-get="{% url 'efrsb:publication_edit' service.id p.pk %}"
+                        hx-target="body" hx-swap="beforeend"
+                        title="{% if p.generated_text %}Править текст сообщения{% else %}Сформировать текст{% endif %}">{% if p.generated_text %}{% icon "pencil" size=16 %}{% else %}{% icon "file-text" size=16 %}{% endif %}</button>
                 <button type="button" class="efrsb-act" style="--act-hc:#dc2626"
                         hx-post="{% url 'efrsb:publication_delete' service.id p.pk %}"
                         hx-confirm="Удалить публикацию «{{ p.title }}»?" title="Удалить">{% icon "trash" size=16 %}</button>

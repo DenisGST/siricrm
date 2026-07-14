@@ -44,8 +44,11 @@ def _load_categories():
 def _build_type_tree(types):
     """Сгруппировать активные типы по официальному дереву; остальное → «Прочее».
 
-    Возвращает список групп для JSON: [{title, items:[{id,name,bfl,draft}]}].
-    title=None — типы верхнего уровня (без группы).
+    Тип с подтипами (напр. «Сообщение о судебном акте» → 24 типа судебных актов)
+    отдаётся как узел с `subs` — в UI раскрывается, выбирается подтип.
+    Фильтрация по БФЛ/виду процедуры — на клиенте (чтобы «Показать все» её обходил).
+
+    [{title, items:[{tid,name,bfl,kinds,subs:[{sid,name,bfl,kinds}]}]}]
     """
     by_code = {t.code: t for t in types}
     used = set()
@@ -63,10 +66,16 @@ def _build_type_tree(types):
     if rest:
         groups.append({"title": "Прочее", "items": rest})
 
-    def _leaf(t):
-        return {"id": str(t.id), "name": t.name, "bfl": t.is_bfl, "draft": t.is_draft}
+    def _sub(s):
+        return {"sid": str(s.id), "name": s.name, "bfl": s.is_bfl,
+                "kinds": list(s.applicable_kinds or [])}
 
-    return [{"title": g["title"], "items": [_leaf(t) for t in g["items"]]} for g in groups]
+    def _node(t):
+        subs = [_sub(s) for s in t.subtypes.all() if s.is_active]
+        return {"tid": str(t.id), "name": t.name, "bfl": t.is_bfl,
+                "kinds": list(t.applicable_kinds or []), "subs": subs}
+
+    return [{"title": g["title"], "items": [_node(t) for t in g["items"]]} for g in groups]
 
 
 def _actor(request):
@@ -112,12 +121,13 @@ def subtab_kommersant(request, service_id):
 
 def _efrsb_context(service, case) -> dict:
     proc = case.current_procedure
-    # Типы для дропдауна «Сформировать текст» — фильтр по виду текущей процедуры.
-    types = EfrsbMessageType.objects.filter(is_active=True).order_by("order", "name")
-    if proc is not None:
-        types = [t for t in types if t.applies_to_kind(proc.kind)]
-    else:
-        types = list(types)
+    # Отдаём ВСЕ активные типы + подтипы; фильтр (БФЛ / вид процедуры) — на клиенте,
+    # чтобы галочка «Показать все» его обходила.
+    types = list(
+        EfrsbMessageType.objects.filter(is_active=True)
+        .prefetch_related("subtypes")
+        .order_by("order", "name")
+    )
     publications = list(
         case.efrsb_publications.select_related("message_type", "procedure",
                                                 "content_pdf", "content_docx")
@@ -132,6 +142,7 @@ def _efrsb_context(service, case) -> dict:
         "service": service,
         "case": case,
         "current_procedure": proc,
+        "proc_kind": (proc.kind if proc is not None else ""),
         "message_types": types,
         "tree_json": tree_json,
         "bfl_count": sum(1 for t in types if t.is_bfl),
@@ -152,79 +163,184 @@ def subtab_efrsb(request, service_id):
     return render(request, "efrsb/_subtab_efrsb.html", _efrsb_context(service, case))
 
 
-@login_required
-@require_procedures
-@require_POST
-def publication_add(request, service_id):
-    """Создать заготовку публикации (origin=internal, draft) выбранного типа."""
-    try:
-        service, case = _case(request, service_id)
-    except _NotBFL as exc:
-        return HttpResponseForbidden(str(exc))
+def _pick_type(request, *, required=True):
+    """(mt, st, error_toast). Подтип обязателен, если у типа есть активные подтипы."""
+    from .models import EfrsbMessageSubtype
     mt = EfrsbMessageType.objects.filter(pk=(request.POST.get("message_type") or None)).first()
     if mt is None:
-        return _toast("Выберите тип сообщения.", "warning")
-    EfrsbPublication.objects.create(
-        case=case,
-        procedure=case.current_procedure,
-        message_type=mt,
-        kind=(EfrsbPublication.KIND_REPORT if mt.api_kind == EfrsbMessageType.API_KIND_REPORT
-              else EfrsbPublication.KIND_MESSAGE),
-        origin=EfrsbPublication.ORIGIN_INTERNAL,
-        status=EfrsbPublication.STATUS_DRAFT,
-        title=mt.name,
-    )
-    return _efrsb_trigger()
+        return None, None, _toast("Выберите тип сообщения.", "warning")
+    st = EfrsbMessageSubtype.objects.filter(
+        pk=(request.POST.get("subtype") or None), message_type=mt).first()
+    if required and st is None and mt.subtypes.filter(is_active=True).exists():
+        return None, None, _toast("Выберите подтип (тип судебного акта).", "warning")
+    return mt, st, None
 
 
-@never_cache
-@login_required
-@require_procedures
-def publication_generate_form(request, service_id, pub_id):
-    try:
-        service, case = _case(request, service_id)
-    except _NotBFL as exc:
-        return HttpResponseForbidden(str(exc))
-    pub = get_object_or_404(EfrsbPublication, pk=pub_id, case=case)
-    from .generator import check_publication_data
-    all_ok, groups = check_publication_data(pub, overrides=pub.overrides)
-    return render(request, "efrsb/_publication_generate_modal.html", {
-        "service": service, "pub": pub,
-        "check_all_ok": all_ok, "check_groups": groups,
-        "body_value": (pub.overrides or {}).get("Текст сообщения", ""),
+def _msg_modal(request, service, case, mt, st, *, pub=None, text="", error=""):
+    """Модалка сообщения: только проблемные данные + генерация + текст + Сохранить."""
+    from .generator import check_problems
+    problems = check_problems(case, mt, st, procedure=case.current_procedure)
+    return render(request, "efrsb/_publication_form_modal.html", {
+        "service": service, "case": case, "mt": mt, "st": st, "pub": pub,
+        "problems": problems, "text_value": text, "error": error,
+        "type_label": (f"{mt.name} — {st.name}" if st else mt.name),
     })
 
 
 @login_required
 @require_procedures
 @require_POST
-def publication_generate(request, service_id, pub_id):
+def publication_add(request, service_id):
+    """«+ Добавить сообщение» → модалка. Публикация создаётся только по «Сохранить»."""
+    try:
+        service, case = _case(request, service_id)
+    except _NotBFL as exc:
+        return HttpResponseForbidden(str(exc))
+    mt, st, err = _pick_type(request)
+    if err is not None:
+        return err
+    return _msg_modal(request, service, case, mt, st)
+
+
+@never_cache
+@login_required
+@require_procedures
+def publication_edit(request, service_id, pub_id):
+    """Правка текста уже созданного сообщения (та же модалка)."""
     try:
         service, case = _case(request, service_id)
     except _NotBFL as exc:
         return HttpResponseForbidden(str(exc))
     pub = get_object_or_404(EfrsbPublication, pk=pub_id, case=case)
-    from .generator import EfrsbGenError, generate_publication
-    overrides = dict(pub.overrides or {})
-    overrides["Текст сообщения"] = (request.POST.get("body") or "").strip()
+    return _msg_modal(request, service, case, pub.message_type, pub.subtype,
+                      pub=pub, text=pub.generated_text or "")
+
+
+@login_required
+@require_procedures
+@require_POST
+def publication_gen_text(request, service_id):
+    """Кнопка «Сгенерировать текст» — подставляет CRM-данные в шаблон типа/подтипа."""
     try:
-        generate_publication(pub, overrides=overrides, employee=_actor(request))
+        service, case = _case(request, service_id)
+    except _NotBFL as exc:
+        return HttpResponseForbidden(str(exc))
+    mt, st, err = _pick_type(request, required=False)
+    if err is not None:
+        return err
+    from .generator import EfrsbGenError, render_message_text
+    try:
+        text = render_message_text(case, mt, st, procedure=case.current_procedure)
     except EfrsbGenError as exc:
-        from .generator import check_publication_data
-        all_ok, groups = check_publication_data(pub, overrides=overrides)
-        return render(request, "efrsb/_publication_generate_modal.html", {
-            "service": service, "pub": pub, "error": str(exc),
-            "check_all_ok": all_ok, "check_groups": groups,
-            "body_value": overrides["Текст сообщения"],
-        })
+        # Шаблона нет — оставляем текущий текст и подсказываем тостом.
+        resp = render(request, "efrsb/_publication_text_field.html",
+                      {"text_value": (request.POST.get("text") or "")})
+        import json
+        resp["HX-Trigger"] = json.dumps({"efrsbToast": {"msg": str(exc), "kind": "warning"}})
+        return resp
+    return render(request, "efrsb/_publication_text_field.html", {"text_value": text})
+
+
+@login_required
+@require_procedures
+@require_POST
+def publication_save(request, service_id):
+    """«Сохранить»: создать/обновить публикацию с итоговым текстом + .docx/.pdf."""
+    try:
+        service, case = _case(request, service_id)
+    except _NotBFL as exc:
+        return HttpResponseForbidden(str(exc))
+    mt, st, err = _pick_type(request)
+    if err is not None:
+        return err
+    text = (request.POST.get("text") or "").strip()
+    pub = None
+    pub_id = request.POST.get("pub_id") or None
+    if pub_id:
+        pub = EfrsbPublication.objects.filter(pk=pub_id, case=case).first()
+
+    from .generator import EfrsbGenError, save_publication
+    if not text:
+        return _msg_modal(request, service, case, mt, st, pub=pub, text=text,
+                          error="Текст сообщения пуст — сгенерируйте его или введите вручную.")
+    if pub is None:
+        pub = EfrsbPublication.objects.create(
+            case=case,
+            procedure=case.current_procedure,
+            message_type=mt,
+            subtype=st,
+            kind=(EfrsbPublication.KIND_REPORT
+                  if mt.api_kind == EfrsbMessageType.API_KIND_REPORT
+                  else EfrsbPublication.KIND_MESSAGE),
+            origin=EfrsbPublication.ORIGIN_INTERNAL,
+            status=EfrsbPublication.STATUS_DRAFT,
+            title=(f"{mt.name} — {st.name}" if st else mt.name),
+        )
+    try:
+        save_publication(pub, text, employee=_actor(request))
+    except EfrsbGenError as exc:
+        return _msg_modal(request, service, case, mt, st, pub=pub, text=text, error=str(exc))
     except Exception:
-        log.exception("publication_generate failed")
-        return render(request, "efrsb/_publication_generate_modal.html", {
-            "service": service, "pub": pub,
-            "error": "Не удалось сформировать текст (ошибка конвертации). Попробуйте ещё раз.",
-            "body_value": overrides["Текст сообщения"],
-        })
-    return _efrsb_trigger()
+        log.exception("publication_save failed")
+        return _msg_modal(request, service, case, mt, st, pub=pub, text=text,
+                          error="Не удалось сохранить (ошибка конвертации в PDF).")
+    # Пустой ответ + outerHTML-swap модалки = модалка закрывается.
+    import json
+    resp = HttpResponse("")
+    resp["HX-Trigger"] = json.dumps({
+        "reloadEfrsb": True,
+        "efrsbToast": {"msg": "Сообщение сохранено. Текст можно скопировать из реестра.",
+                       "kind": "success"},
+    })
+    return resp
+
+
+@login_required
+@require_procedures
+@require_POST
+def publication_check(request, service_id, pub_id):
+    """Проверить в ЕФРСБ, опубликовано ли это сообщение (по должнику + типу/подтипу)."""
+    try:
+        service, case = _case(request, service_id)
+    except _NotBFL as exc:
+        return HttpResponseForbidden(str(exc))
+    pub = get_object_or_404(EfrsbPublication, pk=pub_id, case=case)
+    from . import config, services
+    from .client import EfrsbError
+    if not config.is_configured():
+        return _toast("ЕФРСБ не настроен (нет доступа к read-API).", "error")
+    try:
+        res = services.check_publication(pub)
+    except EfrsbError as exc:
+        return _toast(f"Ошибка ЕФРСБ: {exc}", "error")
+
+    reason = res.get("reason")
+    if res.get("found"):
+        pub.refresh_from_db()
+        msg = (f"Опубликовано в ЕФРСБ: № {pub.fedresurs_number or '—'}"
+               f"{' от ' + pub.date_publish.strftime('%d.%m.%Y') if pub.date_publish else ''}.")
+        if pub.has_violation:
+            msg += " ⚠ С нарушением срока."
+        return _toast(msg, "warning" if pub.has_violation else "success")
+    if reason == "no_bankrupt_guid":
+        return _toast("Должник не привязан к ЕФРСБ — сначала найдите его.", "warning")
+    if reason == "no_type":
+        return _toast("У публикации не задан тип сообщения.", "warning")
+    return _toast("В ЕФРСБ пока не найдено — публикация не обнаружена.", "info")
+
+
+@never_cache
+@login_required
+@require_procedures
+def publication_text(request, service_id, pub_id):
+    """Модалка с готовым текстом публикации (копировать → вставить в ЛК ЕФРСБ)."""
+    try:
+        service, case = _case(request, service_id)
+    except _NotBFL as exc:
+        return HttpResponseForbidden(str(exc))
+    pub = get_object_or_404(EfrsbPublication, pk=pub_id, case=case)
+    return render(request, "efrsb/_publication_text_modal.html",
+                  {"service": service, "pub": pub})
 
 
 @login_required

@@ -2,18 +2,33 @@ from django.contrib import admin
 
 from .models import (
     EfrsbBankruptLink,
+    EfrsbMessageSubtype,
     EfrsbMessageType,
     EfrsbPublication,
     EfrsbPublicationFile,
 )
 
 
+class EfrsbMessageSubtypeInline(admin.TabularInline):
+    model = EfrsbMessageSubtype
+    extra = 0
+    fields = ("code", "name", "applicable_kinds", "is_bfl", "is_active", "is_draft", "order")
+
+
 @admin.register(EfrsbMessageType)
 class EfrsbMessageTypeAdmin(admin.ModelAdmin):
-    list_display = ("name", "code", "api_type", "is_active", "is_draft", "order")
-    list_filter = ("is_active", "is_draft")
+    list_display = ("name", "code", "api_type", "is_bfl", "is_active", "is_draft", "order")
+    list_filter = ("is_active", "is_bfl", "is_draft")
     search_fields = ("name", "code", "api_type")
     ordering = ("order", "name")
+    inlines = [EfrsbMessageSubtypeInline]
+
+
+@admin.register(EfrsbMessageSubtype)
+class EfrsbMessageSubtypeAdmin(admin.ModelAdmin):
+    list_display = ("name", "code", "message_type", "is_bfl", "is_active", "is_draft")
+    list_filter = ("is_active", "is_bfl", "is_draft", "message_type")
+    search_fields = ("name", "code")
 
 
 @admin.register(EfrsbBankruptLink)

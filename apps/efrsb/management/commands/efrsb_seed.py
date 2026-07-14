@@ -108,6 +108,48 @@ _LEGACY_CODES = [
     "final_report", "other",
 ]
 
+# ── Подтипы: типы судебных актов (courtDecisionType) → ArbitralDecree ───────
+_SUBTYPE_PARENT_CODE = "ArbitralDecree"
+_COURT_TYPES_JSON = os.path.join(_REF_DIR, "court_decision_types.json")
+
+# 🛑 Привязка подтипа к виду процедуры БФЛ (заготовка, TO CONFIRM с АУ).
+# Пусто/нет в мапе — применим к обоим видам.
+_SUBTYPE_KINDS = {
+    "DebtRestructuring": ["restructuring"],          # введение реструктуризации
+    "DebtRestructuringPlan": ["restructuring"],      # утверждение плана
+    "DebtRestructuringComplete": ["restructuring"],  # завершение реструктуризации
+    "PropertySale": ["realization"],                 # введение реализации
+    "PropertySaleComplete": ["realization"],         # завершение реализации
+    "ObligationsDischargeRefusal": ["realization"],  # неосвобождение от обязательств
+}
+# Судебные акты процедур ЮЛ — не БФЛ (видны только по «Показать все»).
+_SUBTYPE_NOT_BFL = {
+    "Observation",          # наблюдение
+    "ExternalManagement",   # внешнее управление
+    "FinancialRecovery",    # финансовое оздоровление
+    "Receivership",         # конкурсное производство
+    "LegalCaseEnd",         # завершение конкурсного производства
+    "DeveloperBankruptcy",  # банкротство застройщиков
+}
+
+# 🛑 Шаблоны ТЕКСТА сообщения по подтипам (образец от Дениса). Остальные подтипы/типы
+# АУ заполняет сам в справочнике — поле «Шаблон текста сообщения».
+# Плейсхолдеры — см. generator.build_context.
+_SUBTYPE_TEXT_TEMPLATES = {
+    "PropertySale": (
+        "{дата решения}г. {арбитражный суд} вынес решение по делу № {номер дела}, "
+        "должник {ФИО должника} ({дата рождения} г/р, уроженец: {место рождения}, "
+        "адрес: {адрес регистрации}, ИНН {ИНН}, СНИЛС {СНИЛС}) признан несостоятельным "
+        "(банкротом), введена процедура реализации имущества гражданина сроком на "
+        "{срок процедуры} месяцев. Финансовым управляющим утверждена "
+        "{ФИО Финансовый управляющий} (ИНН {ИНН АУ}, СНИЛС {СНИЛС АУ}, "
+        "адрес для корреспонденции: {Адрес арбитражного управляющего}, "
+        "е-mail: {email арбитражного}, член {СРО полностью}). "
+        "Требования к должнику предъявляются в течение двух месяцев с даты опубликования "
+        "настоящего сообщения в ИД Коммерсантъ."
+    ),
+}
+
 _EVENT_TYPES = [
     ("efrsb_published_detected", "Публикация в ЕФРСБ обнаружена", "system", False, ""),
     ("efrsb_violation", "Публикация ЕФРСБ с нарушением срока", "system", True,
@@ -146,8 +188,52 @@ class Command(BaseCommand):
         tpl = self._seed_template()
         self._load_message_types(tpl)
         self._load_report_types(tpl)
+        self._load_subtypes()
         self._seed_log_types()
         self.stdout.write(self.style.SUCCESS("ЕФРСБ: сидинг завершён."))
+
+    def _load_subtypes(self):
+        """Типы судебных актов (27) → подтипы «Сообщения о судебном акте»."""
+        from apps.efrsb.models import EfrsbMessageSubtype
+        parent = EfrsbMessageType.objects.filter(code=_SUBTYPE_PARENT_CODE).first()
+        if parent is None:
+            self.stdout.write(self.style.ERROR(
+                f"• Тип {_SUBTYPE_PARENT_CODE} не найден — подтипы пропущены."))
+            return
+        with open(_COURT_TYPES_JSON, encoding="utf-8") as f:
+            items = json.load(f)
+        stats = {"created": 0, "updated": 0, "kept": 0}
+        for i, it in enumerate(items):
+            code, name = it["code"], it["name"]
+            is_old = bool(it.get("isOld"))
+            obj = EfrsbMessageSubtype.objects.filter(
+                message_type=parent, code=code).first()
+            if obj is None:
+                EfrsbMessageSubtype.objects.create(
+                    message_type=parent, code=code, name=name, order=i,
+                    applicable_kinds=_SUBTYPE_KINDS.get(code, []),
+                    is_bfl=(not is_old) and (code not in _SUBTYPE_NOT_BFL),
+                    is_active=(not is_old), is_draft=True,
+                    text_template=_SUBTYPE_TEXT_TEMPLATES.get(code, ""),
+                )
+                stats["created"] += 1
+                continue
+            # обновляем «истину» справочника; правки АУ (БФЛ/kinds/шаблон) не трогаем
+            changed = False
+            if obj.name != name:
+                obj.name, changed = name, True
+            if obj.is_active != (not is_old):
+                obj.is_active, changed = (not is_old), True
+            # шаблон проставляем только если пусто (не затираем правку АУ)
+            if not (obj.text_template or "").strip() and _SUBTYPE_TEXT_TEMPLATES.get(code):
+                obj.text_template, changed = _SUBTYPE_TEXT_TEMPLATES[code], True
+            if changed:
+                obj.save()
+            stats["updated" if changed else "kept"] += 1
+        self.stdout.write(self.style.SUCCESS(
+            f"• Подтипы судебных актов ({len(items)}) → «{parent.name}»: "
+            f"создано {stats['created']}, обновлено {stats['updated']}, "
+            f"без изменений {stats['kept']} (DRAFT)."))
 
     def _cleanup_legacy(self):
         qs = EfrsbMessageType.objects.filter(code__in=_LEGACY_CODES)

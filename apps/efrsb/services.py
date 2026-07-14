@@ -20,6 +20,10 @@ from .models import EfrsbBankruptLink, EfrsbMessageType, EfrsbPublication
 
 log = logging.getLogger(__name__)
 
+# Запас окна поиска при точечной проверке: АУ мог опубликовать чуть раньше,
+# чем мы завели заготовку в CRM.
+GRACE_DAYS = 7
+
 
 # ── кэш сопоставления api_type → EfrsbMessageType ───────────────────────────
 
@@ -259,6 +263,90 @@ def flag_violation(pub: EfrsbPublication) -> bool:
     except Exception:
         log.exception("flag_violation: не удалось записать событийку")
         return False
+
+
+def check_publication(pub: EfrsbPublication) -> dict:
+    """Проверить в ЕФРСБ, опубликовано ли НАШЕ сообщение.
+
+    Ищем по должнику (bankruptGuid) + типу сообщения; для судебного акта дополнительно
+    сужаем официальным фильтром `courtDecisionType` (подтип) — это даёт точное попадание.
+    Найденное привязываем к заготовке (guid/номер/дата/нарушение срока) → статус
+    «опубликовано», проставляем дату-якорь и флаг нарушения.
+
+    Окно поиска — от создания/формирования заготовки минус запас (АУ мог опубликовать
+    чуть раньше, чем мы завели запись). Ограничение 31 день не действует, т.к. задан
+    bankruptGUID. Возвращает {"found": bool, "reason": str}.
+    """
+    if pub.origin != EfrsbPublication.ORIGIN_INTERNAL:
+        return {"found": bool(pub.fedresurs_guid), "reason": "discovered"}
+    if pub.fedresurs_guid:
+        return {"found": True, "reason": "already_bound"}
+    mt = pub.message_type
+    if mt is None or not mt.all_api_types:
+        return {"found": False, "reason": "no_type"}
+
+    link = resolve_bankrupt_guid(pub.case)
+    if not link.bankrupt_guid:
+        return {"found": False, "reason": "no_bankrupt_guid"}
+
+    since = (pub.generated_at or pub.created_at) - timedelta(days=GRACE_DAYS)
+    kwargs = {
+        "bankrupt_guid": link.bankrupt_guid,
+        "type": ",".join(mt.all_api_types),
+        # 🛑 ЕФРСБ требует datePublishBegin и datePublishEnd ПАРОЙ (иначе 400,
+        # код 1000). Ограничение в 31 день не действует — задан bankruptGUID.
+        "date_begin": since,
+        "date_end": timezone.now(),
+        "sort": "DatePublish:asc",
+        "limit": 100,
+    }
+    if pub.kind == EfrsbPublication.KIND_REPORT:
+        data = client.get_reports(**kwargs)
+    else:
+        # courtDecisionType — только для сообщений о судебном акте
+        if pub.subtype_id and pub.subtype and pub.subtype.code:
+            kwargs["court_decision_type"] = pub.subtype.code
+        data = client.get_messages(**kwargs)
+
+    items = data.get("pageData") or []
+    # исключаем уже привязанные к другим публикациям этого дела
+    bound = set(
+        EfrsbPublication.objects.filter(case=pub.case)
+        .exclude(pk=pub.pk).exclude(fedresurs_guid="")
+        .values_list("fedresurs_guid", flat=True)
+    )
+    item = next((it for it in items if (it.get("guid") or "") not in bound), None)
+    if item is None:
+        return {"found": False, "reason": "not_found"}
+
+    guid = item.get("guid") or ""
+    # Обнаруженную ранее строку с тем же guid схлопываем в нашу заготовку.
+    EfrsbPublication.objects.filter(fedresurs_guid=guid).exclude(pk=pub.pk).delete()
+
+    pub.fedresurs_guid = guid
+    pub.fedresurs_number = item.get("number") or ""
+    pub.bankrupt_guid = item.get("bankruptGuid") or link.bankrupt_guid
+    pub.date_publish = _parse_dt(item.get("datePublish"))
+    pub.api_type = item.get("type") or ""
+    hv = item.get("hasViolation")
+    pub.has_violation = hv if isinstance(hv, bool) else None
+    annul = item.get("annulmentMessageGuid") or ""
+    pub.annulment_guid = annul
+    pub.is_annulled = bool(annul)
+    lock = item.get("lockReason") or ""
+    pub.lock_reason = lock
+    pub.is_locked = bool(lock)
+    pub.raw = item
+    pub.discovered_at = pub.discovered_at or timezone.now()
+    pub.matched_at = timezone.now()
+    pub.status = (EfrsbPublication.STATUS_ANNULLED if pub.is_annulled
+                  else EfrsbPublication.STATUS_LOCKED if pub.is_locked
+                  else EfrsbPublication.STATUS_PUBLISHED)
+    pub.save()
+
+    apply_publication_date(pub)
+    flag_violation(pub)
+    return {"found": True, "reason": "published"}
 
 
 def sync_case(case, *, days: int = 31, download_files: bool = False) -> dict:
