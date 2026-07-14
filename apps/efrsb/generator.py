@@ -46,6 +46,14 @@ def _procedure_for(case, procedure=None):
             or case.procedures.order_by("-order").first())
 
 
+def _court_address(service) -> str:
+    """Адрес арбитражного суда — из региона услуги (Region.court_address)."""
+    region = getattr(service, "region", None)
+    if region is not None and getattr(region, "court_address_id", None):
+        return (region.court_address.result or "").strip()
+    return ""
+
+
 def _sro_full(am) -> str:
     """«Ассоциация … "СОЛИДАРНОСТЬ" (ИНН: …, ОГРН: …, адрес: …)»."""
     if am is None:
@@ -98,10 +106,12 @@ def build_context(case, *, message_type=None, subtype=None, procedure=None, over
         "СРО полностью": _sro_full(am),
         # Дело / суд / процедура
         "арбитражный суд": (arb.court_name if arb else ""),
+        "адрес суда": _court_address(case.service),
         "номер дела": (arb.case_number if arb else ""),
         "вид процедуры": (proc.get_kind_display() if proc else ""),
         "дата решения": _fmt(proc.intro_date) if proc else "",
         "срок процедуры": (str(proc.term_months) if proc and proc.term_months else ""),
+        "дата следующего заседания": _fmt(proc.next_hearing_date) if proc else "",
         "дата публикации ЕФРСБ": _fmt(proc.publication_efrsb_date) if proc else "",
         # Прочее
         "данные на супруга": _spouse_data(client.spouse),
@@ -168,11 +178,17 @@ _LABELS = {
     "Адрес арбитражного управляющего": "Адрес корреспонденции ФУ",
     "email арбитражного": "E-mail финуправляющего",
     "Реквизиты СРО": "СРО", "СРО полностью": "СРО (наименование, ИНН, ОГРН, адрес)",
-    "арбитражный суд": "Арбитражный суд", "номер дела": "Номер дела",
+    "арбитражный суд": "Арбитражный суд", "адрес суда": "Адрес арбитражного суда",
+    "номер дела": "Номер дела",
     "дата решения": "Дата решения суда (введение процедуры)",
     "срок процедуры": "Срок процедуры, мес.",
+    "дата следующего заседания": "Дата следующего судебного заседания",
+    "время заседания": "Время судебного заседания",
+    "кабинет": "Кабинет суда",
 }
 _DIGIT_RULES = {"ИНН": (10, 12), "ИНН АУ": (10, 12), "СНИЛС": (11,), "СНИЛС АУ": (11,)}
+# Полей в CRM нет — АУ дописывает прямо в тексте (плейсхолдер остаётся видимым).
+_MANUAL_KEYS = {"время заседания", "кабинет"}
 
 
 def check_problems(case, message_type, subtype, *, procedure=None) -> list[dict]:
@@ -186,6 +202,10 @@ def check_problems(case, message_type, subtype, *, procedure=None) -> list[dict]
     for key in placeholders_in(tpl):
         val = str(ctx.get(key) or "").strip()
         label = _LABELS.get(key, key)
+        if key in _MANUAL_KEYS:
+            problems.append({"label": label,
+                             "note": "нет поля в CRM — впишите прямо в текст"})
+            continue
         if not val:
             problems.append({"label": label, "note": "не заполнено"})
             continue
