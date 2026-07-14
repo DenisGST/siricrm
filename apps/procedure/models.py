@@ -408,11 +408,16 @@ class RequestType(TimeStampedModel):
     LOOKUP_REGION = "region"        # подбор по виду ЮЛ + региону (+ район гибридом)
     LOOKUP_FNS = "fns_by_address"   # ФНС по коду ИФНС из адреса клиента
     LOOKUP_MANUAL = "manual"        # только ручной выбор (Банк и пр.)
+    # Адресат — не госорган: сам должник или его кредиторы (уведомления ФУ).
+    LOOKUP_DEBTOR = "debtor"        # адресат = должник (клиент) — ФИО+адрес из карточки
+    LOOKUP_CREDITORS = "creditors"  # адресат = кредиторы: по письму НА КАЖДОГО из анкеты
     LOOKUP_CHOICES = [
         (LOOKUP_NONE, "Не требуется (СМЭВ)"),
         (LOOKUP_REGION, "По виду и региону клиента"),
         (LOOKUP_FNS, "ФНС по адресу клиента"),
         (LOOKUP_MANUAL, "Только вручную"),
+        (LOOKUP_DEBTOR, "Должник (сам клиент)"),
+        (LOOKUP_CREDITORS, "Кредиторы (письмо каждому)"),
     ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

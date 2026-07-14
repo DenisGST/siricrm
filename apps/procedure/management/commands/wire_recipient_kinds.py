@@ -12,7 +12,8 @@ from apps.procedure.models import RequestType
 
 # code → (LegalEntityKind.short_name | None, recipient_lookup)
 MAP = {
-    "req_rosreestr":    (None,           "none"),
+    "req_rosreestr":    (None,           "none"),      # через СМЭВ — адресат не нужен
+    "req_rosreestr_info": ("Росреестр",  "region"),    # инф. письмо → управление по субъекту
     "req_gibdd":        ("МРЭО",         "region"),
     "req_gostehnadzor": ("Гостехнадзор", "region"),
     "req_gims":         ("ГИМС",         "region"),
@@ -21,9 +22,15 @@ MAP = {
     "req_fns_orgs":     ("ФНС",          "fns_by_address"),
     "req_sfr":          ("СФР",          "region"),
     "req_zags":         ("ЗАГС",         "region"),
+    "req_lrr":          ("ЛРР",          "region"),
     "req_bank":         ("Банк",         "manual"),
     "req_court":        ("Районный суд", "region"),
     "req_employment":   (None,           "region"),   # ЦЗН — импорт позже
+    "req_fssp_info":    ("ФССП",         "region"),   # районный ОСП по месту жительства
+    "req_ufssp_info":   ("УФССП",        "region"),   # региональное управление
+    # Уведомления ФУ — адресат не госорган (сам должник / его кредиторы).
+    "req_notice_debtor":    (None,       "debtor"),
+    "req_notice_creditors": (None,       "creditors"),
     "req_info_gov":     (None,           "manual"),
     "req_other":        (None,           "manual"),
 }

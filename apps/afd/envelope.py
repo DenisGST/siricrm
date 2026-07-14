@@ -116,11 +116,16 @@ def party_from_manager(am):
 def party_from_request(req):
     """Сторона-получатель из запроса procedure.Request.
 
-    Приоритет — связанный госорган (LegalEntity, есть адрес/индекс), иначе
+    Приоритет — связанный госорган (LegalEntity, есть адрес/индекс); уведомление
+    должнику адресуется самому клиенту (ФИО + адрес из карточки); иначе —
     текстовое имя адресата (recipient_name) без адреса.
     """
     if getattr(req, "recipient_id", None) and req.recipient:
         return party_from_legal_entity(req.recipient)
+    rt = getattr(req, "request_type", None)
+    # "debtor" = procedure.RequestType.LOOKUP_DEBTOR (строкой — afd не тянет procedure).
+    if rt is not None and getattr(rt, "recipient_lookup", "") == "debtor":
+        return party_from_client(req.case.service.client)
     name = (req.recipient_name or "").strip()
     return _party(name)
 

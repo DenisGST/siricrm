@@ -6,11 +6,13 @@
 """
 from __future__ import annotations
 
+import uuid
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
 
 from django.conf import settings
 from django.contrib.auth.decorators import login_required, user_passes_test
+from django.core.cache import cache
 from django.db.models import Q
 from django.http import HttpResponse, HttpResponseBadRequest, HttpResponseForbidden
 from django.shortcuts import get_object_or_404, render
@@ -1031,7 +1033,6 @@ def _correspondence_context(case, req_q="", req_sort="created", req_dir="desc") 
         "court_acts": court_acts,
         "has_arbitr_case": arb is not None,
         "request_types": RequestType.objects.filter(is_active=True).order_by("order", "name"),
-        "request_packages": RequestPackage.objects.filter(is_active=True).order_by("order", "name"),
         "method_choices": Request.METHOD_CHOICES,
         **req_ctx,
     }
@@ -1237,7 +1238,9 @@ def request_add(request, service_id):
     rid = (request.POST.get("recipient_id") or "").strip()
     if rid:
         recipient = LegalEntity.objects.filter(pk=rid).first()
-    services.create_request(case, rt, recipient=recipient, employee=_actor(request))
+    # Тип «уведомление кредиторам» разворачивается в письмо на каждого кредитора.
+    services.create_requests_for_type(
+        case, rt, recipient=recipient, employee=_actor(request))
     # Запомнить ручной выбор адресата для (вид + регион/район) → переиспользуется.
     if recipient and (request.POST.get("remember") in ("1", "on", "true")):
         services.save_recipient_rule(
@@ -1245,33 +1248,82 @@ def request_add(request, service_id):
     return _req_trigger()
 
 
+def _main_package():
+    """Единый пакет запросов (выбора пакета в UI больше нет — он один)."""
+    return (RequestPackage.objects.filter(is_active=True)
+            .order_by("order", "name").first())
+
+
 @login_required
 @require_procedures
 def request_package_modal(request, service_id):
-    """Модалка формирования пакета: по каждому типу — авто-подобранный адресат
-    с возможностью изменить/запомнить перед созданием запросов."""
+    """Модалка пакета: предпроверка общих сведений дела + таблица всех позиций
+    с чекбоксом (по умолчанию все отмечены), авто-подобранным адресатом (меняется
+    через большую модалку выбора) и подсветкой готовности каждой позиции."""
     from .recipient_resolver import resolve_recipient
+    from .request_documents import check_case_data, check_request_ready
     try:
         service = _bfl_service(request, service_id)
     except _NotBFL as exc:
         return HttpResponseForbidden(str(exc))
-    services.ensure_case(service)
-    pkg = get_object_or_404(RequestPackage, pk=request.GET.get("package"))
+    case = services.ensure_case(service)
+    pkg = _main_package()
+    if pkg is None:
+        return HttpResponseBadRequest(
+            "Пакет запросов не настроен — заведите его в Справочниках.")
+
+    # 1) Общие сведения (должник / ФУ / дело) — предупреждение в шапке модалки.
+    case_ok, case_gaps = check_case_data(case)
+
+    creditors_n = len(services.case_creditors(service))
     rows = []
     for rt in pkg.types.filter(is_active=True).order_by("order", "name"):
-        res = resolve_recipient(rt, service.client, service)
-        rec = res["recipient"]
+        lookup = rt.recipient_lookup
+        rec, note, hint = None, "", ""
+        if lookup == RequestType.LOOKUP_DEBTOR:
+            # Адресат — сам должник: ФИО и адрес берутся из карточки клиента.
+            note = services.debtor_display(service.client) or "у клиента не заполнено ФИО"
+        elif lookup == RequestType.LOOKUP_CREDITORS:
+            # Разворачивается в письмо на каждого кредитора из анкеты.
+            note = (f"будет создано писем: {creditors_n} (по числу кредиторов)"
+                    if creditors_n else "кредиторы в анкете не найдены — писем не будет")
+        elif lookup != RequestType.LOOKUP_NONE:
+            res = resolve_recipient(rt, service.client, service)
+            rec = res["recipient"]
+            hint = _resolve_hint(res["reason"], len(res["candidates"]))
+        # 2) Готовность позиции: шаблон + адресат + все плейсхолдеры заполнены.
+        ready, issues = check_request_ready(
+            case, rt, rec, creditors_count=creditors_n)
         rows.append({
             "type": rt,
             "recipient": rec,
             "recipient_name": ((rec.short_name or rec.name) if rec else ""),
-            "hint": _resolve_hint(res["reason"], len(res["candidates"])),
-            "lookup": rt.recipient_lookup,
+            "recipient_address": ((rec.legal_address or rec.actual_address
+                                   or rec.postal_address or "") if rec else ""),
+            "hint": hint,
+            "lookup": lookup,
+            "note": note,
+            "ready": ready,
+            "issues": issues,
+            # Позиции, где адресата выбирает юрист (для перекраски чека на лету).
+            "needs_recipient": lookup in (
+                RequestType.LOOKUP_REGION, RequestType.LOOKUP_FNS,
+                RequestType.LOOKUP_MANUAL),
+            # Готовность без учёта адресата — чтобы после выбора в модалке
+            # перекрасить чек в зелёный, не перезагружая всю таблицу.
+            "data_ok": not [i for i in issues if not i.startswith("не выбран адресат")],
             "can_remember": (bool(rt.recipient_kind_id)
                              and rt.recipient_lookup == RequestType.LOOKUP_REGION),
         })
+    # Подпись/печать ФУ есть → чекбокс «с подписью» включён по умолчанию.
+    from .request_documents import _am_procedure
+    proc = _am_procedure(case)
+    am = proc.arbitr_manager if (proc and proc.arbitr_manager_id) else None
     return render(request, "procedure/partials/request_package_modal.html", {
         "service": service, "package": pkg, "rows": rows,
+        "case_ok": case_ok, "case_gaps": case_gaps,
+        "ready_count": sum(1 for r in rows if r["ready"]),
+        "has_signature": bool(am and am.signature_file_id),
     })
 
 
@@ -1279,27 +1331,84 @@ def request_package_modal(request, service_id):
 @require_procedures
 @require_POST
 def request_package_add(request, service_id):
+    """Создать запросы пакета и СРАЗУ сформировать документы (в Celery).
+
+    Черновиков без документа не оставляем: на каждый созданный запрос ставится
+    своя задача формирования (LibreOffice → PDF → файлы клиента). Возвращаем не
+    «готово», а блок прогресса — он сам поллит статус, пока всё не сформируется.
+    """
+    from .tasks import JOB_TTL, generate_request_doc, job_meta_key
     try:
         service = _bfl_service(request, service_id)
     except _NotBFL as exc:
         return HttpResponseForbidden(str(exc))
     case = services.ensure_case(service)
-    pkg = get_object_or_404(RequestPackage, pk=request.POST.get("package"))
-    # Адресаты, выбранные в модалке (по типу), + какие запомнить.
-    recipients = {}
-    to_remember = []
+    pkg = _main_package()
+    if pkg is None:
+        return HttpResponseBadRequest("Пакет запросов не настроен.")
+    # Отмеченные позиции + адресаты, выбранные в модалке, + какие запомнить.
+    type_ids, recipients, to_remember = set(), {}, []
     for rt in pkg.types.filter(is_active=True):
+        if request.POST.get(f"include_{rt.pk}") not in ("1", "on", "true"):
+            continue
+        type_ids.add(str(rt.pk))
         rid = (request.POST.get(f"recipient_id_{rt.pk}") or "").strip()
         rec = LegalEntity.objects.filter(pk=rid).first() if rid else None
         recipients[str(rt.pk)] = rec
         if rec and (request.POST.get(f"remember_{rt.pk}") in ("1", "on", "true")):
             to_remember.append((rt, rec))
-    services.create_request_package(
-        case, pkg, employee=_actor(request), recipients=recipients)
+
+    employee = _actor(request)
+    created = services.create_request_package(
+        case, pkg, employee=employee, recipients=recipients, type_ids=type_ids)
     for rt, rec in to_remember:
-        services.save_recipient_rule(
-            rt, service.client, service, rec, employee=_actor(request))
-    return _req_trigger()
+        services.save_recipient_rule(rt, service.client, service, rec, employee=employee)
+
+    if not created:
+        return _req_trigger()
+
+    with_signature = request.POST.get("with_signature") in ("1", "on", "true")
+    job_id = uuid.uuid4().hex
+    cache.set(job_meta_key(job_id), {
+        "service_id": str(service.id),
+        "items": [{"id": str(r.pk), "title": r.title,
+                   "number": r.outgoing_number,
+                   "recipient": r.recipient_display} for r in created],
+    }, JOB_TTL)
+    for r in created:
+        generate_request_doc.delay(
+            job_id, str(r.pk),
+            employee_id=(str(employee.pk) if employee else None),
+            with_signature=with_signature,
+        )
+    return render(request, "procedure/partials/_package_progress.html",
+                  _progress_context(service, job_id))
+
+
+def _progress_context(service, job_id) -> dict:
+    from .tasks import job_status
+    meta, items, counters = job_status(job_id)
+    return {
+        "service": service, "job": job_id,
+        "items": items, "c": counters, "expired": meta is None,
+    }
+
+
+@never_cache
+@login_required
+@require_procedures
+def package_progress(request, service_id):
+    """Прогресс формирования документов пакета (HTMX-поллинг раз в 1.5с)."""
+    try:
+        service = _bfl_service(request, service_id)
+    except _NotBFL as exc:
+        return HttpResponseForbidden(str(exc))
+    ctx = _progress_context(service, (request.GET.get("job") or "").strip())
+    resp = render(request, "procedure/partials/_package_progress.html", ctx)
+    # Всё сформировано → обновить таблицу запросов под модалкой (документы, PDF).
+    if not ctx["expired"] and not ctx["c"].get("running"):
+        resp["HX-Trigger"] = "reloadRequests"
+    return resp
 
 
 @login_required

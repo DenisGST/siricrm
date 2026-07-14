@@ -30,6 +30,22 @@ MAP = {
     "Запрос ИНОЕ.docx": ("req_other", "Запрос (иное)"),
     "Информационные письма в Банки.docx": ("req_bank", "Информационное письмо в банк"),
     "Информационные письма в Госорганы.docx": ("req_info_gov", "Информационное письмо в госорган"),
+    # Собраны из базовых командой build_request_templates (тело — по образцам юриста).
+    "Запрос в ЗАГС.docx": ("req_zags", "Запрос в ЗАГС (акты гражданского состояния)"),
+    "Запрос в ЛРР.docx": ("req_lrr", "Запрос в ЛРР (оружие)"),
+    "Запрос в центр занятости.docx": ("req_employment", "Запрос в центр занятости"),
+    "Уведомление должнику.docx": ("req_notice_debtor", "Уведомление должнику"),
+    "Уведомление кредиторам.docx": (
+        "req_notice_creditors", "Уведомление кредиторам о праве предъявления требований"),
+}
+
+# Один и тот же документ — на несколько типов: текст информационного письма
+# (ст. 213.25 / ст. 47 ФЗ об исп. производстве / ст. 213.8 / ст. 100) одинаков
+# и для Росреестра, и для приставов — это подтверждают образцы юриста.
+ALSO_BIND = {
+    "Информационные письма в Госорганы.docx": [
+        "req_rosreestr_info", "req_fssp_info", "req_ufssp_info",
+    ],
 }
 
 ORDER = {code: (i + 1) * 10 for i, code in enumerate(c for _, (c, _n) in MAP.items())}
@@ -79,6 +95,26 @@ class Command(BaseCommand):
             rt.save(update_fields=["template", "name", "updated_at"])
             loaded += 1
             self.stdout.write(self.style.SUCCESS(f"✓ {fname} → {code}"))
+
+        # Доп. привязка одного шаблона к нескольким типам (см. ALSO_BIND).
+        bound = 0
+        for fname, codes in ALSO_BIND.items():
+            src_code = MAP[fname][0]
+            src = RequestType.objects.filter(code=src_code).first()
+            if not (src and src.template_id):
+                self.stderr.write(self.style.WARNING(
+                    f"{fname}: у {src_code} нет шаблона — доп. привязка пропущена"))
+                continue
+            for code in codes:
+                rt = RequestType.objects.filter(code=code).first()
+                if not rt or (rt.template_id and not force):
+                    continue
+                rt.template = src.template
+                rt.save(update_fields=["template", "updated_at"])
+                bound += 1
+                self.stdout.write(self.style.SUCCESS(f"✓ {fname} → {code} (тот же шаблон)"))
+
         self.stdout.write(self.style.SUCCESS(
-            f"Готово: загружено {loaded}, пропущено {skipped}, нет файла {missing}."
+            f"Готово: загружено {loaded}, привязано повторно {bound}, "
+            f"пропущено {skipped}, нет файла {missing}."
         ))

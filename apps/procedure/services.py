@@ -303,26 +303,73 @@ def add_manual_milestone(
 
 # ── Запросы в госорганы ─────────────────────────────────────────────────────
 
+def debtor_display(client) -> str:
+    """ФИО должника — адресат уведомления должнику (не госорган, а сам клиент)."""
+    return " ".join(filter(None, [
+        client.last_name, client.first_name, client.patronymic,
+    ])).strip() if client else ""
+
+
+def case_creditors(service) -> list:
+    """Кредиторы должника из анкеты БФЛ — адресаты уведомления о праве
+    предъявления требований (по письму на каждого).
+
+    Единый источник — тот же `isk_context.resolve_creditors`, что и в исковом
+    (банки/МФО/маркетплейсы/коммуналка/суд/штрафы/прочее). Схлопываем дубли:
+    два кредита в одном банке = один кредитор = одно письмо.
+    Возвращает [(LegalEntity|None, name)] в порядке анкеты.
+    """
+    from apps.afd import isk_context
+    from apps.crm.models import LegalEntity
+
+    at = isk_context.answers_by_type(isk_context.latest_response(service))
+    out, seen = [], set()
+    for c in isk_context.resolve_creditors(at):
+        le = (LegalEntity.objects.filter(pk=c["le_id"]).first()
+              if c.get("le_id") else None)
+        name = ((le.short_name or le.name) if le else (c.get("name") or "").strip())
+        if not name or name == "—":
+            continue
+        key = str(le.pk) if le else name.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append((le, name))
+    return out
+
+
 @transaction.atomic
-def create_request(case, request_type, *, recipient=None, employee=None) -> Request:
+def create_request(case, request_type, *, recipient=None, employee=None,
+                   recipient_name=None) -> Request:
     """Создать запрос по типу.
 
     Адресат: явно переданный → авто-подбор по типу+региону/адресу/правилам →
-    госорган типа по умолчанию. Исходящий № присваивается сразу (сквозной по делу).
+    госорган типа по умолчанию. Для уведомления должнику госоргана нет —
+    в `recipient_name` пишем ФИО должника. Исходящий № присваивается сразу
+    (сквозной по делу).
     """
+    from .recipient_resolver import RequestTypeLookup, resolve_recipient
+
     rec = recipient
     if rec is None:
-        from .recipient_resolver import resolve_recipient
         res = resolve_recipient(request_type, case.service.client, case.service)
         rec = res["recipient"]
     rec = rec or request_type.default_recipient
+    name = recipient_name
+    if name is None:
+        if rec:
+            name = rec.short_name or rec.name
+        elif request_type.recipient_lookup == RequestTypeLookup.DEBTOR:
+            name = debtor_display(case.service.client)
+        else:
+            name = ""
     next_num = (case.requests.aggregate(m=Max("outgoing_number"))["m"] or 0) + 1
     return Request.objects.create(
         case=case,
         request_type=request_type,
         title=request_type.name,
         recipient=rec,
-        recipient_name=((rec.short_name or rec.name) if rec else ""),
+        recipient_name=name,
         response_days=request_type.response_days,
         outgoing_number=next_num,
         created_by=employee,
@@ -330,17 +377,41 @@ def create_request(case, request_type, *, recipient=None, employee=None) -> Requ
 
 
 @transaction.atomic
-def create_request_package(case, package, *, employee=None, recipients=None) -> list:
-    """Создать запросы по всем активным типам пакета.
+def create_creditor_notices(case, request_type, *, employee=None) -> list:
+    """Уведомление кредиторам — по отдельному письму на каждого кредитора дела."""
+    created = []
+    for le, name in case_creditors(case.service):
+        created.append(create_request(
+            case, request_type, recipient=le, recipient_name=name, employee=employee))
+    return created
 
-    `recipients` — необязательный dict {request_type_id: LegalEntity|None} с
-    выбранными в модалке адресатами (перекрывают авто-подбор для этих типов).
+
+@transaction.atomic
+def create_requests_for_type(case, request_type, *, recipient=None, employee=None) -> list:
+    """Создать запрос(ы) по типу: обычный тип → один, «кредиторы» → письмо каждому."""
+    from .recipient_resolver import RequestTypeLookup
+    if request_type.recipient_lookup == RequestTypeLookup.CREDITORS:
+        return create_creditor_notices(case, request_type, employee=employee)
+    return [create_request(case, request_type, recipient=recipient, employee=employee)]
+
+
+@transaction.atomic
+def create_request_package(case, package, *, employee=None, recipients=None,
+                           type_ids=None) -> list:
+    """Создать запросы по типам пакета.
+
+    `recipients` — dict {request_type_id: LegalEntity|None} с выбранными в модалке
+    адресатами (перекрывают авто-подбор).
+    `type_ids` — множество id отмеченных в модалке типов; None → все типы пакета.
+    Тип «уведомление кредиторам» разворачивается в письмо на каждого кредитора.
     """
     recipients = recipients or {}
     created = []
     for rt in package.types.filter(is_active=True).order_by("order"):
-        rec = recipients.get(str(rt.pk))
-        created.append(create_request(case, rt, recipient=rec, employee=employee))
+        if type_ids is not None and str(rt.pk) not in type_ids:
+            continue
+        created.extend(create_requests_for_type(
+            case, rt, recipient=recipients.get(str(rt.pk)), employee=employee))
     return created
 
 

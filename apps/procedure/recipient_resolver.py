@@ -146,6 +146,14 @@ def resolve_recipient(request_type, client, service=None):
     if lookup == RequestTypeLookup.NONE:
         return out(None, [], "none")
 
+    # Уведомления ФУ: адресат — не госорган, а сам должник или его кредиторы.
+    # Госорган не подбираем; кого ставить — решают services (ФИО должника /
+    # разворот в письмо на каждого кредитора из анкеты).
+    if lookup == RequestTypeLookup.DEBTOR:
+        return out(None, [], "debtor")
+    if lookup == RequestTypeLookup.CREDITORS:
+        return out(None, [], "creditors")
+
     # ФНС — точная инспекция по коду ИФНС из адреса клиента.
     if lookup == RequestTypeLookup.FNS and kind:
         addr = _pick_address(client)
@@ -195,3 +203,5 @@ class RequestTypeLookup:
     REGION = "region"
     FNS = "fns_by_address"
     MANUAL = "manual"
+    DEBTOR = "debtor"
+    CREDITORS = "creditors"

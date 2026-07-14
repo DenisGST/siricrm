@@ -25,6 +25,7 @@ urlpatterns = [
     path("service/<uuid:service_id>/requests/batch-delete/", views.request_batch_delete, name="request_batch_delete"),
     path("service/<uuid:service_id>/requests/package-modal/", views.request_package_modal, name="request_package_modal"),
     path("service/<uuid:service_id>/requests/package-add/", views.request_package_add, name="request_package_add"),
+    path("service/<uuid:service_id>/requests/package-progress/", views.package_progress, name="package_progress"),
     path("service/<uuid:service_id>/requests/envelopes/", views.case_envelopes, name="case_envelopes"),
     path("service/<uuid:service_id>/requests/<uuid:req_id>/envelope/", views.request_envelope, name="request_envelope"),
     path("service/<uuid:service_id>/requests/<uuid:req_id>/sent/", views.request_sent_form, name="request_sent_form"),

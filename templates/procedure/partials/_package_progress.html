@@ -1,0 +1,76 @@
+{% comment %}Прогресс формирования документов пакета. Контекст: service, job, items, c, expired.
+
+Подменяет собой содержимое модалки пакета после отправки формы и сам себя
+перезапрашивает (hx-trigger load delay), пока есть незавершённые позиции.
+Когда всё готово — поллинг прекращается (пустой hx-trigger), а вью отдаёт
+HX-Trigger=reloadRequests, и таблица запросов под модалкой обновляется.
+
+Модалку можно закрыть в любой момент — формирование идёт в Celery и продолжится.{% endcomment %}
+<div id="pkg-progress"
+     hx-get="{% url 'procedure:package_progress' service.id %}?job={{ job }}"
+     hx-trigger="{% if c.running %}load delay:1500ms{% endif %}"
+     hx-target="#pkg-progress" hx-swap="outerHTML">
+
+  {% if expired %}
+    <h3 class="font-bold text-lg mb-2">📦 Формирование документов</h3>
+    <p class="text-sm text-base-content/70">
+      Задание не найдено — вероятно, прошло больше часа. Запросы созданы; статус
+      документов виден в таблице «Запросы / Ответы».
+    </p>
+  {% else %}
+    <h3 class="font-bold text-lg mb-1">
+      {% if c.running %}⏳ Формирую документы…{% else %}✅ Документы сформированы{% endif %}
+    </h3>
+    <p class="text-xs text-base-content/60 mb-3">
+      Запросы уже созданы. Документы формируются в фоне — модалку можно закрыть,
+      формирование не прервётся.
+    </p>
+
+    <progress class="progress {% if c.error %}progress-warning{% else %}progress-success{% endif %} w-full"
+              value="{{ c.finished }}" max="{{ c.total }}"></progress>
+    <div class="flex flex-wrap gap-3 text-xs mt-1 mb-3">
+      <span><b>{{ c.finished }}</b> из <b>{{ c.total }}</b></span>
+      {% if c.done %}<span class="text-success">✓ готово: {{ c.done }}</span>{% endif %}
+      {% if c.skip %}<span class="text-base-content/60">— без документа: {{ c.skip }}</span>{% endif %}
+      {% if c.error %}<span class="text-error">✗ ошибок: {{ c.error }}</span>{% endif %}
+    </div>
+
+    <div class="overflow-x-auto" style="max-height:46vh">
+      <table class="table table-sm">
+        <tbody>
+        {% for it in items %}
+          <tr>
+            <td class="w-6 text-center">
+              {% if it.status == 'done' %}<span class="text-success">✓</span>
+              {% elif it.status == 'work' %}<span class="loading loading-spinner loading-xs"></span>
+              {% elif it.status == 'error' %}<span class="text-error">✗</span>
+              {% elif it.status == 'skip' %}<span class="text-base-content/40">—</span>
+              {% else %}<span class="text-base-content/30">·</span>{% endif %}
+            </td>
+            <td class="text-xs whitespace-nowrap">№ {{ it.number|default:"—" }}</td>
+            <td class="text-xs">
+              {{ it.title }}
+              <span class="text-base-content/50">→ {{ it.recipient }}</span>
+              {% if it.error %}<div class="text-error">{{ it.error }}</div>{% endif %}
+            </td>
+            <td class="text-xs text-right whitespace-nowrap text-base-content/60">
+              {% if it.status == 'done' %}документ готов
+              {% elif it.status == 'work' %}формируется…
+              {% elif it.status == 'skip' %}без документа
+              {% elif it.status == 'error' %}ошибка
+              {% else %}в очереди{% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% endif %}
+
+  <div class="modal-action">
+    <button type="button" class="btn btn-sm {% if not c.running %}btn-primary{% endif %}"
+            onclick="htmx.trigger(document.body, 'reloadRequests'); this.closest('dialog').remove()">
+      {% if c.running %}Закрыть (формирование продолжится){% else %}Готово{% endif %}
+    </button>
+  </div>
+</div>

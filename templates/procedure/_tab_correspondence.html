@@ -70,18 +70,16 @@
             </label>
             <div class="basis-full text-xs text-info" data-resolve-hint></div>
           </form>
-          <form class="flex flex-wrap items-end gap-2"
-                hx-get="{% url 'procedure:request_package_modal' service.id %}"
-                hx-target="body" hx-swap="beforeend">
-            <label class="form-control min-w-0">
-              <span class="label-text text-xs">Пакет запросов</span>
-              <select name="package" class="select select-bordered select-sm" required>
-                <option value="">— выберите пакет —</option>
-                {% for p in request_packages %}<option value="{{ p.pk }}">{{ p.name }} ({{ p.types.count }})</option>{% endfor %}
-              </select>
-            </label>
-            <button type="submit" class="btn btn-outline btn-sm">📦 Сформировать пакет…</button>
-          </form>
+          {% comment %}Пакет один — выбора пакета нет. Состав (что именно делать)
+            отмечается чекбоксами в самой модалке.{% endcomment %}
+          <div class="flex flex-wrap items-end gap-2">
+            <button type="button" class="btn btn-outline btn-sm"
+                    hx-get="{% url 'procedure:request_package_modal' service.id %}"
+                    hx-target="body" hx-swap="beforeend"
+                    title="Открыть список запросов и уведомлений — отметьте нужные">
+              📦 Сформировать пакет запросов
+            </button>
+          </div>
           <div class="flex flex-wrap items-end gap-2">
             <label class="form-control min-w-0">
               <span class="label-text text-xs">Конверты Почты РФ</span>

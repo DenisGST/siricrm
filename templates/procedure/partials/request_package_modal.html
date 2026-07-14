@@ -1,51 +1,119 @@
-{% comment %}Модалка формирования пакета запросов. Контекст: service, package, rows.
-Каждая строка — тип + авто-подобранный адресат (можно изменить/запомнить).
+{% comment %}Модалка формирования пакета запросов. Контекст: service, package, rows,
+case_ok/case_gaps (предпроверка общих сведений), ready_count.
+
+  • Сверху — предупреждение, если в деле/у должника/у ФУ чего-то не хватает.
+  • Чек строки: ЗЕЛЁНЫЙ — всё для формирования есть (данные + шаблон + адресат),
+    КРАСНЫЙ — чего-то не хватает (что именно — написано в строке).
+  • Адресат меняется через БОЛЬШУЮ модалку выбора госоргана (поиск + фильтры).
+    Ручная смена → появляется чек «запомнить адресата» и чек строки зеленеет.
+  • Уведомления: должнику — адресат сам клиент; кредиторам — письмо на каждого.
+
 Открывается hx-target=body hx-swap=beforeend; на успехе форма удаляет диалог.{% endcomment %}
 <dialog id="pkg-modal" class="modal modal-open">
-  <div class="modal-box w-full max-w-3xl">
-    <h3 class="font-bold text-lg mb-1">📦 Пакет: {{ package.name }}</h3>
+  <div class="modal-box w-full" style="max-width:min(1180px,96vw)">
+    <style>
+      /* Чек готовности позиции: красный по умолчанию, зелёный когда всё есть. */
+      #pkg-form .pkg-inc{--chkbg:#dc2626;border-color:#dc2626}
+      #pkg-form .pkg-inc:checked{background-color:#dc2626;border-color:#dc2626}
+      #pkg-form .pkg-inc.ready{--chkbg:#16a34a;border-color:#16a34a}
+      #pkg-form .pkg-inc.ready:checked{background-color:#16a34a;border-color:#16a34a}
+      /* Бокс адресата — кликабельный, как в форме одиночного запроса. */
+      #pkg-form .recip-box{cursor:pointer;line-height:1.15;min-height:2rem;height:auto;
+        padding-top:3px;padding-bottom:3px;display:flex;flex-direction:column;justify-content:center}
+      #pkg-form .recip-box:hover{border-color:#2563eb}
+    </style>
+
+    <h3 class="font-bold text-lg mb-1">📦 {{ package.name }}</h3>
     <p class="text-xs text-base-content/60 mb-3">
-      Адресаты подставлены автоматически по типу запроса и региону клиента.
-      Проверьте, при необходимости измените, отметьте «запомнить» — и создайте запросы.
+      Отмечены все позиции — снимите галочку с того, что делать не нужно.
+      <span class="text-success font-semibold">Зелёный чек</span> — всё для формирования есть,
+      <span class="text-error font-semibold">красный</span> — чего-то не хватает (указано в строке).
+      Адресат меняется кликом по полю.
     </p>
-    <form hx-post="{% url 'procedure:request_package_add' service.id %}" hx-swap="none"
-          hx-on::after-request="if(event.detail.successful) this.closest('dialog').remove()">
+
+    {% comment %} ── Предпроверка общих сведений дела ── {% endcomment %}
+    {% if not case_ok %}
+    <div class="alert alert-warning py-2 mb-3 text-xs items-start">
+      <span class="text-base leading-none">⚠</span>
+      <div>
+        <div class="font-semibold mb-1">В деле заполнены не все сведения — документы сформируются с пропусками.</div>
+        {% for g in case_gaps %}
+        <div><span class="font-medium">{{ g.name }}:</span>
+          {% for r in g.rows %}{{ r.label }} <span class="opacity-70">({{ r.note }})</span>{% if not forloop.last %}, {% endif %}{% endfor %}
+        </div>
+        {% endfor %}
+        <div class="mt-1 opacity-80">Данные должника правятся в карточке дела, реквизиты ФУ — в Справочниках.</div>
+      </div>
+    </div>
+    {% else %}
+    <div class="alert alert-success py-2 mb-3 text-xs">
+      <span>✓ Сведения о должнике, деле и финансовом управляющем заполнены.</span>
+    </div>
+    {% endif %}
+
+    {% comment %}Ответ — блок прогресса формирования; он заменяет содержимое модалки
+      (черновиков без документов не оставляем: документы формируются сразу, в Celery).{% endcomment %}
+    <form id="pkg-form" hx-post="{% url 'procedure:request_package_add' service.id %}"
+          hx-target="#pkg-modal .modal-box" hx-swap="innerHTML"
+          hx-disabled-elt="find button[type=submit]">
       {% csrf_token %}
-      <input type="hidden" name="package" value="{{ package.pk }}">
-      <div class="overflow-x-auto" style="max-height:60vh">
+      <div class="overflow-x-auto" style="max-height:56vh">
         <table class="table table-sm">
           <thead>
             <tr>
-              <th class="w-1/3">Тип запроса</th>
+              <th class="w-8"><input type="checkbox" id="pkg-all" class="checkbox checkbox-sm"
+                                     checked title="Отметить / снять все"></th>
+              <th style="width:30%">Запрос / уведомление</th>
               <th>Адресат</th>
               <th class="text-center whitespace-nowrap">Запомнить</th>
             </tr>
           </thead>
           <tbody>
           {% for row in rows %}
-            <tr>
-              <td class="text-xs align-top pt-3">{{ row.type.name }}</td>
+            <tr data-pkg-row
+                data-ok="{% if row.data_ok %}1{% else %}0{% endif %}"
+                data-needs-recip="{% if row.needs_recipient %}1{% else %}0{% endif %}">
+              <td class="align-top pt-3">
+                <input type="checkbox" name="include_{{ row.type.pk }}" value="1"
+                       class="checkbox checkbox-sm pkg-inc{% if row.ready %} ready{% endif %}" checked>
+              </td>
+              <td class="text-xs align-top pt-3">
+                {{ row.type.name }}
+                {% if row.issues %}
+                <div class="text-error mt-0.5" data-row-issues>⚠ {{ row.issues|join:"; " }}</div>
+                {% endif %}
+              </td>
               <td>
                 {% if row.lookup == 'none' %}
                   <span class="text-xs text-base-content/50">адресат не требуется (СМЭВ)</span>
+                {% elif row.lookup == 'debtor' or row.lookup == 'creditors' %}
+                  <span class="text-xs text-base-content/70">
+                    {% if row.lookup == 'debtor' %}должник: {% endif %}{{ row.note }}
+                  </span>
                 {% else %}
-                <div style="position:relative" data-ta>
-                  <input type="text" data-ta-input name="q_{{ row.type.pk }}" autocomplete="off"
-                         class="input input-bordered input-xs w-full"
-                         placeholder="подбор по типу и региону…" value="{{ row.recipient_name }}"
-                         data-ta-url="{% url 'procedure:recipient_search' service.id %}"
-                         oninput="taSearch(this)" onfocus="taSearch(this)">
-                  <input type="hidden" name="recipient_id_{{ row.type.pk }}" data-ta-id
-                         value="{% if row.recipient %}{{ row.recipient.pk }}{% endif %}">
-                  <input type="hidden" data-ta-param="type" value="{{ row.type.pk }}">
-                  <div data-ta-results style="position:absolute;top:100%;left:0;right:0;z-index:70"></div>
+                  {% comment %}Клик → большая модалка выбора госоргана (поиск+фильтры).{% endcomment %}
+                  <div class="input input-bordered input-sm recip-box"
+                       onclick="openRecipientPicker(this)"
+                       data-picker-url="{% url 'procedure:recipient_picker' service.id %}"
+                       data-type="{{ row.type.pk }}"
+                       title="Нажмите, чтобы выбрать госорган из справочника">
+                    <span data-recip-name class="truncate {% if not row.recipient %}text-base-content/40{% endif %}">
+                      {% if row.recipient %}{{ row.recipient_name }}{% else %}нажмите, чтобы выбрать адресата{% endif %}
+                    </span>
+                    <span data-recip-addr class="truncate text-xs text-base-content/50">{{ row.recipient_address }}</span>
+                    <input type="hidden" name="recipient_id_{{ row.type.pk }}" data-recip-id
+                           value="{% if row.recipient %}{{ row.recipient.pk }}{% endif %}">
+                  </div>
                   {% if row.hint %}<div class="text-xs text-info mt-0.5">{{ row.hint }}</div>{% endif %}
-                </div>
                 {% endif %}
               </td>
               <td class="text-center align-top pt-3">
                 {% if row.can_remember %}
-                  <input type="checkbox" name="remember_{{ row.type.pk }}" class="checkbox checkbox-xs" checked>
+                  {% comment %}Показывается только при ручной смене адресата (pkgRecipChanged).{% endcomment %}
+                  <label data-remember-wrap style="display:none"
+                         title="Запомнить адресата для региона/района — подставится следующим клиентам">
+                    <input type="checkbox" name="remember_{{ row.type.pk }}" class="checkbox checkbox-xs" checked>
+                  </label>
                 {% else %}
                   <span class="text-base-content/30">—</span>
                 {% endif %}
@@ -55,8 +123,18 @@
           </tbody>
         </table>
       </div>
-      <div class="modal-action">
-        <button type="submit" class="btn btn-primary btn-sm">Создать запросы ({{ rows|length }})</button>
+      <div class="modal-action items-center">
+        <span class="text-xs text-base-content/60 mr-auto">
+          готовы к формированию: <span id="pkg-ready" class="font-semibold">{{ ready_count }}</span> из {{ rows|length }}
+        </span>
+        <label class="label cursor-pointer gap-2 py-0" title="Вставить подпись и печать финуправляющего в документы">
+          <input type="checkbox" name="with_signature" value="1" class="checkbox checkbox-xs"
+                 {% if has_signature %}checked{% endif %}>
+          <span class="label-text text-xs">с подписью и печатью</span>
+        </label>
+        <button type="submit" class="btn btn-primary btn-sm">
+          Создать и сформировать (<span id="pkg-count">{{ rows|length }}</span>)
+        </button>
         <button type="button" class="btn btn-sm" onclick="this.closest('dialog').remove()">Отмена</button>
       </div>
     </form>
@@ -65,3 +143,64 @@
     <button onclick="this.closest('dialog').remove()">close</button>
   </form>
 </dialog>
+
+<script>
+{% comment %}IIFE — top-level const/let падал бы «already declared» при 2-м открытии модалки.{% endcomment %}
+(function () {
+  // Перекрасить чек строки: зелёный, если данные ок И адресат есть (где нужен).
+  window.pkgRowPaint = function (row) {
+    var cb = row.querySelector('.pkg-inc'); if (!cb) return;
+    var idEl = row.querySelector('[data-recip-id]');
+    var dataOk = row.getAttribute('data-ok') === '1';
+    var needs = row.getAttribute('data-needs-recip') === '1';
+    var hasRecip = !needs || !!(idEl && idEl.value);
+    var ready = dataOk && hasRecip;
+    cb.classList.toggle('ready', ready);
+    // Адресата выбрали — убрать про него замечание из строки.
+    var iss = row.querySelector('[data-row-issues]');
+    if (iss && hasRecip && dataOk) iss.remove();
+    pkgCount();
+  };
+
+  // Ручная смена адресата (клик в большой модалке) → «запомнить» + перекраска.
+  window.pkgRecipChanged = function (el) {
+    var row = el.closest('[data-pkg-row]'); if (!row) return;
+    var wrap = row.querySelector('[data-remember-wrap]');
+    if (wrap) {
+      wrap.style.display = '';
+      var cb = wrap.querySelector('input[type=checkbox]');
+      if (cb) cb.checked = true;
+    }
+    window.pkgRowPaint(row);
+  };
+
+  function pkgCount() {
+    var boxes = document.querySelectorAll('#pkg-form .pkg-inc');
+    var checked = document.querySelectorAll('#pkg-form .pkg-inc:checked');
+    var readyN = document.querySelectorAll('#pkg-form .pkg-inc.ready').length;
+    var c = document.getElementById('pkg-count');
+    if (c) c.textContent = checked.length;
+    var r = document.getElementById('pkg-ready');
+    if (r) r.textContent = readyN;
+    var all = document.getElementById('pkg-all');
+    if (all) all.checked = (boxes.length > 0 && checked.length === boxes.length);
+  }
+
+  var form = document.getElementById('pkg-form');
+  if (form) {
+    form.addEventListener('change', function (e) {
+      if (e.target && e.target.classList && e.target.classList.contains('pkg-inc')) pkgCount();
+    });
+  }
+  var allBox = document.getElementById('pkg-all');
+  if (allBox) {
+    allBox.addEventListener('change', function () {
+      document.querySelectorAll('#pkg-form .pkg-inc').forEach(function (c) {
+        c.checked = allBox.checked;
+      });
+      pkgCount();
+    });
+  }
+  pkgCount();
+})();
+</script>

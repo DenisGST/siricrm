@@ -154,6 +154,10 @@
       if (idEl) idEl.value = el.getAttribute('data-le-id') || '';
       if (inEl) inEl.value = el.getAttribute('data-le-name') || '';
       if (resEl) resEl.innerHTML = '';
+      // Значение выставлено программно → браузер сам 'change' не шлёт. Шлём вручную,
+      // иначе слушатели «адресата сменили вручную» (напр. чек «запомнить» в модалке
+      // пакета) не сработают при выборе из подсказки.
+      if (inEl) inEl.dispatchEvent(new Event('change', { bubbles: true }));
     };
 
     // Combobox с фильтром по первым буквам (опции уже отрендерены на клиенте).
@@ -267,23 +271,36 @@
     };
 
     // Открыть большую модалку выбора госоргана (фильтр по виду выбранного типа +
-    // региону клиента). data-picker-url + data-type-sel на боксе.
+    // региону клиента). Тип запроса — из data-type (модалка пакета: тип у каждой
+    // строки свой) либо из селекта data-type-sel (форма одиночного запроса).
+    // Бокс-инициатор запоминаем — в него вернём выбранное (см. pickRecipient).
     window.openRecipientPicker = function (box) {
       var url = box.getAttribute('data-picker-url'); if (!url) return;
-      var selId = box.getAttribute('data-type-sel');
-      var sel = selId && document.getElementById(selId);
-      var typeId = sel ? (sel.value || '') : '';
+      var typeId = box.getAttribute('data-type') || '';
+      if (!typeId) {
+        var selId = box.getAttribute('data-type-sel');
+        var sel = selId && document.getElementById(selId);
+        typeId = sel ? (sel.value || '') : '';
+      }
+      window._recipPickBox = box;
       window.htmx.ajax('GET', url + '?type=' + encodeURIComponent(typeId),
                        { target: 'body', swap: 'beforeend' });
     };
 
-    // Выбор строки в модалке: проставить id + бокс формы, закрыть модалку.
+    // Выбор строки в модалке: проставить id + бокс инициатора, закрыть модалку.
     window.pickRecipient = function (serviceId, leId, row) {
-      var idEl = document.getElementById('recip-id-' + serviceId);
-      var box = document.getElementById('recip-box-' + serviceId);
+      var name = row.getAttribute('data-name') || '';
+      var addr = row.getAttribute('data-addr') || '';
+      var box = window._recipPickBox || document.getElementById('recip-box-' + serviceId);
+      window._recipPickBox = null;
+      // hidden с id адресата: внутри бокса (строка пакета) либо рядом (форма запроса).
+      var idEl = (box && box.querySelector('[data-recip-id]'))
+                 || document.getElementById('recip-id-' + serviceId);
       if (idEl) idEl.value = leId;
-      _setRecipBox(box, row.getAttribute('data-name') || '', row.getAttribute('data-addr') || '', false);
+      _setRecipBox(box, name, addr, false);
       var dlg = document.getElementById('recip-picker'); if (dlg) dlg.remove();
+      // Строка пакета: адресата сменили вручную → «запомнить» + перекраска чека.
+      if (box && window.pkgRecipChanged) window.pkgRecipChanged(box);
     };
 
     // Запоминание раскрытия <details id=…> (чтобы htmx-перезагрузка фрагмента

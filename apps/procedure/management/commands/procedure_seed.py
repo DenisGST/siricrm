@@ -82,24 +82,36 @@ EVENT_TYPES = [
 # 🛑 ЗАГЛУШКА. Госорган по умолчанию и сроки уточняет юрист в Справочниках.
 REQUEST_TYPES = [
     ("req_rosreestr", "Запрос в Росреестр (недвижимость)", 30, 10),
+    ("req_rosreestr_info", "Информационное письмо в Росреестр", 30, 15),
     ("req_gibdd", "Запрос в ГИБДД/МРЭО (транспорт)", 30, 20),
     ("req_gostehnadzor", "Запрос в Гостехнадзор (самоходная техника)", 30, 30),
     ("req_gims", "Запрос в ГИМС (маломерные суда)", 30, 40),
     ("req_fns", "Запрос в ФНС (счета, доли, ИП, доходы)", 30, 50),
     ("req_sfr", "Запрос в СФР/ПФР (выплаты, СНИЛС, работодатели)", 30, 60),
     ("req_zags", "Запрос в ЗАГС (акты гражданского состояния)", 30, 70),
+    ("req_lrr", "Запрос в ЛРР (оружие)", 30, 75),
     ("req_bank", "Запрос в банк (счета, остатки, движение)", 30, 80),
     ("req_employment", "Запрос в центр занятости", 30, 90),
+    ("req_fssp_info", "Информационное письмо в ФССП (по месту жительства)", 30, 100),
+    ("req_ufssp_info", "Информационное письмо в УФССП (региональное управление)", 30, 105),
+    ("req_notice_debtor", "Уведомление должнику", 30, 120),
+    ("req_notice_creditors",
+     "Уведомление кредиторам о праве предъявления требований", 30, 130),
 ]
 
-# DRAFT-пакеты: (code, name, [type_codes], order)
+# Единый пакет запросов (выбор пакета из UI убран — он один).
+# 🛑 Состав задан юристом; правится в Справочниках → «Пакеты запросов».
 REQUEST_PACKAGES = [
-    ("pkg_basic", "Базовый пакет запросов",
-     ["req_rosreestr", "req_gibdd", "req_fns", "req_sfr", "req_zags", "req_bank"], 10),
-    ("pkg_full", "Расширенный пакет запросов",
-     ["req_rosreestr", "req_gibdd", "req_gostehnadzor", "req_gims", "req_fns",
-      "req_sfr", "req_zags", "req_bank", "req_employment"], 20),
+    ("pkg_main", "Пакет запросов БФЛ",
+     ["req_rosreestr", "req_rosreestr_info", "req_gibdd", "req_gims",
+      "req_gostehnadzor", "req_dmi", "req_fns", "req_fns_orgs", "req_sfr",
+      "req_zags", "req_lrr", "req_court", "req_employment", "req_bank",
+      "req_fssp_info", "req_ufssp_info",
+      "req_notice_debtor", "req_notice_creditors"], 10),
 ]
+
+# Пакеты, отменённые вместе с выбором пакета в UI.
+OBSOLETE_PACKAGES = ["pkg_basic", "pkg_full"]
 
 
 class Command(BaseCommand):
@@ -150,7 +162,11 @@ class Command(BaseCommand):
                 code=code,
                 defaults={"name": name, "order": order, "is_active": True, "is_draft": True},
             )
-            pkg.types.set([rtypes[tc] for tc in type_codes if tc in rtypes])
+            # Часть типов пакета заводит load_request_templates (req_dmi/req_court/…),
+            # поэтому ищем по всей таблице, а не только среди засеянных здесь.
+            in_db = {t.code: t for t in RequestType.objects.filter(code__in=type_codes)}
+            pkg.types.set([in_db[tc] for tc in type_codes if tc in in_db])
+        RequestPackage.objects.filter(code__in=OBSOLETE_PACKAGES).delete()
         self.stdout.write(self.style.SUCCESS(f"Пакеты запросов: {len(REQUEST_PACKAGES)}"))
 
         self.stdout.write(self.style.WARNING(

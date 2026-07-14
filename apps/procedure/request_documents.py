@@ -7,6 +7,7 @@
 import logging
 import re
 
+from django.core.cache import cache
 from django.db.models import Max
 from django.utils import timezone
 
@@ -16,6 +17,8 @@ from apps.crm import client_log
 from apps.files.folder_utils import _mk, get_or_create_root
 from apps.files.models import ClientFile, StoredFile
 from apps.files.s3_utils import download_file_from_s3, upload_file_to_s3
+
+from .recipient_resolver import RequestTypeLookup
 
 log = logging.getLogger(__name__)
 DOCX_CT = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
@@ -70,6 +73,10 @@ def build_request_context(req, *, marriage_cert="", gen_date=None) -> dict:
     rec_addr = ""
     if rec:
         rec_addr = rec.legal_address or rec.actual_address or rec.postal_address or ""
+    elif (req.request_type_id
+          and req.request_type.recipient_lookup == RequestTypeLookup.DEBTOR):
+        # Уведомление должнику: адресат — сам клиент, адрес берём из его карточки.
+        rec_addr = addr_reg
     return {
         # Должник
         "Фамилия": client.last_name or "", "Имя": client.first_name or "",
@@ -104,8 +111,14 @@ def _apply_signature(docx_bytes: bytes, am) -> bytes:
     """Вставить один PNG (подпись+печать вместе) в строку подписи ФУ — после
     «Финансовый управляющий», перед ФИО. Нет картинки — вернуть как есть."""
     import io
-    sig = (download_file_from_s3(am.signature_file.bucket, am.signature_file.key)
-           if am and am.signature_file_id else None)
+    sig = None
+    if am and am.signature_file_id:
+        try:
+            sig = download_file_from_s3(am.signature_file.bucket, am.signature_file.key)
+        except Exception:  # noqa: BLE001
+            # Картинка недоступна (нет прав/файла в S3) — документ важнее подписи:
+            # отдаём без неё, а не роняем всё формирование пакета.
+            log.exception("Не удалось скачать подпись ФУ %s — документ без подписи", am.pk)
     if not sig:
         return docx_bytes
     from docx import Document
@@ -164,35 +177,60 @@ _PH_MAP = [
 _AUTO_KEYS = {"Исх.№", "Исх.дата"}  # присваиваются автоматически при формировании
 
 
+def template_placeholders(tpl):
+    """Плейсхолдеры .docx-шаблона (кэш в Redis по StoredFile).
+
+    Нужен кэш: модалка пакета проверяет готовность сразу ~18 типов, а качать
+    столько .docx из S3 на каждое открытие — секунды ожидания. Шаблон меняется
+    редко и всегда через новый StoredFile → ключ по его id безопасен.
+    """
+    if not (tpl and tpl.stored_file_id):
+        return None
+    ckey = f"afd:tpl_ph:{tpl.stored_file_id}"
+    cached = cache.get(ckey)
+    if cached is not None:
+        return set(cached)
+    try:
+        from apps.afd.docx_engine import list_placeholders
+        tb = download_file_from_s3(tpl.stored_file.bucket, tpl.stored_file.key)
+        found = sorted(list_placeholders(tb))
+    except Exception:
+        log.exception("template_placeholders: не удалось прочитать шаблон %s", tpl.pk)
+        return None
+    cache.set(ckey, found, 60 * 60 * 24)
+    return set(found)
+
+
+def _check_key(ctx, key):
+    """Одно поле: заполнено ли и в верном ли формате."""
+    val = (ctx.get(key) or "").strip()
+    if key in _AUTO_KEYS:
+        return {"value": "присвоится автоматически", "ok": True, "note": ""}
+    if key == "свидетельство о браке":
+        return {"value": "", "ok": True, "note": "вводится в форме ниже"}
+    if not val:
+        return {"value": "", "ok": False, "note": "не заполнено"}
+    if key in ("ИНН", "ИНН АУ") and len(re.sub(r"\D", "", val)) not in (10, 12):
+        return {"value": val, "ok": False, "note": "неверный формат ИНН"}
+    if key in ("СНИЛС", "СНИЛС АУ") and len(re.sub(r"\D", "", val)) != 11:
+        return {"value": val, "ok": False, "note": "неверный формат СНИЛС"}
+    if key == "email арбитражного" and "@" not in val:
+        return {"value": val, "ok": False, "note": "неверный e-mail"}
+    return {"value": val, "ok": True, "note": ""}
+
+
 def check_request_data(req):
     """Предпроверка данных для подстановки: какие плейсхолдеры шаблона заполнены
     (ok) и каких нет / неверный формат. Возвращает (all_ok, groups)."""
     ctx = build_request_context(req)
     used = set(ctx.keys())
     tpl = req.request_type.template if req.request_type_id else None
-    if tpl and tpl.stored_file_id:
-        try:
-            from apps.afd.docx_engine import list_placeholders
-            tb = download_file_from_s3(tpl.stored_file.bucket, tpl.stored_file.key)
-            used = set(list_placeholders(tb))
-        except Exception:
-            log.exception("check_request_data: не удалось прочитать плейсхолдеры шаблона")
+    found = template_placeholders(tpl)
+    if found:
+        used = found
 
     def _check(key):
-        val = (ctx.get(key) or "").strip()
-        if key in _AUTO_KEYS:
-            return {"value": "присвоится автоматически", "ok": True, "note": ""}
-        if key == "свидетельство о браке":
-            return {"value": "", "ok": True, "note": "вводится в форме ниже"}
-        if not val:
-            return {"value": "", "ok": False, "note": "не заполнено"}
-        if key in ("ИНН", "ИНН АУ") and len(re.sub(r"\D", "", val)) not in (10, 12):
-            return {"value": val, "ok": False, "note": "неверный формат ИНН"}
-        if key in ("СНИЛС", "СНИЛС АУ") and len(re.sub(r"\D", "", val)) != 11:
-            return {"value": val, "ok": False, "note": "неверный формат СНИЛС"}
-        if key == "email арбитражного" and "@" not in val:
-            return {"value": val, "ok": False, "note": "неверный e-mail"}
-        return {"value": val, "ok": True, "note": ""}
+        return _check_key(ctx, key)
 
     groups, all_ok = [], True
     known = set()
@@ -218,6 +256,119 @@ def check_request_data(req):
             all_ok = all_ok and chk["ok"]
         groups.append({"name": "Прочее", "rows": rows})
     return all_ok, groups
+
+
+# Группы плейсхолдеров, не зависящие от типа запроса, — общие сведения дела.
+_CASE_GROUPS = ("Должник", "Финуправляющий (АУ)", "Дело и суд")
+# Опциональные группы: их пустота не мешает сформировать документ.
+_OPTIONAL_GROUPS = ("Супруг", "Исходящее")
+
+
+def _probe_request(case, rt=None, recipient=None):
+    """Несохранённый Request — чтобы прогнать build_request_context до создания."""
+    from . import services
+    from .models import Request
+    from .recipient_resolver import RequestTypeLookup
+
+    name = ""
+    if recipient is not None:
+        name = recipient.short_name or recipient.name
+    elif rt is not None and rt.recipient_lookup == RequestTypeLookup.DEBTOR:
+        name = services.debtor_display(case.service.client)
+    return Request(case=case, request_type=rt, recipient=recipient, recipient_name=name)
+
+
+def check_case_data(case):
+    """Общие сведения дела: должник / финуправляющий / дело и суд.
+
+    Возвращает (all_ok, groups) — в groups ТОЛЬКО пробелы (для предупреждения
+    в шапке модалки пакета). Плюс отдельно ловим отсутствие самого ФУ и его
+    подписи: без них документы формируются, но без блока подписи.
+    """
+    ctx = build_request_context(_probe_request(case))
+    groups, all_ok = [], True
+    for gname, items in _PH_MAP:
+        if gname not in _CASE_GROUPS:
+            continue
+        rows = []
+        for key, label in items:
+            chk = _check_key(ctx, key)
+            if chk["ok"]:
+                continue
+            chk["label"] = label
+            rows.append(chk)
+            all_ok = False
+        if rows:
+            groups.append({"name": gname, "rows": rows})
+
+    proc = _am_procedure(case)
+    am = proc.arbitr_manager if (proc and proc.arbitr_manager_id) else None
+    extra = []
+    if am is None:
+        extra.append({"label": "Финансовый управляющий",
+                      "value": "", "ok": False,
+                      "note": "не назначен в процедуре — реквизиты ФУ будут пустыми"})
+    elif not am.signature_file_id:
+        extra.append({"label": "Подпись и печать ФУ",
+                      "value": "", "ok": False,
+                      "note": "нет файла подписи — документ сформируется без неё"})
+    if extra:
+        all_ok = False
+        groups.append({"name": "Финуправляющий (АУ)", "rows": extra})
+    return all_ok, groups
+
+
+def check_request_ready(case, rt, recipient, *, creditors_count=None):
+    """Готовность ОДНОЙ позиции пакета: (ready, issues).
+
+    ready — можно сформировать документ: есть шаблон, определён адресат и
+    заполнены все плейсхолдеры шаблона. Данные супруга и исходящий № не в счёт
+    (первое опционально, второе присваивается автоматически).
+    """
+    from .recipient_resolver import RequestTypeLookup
+
+    lookup = rt.recipient_lookup
+    issues = []
+
+    tpl = rt.template if rt.template_id else None
+    if tpl is None:
+        issues.append("нет шаблона документа")
+
+    needs_recipient = lookup in (
+        RequestTypeLookup.REGION, RequestTypeLookup.FNS, RequestTypeLookup.MANUAL)
+    no_recipient = needs_recipient and recipient is None
+    if no_recipient:
+        issues.append("не выбран адресат")
+    if lookup == RequestTypeLookup.CREDITORS and creditors_count == 0:
+        issues.append("в анкете нет кредиторов")
+
+    ctx = build_request_context(_probe_request(case, rt, recipient))
+    used = template_placeholders(tpl)
+    if used is None:
+        used = set(ctx.keys())
+
+    # Адресат в {Адресат}/{Адрес} проверяем, только когда он вообще должен быть
+    # в документе: СМЭВ-заглушке адресат не нужен; письмам кредиторам он
+    # подставится при создании (по письму на каждого); а если адресата ещё не
+    # выбрали — про это уже сказано отдельной строкой, дублировать не надо.
+    skip_recipient_keys = (
+        no_recipient
+        or lookup in (RequestTypeLookup.NONE, RequestTypeLookup.CREDITORS)
+    )
+    missing = []
+    for gname, items in _PH_MAP:
+        if gname in _OPTIONAL_GROUPS:
+            continue
+        for key, label in items:
+            if key not in used:
+                continue
+            if skip_recipient_keys and key in ("Адресат", "Адрес"):
+                continue
+            if not _check_key(ctx, key)["ok"]:
+                missing.append(label)
+    if missing:
+        issues.append("не заполнено: " + ", ".join(missing))
+    return (not issues), issues
 
 
 def _has_image(p):
