@@ -145,3 +145,107 @@ def mark_overdue_requests():
         )
         count += 1
     return count
+
+
+# ── Разбор справки ФНС (вкладка «Активы») ───────────────────────────────────
+# 🛑 Парсинг PDF — тяжёлый CPU (секунды). В ASGI-процессе (daphne) такое уже
+# однажды вешало сервер (инцидент с WhatsApp-вебхуком), поэтому разбор идёт в
+# Celery, а UI поллит лог из Redis.
+
+FNS_TTL = 30 * 60  # полчаса — столько живёт незасохранённый разбор
+
+
+def fns_job_key(token: str) -> str:
+    return f"procedure:fns:{token}"
+
+
+def fns_file_key(token: str) -> str:
+    return f"procedure:fns:{token}:file"
+
+
+def fns_job(token: str) -> dict | None:
+    return cache.get(fns_job_key(token))
+
+
+def _fns_push(token: str, **patch):
+    job = cache.get(fns_job_key(token)) or {}
+    log_lines = job.get("log", [])
+    if "log_line" in patch:
+        log_lines.append(patch.pop("log_line"))
+    job.update(patch)
+    job["log"] = log_lines
+    cache.set(fns_job_key(token), job, FNS_TTL)
+
+
+@shared_task(name="procedure.parse_fns_document")
+def parse_fns_document(token: str, case_id: str):
+    """Разобрать загруженную справку ФНС. Шаги лога пишем в Redis — их поллит UI."""
+    from apps.procedure import fns_parser
+    from apps.procedure.assets import match_bank
+    from .models import BankruptcyCase
+
+    data = cache.get(fns_file_key(token))
+    if data is None:
+        _fns_push(token, status="failed", error="Файл не найден (истёк срок хранения). Загрузите заново.")
+        return
+
+    case = BankruptcyCase.objects.select_related("service__client__spouse").filter(id=case_id).first()
+    client = case.service.client if case else None
+
+    result = None
+    try:
+        for event in fns_parser.parse_stream(data):
+            if "result" in event:
+                result = event["result"]
+            else:
+                _fns_push(token, log_line=event)
+    except fns_parser.FnsParseError as exc:
+        _fns_push(token, status="failed", error=str(exc))
+        return
+    except Exception as exc:  # noqa: BLE001
+        log.exception("Разбор справки ФНС упал")
+        _fns_push(token, status="failed", error=f"Внутренняя ошибка разбора: {exc}")
+        return
+
+    # Сверка ФИО субъекта справки с карточкой клиента (должник) / супруга.
+    if client:
+        who = result["subject"]
+        person = client.spouse if who == "spouse" else client
+        expected = ""
+        if person:
+            expected = " ".join(filter(None, [person.last_name, person.first_name,
+                                              person.patronymic])).strip()
+        got = (result.get("subject_fio") or "").strip()
+        if not person:
+            _fns_push(token, log_line={
+                "log": "Справка по СУПРУГУ, но супруг(а) в карточке клиента не указан(а) — "
+                       "сведения сохранятся с пометкой «супруг(а)»", "warn": True})
+        elif expected and got and expected.lower().split() == got.lower().split():
+            _fns_push(token, log_line={"log": f"ФИО сверено с карточкой: {expected}", "ok": True})
+        else:
+            _fns_push(token, log_line={
+                "log": f"ФИО в справке «{got}» не совпадает с карточкой «{expected}» — проверьте, "
+                       f"тот ли это человек", "warn": True})
+
+    # Сопоставление банков с реестром — адресаты будущих запросов о выписках.
+    inns = {a["bank_inn"] for a in result["accounts"] if a["bank_inn"]}
+    matched, unknown = [], []
+    for inn in inns:
+        (matched if match_bank(inn) else unknown).append(inn)
+    if inns:
+        _fns_push(token, log_line={
+            "log": f"Банки сопоставлены с реестром: {len(matched)} из {len(inns)} по ИНН"
+                   + (f"; не найдены в реестре: {len(unknown)}" if unknown else ""),
+            "ok": not unknown, "warn": bool(unknown)})
+
+    _fns_push(token, status="done", result=result, summary={
+        "accounts": len(result["accounts"]),
+        "accounts_open": sum(1 for a in result["accounts"] if a["state"] in ("open", "granted")),
+        "banks": len(inns),
+        "incomes": len(result["incomes"]),
+        "realty": len(result["realty"]),
+        "land": len(result["land"]),
+        "vehicles": len(result["vehicles"]),
+        "other": len(result["admin"]) + len(result["legal_entities"])
+                 + (1 if result["has_tax_debt"] is not None else 0),
+    })

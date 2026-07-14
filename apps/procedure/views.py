@@ -54,7 +54,6 @@ from .permissions import require_procedures
 from apps.core.permissions import is_references_access
 
 PLACEHOLDER_TABS = {
-    "documents": "Документы",
     "creditors": "Кредиторы / РТК",
 }
 
@@ -1973,3 +1972,181 @@ def request_upload(request, service_id, req_id):
     req.generated_at = timezone.now()
     req.save(update_fields=["document_docx", "document_pdf", "generated_at", "updated_at"])
     return _req_trigger()
+
+
+# ── Вкладка «Активы» ────────────────────────────────────────────────────────
+# Загрузка справки ФНС (drag&drop / кнопка) → разбор в Celery с живым логом →
+# «Сохранить» раскладывает распознанное по разделам (счета, 2-НДФЛ, имущество).
+
+def _group_accounts(accounts):
+    """Счета — группами по банкам (ключ — ИНН: отделения Сбера/ВТБ идут в одну
+    группу, запрос выписки всё равно один на банк). Внутри группы — по номеру.
+    Группы: сперва должник, потом супруг; далее по названию банка."""
+    groups: dict[tuple, dict] = {}
+    for acc in accounts:
+        key = (acc.subject, acc.bank_inn or acc.bank_name)
+        group = groups.setdefault(key, {
+            "subject": acc.subject,
+            "subject_display": acc.get_subject_display(),
+            "bank_name": (acc.legal_entity.short_name or acc.legal_entity.name
+                          if acc.legal_entity else acc.bank_name),
+            "bank_inn": acc.bank_inn,
+            "legal_entity": acc.legal_entity,
+            "accounts": [],
+        })
+        group["accounts"].append(acc)
+    out = sorted(groups.values(), key=lambda g: (g["subject"] != "debtor", g["bank_name"].lower()))
+    for group in out:
+        group["accounts"].sort(key=lambda a: a.number)
+        group["open_count"] = sum(1 for a in group["accounts"] if a.is_open)
+    return out
+
+
+def _assets_context(case):
+    from .models import BankAccount, IncomeCertificate, LandPlot, OtherAsset, RealEstateObject, Vehicle
+    accounts = list(BankAccount.objects.filter(case=case)
+                    .select_related("legal_entity", "statement_request")
+                    .order_by("subject", "bank_name", "number"))
+    return {
+        "case": case,
+        "service": case.service,
+        "client": case.service.client,
+        "accounts": accounts,
+        "account_groups": _group_accounts(accounts),
+        "incomes": IncomeCertificate.objects.filter(case=case).order_by("-year", "agent_name"),
+        "realty": RealEstateObject.objects.filter(case=case).order_by("subject", "object_type"),
+        "land": LandPlot.objects.filter(case=case).order_by("subject", "address"),
+        "vehicles": Vehicle.objects.filter(case=case).order_by("subject", "model"),
+        "others": OtherAsset.objects.filter(case=case).order_by("kind", "title"),
+        "documents": (case.asset_documents.select_related("stored_file")
+                      .order_by("-created_at")),
+    }
+
+
+@never_cache
+@login_required
+@require_procedures
+def tab_assets(request, service_id):
+    try:
+        service = _bfl_service(request, service_id)
+    except _NotBFL as exc:
+        return HttpResponseForbidden(str(exc))
+    case = services.ensure_case(service)
+    return render(request, "procedure/_tab_assets.html", _assets_context(case))
+
+
+@login_required
+@require_procedures
+@require_POST
+def assets_upload(request, service_id):
+    """Приём файла: кладём в Redis, ставим разбор в Celery, отдаём модалку с логом."""
+    try:
+        service = _bfl_service(request, service_id)
+    except _NotBFL as exc:
+        return HttpResponseForbidden(str(exc))
+    case = services.ensure_case(service)
+
+    f = request.FILES.get("file")
+    if not f:
+        return HttpResponseBadRequest("Файл не передан")
+    if not f.name.lower().endswith(".pdf"):
+        return render(request, "procedure/_assets_parse_modal.html",
+                      {"service": service, "error": "Пока распознаём только PDF-справки ФНС."})
+    if f.size > 30 * 1024 * 1024:
+        return render(request, "procedure/_assets_parse_modal.html",
+                      {"service": service, "error": "Файл больше 30 МБ — это точно справка ФНС?"})
+
+    from .tasks import FNS_TTL, fns_file_key, fns_job_key, parse_fns_document
+
+    token = uuid.uuid4().hex
+    cache.set(fns_file_key(token), f.read(), FNS_TTL)
+    cache.set(fns_job_key(token), {
+        "status": "running", "filename": f.name, "size": f.size, "log": [],
+    }, FNS_TTL)
+    parse_fns_document.delay(token, str(case.id))
+
+    return render(request, "procedure/_assets_parse_modal.html",
+                  {"service": service, "token": token, "filename": f.name})
+
+
+@never_cache
+@login_required
+@require_procedures
+def assets_parse_progress(request, service_id, token):
+    """Лог разбора (поллинг из модалки, ~600 мс)."""
+    try:
+        service = _bfl_service(request, service_id)
+    except _NotBFL as exc:
+        return HttpResponseForbidden(str(exc))
+    from .tasks import fns_job
+
+    job = fns_job(token) or {"status": "failed", "error": "Разбор не найден — загрузите файл заново."}
+    return render(request, "procedure/_assets_parse_log.html",
+                  {"service": service, "token": token, "job": job,
+                   "done": job.get("status") in ("done", "failed")})
+
+
+@login_required
+@require_procedures
+@require_POST
+def assets_save(request, service_id, token):
+    """«Сохранить» — разложить распознанное по моделям + подшить исходник в S3."""
+    try:
+        service = _bfl_service(request, service_id)
+    except _NotBFL as exc:
+        return HttpResponseForbidden(str(exc))
+    case = services.ensure_case(service)
+
+    from .assets import save_parsed
+    from .tasks import fns_file_key, fns_job, fns_job_key
+
+    job = fns_job(token)
+    if not job or job.get("status") != "done" or not job.get("result"):
+        return HttpResponseBadRequest("Результат разбора не найден — загрузите файл заново.")
+
+    stored = None
+    data = cache.get(fns_file_key(token))
+    if data:
+        from apps.files.models import StoredFile
+        from apps.files.s3_utils import upload_file_to_s3
+        bucket, key = upload_file_to_s3(
+            data, prefix="procedure/assets", filename=job.get("filename", "fns.pdf"),
+            content_type="application/pdf",
+        )
+        stored = StoredFile.objects.create(
+            bucket=bucket, key=key, filename=job.get("filename", "fns.pdf"),
+            content_type="application/pdf", size=len(data),
+        )
+
+    save_parsed(case, job["result"], stored_file=stored,
+                filename=job.get("filename", ""), employee=_actor(request))
+
+    cache.delete(fns_job_key(token))
+    cache.delete(fns_file_key(token))
+    return render(request, "procedure/_tab_assets.html", _assets_context(case))
+
+
+@login_required
+@require_procedures
+@require_POST
+def assets_cancel(request, service_id, token):
+    """«Отмена» — выбросить незасохранённый разбор."""
+    from .tasks import fns_file_key, fns_job_key
+    cache.delete(fns_job_key(token))
+    cache.delete(fns_file_key(token))
+    return HttpResponse("")
+
+
+@login_required
+@require_procedures
+@require_POST
+def assets_document_delete(request, service_id, doc_id):
+    """Удалить документ-источник вместе со всеми распознанными из него записями."""
+    try:
+        service = _bfl_service(request, service_id)
+    except _NotBFL as exc:
+        return HttpResponseForbidden(str(exc))
+    case = services.ensure_case(service)
+    from .models import AssetDocument
+    get_object_or_404(AssetDocument, id=doc_id, case=case).delete()
+    return render(request, "procedure/_tab_assets.html", _assets_context(case))

@@ -1,0 +1,23 @@
+{% comment %}Модалка распознавания справки ФНС.
+  🛑 Открывается только через .showModal() (иначе рисуется ПОД контентом карточки).
+  Лог разбора тянется поллингом из Redis — сам разбор идёт в Celery.{% endcomment %}
+<dialog class="modal">
+  <div class="modal-box max-w-3xl">
+    <h3 class="font-bold text-base mb-2">🔍 Распознавание файла</h3>
+
+    {% if error %}
+      <div class="alert alert-error text-sm">{{ error }}</div>
+      <div class="modal-action">
+        <button class="btn btn-sm" onclick="this.closest('dialog').close()">Закрыть</button>
+      </div>
+    {% else %}
+      <div class="text-xs text-base-content/60 mb-2">{{ filename }}</div>
+      <div id="assets-log"
+           hx-get="{% url 'procedure:assets_parse_progress' service.id token %}"
+           hx-trigger="load, every 600ms"
+           hx-swap="outerHTML">
+        <span class="loading loading-spinner loading-sm"></span> Ставлю файл в разбор…
+      </div>
+    {% endif %}
+  </div>
+</dialog>

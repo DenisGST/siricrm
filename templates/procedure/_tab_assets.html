@@ -1,0 +1,391 @@
+{% comment %}Вкладка «Активы» — имущество и доходы должника (и супруга).
+  Наполняется распознаванием пакета ответов ФНС: дропзона → разбор в Celery с
+  живым логом → «Сохранить». Разделы: счета, 2-НДФЛ, недвижимость, земля,
+  транспорт, иное. Источники (загруженные справки) — внизу.{% endcomment %}
+<div id="procedure-assets" class="flex flex-col gap-3">
+  <style>
+    #procedure-assets .drop-zone{border:2px dashed #cbd5e1;border-radius:10px;padding:18px;
+      text-align:center;color:#64748b;background:#f8fafc;transition:background .12s,border-color .12s;cursor:pointer}
+    #procedure-assets .drop-zone:hover,#procedure-assets .drop-zone.hot{border-color:#2563eb;background:#eff6ff;color:#2563eb}
+    #procedure-assets .asset-th{font-weight:600;white-space:nowrap}
+    #procedure-assets table td{vertical-align:top}
+    #procedure-assets .sub-badge{font-size:10px;padding:1px 6px;border-radius:6px;background:#e2e8f0;color:#475569}
+    #procedure-assets .sub-badge.spouse{background:#fce7f3;color:#9d174d}
+    /* Счета сгруппированы по банкам: шапка группы + жирный разделитель между банками */
+    #procedure-assets .bank-group + .bank-group{border-top:2px solid #cbd5e1}
+    #procedure-assets .bank-head td{background:#f1f5f9;padding:5px 8px}
+    #procedure-assets .bank-head .bank-name{font-weight:700;margin-right:8px}
+    #procedure-assets .bank-head .bank-inn{font-size:11px;color:#64748b;margin-right:8px}
+  </style>
+
+  {% comment %} ── Загрузка справки ФНС ── {% endcomment %}
+  <div class="flex flex-col gap-2">
+    <div class="drop-zone" id="assets-drop">
+      <div class="text-sm font-semibold">Распознать файл</div>
+      <div class="text-xs mt-1">Перетащите сюда справку ФНС (PDF) — сведения о счетах, имуществе и доходах
+        распознаются автоматически</div>
+    </div>
+    <div>
+      <label class="btn btn-sm btn-primary">
+        Загрузить файл
+        <input type="file" id="assets-file" accept="application/pdf" style="display:none">
+      </label>
+      <span class="text-xs text-base-content/50 ml-2">PDF из личного кабинета ФНС (не скан)</span>
+    </div>
+  </div>
+
+  {% comment %} ── Расчётные счета ── {% endcomment %}
+  <details class="border border-base-300 rounded" {% if accounts %}open{% endif %}>
+    <summary class="px-3 py-2 cursor-pointer font-semibold bg-base-200 select-none rounded-t">
+      Расчётные счета <span class="badge badge-ghost badge-sm ml-1">{{ accounts|length }}</span>
+    </summary>
+    <div class="p-3 overflow-x-auto">
+      {% if account_groups %}
+        <table class="table table-xs">
+          <thead><tr>
+            <th class="asset-th">Номер счёта / ЭСП</th>
+            <th class="asset-th">Подразделение банка</th>
+            <th class="asset-th">БИК</th>
+            <th class="asset-th">Открыт</th>
+            <th class="asset-th">Закрыт</th>
+            <th class="asset-th">Состояние</th>
+            <th class="asset-th">Вид счёта</th>
+          </tr></thead>
+          {% comment %}Группа = банк (ключ — ИНН: отделения Сбера/ВТБ вместе,
+            запрос о выписке всё равно один на банк).{% endcomment %}
+          {% for g in account_groups %}
+            <tbody class="bank-group">
+              <tr class="bank-head">
+                <td colspan="7">
+                  <span class="bank-name">🏦 {{ g.bank_name }}</span>
+                  {% if g.bank_inn %}<span class="bank-inn">ИНН {{ g.bank_inn }}</span>{% endif %}
+                  <span class="badge badge-ghost badge-xs">{{ g.accounts|length }} сч. · действующих {{ g.open_count }}</span>
+                  {% if g.legal_entity %}
+                    <span class="badge badge-success badge-xs" title="Банк найден в реестре — есть адресат для запроса выписки">в реестре</span>
+                  {% else %}
+                    <span class="badge badge-warning badge-xs" title="Банка нет в реестре — адресата запроса придётся выбрать вручную">нет в реестре</span>
+                  {% endif %}
+                  <span class="sub-badge {% if g.subject == 'spouse' %}spouse{% endif %}">{{ g.subject_display }}</span>
+                </td>
+              </tr>
+              {% for a in g.accounts %}
+                <tr>
+                  <td class="font-mono">{{ a.number }}</td>
+                  <td class="text-xs">{{ a.bank_name }}</td>
+                  <td class="text-xs font-mono">{{ a.bank_bik }}</td>
+                  <td>{{ a.opened_date|date:"d.m.Y"|default:"—" }}</td>
+                  <td>{{ a.closed_date|date:"d.m.Y"|default:"—" }}</td>
+                  <td>
+                    {% if a.is_open %}
+                      <span class="badge badge-success badge-sm">{{ a.get_state_display }}</span>
+                    {% else %}
+                      <span class="badge badge-ghost badge-sm">{{ a.get_state_display|default:"—" }}</span>
+                    {% endif %}
+                  </td>
+                  <td>{{ a.account_kind|default:"—" }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          {% endfor %}
+        </table>
+      {% else %}
+        <div class="text-sm text-base-content/50">Счетов пока нет — загрузите справку ФНС.</div>
+      {% endif %}
+    </div>
+  </details>
+
+  {% comment %} ── 2-НДФЛ ── {% endcomment %}
+  <details class="border border-base-300 rounded">
+    <summary class="px-3 py-2 cursor-pointer font-semibold bg-base-200 select-none rounded-t">
+      2-НДФЛ (доходы) <span class="badge badge-ghost badge-sm ml-1">{{ incomes|length }}</span>
+    </summary>
+    <div class="p-3 overflow-x-auto">
+      {% if incomes %}
+        <table class="table table-xs">
+          <thead><tr>
+            <th class="asset-th">Год</th>
+            <th class="asset-th">Налоговый агент</th>
+            <th class="asset-th">ИНН</th>
+            <th class="asset-th">Доход</th>
+            <th class="asset-th">Налоговая база</th>
+            <th class="asset-th">Налог удержан</th>
+            <th class="asset-th">Чей</th>
+          </tr></thead>
+          <tbody>
+          {% for c in incomes %}
+            <tr>
+              <td class="font-semibold">{{ c.year }}</td>
+              <td>{{ c.agent_name }}</td>
+              <td class="text-xs">{{ c.agent_inn }}</td>
+              <td>{{ c.total_income|default:"—" }} ₽</td>
+              <td>{{ c.tax_base|default:"—" }}</td>
+              <td>{{ c.tax_withheld|default:"—" }}</td>
+              <td><span class="sub-badge {% if c.subject == 'spouse' %}spouse{% endif %}">{{ c.get_subject_display }}</span></td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      {% else %}
+        <div class="text-sm text-base-content/50">Справок 2-НДФЛ пока нет.</div>
+      {% endif %}
+    </div>
+  </details>
+
+  {% comment %} ── Объекты недвижимости ── {% endcomment %}
+  <details class="border border-base-300 rounded">
+    <summary class="px-3 py-2 cursor-pointer font-semibold bg-base-200 select-none rounded-t">
+      Объекты недвижимости <span class="badge badge-ghost badge-sm ml-1">{{ realty|length }}</span>
+    </summary>
+    <div class="p-3 overflow-x-auto">
+      {% if realty %}
+        <table class="table table-xs">
+          <thead><tr>
+            <th class="asset-th">Вид</th>
+            <th class="asset-th">Адрес</th>
+            <th class="asset-th">Площадь</th>
+            <th class="asset-th">Доля</th>
+            <th class="asset-th">Кадастровый №</th>
+            <th class="asset-th">Кад. стоимость</th>
+            <th class="asset-th">Владение</th>
+            <th class="asset-th">Чей</th>
+          </tr></thead>
+          <tbody>
+          {% for o in realty %}
+            <tr>
+              <td>{{ o.object_type }}</td>
+              <td class="text-xs">{{ o.address }}</td>
+              <td>{{ o.area }}</td>
+              <td>{{ o.share }}</td>
+              <td class="font-mono text-xs">{{ o.cadastral_number }}</td>
+              <td>{{ o.cadastral_value|default:"—" }}</td>
+              <td class="text-xs">
+                с {{ o.reg_date|date:"d.m.Y"|default:"—" }}
+                {% if o.dereg_date %}<br>по {{ o.dereg_date|date:"d.m.Y" }}{% endif %}
+              </td>
+              <td><span class="sub-badge {% if o.subject == 'spouse' %}spouse{% endif %}">{{ o.get_subject_display }}</span></td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      {% else %}
+        <div class="text-sm text-base-content/50">Объектов недвижимости не найдено.</div>
+      {% endif %}
+    </div>
+  </details>
+
+  {% comment %} ── Земельные участки ── {% endcomment %}
+  <details class="border border-base-300 rounded">
+    <summary class="px-3 py-2 cursor-pointer font-semibold bg-base-200 select-none rounded-t">
+      Земельные участки <span class="badge badge-ghost badge-sm ml-1">{{ land|length }}</span>
+    </summary>
+    <div class="p-3 overflow-x-auto">
+      {% if land %}
+        <table class="table table-xs">
+          <thead><tr>
+            <th class="asset-th">Категория</th>
+            <th class="asset-th">Адрес</th>
+            <th class="asset-th">Площадь</th>
+            <th class="asset-th">Доля</th>
+            <th class="asset-th">Кадастровый №</th>
+            <th class="asset-th">Кад. стоимость</th>
+            <th class="asset-th">Владение</th>
+            <th class="asset-th">Чей</th>
+          </tr></thead>
+          <tbody>
+          {% for o in land %}
+            <tr>
+              <td>{{ o.category }}</td>
+              <td class="text-xs">{{ o.address }}</td>
+              <td>{{ o.area }}</td>
+              <td>{{ o.share }}</td>
+              <td class="font-mono text-xs">{{ o.cadastral_number }}</td>
+              <td>{{ o.cadastral_value|default:"—" }}</td>
+              <td class="text-xs">
+                с {{ o.reg_date|date:"d.m.Y"|default:"—" }}
+                {% if o.dereg_date %}<br>по {{ o.dereg_date|date:"d.m.Y" }}{% endif %}
+              </td>
+              <td><span class="sub-badge {% if o.subject == 'spouse' %}spouse{% endif %}">{{ o.get_subject_display }}</span></td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      {% else %}
+        <div class="text-sm text-base-content/50">Земельных участков не найдено.</div>
+      {% endif %}
+    </div>
+  </details>
+
+  {% comment %} ── Транспорт ── {% endcomment %}
+  <details class="border border-base-300 rounded">
+    <summary class="px-3 py-2 cursor-pointer font-semibold bg-base-200 select-none rounded-t">
+      Транспорт <span class="badge badge-ghost badge-sm ml-1">{{ vehicles|length }}</span>
+    </summary>
+    <div class="p-3 overflow-x-auto">
+      {% if vehicles %}
+        <table class="table table-xs">
+          <thead><tr>
+            <th class="asset-th">Марка (модель)</th>
+            <th class="asset-th">Год</th>
+            <th class="asset-th">Мощность</th>
+            <th class="asset-th">Гос. номер</th>
+            <th class="asset-th">VIN</th>
+            <th class="asset-th">Владение</th>
+            <th class="asset-th">Чей</th>
+          </tr></thead>
+          <tbody>
+          {% for v in vehicles %}
+            <tr>
+              <td>{{ v.model }}<div class="text-xs text-base-content/50">{{ v.ownership_kind }}</div></td>
+              <td>{{ v.year }}</td>
+              <td>{{ v.power }}</td>
+              <td class="font-mono">{{ v.plate }}</td>
+              <td class="font-mono text-xs">{{ v.vin }}</td>
+              <td class="text-xs">
+                {% if v.is_owned %}
+                  <span class="badge badge-success badge-sm">в собственности</span>
+                {% else %}
+                  <span class="badge badge-ghost badge-sm">снят {{ v.dereg_date|date:"d.m.Y" }}</span>
+                {% endif %}
+              </td>
+              <td><span class="sub-badge {% if v.subject == 'spouse' %}spouse{% endif %}">{{ v.get_subject_display }}</span></td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      {% else %}
+        <div class="text-sm text-base-content/50">Транспортных средств не найдено.</div>
+      {% endif %}
+    </div>
+  </details>
+
+  {% comment %} ── Иное ── {% endcomment %}
+  <details class="border border-base-300 rounded">
+    <summary class="px-3 py-2 cursor-pointer font-semibold bg-base-200 select-none rounded-t">
+      Иное <span class="badge badge-ghost badge-sm ml-1">{{ others|length }}</span>
+    </summary>
+    <div class="p-3 flex flex-col gap-2">
+      {% for o in others %}
+        <div class="border border-base-200 rounded p-2">
+          <div class="text-sm font-semibold">
+            {{ o.title }}
+            <span class="badge badge-ghost badge-xs ml-1">{{ o.get_kind_display }}</span>
+            <span class="sub-badge {% if o.subject == 'spouse' %}spouse{% endif %} ml-1">{{ o.get_subject_display }}</span>
+          </div>
+          {% if o.details %}<pre class="text-xs whitespace-pre-wrap mt-1 text-base-content/70">{{ o.details }}</pre>{% endif %}
+        </div>
+      {% empty %}
+        <div class="text-sm text-base-content/50">Иных сведений нет.</div>
+      {% endfor %}
+    </div>
+  </details>
+
+  {% comment %} ── Источники (загруженные справки) ── {% endcomment %}
+  <details class="border border-base-300 rounded">
+    <summary class="px-3 py-2 cursor-pointer font-semibold bg-base-200 select-none rounded-t">
+      Загруженные справки <span class="badge badge-ghost badge-sm ml-1">{{ documents|length }}</span>
+    </summary>
+    <div class="p-3 overflow-x-auto">
+      {% if documents %}
+        <table class="table table-xs">
+          <thead><tr>
+            <th class="asset-th">Файл</th>
+            <th class="asset-th">Субъект</th>
+            <th class="asset-th">Сформирована</th>
+            <th class="asset-th">Налоговый орган</th>
+            <th class="asset-th">Загружено</th>
+            <th></th>
+          </tr></thead>
+          <tbody>
+          {% for d in documents %}
+            <tr>
+              <td>
+                {% if d.stored_file %}
+                  <a href="#" class="link link-primary"
+                     onclick="procPreview('{% url 'files:stored_download' d.stored_file.id %}?inline=1', '{{ d.filename|escapejs }}'); return false;">
+                    {{ d.filename }}
+                  </a>
+                {% else %}{{ d.filename }}{% endif %}
+              </td>
+              <td>
+                <span class="sub-badge {% if d.subject == 'spouse' %}spouse{% endif %}">{{ d.get_subject_display }}</span>
+                <div class="text-xs">{{ d.subject_fio }}</div>
+              </td>
+              <td>{{ d.formed_at|date:"d.m.Y"|default:"—" }}</td>
+              <td class="text-xs">{{ d.tax_authority }}</td>
+              <td class="text-xs">{{ d.created_at|date:"d.m.Y H:i" }}<br>{{ d.uploaded_by|default:"" }}</td>
+              <td>
+                <button class="btn btn-ghost btn-xs text-error"
+                        hx-post="{% url 'procedure:assets_document_delete' service.id d.id %}"
+                        hx-target="#procedure-assets" hx-swap="outerHTML"
+                        hx-confirm="Удалить справку и ВСЕ распознанные из неё записи (счета, имущество, доходы)?">
+                  Удалить
+                </button>
+              </td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      {% else %}
+        <div class="text-sm text-base-content/50">Справки ещё не загружались.</div>
+      {% endif %}
+    </div>
+  </details>
+
+  <div id="assets-modal-host"></div>
+</div>
+
+<script>
+(function () {
+  // 🛑 IIFE: партиал свопится HTMX-ом много раз, top-level const/let падали бы.
+  var root = document.getElementById('procedure-assets');
+  if (!root || root.dataset.wired) return;
+  root.dataset.wired = '1';
+
+  var url = "{% url 'procedure:assets_upload' service.id %}";
+  var token = (typeof csrftoken !== 'undefined' && csrftoken) ||
+              (document.querySelector('[name=csrfmiddlewaretoken]') || {}).value || '';
+  var drop = document.getElementById('assets-drop');
+  var input = document.getElementById('assets-file');
+  var host = document.getElementById('assets-modal-host');
+
+  function upload(file) {
+    if (!file) return;
+    var fd = new FormData();
+    fd.append('file', file);
+    fetch(url, {
+      method: 'POST',
+      headers: {'X-CSRFToken': token},
+      body: fd,
+      credentials: 'same-origin'
+    }).then(function (r) { return r.text(); }).then(function (html) {
+      host.innerHTML = html;
+      if (window.htmx) htmx.process(host);          // включить поллинг лога
+      var dlg = host.querySelector('dialog');
+      if (dlg) dlg.showModal();                      // 🛑 только showModal(), иначе модалка уедет под контент
+    });
+  }
+
+  // Закрыть модалку после «Отмена»/«Закрыть» (у «Сохранить» вкладка перерисуется целиком).
+  // 🛑 Слушатель здесь, а не в самой модалке: <script> внутри innerHTML не выполняется.
+  host.addEventListener('htmx:afterRequest', function (e) {
+    var el = e.detail && e.detail.elt;
+    if (el && el.dataset && el.dataset.closeModal) {
+      var dlg = host.querySelector('dialog');
+      if (dlg) dlg.close();
+      host.innerHTML = '';
+    }
+  });
+
+  ['dragenter', 'dragover'].forEach(function (ev) {
+    drop.addEventListener(ev, function (e) { e.preventDefault(); drop.classList.add('hot'); });
+  });
+  ['dragleave', 'drop'].forEach(function (ev) {
+    drop.addEventListener(ev, function (e) { e.preventDefault(); drop.classList.remove('hot'); });
+  });
+  drop.addEventListener('drop', function (e) {
+    upload(e.dataTransfer.files && e.dataTransfer.files[0]);
+  });
+  drop.addEventListener('click', function () { input.click(); });
+  input.addEventListener('change', function () { upload(input.files[0]); input.value = ''; });
+})();
+</script>

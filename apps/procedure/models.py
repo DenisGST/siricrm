@@ -699,3 +699,280 @@ class ArbitrationManager(TimeStampedModel):
         if self.sro_id and self.sro:
             return self.sro.name
         return self.sro_text or ""
+
+
+# ── Активы должника (вкладка «Активы») ──────────────────────────────────────
+# Наполняются парсером пакета ответов ФНС (fns_parser.py) и правятся вручную.
+# Субъект сведений — должник ИЛИ его супруг: ФНС отвечает и по супругу тоже
+# (в справке «Тип субъекта запроса: Супруг(супруга) должника ФЛ»).
+
+SUBJECT_DEBTOR = "debtor"
+SUBJECT_SPOUSE = "spouse"
+SUBJECT_CHOICES = [
+    (SUBJECT_DEBTOR, "Должник"),
+    (SUBJECT_SPOUSE, "Супруг(а)"),
+]
+
+
+class AssetDocument(TimeStampedModel):
+    """Загруженный документ-источник сведений об активах (пакет ответа ФНС).
+
+    Хранит исходный файл (S3) + сырой результат парсинга (`raw`) — чтобы можно
+    было переразобрать/сверить, не запрашивая ФНС повторно. Удаление документа
+    каскадом сносит все распознанные из него записи.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    case = models.ForeignKey(
+        "BankruptcyCase", on_delete=models.CASCADE,
+        related_name="asset_documents", verbose_name="Дело",
+    )
+    stored_file = models.ForeignKey(
+        "files.StoredFile", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="+", verbose_name="Файл",
+    )
+    filename = models.CharField("Имя файла", max_length=400, blank=True)
+
+    subject = models.CharField(
+        "Субъект сведений", max_length=10, choices=SUBJECT_CHOICES, default=SUBJECT_DEBTOR,
+    )
+    subject_fio = models.CharField("ФИО субъекта", max_length=255, blank=True)
+    subject_inn = models.CharField("ИНН субъекта", max_length=12, blank=True)
+    subject_birth_date = models.DateField("Дата рождения субъекта", null=True, blank=True)
+
+    debtor_fio = models.CharField("ФИО должника (по справке)", max_length=255, blank=True)
+    debtor_inn = models.CharField("ИНН должника (по справке)", max_length=12, blank=True)
+    court_name = models.CharField("Суд (по справке)", max_length=255, blank=True)
+    case_number = models.CharField("№ дела (по справке)", max_length=64, blank=True)
+
+    formed_at = models.DateField("Дата формирования сведений", null=True, blank=True)
+    tax_authority = models.CharField("Налоговый орган", max_length=400, blank=True)
+    has_tax_debt = models.BooleanField("Есть налоговая задолженность", null=True, blank=True)
+
+    raw = models.JSONField("Результат парсинга (сырой)", default=dict, blank=True)
+    uploaded_by = models.ForeignKey(
+        "core.Employee", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="+", verbose_name="Загрузил",
+    )
+
+    class Meta:
+        verbose_name = "Документ-источник (активы)"
+        verbose_name_plural = "Документы-источники (активы)"
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.filename or 'Ответ ФНС'} · {self.subject_fio}"
+
+
+class AssetRecordBase(TimeStampedModel):
+    """Общее для всех распознанных записей: дело, документ-источник, субъект."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    case = models.ForeignKey(
+        "BankruptcyCase", on_delete=models.CASCADE,
+        related_name="%(class)ss", verbose_name="Дело",
+    )
+    document = models.ForeignKey(
+        "AssetDocument", on_delete=models.CASCADE, null=True, blank=True,
+        related_name="%(class)ss", verbose_name="Источник",
+    )
+    subject = models.CharField(
+        "Субъект", max_length=10, choices=SUBJECT_CHOICES, default=SUBJECT_DEBTOR,
+    )
+    notes = models.TextField("Заметки", blank=True)
+
+    class Meta:
+        abstract = True
+
+
+class BankAccount(AssetRecordBase):
+    """Счёт / вклад / ЭСП из справки ФНС (ст. 86 НК).
+
+    Реквизиты банка идут прямо в справке (ИНН/КПП/БИК/адрес). `legal_entity` —
+    матч по ИНН в реестре `crm.LegalEntity` (адресат будущего запроса о выписке).
+    🛑 Один банк = несколько блоков (Сбербанк: головной + отделения; разные КПП
+    и БИК, один ИНН) — группировать для запроса надо по ИНН, не по блоку.
+    """
+    STATE_OPEN = "open"
+    STATE_CLOSED = "closed"
+    STATE_REVOKED = "revoked"          # прекращено право использования (ЭСП)
+    STATE_GRANTED = "granted"          # предоставлено право использования (ЭСП)
+    STATE_LIQUIDATED_BANK = "liq_bank" # в ликвидированном банке
+    STATE_CHOICES = [
+        (STATE_OPEN, "Открыт"),
+        (STATE_CLOSED, "Закрыт"),
+        (STATE_REVOKED, "Прекращено право использования"),
+        (STATE_GRANTED, "Предоставлено право использования"),
+        (STATE_LIQUIDATED_BANK, "В ликвидированном банке"),
+    ]
+
+    number = models.CharField("Номер счёта / ЭСП", max_length=32)
+    opened_date = models.DateField("Дата открытия", null=True, blank=True)
+    closed_date = models.DateField("Дата закрытия", null=True, blank=True)
+    state = models.CharField("Состояние", max_length=16, choices=STATE_CHOICES, blank=True)
+    state_text = models.CharField("Состояние (как в справке)", max_length=120, blank=True)
+    account_kind = models.CharField("Вид счёта", max_length=120, blank=True)
+
+    bank_name = models.CharField("Банк", max_length=400)
+    bank_inn = models.CharField("ИНН банка", max_length=12, blank=True)
+    bank_kpp = models.CharField("КПП банка", max_length=9, blank=True)
+    bank_bik = models.CharField("БИК банка", max_length=12, blank=True)
+    bank_regnum = models.CharField("РегНом/НомФ", max_length=32, blank=True)
+    bank_address = models.CharField("Адрес банка", max_length=500, blank=True)
+    legal_entity = models.ForeignKey(
+        "crm.LegalEntity", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="+", verbose_name="Банк в реестре",
+    )
+    statement_request = models.ForeignKey(
+        "Request", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="bank_accounts", verbose_name="Запрос выписки",
+    )
+
+    class Meta:
+        verbose_name = "Счёт в банке"
+        verbose_name_plural = "Счета в банках"
+        ordering = ["bank_name", "number"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["case", "subject", "number"], name="uniq_account_per_case_subject",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.number} · {self.bank_name}"
+
+    @property
+    def is_open(self) -> bool:
+        return self.state in (self.STATE_OPEN, self.STATE_GRANTED)
+
+
+class IncomeCertificate(AssetRecordBase):
+    """Справка о доходах 2-НДФЛ (КНД 1175018) — одна на пару «год + агент»."""
+    year = models.PositiveIntegerField("Год")
+    cert_date = models.DateField("Дата справки", null=True, blank=True)
+    agent_name = models.CharField("Налоговый агент", max_length=500)
+    agent_inn = models.CharField("ИНН агента", max_length=12, blank=True)
+    agent_kpp = models.CharField("КПП агента", max_length=9, blank=True)
+    oktmo = models.CharField("ОКТМО", max_length=11, blank=True)
+    total_income = models.DecimalField(
+        "Общая сумма дохода", max_digits=14, decimal_places=2, null=True, blank=True,
+    )
+    tax_base = models.DecimalField(
+        "Налоговая база", max_digits=14, decimal_places=2, null=True, blank=True,
+    )
+    tax_calculated = models.DecimalField(
+        "Налог исчислен", max_digits=14, decimal_places=2, null=True, blank=True,
+    )
+    tax_withheld = models.DecimalField(
+        "Налог удержан", max_digits=14, decimal_places=2, null=True, blank=True,
+    )
+    rows = models.JSONField("Доходы по месяцам", default=list, blank=True)
+
+    class Meta:
+        verbose_name = "Справка 2-НДФЛ"
+        verbose_name_plural = "Справки 2-НДФЛ"
+        ordering = ["-year", "agent_name"]
+
+    def __str__(self):
+        return f"2-НДФЛ {self.year} · {self.agent_name}"
+
+
+class RealEstateObject(AssetRecordBase):
+    """Объект недвижимости (раздел 1 сведений об объектах налогообложения)."""
+    object_type = models.CharField("Вид объекта", max_length=200, blank=True)
+    address = models.CharField("Адрес", max_length=600, blank=True)
+    area = models.CharField("Площадь (м²)", max_length=32, blank=True)
+    share = models.CharField("Доля в праве", max_length=32, blank=True)
+    cadastral_number = models.CharField("Кадастровый номер", max_length=64, blank=True)
+    cadastral_value = models.DecimalField(
+        "Кадастровая стоимость", max_digits=16, decimal_places=2, null=True, blank=True,
+    )
+    commissioned_date = models.DateField("Дата ввода в эксплуатацию", null=True, blank=True)
+    reg_date = models.DateField("Дата регистрации владения", null=True, blank=True)
+    dereg_date = models.DateField("Дата прекращения владения", null=True, blank=True)
+
+    class Meta:
+        verbose_name = "Объект недвижимости"
+        verbose_name_plural = "Объекты недвижимости"
+        ordering = ["object_type", "address"]
+
+    def __str__(self):
+        return f"{self.object_type} · {self.cadastral_number or self.address}"
+
+
+class LandPlot(AssetRecordBase):
+    """Земельный участок (раздел 2 сведений об объектах налогообложения)."""
+    category = models.CharField("Категория земли", max_length=200, blank=True)
+    address = models.CharField("Адрес", max_length=600, blank=True)
+    area = models.CharField("Площадь (м²)", max_length=32, blank=True)
+    share = models.CharField("Доля в праве", max_length=32, blank=True)
+    cadastral_number = models.CharField("Кадастровый номер", max_length=64, blank=True)
+    cadastral_value = models.DecimalField(
+        "Кадастровая стоимость", max_digits=16, decimal_places=2, null=True, blank=True,
+    )
+    reg_date = models.DateField("Дата регистрации владения", null=True, blank=True)
+    dereg_date = models.DateField("Дата прекращения владения", null=True, blank=True)
+
+    class Meta:
+        verbose_name = "Земельный участок"
+        verbose_name_plural = "Земельные участки"
+        ordering = ["address"]
+
+    def __str__(self):
+        return f"{self.cadastral_number or self.address}"
+
+
+class Vehicle(AssetRecordBase):
+    """Транспортное средство (раздел 3 сведений об объектах налогообложения)."""
+    ownership_kind = models.CharField("Вид собственности", max_length=200, blank=True)
+    year = models.CharField("Год выпуска", max_length=8, blank=True)
+    model = models.CharField("Марка (модель)", max_length=200, blank=True)
+    power = models.CharField("Мощность (л/с)", max_length=32, blank=True)
+    reg_authority = models.CharField("Регистрирующий орган", max_length=120, blank=True)
+    plate = models.CharField("Гос. рег. знак", max_length=32, blank=True)
+    vin = models.CharField("VIN / рег. номер", max_length=64, blank=True)
+    pts = models.CharField("ПТС", max_length=64, blank=True)
+    reg_date = models.DateField("Дата регистрации владения", null=True, blank=True)
+    dereg_date = models.DateField("Дата прекращения владения", null=True, blank=True)
+
+    class Meta:
+        verbose_name = "Транспортное средство"
+        verbose_name_plural = "Транспортные средства"
+        ordering = ["model"]
+
+    def __str__(self):
+        return f"{self.model} {self.year} · {self.plate}"
+
+    @property
+    def is_owned(self) -> bool:
+        """Владение не прекращено (в справке пусто в «Дата прекращения»)."""
+        return self.dereg_date is None
+
+
+class OtherAsset(AssetRecordBase):
+    """Прочие сведения из справки: участие в ЮЛ, налоговая задолженность,
+    административные правонарушения + ручные записи «иное»."""
+    KIND_LEGAL_ENTITY = "legal_entity"
+    KIND_TAX_DEBT = "tax_debt"
+    KIND_ADMIN_OFFENSE = "admin_offense"
+    KIND_OTHER = "other"
+    KIND_CHOICES = [
+        (KIND_LEGAL_ENTITY, "Участие в юридических лицах"),
+        (KIND_TAX_DEBT, "Задолженность по налогам"),
+        (KIND_ADMIN_OFFENSE, "Административное правонарушение"),
+        (KIND_OTHER, "Иное"),
+    ]
+
+    kind = models.CharField("Вид", max_length=20, choices=KIND_CHOICES, default=KIND_OTHER)
+    title = models.CharField("Наименование", max_length=400)
+    details = models.TextField("Подробности", blank=True)
+    amount = models.DecimalField(
+        "Сумма", max_digits=16, decimal_places=2, null=True, blank=True,
+    )
+    date = models.DateField("Дата", null=True, blank=True)
+
+    class Meta:
+        verbose_name = "Иной актив / сведение"
+        verbose_name_plural = "Иные активы / сведения"
+        ordering = ["kind", "title"]
+
+    def __str__(self):
+        return self.title

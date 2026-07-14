@@ -1,0 +1,81 @@
+{% comment %}Живой лог разбора справки ФНС (поллинг ~600 мс).
+  Пока не done — сам себя перезапрашивает (hx-swap=outerHTML на этом же div).
+  Когда разбор закончен — показывает сводку распознанного и кнопки.{% endcomment %}
+<div id="assets-log"
+     {% if not done %}
+       hx-get="{% url 'procedure:assets_parse_progress' service.id token %}"
+       hx-trigger="every 600ms" hx-swap="outerHTML"
+     {% endif %}>
+
+  <div class="bg-base-200 rounded p-2 text-xs font-mono" style="max-height:220px;overflow-y:auto">
+    {% for line in job.log %}
+      <div class="{% if line.ok %}text-success{% elif line.warn %}text-warning{% endif %}">
+        {% if line.ok %}✅{% elif line.warn %}⚠️{% else %}·{% endif %} {{ line.log }}
+      </div>
+    {% empty %}
+      <div class="text-base-content/50">Разбор запущен…</div>
+    {% endfor %}
+    {% if not done %}
+      <div class="mt-1"><span class="loading loading-dots loading-xs"></span></div>
+    {% endif %}
+  </div>
+
+  {% if job.status == 'failed' %}
+    <div class="alert alert-error text-sm mt-2">{{ job.error }}</div>
+    <div class="modal-action">
+      <button class="btn btn-sm"
+              hx-post="{% url 'procedure:assets_cancel' service.id token %}" hx-swap="none"
+              data-close-modal="1">Закрыть</button>
+    </div>
+
+  {% elif job.status == 'done' %}
+    {% with r=job.result s=job.summary %}
+      <div class="mt-3 flex flex-wrap gap-2 text-xs">
+        <span class="badge badge-primary">Счета: {{ s.accounts }} (действующих {{ s.accounts_open }})</span>
+        <span class="badge badge-ghost">Банков: {{ s.banks }}</span>
+        <span class="badge badge-ghost">2-НДФЛ: {{ s.incomes }}</span>
+        <span class="badge badge-ghost">Недвижимость: {{ s.realty }}</span>
+        <span class="badge badge-ghost">Земля: {{ s.land }}</span>
+        <span class="badge badge-ghost">Транспорт: {{ s.vehicles }}</span>
+        <span class="badge badge-ghost">Иное: {{ s.other }}</span>
+      </div>
+
+      <div class="mt-2 border border-base-300 rounded" style="max-height:260px;overflow-y:auto">
+        <table class="table table-xs">
+          <tbody>
+          {% for a in r.accounts %}
+            <tr>
+              <td class="font-mono">{{ a.number }}</td>
+              <td>{{ a.bank_name|truncatechars:38 }}</td>
+              <td class="text-xs">{{ a.state_text|default:"открыт" }}</td>
+              <td class="text-xs">{{ a.account_kind }}</td>
+            </tr>
+          {% endfor %}
+          {% for v in r.vehicles %}
+            <tr><td colspan="4" class="text-xs">🚗 {{ v.year }} {{ v.model }} · {{ v.plate }} · {{ v.vin }}</td></tr>
+          {% endfor %}
+          {% for o in r.realty %}
+            <tr><td colspan="4" class="text-xs">🏠 {{ o.object_type }} · {{ o.address|truncatechars:60 }} · {{ o.cadastral_value }} ₽</td></tr>
+          {% endfor %}
+          {% for o in r.land %}
+            <tr><td colspan="4" class="text-xs">🌱 {{ o.category }} · {{ o.address|truncatechars:60 }} · {{ o.cadastral_value }} ₽</td></tr>
+          {% endfor %}
+          {% for c in r.incomes %}
+            <tr><td colspan="4" class="text-xs">💰 2-НДФЛ {{ c.year }} · {{ c.agent_name|truncatechars:44 }} · {{ c.total_income }} ₽</td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      <div class="modal-action">
+        <button class="btn btn-sm"
+                hx-post="{% url 'procedure:assets_cancel' service.id token %}" hx-swap="none"
+                data-close-modal="1">Отмена</button>
+        <button class="btn btn-sm btn-primary"
+                hx-post="{% url 'procedure:assets_save' service.id token %}"
+                hx-target="#procedure-assets" hx-swap="outerHTML"
+                data-close-modal="1">Сохранить</button>
+      </div>
+    {% endwith %}
+  {% endif %}
+</div>

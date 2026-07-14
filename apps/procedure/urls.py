@@ -15,6 +15,13 @@ urlpatterns = [
     path("service/<uuid:service_id>/stages-bar/", views.stages_bar, name="stages_bar"),
     path("service/<uuid:service_id>/tab/court/", views.tab_court, name="tab_court"),
     path("service/<uuid:service_id>/tab/correspondence/", views.tab_correspondence, name="tab_correspondence"),
+    # Активы должника (распознавание справки ФНС)
+    path("service/<uuid:service_id>/tab/assets/", views.tab_assets, name="tab_assets"),
+    path("service/<uuid:service_id>/assets/upload/", views.assets_upload, name="assets_upload"),
+    path("service/<uuid:service_id>/assets/parse/<str:token>/", views.assets_parse_progress, name="assets_parse_progress"),
+    path("service/<uuid:service_id>/assets/parse/<str:token>/save/", views.assets_save, name="assets_save"),
+    path("service/<uuid:service_id>/assets/parse/<str:token>/cancel/", views.assets_cancel, name="assets_cancel"),
+    path("service/<uuid:service_id>/assets/doc/<uuid:doc_id>/delete/", views.assets_document_delete, name="assets_document_delete"),
     # Запросы (внутри «Корреспонденции»)
     path("service/<uuid:service_id>/requests/recipient-search/", views.recipient_search, name="recipient_search"),
     path("service/<uuid:service_id>/requests/picker/", views.recipient_picker, name="recipient_picker"),
