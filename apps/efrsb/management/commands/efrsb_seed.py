@@ -157,8 +157,8 @@ _SUBTYPE_TEXT_TEMPLATES = {
         "(ИНН {ИНН АУ}, СНИЛС {СНИЛС АУ}, адрес для корреспонденции: "
         "{Адрес арбитражного управляющего}, е-mail: {email арбитражного}, "
         "член {СРО полностью}). Судебное заседание назначено на "
-        "{дата следующего заседания}, {время заседания}, в помещении {арбитражный суд} "
-        "по адресу: {адрес суда}, каб. {кабинет}."
+        "{дата следующего заседания}, в помещении {арбитражный суд} "
+        "по адресу: {адрес суда}."
     ),
 }
 
@@ -195,7 +195,15 @@ def _build_skeleton_docx() -> bytes:
 class Command(BaseCommand):
     help = "Идемпотентный сидинг ЕФРСБ (заготовка-шаблон + ПОЛНЫЙ каталог типов из справочника + типы лога)."
 
+    def add_arguments(self, parser):
+        parser.add_argument(
+            "--force-templates", action="store_true",
+            help="Перезаписать текстовые шаблоны подтипов из сида "
+                 "(по умолчанию проставляются только если пусто — правки АУ не трогаем).",
+        )
+
     def handle(self, *args, **opts):
+        self.force_templates = bool(opts.get("force_templates"))
         self._cleanup_legacy()
         tpl = self._seed_template()
         self._load_message_types(tpl)
@@ -236,9 +244,12 @@ class Command(BaseCommand):
                 obj.name, changed = name, True
             if obj.is_active != (not is_old):
                 obj.is_active, changed = (not is_old), True
-            # шаблон проставляем только если пусто (не затираем правку АУ)
-            if not (obj.text_template or "").strip() and _SUBTYPE_TEXT_TEMPLATES.get(code):
-                obj.text_template, changed = _SUBTYPE_TEXT_TEMPLATES[code], True
+            # Шаблон проставляем только если пусто (не затираем правку АУ);
+            # с --force-templates перезаписываем из сида.
+            seed_tpl = _SUBTYPE_TEXT_TEMPLATES.get(code)
+            if seed_tpl and (self.force_templates or not (obj.text_template or "").strip()):
+                if obj.text_template != seed_tpl:
+                    obj.text_template, changed = seed_tpl, True
             if changed:
                 obj.save()
             stats["updated" if changed else "kept"] += 1

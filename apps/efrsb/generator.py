@@ -183,12 +183,8 @@ _LABELS = {
     "дата решения": "Дата решения суда (введение процедуры)",
     "срок процедуры": "Срок процедуры, мес.",
     "дата следующего заседания": "Дата следующего судебного заседания",
-    "время заседания": "Время судебного заседания",
-    "кабинет": "Кабинет суда",
 }
 _DIGIT_RULES = {"ИНН": (10, 12), "ИНН АУ": (10, 12), "СНИЛС": (11,), "СНИЛС АУ": (11,)}
-# Полей в CRM нет — АУ дописывает прямо в тексте (плейсхолдер остаётся видимым).
-_MANUAL_KEYS = {"время заседания", "кабинет"}
 
 
 def check_problems(case, message_type, subtype, *, procedure=None) -> list[dict]:
@@ -202,10 +198,6 @@ def check_problems(case, message_type, subtype, *, procedure=None) -> list[dict]
     for key in placeholders_in(tpl):
         val = str(ctx.get(key) or "").strip()
         label = _LABELS.get(key, key)
-        if key in _MANUAL_KEYS:
-            problems.append({"label": label,
-                             "note": "нет поля в CRM — впишите прямо в текст"})
-            continue
         if not val:
             problems.append({"label": label, "note": "не заполнено"})
             continue
