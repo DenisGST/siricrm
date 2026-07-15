@@ -56,8 +56,17 @@ def _build_court_event_text(case: ArbitrCase, new_events_detail: list) -> str:
     lines = [header]
     shown = new_events_detail[:MAX_EVENTS_IN_NOTIFY]
     for ev in shown:
-        name = (ev.get("title") or ev.get("kind") or "").strip() or "(без названия)"
-        lines.append(f"Новая запись: {name}")
+        kind = (ev.get("kind") or "").strip()          # тип акта
+        desc = (ev.get("description") or "").strip()    # суть/результат
+        date = (ev.get("date") or "").strip()
+        # Основная строка — ТИП акта (kind). title (.case-subject = судья/сторона)
+        # НЕ используем: kad кладёт туда ФИО судьи, а не описание записи.
+        label = kind or desc or "(без описания)"
+        date_part = f" ({date})" if date else ""
+        lines.append(f"Новая запись{date_part}: {label}")
+        # Суть/результат — отдельной строкой (если есть и не дублирует тип).
+        if desc and desc != label:
+            lines.append(desc)
         for att in ev.get("attachments") or []:
             fname = (att.get("name") or "").strip() or "файл"
             url = (att.get("kad_url") or "").strip()

@@ -160,8 +160,13 @@ def _persist_case_info(case: ArbitrCase, info: KadCaseInfo) -> dict:
     # Отдаём лёгкие dict'ы, а не ORM-объекты (переживают выход из функции).
     new_events_detail = [
         {
-            "title": ev_obj.title,
+            # kind — ТИП акта («Определение», «Информация о принятом судебном
+            # акте»), description — суть/результат. title (.case-subject) — это
+            # судья/сторона, в тексте уведомления как основную строку НЕ берём.
             "kind": ev_obj.kind,
+            "description": ev_obj.description,
+            "title": ev_obj.title,
+            "date": ev_obj.event_date.strftime("%d.%m.%Y") if ev_obj.event_date else "",
             "attachments": [
                 {
                     "name": (a.get("name") or "").strip(),
