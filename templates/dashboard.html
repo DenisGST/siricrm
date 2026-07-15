@@ -394,8 +394,16 @@
         <button type="submit" class="sidebar-item" title="Выйти">{% icon "log-out" size=22 %}</button>
       </form>
 
-      <div class="sidebar-avatar" title="{{ user.get_full_name|default:user.username }}">
-        {{ user.first_name|first }}
+      {% comment %}Кружок пользователя = вход в профиль. Фото, если аватар загружен,
+      иначе первая буква имени. Обновляется out-of-band из _profile_avatar.html.{% endcomment %}
+      <div id="sidebar-avatar" class="sidebar-avatar"
+           title="{{ user.get_full_name|default:user.username }} — мой профиль"
+           hx-get="{% url 'core:profile' %}" hx-target="#content-area" hx-swap="innerHTML">
+        {% if user.employee.avatar_url %}
+          <img src="{{ user.employee.avatar_url }}" alt="Аватар">
+        {% else %}
+          {{ user.first_name|first }}
+        {% endif %}
       </div>
     </div>
   </nav>

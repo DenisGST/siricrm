@@ -172,6 +172,13 @@ can_edit_finance) не уходили в POST.{% endcomment %}
       {% endif %}
 
       <div class="modal-action">
+        {% comment %}Пароль и аватар сотрудника живут в профиле — открываем его
+        в #content-area и закрываем модалку.{% endcomment %}
+        <button type="button" class="btn btn-sm btn-ghost mr-auto"
+                title="Пароль, аватар, ФИО и мобильный этого сотрудника"
+                hx-get="{% url 'core:profile_view' emp.pk %}"
+                hx-target="#content-area" hx-swap="innerHTML"
+                onclick="this.closest('dialog').remove()">Профиль ↗</button>
         <button type="submit" class="btn btn-primary btn-sm">Сохранить</button>
         <button type="button" class="btn btn-sm" onclick="this.closest('dialog').remove()">Отмена</button>
       </div>

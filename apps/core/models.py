@@ -187,6 +187,9 @@ class Employee(models.Model):
     patronymic = models.CharField("Отчество", max_length=255, blank=True)
     phone_mobile = models.CharField("Мобильный телефон", max_length=20, blank=True)
     phone_internal = models.CharField("Внутренний номер", max_length=10, blank=True)
+    # Аватар лежит в S3 (media-бакет), тут — только ключ. FileField не годится:
+    # MEDIA_ROOT не смонтирован volume'ом, файл пропал бы при рестарте контейнера.
+    avatar_key = models.CharField("Аватар (ключ в S3)", max_length=255, blank=True)
     is_active = models.BooleanField("Активен", default=True)
     is_online = models.BooleanField(default=False, verbose_name='Онлайн')
     is_owner = models.BooleanField(
@@ -248,6 +251,34 @@ class Employee(models.Model):
     def __str__(self):
         return f"{self.user.get_full_name() or self.user.username} ({self.department})"
 
+    @property
+    def avatar_url(self):
+        """Pre-signed ссылка на аватар в S3 (или None, если не загружен).
+
+        Ссылка живёт час, поэтому кэшируем её в Redis чуть меньше (50 мин):
+        аватар рисуется в сайдбаре на каждой странице, генерировать подпись
+        на каждый рендер незачем. Ключ кэша включает avatar_key — при замене
+        аватара старая ссылка автоматически перестаёт использоваться.
+        """
+        if not self.avatar_key:
+            return None
+        from django.core.cache import cache
+        from apps.files.s3_utils import get_presigned_url
+
+        ck = f"emp:avatar_url:{self.pk}:{self.avatar_key}"
+        url = cache.get(ck)
+        if not url:
+            url = get_presigned_url(
+                settings.AWS_STORAGE_BUCKET_NAME, self.avatar_key, expiration=3600,
+            )
+            if url:
+                cache.set(ck, url, 3000)
+        return url
+
+    @property
+    def initials(self):
+        """Фолбэк вместо аватара: первая буква имени (как было в сайдбаре)."""
+        return (self.user.first_name or self.user.username or "?")[:1].upper()
 
 
 class EmployeeLog(models.Model):

@@ -366,3 +366,32 @@ class ActionTypeForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         if self.instance.pk is None:
             self.fields["is_manual"].initial = True
+
+
+class ProfileForm(forms.ModelForm):
+    """Профиль сотрудника: ФИО + мобильный. Сотрудник правит это сам.
+
+    Внутренний номер, отдел и роль сюда намеренно не входят — их назначает
+    админ в модалке сотрудника, в профиле они только показываются.
+    """
+    last_name = forms.CharField(max_length=150, label="Фамилия")
+    first_name = forms.CharField(max_length=150, label="Имя")
+
+    class Meta:
+        model = Employee
+        fields = ["patronymic", "phone_mobile"]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.instance and self.instance.pk:
+            self.fields["last_name"].initial = self.instance.user.last_name
+            self.fields["first_name"].initial = self.instance.user.first_name
+
+    def save(self, commit=True):
+        emp = super().save(commit=False)
+        emp.user.last_name = self.cleaned_data["last_name"]
+        emp.user.first_name = self.cleaned_data["first_name"]
+        emp.user.save(update_fields=["last_name", "first_name"])
+        if commit:
+            emp.save()
+        return emp

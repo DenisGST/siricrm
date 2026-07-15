@@ -1,0 +1,10 @@
+{% comment %}Заголовок сортируемой колонки. Ждёт col (ключ сортировки) и title (подпись).
+hx-include подмешивает текущие фильтры — иначе клик по колонке сбрасывал бы поиск,
+отдел, роль и «показывать уволенных».{% endcomment %}
+<th class="cursor-pointer select-none"
+    hx-get="{% url 'core:admin_employees' %}?sort={{ col }}&dir={% if sort == col and dir == 'asc' %}desc{% else %}asc{% endif %}"
+    hx-include="#emp-filter-form"
+    hx-target="#employees-list" hx-swap="outerHTML">
+  {{ title }}
+  {% if sort == col %}{% if dir == "asc" %}↑{% else %}↓{% endif %}{% endif %}
+</th>

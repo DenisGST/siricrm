@@ -4,6 +4,16 @@ from . import views
 app_name = 'core'
 
 urlpatterns = [
+    # Профиль сотрудника. `profile` без pk — свой (вход из сайдбара); остальные
+    # эндпоинты всегда по pk — для себя это тот же путь (is_self определяется
+    # в _profile_target), чужой профиль пустит только админа.
+    path('profile/', views.profile, name='profile'),
+    path('profile/<int:pk>/', views.profile, name='profile_view'),
+    path('profile/<int:pk>/save/', views.profile_save, name='profile_save'),
+    path('profile/<int:pk>/password/', views.profile_password, name='profile_password'),
+    path('profile/<int:pk>/avatar/', views.profile_avatar, name='profile_avatar'),
+    path('profile/<int:pk>/avatar/delete/', views.profile_avatar_delete, name='profile_avatar_delete'),
+
     path('icons/', views.icons_gallery, name='icons_gallery'),
     path('monitoring/', views.monitoring_dashboard, name='monitoring_dashboard'),
     path('monitoring/api/', views.monitoring_api, name='monitoring_api'),

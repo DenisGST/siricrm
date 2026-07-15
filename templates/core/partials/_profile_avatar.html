@@ -1,0 +1,60 @@
+{% comment %}Блок аватара. Перерисовывает сам себя (#profile-avatar-block) после
+загрузки/удаления. Если правим СВОЙ профиль — заодно out-of-band обновляем кружок
+в сайдбаре, иначе новое фото появилось бы только после перезагрузки страницы.{% endcomment %}
+<div id="profile-avatar-block" class="card bg-base-100 shadow-sm">
+  <div class="card-body p-4">
+    <div class="flex items-center gap-4">
+
+      <div class="profile-avatar">
+        {% if emp.avatar_url %}
+          <img src="{{ emp.avatar_url }}" alt="Аватар">
+        {% else %}
+          <span>{{ emp.initials }}</span>
+        {% endif %}
+      </div>
+
+      <div class="flex-1">
+        <h3 class="font-semibold text-sm mb-1">Аватар</h3>
+        <p class="text-xs text-base-content/50 mb-2">
+          JPG, PNG или WebP, до 5 МБ. Обрежем по центру в квадрат.
+        </p>
+
+        <form hx-post="{% url 'core:profile_avatar' emp.pk %}"
+              hx-target="#profile-avatar-block" hx-swap="outerHTML"
+              hx-encoding="multipart/form-data"
+              class="flex flex-wrap items-center gap-2">
+          {% csrf_token %}
+          <input type="file" name="avatar" accept="image/*" required
+                 class="file-input file-input-bordered file-input-sm max-w-xs">
+          <button type="submit" class="btn btn-sm btn-primary">Загрузить</button>
+          {% if emp.avatar_key %}
+            <button type="button" class="btn btn-sm btn-ghost text-error"
+                    hx-post="{% url 'core:profile_avatar_delete' emp.pk %}"
+                    hx-target="#profile-avatar-block" hx-swap="outerHTML"
+                    hx-confirm="Удалить аватар?">Удалить</button>
+          {% endif %}
+        </form>
+
+        {% if error %}
+          <div class="alert alert-error text-xs py-2 mt-2">{{ error }}</div>
+        {% elif saved %}
+          <div class="alert alert-success text-xs py-2 mt-2">Аватар обновлён.</div>
+        {% endif %}
+      </div>
+
+    </div>
+  </div>
+</div>
+
+{% if is_self %}
+  {% comment %}OOB: тот же кружок в сайдбаре (id совпадает с dashboard.html).{% endcomment %}
+  <div id="sidebar-avatar" hx-swap-oob="true"
+       class="sidebar-avatar" title="{{ emp.user.get_full_name|default:emp.user.username }}"
+       hx-get="{% url 'core:profile' %}" hx-target="#content-area" hx-swap="innerHTML">
+    {% if emp.avatar_url %}
+      <img src="{{ emp.avatar_url }}" alt="Аватар">
+    {% else %}
+      {{ emp.initials }}
+    {% endif %}
+  </div>
+{% endif %}

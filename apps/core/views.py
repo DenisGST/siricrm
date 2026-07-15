@@ -252,7 +252,19 @@ def admin_department_delete(request, pk):
 
 @user_passes_test(is_admin)
 def admin_employees(request):
-    sort = request.GET.get("sort", "user__last_name")
+    """Список сотрудников: фильтры (поиск/отдел/роль) + сортировка по колонкам.
+
+    Уволенные по умолчанию скрыты (их больше половины таблицы) — показываются
+    отдельным чекбоксом «Показывать уволенных».
+
+    🛑 Сортировка и фильтры не должны затирать друг друга: сортировка колонки
+    шлёт sort/dir в URL и подмешивает поля формы фильтров через hx-include,
+    а поля фильтров — наоборот. Поэтому sort/dir в форме НЕ дублируем (иначе
+    в запросе оказалось бы два параметра sort).
+    """
+    from django.db.models import Q
+
+    sort = request.GET.get("sort", "name")
     direction = request.GET.get("dir", "asc")
     allowed_sorts = {
         "name": "user__last_name",
@@ -265,16 +277,49 @@ def admin_employees(request):
     order_field = allowed_sorts.get(sort, "user__last_name")
     if direction == "desc":
         order_field = f"-{order_field}"
-    # Показываем всех — и работающих, и уволенных (статус виден в таблице).
-    employees = (
-        Employee.objects
-        .select_related("user", "department", "dashboard_config")
-        .order_by(order_field)
-    )
+
+    q = (request.GET.get("q") or "").strip()
+    dept_id = (request.GET.get("department") or "").strip()
+    role = (request.GET.get("role") or "").strip()
+    # Незачеканный чекбокс браузер не отправляет вовсе → уволенные скрыты.
+    show_dismissed = (request.GET.get("show_dismissed") or "") in ("on", "1", "true")
+
+    employees = Employee.objects.select_related("user", "department", "dashboard_config")
+    if not show_dismissed:
+        employees = employees.filter(is_active=True)
+    if q:
+        # По каждому слову отдельно: «Иванов Пётр» должен находиться,
+        # хотя фамилия и имя лежат в разных полях.
+        for word in q.split():
+            employees = employees.filter(
+                Q(user__last_name__icontains=word)
+                | Q(user__first_name__icontains=word)
+                | Q(patronymic__icontains=word)
+                | Q(user__username__icontains=word)
+                | Q(phone_mobile__icontains=word)
+                | Q(phone_internal__icontains=word)
+            )
+    if dept_id:
+        employees = employees.filter(department_id=dept_id)
+    if role:
+        employees = employees.filter(role=role)
+    employees = employees.order_by(order_field)
+
+    total = Employee.objects.count()
+    dismissed_total = Employee.objects.filter(is_active=False).count()
     return render(request, "core/partials/admin_employees.html", {
         "employees": employees,
         "sort": sort,
         "dir": direction,
+        "q": q,
+        "dept_id": dept_id,
+        "role": role,
+        "show_dismissed": show_dismissed,
+        "departments": Department.objects.order_by("name"),
+        "role_choices": Employee.ROLE_CHOICES,
+        "total": total,
+        "dismissed_total": dismissed_total,
+        "is_filtered": bool(q or dept_id or role),
     })
 
 
@@ -1064,3 +1109,142 @@ def session_login(request):
     auth_login(request, user)
     request.session["last_activity"] = timezone.now().timestamp()
     return JsonResponse({"ok": True, "username": user.get_username()})
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Профиль сотрудника: ФИО, мобильный, пароль, аватар.
+#
+# Свой профиль правит каждый; чужой — только админ (тогда пароль ставится без
+# ввода старого: админ его не знает, это штатный SetPasswordForm как в
+# django-admin). Аватар лежит в S3, см. apps/core/avatar.py.
+# ─────────────────────────────────────────────────────────────────────────────
+from django.contrib.auth import update_session_auth_hash
+from django.contrib.auth.decorators import login_required
+from django.contrib.auth.forms import PasswordChangeForm, SetPasswordForm
+
+from apps.core.avatar import AvatarError, clear_avatar, set_avatar
+from apps.core.forms import ProfileForm
+
+
+def _profile_target(request, pk=None):
+    """(employee, is_self) для профиля. Чужой профиль — только админу."""
+    own = Employee.objects.filter(user=request.user).select_related(
+        "user", "department").first()
+    if pk is None:
+        if not own:
+            return None, True
+        return own, True
+    emp = get_object_or_404(
+        Employee.objects.select_related("user", "department"), pk=pk)
+    if own and emp.pk == own.pk:
+        return emp, True
+    if not is_admin(request.user):
+        return None, False
+    return emp, False
+
+
+def _password_form(emp, is_self, data=None):
+    """Свой пароль — со старым; чужой (админом) — без старого."""
+    cls = PasswordChangeForm if is_self else SetPasswordForm
+    return cls(emp.user, data)
+
+
+def _profile_ctx(request, emp, is_self, **extra):
+    ctx = {
+        "emp": emp,
+        "is_self": is_self,
+        "profile_form": ProfileForm(instance=emp),
+        "password_form": _password_form(emp, is_self),
+    }
+    ctx.update(extra)
+    return ctx
+
+
+@login_required
+def profile(request, pk=None):
+    """Страница профиля (грузится в #content-area)."""
+    emp, is_self = _profile_target(request, pk)
+    if emp is None:
+        return HttpResponse("Профиль недоступен", status=403)
+    return render(request, "core/profile.html", _profile_ctx(request, emp, is_self))
+
+
+@login_required
+@require_POST
+def profile_save(request, pk=None):
+    """ФИО + мобильный."""
+    emp, is_self = _profile_target(request, pk)
+    if emp is None:
+        return HttpResponse("forbidden", status=403)
+    form = ProfileForm(request.POST, instance=emp)
+    if form.is_valid():
+        form.save()
+        emp.refresh_from_db()
+        return render(request, "core/partials/_profile_form.html", {
+            "emp": emp, "is_self": is_self,
+            "profile_form": ProfileForm(instance=emp),
+            "saved": True,
+        })
+    return render(request, "core/partials/_profile_form.html", {
+        "emp": emp, "is_self": is_self, "profile_form": form,
+    })
+
+
+@login_required
+@require_POST
+def profile_password(request, pk=None):
+    """Смена пароля. Свой — с вводом текущего; чужой — админ ставит новый."""
+    emp, is_self = _profile_target(request, pk)
+    if emp is None:
+        return HttpResponse("forbidden", status=403)
+    form = _password_form(emp, is_self, request.POST)
+    if form.is_valid():
+        form.save()
+        # Свою же сессию иначе выкинет на логин сразу после смены пароля.
+        if is_self:
+            update_session_auth_hash(request, emp.user)
+        return render(request, "core/partials/_profile_password.html", {
+            "emp": emp, "is_self": is_self,
+            "password_form": _password_form(emp, is_self),
+            "saved": True,
+        })
+    return render(request, "core/partials/_profile_password.html", {
+        "emp": emp, "is_self": is_self, "password_form": form,
+    })
+
+
+@login_required
+@require_POST
+def profile_avatar(request, pk=None):
+    """Загрузка аватара: картинка → квадратный JPEG 256×256 → S3."""
+    emp, is_self = _profile_target(request, pk)
+    if emp is None:
+        return HttpResponse("forbidden", status=403)
+    f = request.FILES.get("avatar")
+    if not f:
+        return render(request, "core/partials/_profile_avatar.html", {
+            "emp": emp, "is_self": is_self, "error": "Выберите файл.",
+        })
+    try:
+        set_avatar(emp, f.read())
+    except AvatarError as e:
+        return render(request, "core/partials/_profile_avatar.html", {
+            "emp": emp, "is_self": is_self, "error": str(e),
+        })
+    emp.refresh_from_db()
+    return render(request, "core/partials/_profile_avatar.html", {
+        "emp": emp, "is_self": is_self, "saved": True,
+    })
+
+
+@login_required
+@require_POST
+def profile_avatar_delete(request, pk=None):
+    emp, is_self = _profile_target(request, pk)
+    if emp is None:
+        return HttpResponse("forbidden", status=403)
+    clear_avatar(emp)
+    emp.refresh_from_db()
+    return render(request, "core/partials/_profile_avatar.html", {
+        "emp": emp, "is_self": is_self, "saved": True,
+    })

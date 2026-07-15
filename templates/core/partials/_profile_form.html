@@ -1,0 +1,56 @@
+{% comment %}ФИО + мобильный. Постит сам в себя (#profile-form-block).{% endcomment %}
+<div id="profile-form-block">
+  <form hx-post="{% url 'core:profile_save' emp.pk %}"
+        hx-target="#profile-form-block" hx-swap="outerHTML"
+        class="space-y-3">
+    {% csrf_token %}
+
+    <div class="grid grid-cols-3 gap-3">
+      <div>
+        <label class="label py-1"><span class="label-text text-xs">Фамилия *</span></label>
+        <input type="text" name="last_name" required
+               value="{{ profile_form.last_name.value|default:'' }}"
+               class="input input-bordered input-sm w-full">
+        {% if profile_form.last_name.errors %}
+          <span class="text-error text-xs">{{ profile_form.last_name.errors.0 }}</span>
+        {% endif %}
+      </div>
+      <div>
+        <label class="label py-1"><span class="label-text text-xs">Имя *</span></label>
+        <input type="text" name="first_name" required
+               value="{{ profile_form.first_name.value|default:'' }}"
+               class="input input-bordered input-sm w-full">
+        {% if profile_form.first_name.errors %}
+          <span class="text-error text-xs">{{ profile_form.first_name.errors.0 }}</span>
+        {% endif %}
+      </div>
+      <div>
+        <label class="label py-1"><span class="label-text text-xs">Отчество</span></label>
+        <input type="text" name="patronymic"
+               value="{{ profile_form.patronymic.value|default:'' }}"
+               class="input input-bordered input-sm w-full">
+        {% if profile_form.patronymic.errors %}
+          <span class="text-error text-xs">{{ profile_form.patronymic.errors.0 }}</span>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="max-w-xs">
+      <label class="label py-1"><span class="label-text text-xs">Мобильный телефон</span></label>
+      <input type="text" name="phone_mobile"
+             value="{{ profile_form.phone_mobile.value|default:'' }}"
+             placeholder="+7 (999) 123-45-67"
+             class="input input-bordered input-sm w-full">
+      {% if profile_form.phone_mobile.errors %}
+        <span class="text-error text-xs">{{ profile_form.phone_mobile.errors.0 }}</span>
+      {% endif %}
+    </div>
+
+    <div class="flex items-center gap-3">
+      <button type="submit" class="btn btn-sm btn-primary">Сохранить</button>
+      {% if saved %}
+        <span class="text-success text-xs">Сохранено.</span>
+      {% endif %}
+    </div>
+  </form>
+</div>

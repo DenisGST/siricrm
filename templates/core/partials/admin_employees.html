@@ -1,11 +1,20 @@
-{% with opp_dir=dir|default:"asc" %}
+{% comment %}Список сотрудников: фильтры + сортировка по колонкам + чек «показывать уволенных».
+
+🛑 Как фильтры и сортировка уживаются, не затирая друг друга:
+  • клик по колонке → sort/dir идут в URL, поля фильтров подмешиваются hx-include формы;
+  • изменение фильтра → sort/dir подставляются в URL из контекста, фильтры берутся из формы.
+В форме sort/dir НЕ держим — иначе в запросе оказалось бы по два параметра sort/dir,
+и Django взял бы первый, из-за чего сортировка «залипала» бы на старом значении.{% endcomment %}
 <div id="employees-list"
      hx-trigger="reloadEmployees from:body"
      hx-get="{% url 'core:admin_employees' %}?sort={{ sort }}&dir={{ dir }}"
+     hx-include="#emp-filter-form"
      hx-swap="outerHTML">
 
   <div class="flex items-center justify-between mb-3">
-    <h3 class="font-semibold">Сотрудники ({{ employees|length }})</h3>
+    <h3 class="font-semibold">
+      Сотрудники ({{ employees|length }}{% if is_filtered or not show_dismissed %} из {{ total }}{% endif %})
+    </h3>
     <button class="btn btn-sm btn-primary"
             hx-get="{% url 'core:admin_employee_create' %}"
             hx-target="body" hx-swap="beforeend">
@@ -13,65 +22,90 @@
     </button>
   </div>
 
+  {% comment %}Панель фильтров. Каждое поле само дёргает перезагрузку списка.{% endcomment %}
+  <form id="emp-filter-form" class="flex flex-wrap items-end gap-2 mb-3"
+        onsubmit="return false;">
+    <div>
+      <label class="label py-0"><span class="label-text text-xs">Поиск</span></label>
+      <input type="search" name="q" value="{{ q }}"
+             placeholder="ФИО, логин, телефон"
+             class="input input-bordered input-sm w-56"
+             hx-get="{% url 'core:admin_employees' %}?sort={{ sort }}&dir={{ dir }}"
+             hx-include="#emp-filter-form"
+             hx-target="#employees-list" hx-swap="outerHTML"
+             hx-trigger="keyup changed delay:300ms, search">
+    </div>
+
+    <div>
+      <label class="label py-0"><span class="label-text text-xs">Отдел</span></label>
+      <select name="department" class="select select-bordered select-sm"
+              hx-get="{% url 'core:admin_employees' %}?sort={{ sort }}&dir={{ dir }}"
+              hx-include="#emp-filter-form"
+              hx-target="#employees-list" hx-swap="outerHTML"
+              hx-trigger="change">
+        <option value="">Все отделы</option>
+        {% for d in departments %}
+          <option value="{{ d.pk }}" {% if dept_id == d.pk|stringformat:"s" %}selected{% endif %}>{{ d.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div>
+      <label class="label py-0"><span class="label-text text-xs">Роль</span></label>
+      <select name="role" class="select select-bordered select-sm"
+              hx-get="{% url 'core:admin_employees' %}?sort={{ sort }}&dir={{ dir }}"
+              hx-include="#emp-filter-form"
+              hx-target="#employees-list" hx-swap="outerHTML"
+              hx-trigger="change">
+        <option value="">Все роли</option>
+        {% for val, label in role_choices %}
+          <option value="{{ val }}" {% if role == val %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <label class="cursor-pointer flex items-center gap-2 h-8"
+           title="Уволенные скрыты по умолчанию — сейчас их {{ dismissed_total }}.">
+      {% comment %}checkbox-error, а не toggle-error: в собранном tailwind.css есть
+      только toggle-primary/toggle-sm, toggle-error отрисовался бы бесцветным.{% endcomment %}
+      <input type="checkbox" name="show_dismissed" value="on"
+             {% if show_dismissed %}checked{% endif %}
+             class="checkbox checkbox-error checkbox-sm"
+             hx-get="{% url 'core:admin_employees' %}?sort={{ sort }}&dir={{ dir }}"
+             hx-include="#emp-filter-form"
+             hx-target="#employees-list" hx-swap="outerHTML"
+             hx-trigger="change">
+      <span class="label-text text-xs">Показывать уволенных ({{ dismissed_total }})</span>
+    </label>
+
+    {% if is_filtered %}
+      <button type="button" class="btn btn-sm btn-ghost h-8 min-h-8"
+              title="Сбросить поиск, отдел и роль"
+              hx-get="{% url 'core:admin_employees' %}?sort={{ sort }}&dir={{ dir }}{% if show_dismissed %}&show_dismissed=on{% endif %}"
+              hx-target="#employees-list" hx-swap="outerHTML">
+        Сбросить фильтры
+      </button>
+    {% endif %}
+  </form>
+
   <div class="overflow-x-auto">
     <table class="table table-sm table-zebra">
       <thead>
         <tr>
-          {% with col="name" %}
-          <th class="cursor-pointer select-none"
-              hx-get="{% url 'core:admin_employees' %}?sort={{ col }}&dir={% if sort == col and dir == 'asc' %}desc{% else %}asc{% endif %}"
-              hx-target="#employees-list" hx-swap="outerHTML">
-            Сотрудник
-            {% if sort == col %}{% if dir == "asc" %}↑{% else %}↓{% endif %}{% endif %}
-          </th>
-          {% endwith %}
-          {% with col="department" %}
-          <th class="cursor-pointer select-none"
-              hx-get="{% url 'core:admin_employees' %}?sort={{ col }}&dir={% if sort == col and dir == 'asc' %}desc{% else %}asc{% endif %}"
-              hx-target="#employees-list" hx-swap="outerHTML">
-            Отдел
-            {% if sort == col %}{% if dir == "asc" %}↑{% else %}↓{% endif %}{% endif %}
-          </th>
-          {% endwith %}
-          {% with col="role" %}
-          <th class="cursor-pointer select-none"
-              hx-get="{% url 'core:admin_employees' %}?sort={{ col }}&dir={% if sort == col and dir == 'asc' %}desc{% else %}asc{% endif %}"
-              hx-target="#employees-list" hx-swap="outerHTML">
-            Роль
-            {% if sort == col %}{% if dir == "asc" %}↑{% else %}↓{% endif %}{% endif %}
-          </th>
-          {% endwith %}
-          {% with col="dashboard" %}
-          <th class="cursor-pointer select-none"
-              hx-get="{% url 'core:admin_employees' %}?sort={{ col }}&dir={% if sort == col and dir == 'asc' %}desc{% else %}asc{% endif %}"
-              hx-target="#employees-list" hx-swap="outerHTML">
-            Дашборд
-            {% if sort == col %}{% if dir == "asc" %}↑{% else %}↓{% endif %}{% endif %}
-          </th>
-          {% endwith %}
-          {% with col="messenger" %}
-          <th class="cursor-pointer select-none"
-              hx-get="{% url 'core:admin_employees' %}?sort={{ col }}&dir={% if sort == col and dir == 'asc' %}desc{% else %}asc{% endif %}"
-              hx-target="#employees-list" hx-swap="outerHTML">
-            Мессенджер
-            {% if sort == col %}{% if dir == "asc" %}↑{% else %}↓{% endif %}{% endif %}
-          </th>
-          {% endwith %}
-          {% with col="status" %}
-          <th class="cursor-pointer select-none"
-              hx-get="{% url 'core:admin_employees' %}?sort={{ col }}&dir={% if sort == col and dir == 'asc' %}desc{% else %}asc{% endif %}"
-              hx-target="#employees-list" hx-swap="outerHTML">
-            Статус
-            {% if sort == col %}{% if dir == "asc" %}↑{% else %}↓{% endif %}{% endif %}
-          </th>
-          {% endwith %}
+          {% comment %}Заголовки-сортировки: тянут текущие фильтры через hx-include.{% endcomment %}
+          {% include "core/partials/_emp_sort_th.html" with col="name" title="Сотрудник" %}
+          {% include "core/partials/_emp_sort_th.html" with col="department" title="Отдел" %}
+          {% include "core/partials/_emp_sort_th.html" with col="role" title="Роль" %}
+          {% include "core/partials/_emp_sort_th.html" with col="dashboard" title="Дашборд" %}
+          {% include "core/partials/_emp_sort_th.html" with col="messenger" title="Мессенджер" %}
+          {% include "core/partials/_emp_sort_th.html" with col="status" title="Статус" %}
           <th title="Заявки с лендингов через @Sirius_system_bot">Лиды TG</th>
           <th></th>
         </tr>
       </thead>
       <tbody>
         {% for emp in employees %}
-        <tr class="cursor-pointer hover"
+        <tr class="cursor-pointer hover {% if not emp.is_active %}opacity-60{% endif %}"
             hx-get="{% url 'core:admin_employee_edit' emp.pk %}"
             hx-target="body" hx-swap="beforeend">
           <td class="font-medium">
@@ -113,10 +147,12 @@
           </td>
         </tr>
         {% empty %}
-        <tr><td colspan="8" class="text-center text-base-content/60">Сотрудников нет</td></tr>
+        <tr><td colspan="8" class="text-center text-base-content/60 py-4">
+          {% if is_filtered %}Никого не нашли — попробуйте изменить фильтры.
+          {% else %}Сотрудников нет{% endif %}
+        </td></tr>
         {% endfor %}
       </tbody>
     </table>
   </div>
 </div>
-{% endwith %}

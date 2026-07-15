@@ -1,0 +1,61 @@
+{% comment %}Страница профиля сотрудника. Грузится HTMX-свопом в #content-area
+(как остальные разделы). Три независимых блока-партиала: аватар, данные (ФИО +
+мобильный), пароль — каждый постит сам за себя и перерисовывает только себя.{% endcomment %}
+<div class="p-4 max-w-3xl mx-auto">
+
+  <div class="flex items-center justify-between mb-4">
+    <h2 class="text-xl font-bold">
+      {% if is_self %}Мой профиль{% else %}Профиль сотрудника{% endif %}
+    </h2>
+    {% if not is_self %}
+      <span class="badge badge-warning badge-sm">Правит админ</span>
+    {% endif %}
+  </div>
+
+  {% include "core/partials/_profile_avatar.html" %}
+
+  <div class="card bg-base-100 shadow-sm mt-4">
+    <div class="card-body p-4">
+      <h3 class="font-semibold text-sm mb-2">Данные сотрудника</h3>
+      {% include "core/partials/_profile_form.html" %}
+    </div>
+  </div>
+
+  <div class="card bg-base-100 shadow-sm mt-4">
+    <div class="card-body p-4">
+      <h3 class="font-semibold text-sm mb-2">
+        {% if is_self %}Смена пароля{% else %}Установить новый пароль{% endif %}
+      </h3>
+      {% include "core/partials/_profile_password.html" %}
+    </div>
+  </div>
+
+  {% comment %}Служебные поля — их назначает админ в модалке сотрудника, тут только показ.{% endcomment %}
+  <div class="card bg-base-100 shadow-sm mt-4">
+    <div class="card-body p-4">
+      <h3 class="font-semibold text-sm mb-2">Служебное</h3>
+      <div class="grid grid-cols-2 gap-3 text-sm">
+        <div>
+          <div class="text-xs text-base-content/50">Логин</div>
+          <div class="font-mono">{{ emp.user.username }}</div>
+        </div>
+        <div>
+          <div class="text-xs text-base-content/50">Отдел</div>
+          <div>{{ emp.department.name|default:"—" }}</div>
+        </div>
+        <div>
+          <div class="text-xs text-base-content/50">Роль</div>
+          <div>{{ emp.get_role_display }}</div>
+        </div>
+        <div>
+          <div class="text-xs text-base-content/50">Внутренний номер</div>
+          <div>{{ emp.phone_internal|default:"—" }}</div>
+        </div>
+      </div>
+      <div class="text-xs text-base-content/50 mt-2">
+        Эти поля меняет администратор в карточке сотрудника.
+      </div>
+    </div>
+  </div>
+
+</div>
