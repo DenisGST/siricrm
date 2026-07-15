@@ -190,6 +190,17 @@ class Employee(models.Model):
     # Аватар лежит в S3 (media-бакет), тут — только ключ. FileField не годится:
     # MEDIA_ROOT не смонтирован volume'ом, файл пропал бы при рестарте контейнера.
     avatar_key = models.CharField("Аватар (ключ в S3)", max_length=255, blank=True)
+    # Персональные креды ЕФРСБ (ЛК fedresurs) — только у сотрудников-АУ
+    # (role="arbitration"). Пароль в БД ТОЛЬКО в зашифрованном виде (Fernet,
+    # см. apps/core/crypto.py); открытый текст наружу не отдаём — работа через
+    # set_efrsb_password()/get_efrsb_password().
+    efrsb_login = models.CharField("Логин ЕФРСБ", max_length=255, blank=True)
+    efrsb_password_enc = models.CharField(
+        "Пароль ЕФРСБ (шифр.)", max_length=512, blank=True)
+    # Личная настройка на странице профиля: слать этому сотруднику в MAX
+    # уведомления о судебных событиях. По умолчанию выключено у всех.
+    notify_court_events_max = models.BooleanField(
+        "Уведомлять в MAX о судебных событиях", default=False)
     is_active = models.BooleanField("Активен", default=True)
     is_online = models.BooleanField(default=False, verbose_name='Онлайн')
     is_owner = models.BooleanField(
@@ -279,6 +290,25 @@ class Employee(models.Model):
     def initials(self):
         """Фолбэк вместо аватара: первая буква имени (как было в сайдбаре)."""
         return (self.user.first_name or self.user.username or "?")[:1].upper()
+
+    @property
+    def is_arbitration_manager(self):
+        """Сотрудник-АУ — у него на профиле поля кредов ЕФРСБ."""
+        return self.role == "arbitration"
+
+    def set_efrsb_password(self, raw: str):
+        """Записать пароль ЕФРСБ в БД в зашифрованном виде (пусто → очистить)."""
+        from apps.core.crypto import encrypt_secret
+        self.efrsb_password_enc = encrypt_secret(raw) if raw else ""
+
+    def get_efrsb_password(self) -> str:
+        """Расшифрованный пароль ЕФРСБ (или пустая строка)."""
+        from apps.core.crypto import decrypt_secret
+        return decrypt_secret(self.efrsb_password_enc)
+
+    @property
+    def has_efrsb_password(self) -> bool:
+        return bool(self.efrsb_password_enc)
 
 
 class EmployeeLog(models.Model):

@@ -30,6 +30,16 @@
     </div>
   </div>
 
+  {% comment %}Креды ЕФРСБ — только для сотрудников-АУ (role="arbitration").{% endcomment %}
+  {% if emp.is_arbitration_manager %}
+  <div class="card bg-base-100 shadow-sm mt-4">
+    <div class="card-body p-4">
+      <h3 class="font-semibold text-sm mb-2">Доступ к ЕФРСБ (Федресурс)</h3>
+      {% include "core/partials/_profile_efrsb.html" %}
+    </div>
+  </div>
+  {% endif %}
+
   {% comment %}Служебные поля — их назначает админ в модалке сотрудника, тут только показ.{% endcomment %}
   <div class="card bg-base-100 shadow-sm mt-4">
     <div class="card-body p-4">

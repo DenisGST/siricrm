@@ -279,6 +279,11 @@ TELEGRAM_BOT_TOKEN = config("TELEGRAM_BOT_TOKEN", default="")
 DADATA_API_KEY = config("DADATA_API_KEY", default="")
 DADATA_SECRET_KEY = config("DADATA_SECRET_KEY", default="")
 
+# Ключ шифрования персональных секретов в БД (пароль ЕФРСБ сотрудника-АУ).
+# Пусто → ключ выводится из SECRET_KEY (см. apps/core/crypto.py). Для стабильности
+# задать полноценный Fernet-ключ в .env.
+EFRSB_CRED_KEY = config("EFRSB_CRED_KEY", default="")
+
 # --- MAX bot ---
 MAX_BOT_TOKEN = config("MAX_BOT_TOKEN", default="")
 # С 19.07.2026 MAX переводит API на platform-api2.max.ru (TLS от CA Минцифры —

@@ -1,0 +1,48 @@
+{% comment %}Креды ЕФРСБ сотрудника-АУ. Виден только при role="arbitration".
+Пароль write-only: в браузер открытый текст НЕ отдаём — показываем лишь признак
+«сохранён». Пустое поле = не менять; ввод = заменить; галочка = стереть.{% endcomment %}
+<div id="profile-efrsb-block">
+  <form hx-post="{% url 'core:profile_efrsb' emp.pk %}"
+        hx-target="#profile-efrsb-block" hx-swap="outerHTML"
+        class="space-y-3">
+    {% csrf_token %}
+
+    <div class="max-w-xs">
+      <label class="label py-1"><span class="label-text text-xs">Логин ЕФРСБ</span></label>
+      <input type="text" name="efrsb_login" value="{{ emp.efrsb_login }}"
+             autocomplete="off"
+             class="input input-bordered input-sm w-full">
+    </div>
+
+    <div class="max-w-xs">
+      <label class="label py-1">
+        <span class="label-text text-xs">Пароль ЕФРСБ</span>
+        {% if emp.has_efrsb_password %}
+          <span class="badge badge-success badge-xs">сохранён</span>
+        {% else %}
+          <span class="badge badge-ghost badge-xs">не задан</span>
+        {% endif %}
+      </label>
+      <input type="password" name="efrsb_password"
+             autocomplete="new-password"
+             placeholder="{% if emp.has_efrsb_password %}•••••••• (оставьте пустым, чтобы не менять){% else %}введите пароль{% endif %}"
+             class="input input-bordered input-sm w-full">
+      <span class="block text-[11px] text-base-content/50 mt-0.5">
+        Хранится в базе в зашифрованном виде.
+      </span>
+    </div>
+
+    {% if emp.has_efrsb_password %}
+      <label class="cursor-pointer flex items-center gap-2 max-w-xs">
+        <input type="checkbox" name="efrsb_password_clear" value="1"
+               class="checkbox checkbox-error checkbox-sm">
+        <span class="label-text text-xs">Удалить сохранённый пароль</span>
+      </label>
+    {% endif %}
+
+    <div class="flex items-center gap-3">
+      <button type="submit" class="btn btn-sm btn-primary">Сохранить</button>
+      {% if saved %}<span class="text-success text-xs">Сохранено.</span>{% endif %}
+    </div>
+  </form>
+</div>

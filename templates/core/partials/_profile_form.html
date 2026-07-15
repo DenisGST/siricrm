@@ -46,6 +46,15 @@
       {% endif %}
     </div>
 
+    {% comment %}Личная настройка уведомлений. checkbox не отправляется, если снят —
+    поэтому value="on"; ModelForm корректно трактует отсутствие как False.{% endcomment %}
+    <label class="cursor-pointer flex items-center gap-2">
+      <input type="checkbox" name="notify_court_events_max" value="on"
+             {% if profile_form.notify_court_events_max.value %}checked{% endif %}
+             class="checkbox checkbox-primary checkbox-sm">
+      <span class="label-text text-xs">Уведомлять в MAX о судебных событиях</span>
+    </label>
+
     <div class="flex items-center gap-3">
       <button type="submit" class="btn btn-sm btn-primary">Сохранить</button>
       {% if saved %}

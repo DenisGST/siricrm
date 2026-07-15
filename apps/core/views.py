@@ -1248,3 +1248,36 @@ def profile_avatar_delete(request, pk=None):
     return render(request, "core/partials/_profile_avatar.html", {
         "emp": emp, "is_self": is_self, "saved": True,
     })
+
+
+@login_required
+@require_POST
+def profile_efrsb(request, pk=None):
+    """Креды ЕФРСБ сотрудника-АУ: логин (открыто) + пароль (шифруется в БД).
+
+    Блок есть только у роли «Арбитражный управляющий». Пароль пишем write-only:
+    пустое поле = не менять, любой ввод = заменить; открытый текст в браузер не
+    возвращаем никогда. Отдельная галочка «Очистить пароль» — стереть сохранённый.
+    """
+    emp, is_self = _profile_target(request, pk)
+    if emp is None:
+        return HttpResponse("forbidden", status=403)
+    if not emp.is_arbitration_manager:
+        return HttpResponse("forbidden", status=403)
+
+    emp.efrsb_login = (request.POST.get("efrsb_login") or "").strip()
+    update_fields = ["efrsb_login"]
+
+    if request.POST.get("efrsb_password_clear"):
+        emp.set_efrsb_password("")
+        update_fields.append("efrsb_password_enc")
+    else:
+        new_pw = request.POST.get("efrsb_password") or ""
+        if new_pw:
+            emp.set_efrsb_password(new_pw)
+            update_fields.append("efrsb_password_enc")
+    emp.save(update_fields=update_fields)
+    emp.refresh_from_db()
+    return render(request, "core/partials/_profile_efrsb.html", {
+        "emp": emp, "is_self": is_self, "saved": True,
+    })
