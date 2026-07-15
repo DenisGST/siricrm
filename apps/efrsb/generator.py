@@ -46,21 +46,66 @@ def _procedure_for(case, procedure=None):
             or case.procedures.order_by("-order").first())
 
 
-def _court_address(service) -> str:
-    """Адрес арбитражного суда — из региона услуги (Region.court_address)."""
-    region = getattr(service, "region", None)
+_CASE_PREFIX_RE = re.compile(r"^\s*[АA](\d{1,2})\s*-")
+
+
+def _court_region(service, arb):
+    """Суд определяем ПО НОМЕРУ ДЕЛА: префикс «А12-…» → Region.arbitr_code «А12»
+    → Арбитражный суд Волгоградской области. Фолбэк — регион услуги.
+
+    🛑 Нельзя брать `ArbitrCase.court_name` напрямую: kad-парсер пишет туда
+    ТЕКУЩУЮ инстанцию вместе с судьёй («13 арбитражный апелляционный суд /
+    Фуркало О. В.»), а в сообщении нужен суд первой инстанции.
+    """
+    from apps.crm.models import Region
+    number = (arb.case_number or "").strip() if arb is not None else ""
+    m = _CASE_PREFIX_RE.match(number)
+    if m:
+        code = "А%02d" % int(m.group(1))  # А12, А07 — кириллическая «А»
+        region = Region.objects.filter(arbitr_code__iexact=code).order_by("number").first()
+        if region is not None:
+            return region
+    return getattr(service, "region", None)
+
+
+def _court_genitive(name: str) -> str:
+    """«Арбитражный суд Волгоградской области» → «Арбитражного суда Волгоградской
+    области» (для оборота «в помещении …»). Все АС субъектов названы по одному
+    шаблону, поэтому склонение сводится к замене первых двух слов."""
+    n = (name or "").strip()
+    if n.startswith("Арбитражный суд "):
+        return "Арбитражного суда " + n[len("Арбитражный суд "):]
+    return n
+
+
+def _court(service, arb) -> tuple[str, str]:
+    """(наименование суда, адрес суда)."""
+    region = _court_region(service, arb)
+    name = (region.court_name or "").strip() if region is not None else ""
+    if not name and arb is not None:
+        # Фолбэк: из kad, но без «/ Судья И. О.» в хвосте.
+        name = (arb.court_name or "").split("/")[0].strip()
+    address = ""
     if region is not None and getattr(region, "court_address_id", None):
-        return (region.court_address.result or "").strip()
-    return ""
+        address = (region.court_address.result or "").strip()
+    return name, address
 
 
 def _sro_full(am) -> str:
-    """«Ассоциация … "СОЛИДАРНОСТЬ" (ИНН: …, ОГРН: …, адрес: …)»."""
+    """«Ассоциации … "СОЛИДАРНОСТЬ" (ИНН: …, ОГРН: …, адрес: …)».
+
+    🛑 Приоритет — ручной `ArbitrationManager.sro_text`: из ЕГРЮЛ название приходит
+    КАПСОМ и в именительном падеже («АССОЦИАЦИЯ …»), а в сообщении нужна нормальная
+    формулировка в родительном («член Ассоциации …»). Автосклонять произвольные
+    названия нельзя — АУ один раз вписывает готовый текст в реквизиты СРО.
+    """
     if am is None:
         return ""
+    if (am.sro_text or "").strip():
+        return am.sro_text.strip()
     sro = am.sro if am.sro_id else None
     if sro is None:
-        return am.sro_text or ""
+        return ""
     meta = []
     if sro.inn:
         meta.append(f"ИНН: {sro.inn}")
@@ -82,6 +127,7 @@ def build_context(case, *, message_type=None, subtype=None, procedure=None, over
     arb = getattr(case.service, "arbitr_case", None)
     idx, addr_reg = _debtor_address(client)
     fio = " ".join(filter(None, [client.last_name, client.first_name, client.patronymic])).strip()
+    court_name, court_address = _court(case.service, arb)
 
     ctx = {
         # Тип/подтип
@@ -104,9 +150,10 @@ def build_context(case, *, message_type=None, subtype=None, procedure=None, over
         "email арбитражного": am.email if am else "",
         "Реквизиты СРО": am.sro_display if am else "",
         "СРО полностью": _sro_full(am),
-        # Дело / суд / процедура
-        "арбитражный суд": (arb.court_name if arb else ""),
-        "адрес суда": _court_address(case.service),
+        # Дело / суд / процедура (суд — по номеру дела, см. _court)
+        "арбитражный суд": court_name,
+        "арбитражного суда": _court_genitive(court_name),  # «в помещении …»
+        "адрес суда": court_address,
         "номер дела": (arb.case_number if arb else ""),
         "вид процедуры": (proc.get_kind_display() if proc else ""),
         "дата решения": _fmt(proc.intro_date) if proc else "",
@@ -178,7 +225,8 @@ _LABELS = {
     "Адрес арбитражного управляющего": "Адрес корреспонденции ФУ",
     "email арбитражного": "E-mail финуправляющего",
     "Реквизиты СРО": "СРО", "СРО полностью": "СРО (наименование, ИНН, ОГРН, адрес)",
-    "арбитражный суд": "Арбитражный суд", "адрес суда": "Адрес арбитражного суда",
+    "арбитражный суд": "Арбитражный суд", "арбитражного суда": "Арбитражный суд",
+    "адрес суда": "Адрес арбитражного суда",
     "номер дела": "Номер дела",
     "дата решения": "Дата решения суда (введение процедуры)",
     "срок процедуры": "Срок процедуры, мес.",
