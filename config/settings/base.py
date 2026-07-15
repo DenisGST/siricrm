@@ -291,6 +291,9 @@ MAX_BOT_TOKEN = config("MAX_BOT_TOKEN", default="")
 MAX_API_BASE_URL = config("MAX_API_BASE_URL", default="https://platform-api2.max.ru")
 MAX_CA_BUNDLE = str(BASE_DIR / "certs" / "russian_trusted_ca.pem")
 MAX_WEBHOOK_SECRET = config("MAX_WEBHOOK_SECRET", default="")
+# Публичная ссылка на нашего MAX-бота (для инструкции привязки в профиле).
+# Опционально — если пусто, в профиле просто не будет кнопки «открыть бота».
+MAX_BOT_LINK = config("MAX_BOT_LINK", default="")
 
 # Внешний публичный URL CRM — нужен для построения absolute-ссылок
 # из тасок (где нет request.get_host). Используется в WhatsApp-прокси

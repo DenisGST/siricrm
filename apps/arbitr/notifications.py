@@ -14,39 +14,116 @@ from .models import ArbitrCase
 logger = logging.getLogger("arbitr.notify")
 
 
-def send_parsed_alert(
-    case: ArbitrCase, *,
-    new_events: int,
-    new_files: int,
-    duration_sec: int,
-) -> bool:
-    """После успешного парсинга шлёт в MAX короткую сводку:
-    «А12-…/2025 — Иванов И. И. · скачано 3 новых записей, 1 новый файл · 67с»
-    """
-    chat_id = (settings.ARBITR_CAPTCHA_NOTIFY_MAX_CHAT_ID or "").strip()
-    token = (settings.MAX_BOT_TOKEN or "").strip()
-    if not chat_id or not token:
-        return False
+# Сколько новых записей максимум перечислять в одном уведомлении (первый парсинг
+# только что подтверждённого дела делает «новыми» ВСЕ события — иначе гигант).
+MAX_EVENTS_IN_NOTIFY = 12
+# MAX Bot API режет сообщения длиннее 4000 символов — держим запас.
+MAX_TEXT_LEN = 3800
 
+
+def _md_link_text(s: str) -> str:
+    """Текст ВНУТРИ [..] markdown-ссылки: скобки [] рвут разметку MAX
+    (реальные имена файлов kad бывают вида «[Подписано] …»). Меняем на ()."""
+    return (s or "").replace("[", "(").replace("]", ")")
+
+
+def _case_fio(case: ArbitrCase) -> str:
     client = case.service.client if case.service else None
-    fio = (
-        " ".join(filter(None, [
-            client.last_name if client else "",
-            client.first_name if client else "",
-            client.patronymic if client else "",
-        ])).strip() or "(без ФИО)"
-    )
+    fio = " ".join(filter(None, [
+        client.last_name if client else "",
+        client.first_name if client else "",
+        client.patronymic if client else "",
+    ])).strip()
+    return fio or "(без ФИО)"
+
+
+def _build_court_event_text(case: ArbitrCase, new_events_detail: list) -> str:
+    """Собирает текст персонального уведомления (MAX markdown).
+
+    Формат:
+        [A12-1234/2025](kad-карточка) Фамилия Имя Отчество
+        Новая запись: Отзыв
+        Новый файл: [Определение](kad-ссылка-на-файл)
+    Номер дела — ссылка на карточку kad; каждый файл — ссылка на файл на kad.
+    """
+    fio = _case_fio(case)
     case_number = case.case_number or "(номер не указан)"
-    text = (
-        f"✅ {case_number} · {fio}\n"
-        f"Скачано: {new_events} нов. записей, {new_files} нов. файл(ов) · {duration_sec}с"
+    if case.kad_url:
+        header = f"[{_md_link_text(case_number)}]({case.kad_url}) {fio}"
+    else:
+        header = f"{case_number} {fio}"
+
+    lines = [header]
+    shown = new_events_detail[:MAX_EVENTS_IN_NOTIFY]
+    for ev in shown:
+        name = (ev.get("title") or ev.get("kind") or "").strip() or "(без названия)"
+        lines.append(f"Новая запись: {name}")
+        for att in ev.get("attachments") or []:
+            fname = (att.get("name") or "").strip() or "файл"
+            url = (att.get("kad_url") or "").strip()
+            if url and not att.get("is_locked"):
+                lines.append(f"Новый файл: [{_md_link_text(fname)}]({url})")
+            else:
+                lines.append(f"Новый файл: {fname}")
+
+    hidden = len(new_events_detail) - len(shown)
+    if hidden > 0:
+        lines.append(f"…и ещё {hidden} нов. записей — см. карточку дела на kad.")
+
+    text = "\n".join(lines)
+    if len(text) > MAX_TEXT_LEN:
+        # Режем по границе строки (чтобы не порвать markdown-ссылку [..](..)).
+        cut = text.rfind("\n", 0, MAX_TEXT_LEN)
+        if cut <= 0:
+            cut = MAX_TEXT_LEN
+        text = text[:cut] + "\n… (сообщение сокращено, см. карточку дела на kad)"
+    return text
+
+
+def send_court_event_notifications(
+    case: ArbitrCase, *, new_events_detail: list,
+) -> int:
+    """Персональные MAX-уведомления сотрудникам о новых судебных событиях по делу.
+
+    Шлём каждому сотруднику с `notify_court_events_max=True` и привязанным
+    `max_chat_id`. Только НЕПУСТЫЕ (передан хотя бы один new_event) — пустые
+    парсинги молчат. Возвращает число успешных отправок.
+    """
+    if not new_events_detail:
+        return 0
+    token = (settings.MAX_BOT_TOKEN or "").strip()
+    if not token:
+        return 0
+
+    from apps.core.models import Employee
+    recipients = list(
+        Employee.objects
+        .filter(notify_court_events_max=True, is_active=True)
+        .exclude(max_chat_id__isnull=True)
+        .exclude(max_chat_id="")
+        .values_list("max_chat_id", flat=True)
     )
-    ok, _msg_id, err = send_max_message(
-        access_token=token, chat_id=chat_id, text=text,
-    )
-    if not ok:
-        logger.error("Parsed alert MAX send failed: %s", err)
-    return ok
+    if not recipients:
+        return 0
+
+    text = _build_court_event_text(case, new_events_detail)
+    sent = 0
+    for chat_id in recipients:
+        try:
+            ok, _mid, err = send_max_message(
+                access_token=token, chat_id=str(chat_id), text=text,
+                text_format="markdown",
+            )
+        except Exception:  # noqa: BLE001 — уведомление не должно ронять парсинг
+            logger.exception("Court-event MAX send crashed for %s", chat_id)
+            continue
+        if ok:
+            sent += 1
+        else:
+            logger.error("Court-event MAX send failed to %s: %s", chat_id, err)
+    logger.info("Court-event notify: case=%s → %s/%s sent",
+                case.case_number, sent, len(recipients))
+    return sent
 
 
 def handle_captcha(case: ArbitrCase, *, page_url: str = "", ip: str = "") -> None:

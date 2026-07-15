@@ -223,6 +223,15 @@ class Employee(models.Model):
         help_text="Привязывается через бота уведомлений по одноразовому коду "
                   "из профиля. Нужен для дублирования уведомлений в Telegram.",
     )
+    # MAX user_id для персональных уведомлений (о судебных событиях и т.п.).
+    # Привязывается так же, как telegram_chat_id: одноразовый код из профиля →
+    # сотрудник пишет его MAX-боту → webhook сохраняет сюда его user_id.
+    # Строка (как Client.max_chat_id): MAX отдаёт user_id строкой.
+    max_chat_id = models.CharField(
+        "MAX chat_id (уведомления)", max_length=64, null=True, blank=True, unique=True,
+        help_text="Привязывается через MAX-бота по одноразовому коду из профиля. "
+                  "Нужен для персональных уведомлений в MAX (напр. о судебных событиях).",
+    )
     scanner_name = models.CharField(
         "Имя сканера", max_length=100, blank=True, default="",
         help_text="Метка устройства (device) из scan-agent. Сканы с этой "

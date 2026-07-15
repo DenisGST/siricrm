@@ -1,0 +1,57 @@
+{% comment %}Привязка MAX-аккаунта сотрудника (для персональных уведомлений о
+судебных событиях). Флоу: «Получить код» → сотрудник отправляет код нашему
+MAX-боту → входящий webhook сохраняет его user_id в Employee.max_chat_id.
+Код действует 15 минут (хранится в Redis). Привязка — самообслуживание: код
+должен отправить боту сам сотрудник со своего MAX.{% endcomment %}
+<div id="profile-max-block">
+  <div class="flex items-center gap-2 mb-2">
+    <span class="label-text text-xs">Статус:</span>
+    {% if emp.max_chat_id %}
+      <span class="badge badge-success badge-sm">привязан</span>
+    {% else %}
+      <span class="badge badge-ghost badge-sm">не привязан</span>
+    {% endif %}
+  </div>
+
+  {% if max_link_code %}
+    <div class="rounded-lg bg-base-200 p-3 space-y-2 max-w-md">
+      <div class="text-xs text-base-content/70">
+        Отправьте этот код нашему MAX-боту{% if max_bot_link %}
+        (<a href="{{ max_bot_link }}" target="_blank" rel="noopener" class="link link-primary">открыть бота</a>){% endif %}.
+        Код действует <b>15 минут</b>.
+      </div>
+      <div class="font-mono text-2xl font-bold text-center py-1"
+           style="letter-spacing:0.3em; user-select:all;">
+        {{ max_link_code }}
+      </div>
+      <div class="text-[11px] text-base-content/50">
+        После отправки кода бот ответит подтверждением, а здесь появится статус «привязан»
+        (обновите страницу профиля).
+      </div>
+    </div>
+  {% endif %}
+
+  <div class="flex items-center gap-2 mt-2">
+    <form hx-post="{% url 'core:profile_max' emp.pk %}"
+          hx-target="#profile-max-block" hx-swap="outerHTML">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="issue">
+      <button type="submit" class="btn btn-sm btn-primary">
+        {% if emp.max_chat_id %}Перепривязать (новый код){% else %}Получить код привязки{% endif %}
+      </button>
+    </form>
+    {% if emp.max_chat_id %}
+      <form hx-post="{% url 'core:profile_max' emp.pk %}"
+            hx-target="#profile-max-block" hx-swap="outerHTML">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="unlink">
+        <button type="submit" class="btn btn-sm btn-ghost">Отвязать</button>
+      </form>
+    {% endif %}
+  </div>
+
+  <p class="text-[11px] text-base-content/50 mt-2 max-w-md">
+    Уведомления о судебных событиях приходят, только если включён чек
+    «Уведомлять в MAX о судебных событиях» выше <b>и</b> MAX привязан.
+  </p>
+</div>

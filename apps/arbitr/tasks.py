@@ -124,7 +124,7 @@ def _persist_case_info(case: ArbitrCase, info: KadCaseInfo) -> dict:
         ))
 
     if not new_events_data:
-        return {"new_events": 0, "new_attachments": 0}
+        return {"new_events": 0, "new_attachments": 0, "new_events_detail": []}
 
     # bulk_create + перечитать чтобы получить id
     ArbitrEvent.objects.bulk_create(
@@ -155,9 +155,29 @@ def _persist_case_info(case: ArbitrCase, info: KadCaseInfo) -> dict:
     if new_atts:
         ArbitrAttachment.objects.bulk_create(new_atts)
 
+    # Детализация новых записей/файлов — для персональных MAX-уведомлений
+    # сотрудникам (текст «Новая запись: … / Новый файл: …» + ссылки на kad).
+    # Отдаём лёгкие dict'ы, а не ORM-объекты (переживают выход из функции).
+    new_events_detail = [
+        {
+            "title": ev_obj.title,
+            "kind": ev_obj.kind,
+            "attachments": [
+                {
+                    "name": (a.get("name") or "").strip(),
+                    "kad_url": (a.get("kad_url") or "").strip(),
+                    "is_locked": bool(a.get("is_locked")),
+                }
+                for a in atts
+            ],
+        }
+        for ev_obj, atts in new_events_data
+    ]
+
     return {
         "new_events": len(new_events_data),
         "new_attachments": len(new_atts),
+        "new_events_detail": new_events_detail,
     }
 
 
@@ -451,10 +471,12 @@ def _parse_one(kad: KadSession, case: ArbitrCase, runner_ip: str = "") -> dict:
     return {
         "result": "ok",
         "new_events": persisted["new_events"],
+        "new_attachments": persisted["new_attachments"],
         "new_files": downloaded["ok"],
         "remaining_files": downloaded["remaining"],
         "duration_sec": int(time.monotonic() - started),
         "auto_paused": paused,
+        "new_events_detail": persisted.get("new_events_detail", []),
     }
 
 
@@ -708,14 +730,13 @@ def _kad_smart_one(runner_id: str):
                         _set_throttle(delay)
                         pr["delay"] = delay
                     pr["parse_count"] = count
-                    # короткое уведомление в MAX
-                    from .notifications import send_parsed_alert
-                    send_parsed_alert(
-                        case,
-                        new_events=pr["new_events"],
-                        new_files=pr["new_files"],
-                        duration_sec=pr["duration_sec"],
-                    )
+                    # Персональные уведомления сотрудникам о НОВЫХ судебных
+                    # событиях — только непустые (пустые парсинги молчат).
+                    if pr.get("new_events_detail"):
+                        from .notifications import send_court_event_notifications
+                        send_court_event_notifications(
+                            case, new_events_detail=pr["new_events_detail"],
+                        )
                 elif pr["result"] == "captcha":
                     pass  # handle_captcha уже включил 12ч cooldown
                 else:
@@ -827,7 +848,15 @@ def kad_monitor_one_case(case_id: str):
                 if case.status == ArbitrCase.STATUS_SEARCHING:
                     result = _search_one(kad, case, runner_ip=current_ip)  # str
                 elif case.status == ArbitrCase.STATUS_MONITORING:
-                    result = _parse_one(kad, case, runner_ip=current_ip)["result"]
+                    pr = _parse_one(kad, case, runner_ip=current_ip)
+                    result = pr["result"]
+                    # Ручной парсинг тоже уведомляет о новых записях (идемпотентно:
+                    # событие «новое» лишь при первом обнаружении, двойных нет).
+                    if result == "ok" and pr.get("new_events_detail"):
+                        from .notifications import send_court_event_notifications
+                        send_court_event_notifications(
+                            case, new_events_detail=pr["new_events_detail"],
+                        )
                 else:
                     _log_check(
                         case, ArbitrCheckLog.STATE_ERROR,

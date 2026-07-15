@@ -14,6 +14,7 @@ urlpatterns = [
     path('profile/<int:pk>/avatar/', views.profile_avatar, name='profile_avatar'),
     path('profile/<int:pk>/avatar/delete/', views.profile_avatar_delete, name='profile_avatar_delete'),
     path('profile/<int:pk>/efrsb/', views.profile_efrsb, name='profile_efrsb'),
+    path('profile/<int:pk>/max/', views.profile_max, name='profile_max'),
 
     path('icons/', views.icons_gallery, name='icons_gallery'),
     path('monitoring/', views.monitoring_dashboard, name='monitoring_dashboard'),

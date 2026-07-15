@@ -173,10 +173,14 @@ def send_max_message(
     filename: str = None,
     message_type: str = "text",
     content_type: str = None,
+    text_format: str = None,
 ) -> Tuple[bool, Optional[str], Optional[str]]:
     """
     Отправка сообщения в MAX (текст + медиа).
     Возвращает (success, message_id, error_text).
+
+    text_format — опц. разметка текста MAX Bot API ("markdown" / "html"); нужна
+    для кликабельных ссылок вида [текст](url). Если None — обычный текст.
     """
     headers = {
         "Authorization": access_token,
@@ -187,6 +191,8 @@ def send_max_message(
 
     if text:
         payload["text"] = text
+    if text_format:
+        payload["format"] = text_format
 
     # Если есть файл — сначала загружаем
     if file_bytes and message_type != "text":

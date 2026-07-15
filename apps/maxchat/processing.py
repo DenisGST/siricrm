@@ -116,6 +116,43 @@ def _create_unhandled_placeholder(client, max_mid, body):
     return msg
 
 
+def _bind_employee_max(emp_id: int, user_id: str):
+    """Привязать MAX user_id к профилю сотрудника (по одноразовому коду).
+
+    Снимает этот user_id с других сотрудников (поле unique), сохраняет и
+    шлёт сотруднику подтверждение в MAX. Ошибки не пробрасываем — это
+    сервисный ответ на входящее, webhook не должен падать.
+    """
+    from django.conf import settings
+
+    from apps.core.models import Employee
+    from apps.maxchat.sender import send_max_message
+
+    try:
+        emp = Employee.objects.select_related("user").get(pk=emp_id)
+    except Employee.DoesNotExist:
+        logger.warning("MAX link: employee %s not found (код устарел?)", emp_id)
+        return
+
+    # user_id уникален на Employee — снимем его с прежних владельцев (перепривязка).
+    Employee.objects.filter(max_chat_id=user_id).exclude(pk=emp.pk).update(max_chat_id=None)
+    emp.max_chat_id = user_id
+    emp.save(update_fields=["max_chat_id"])
+    logger.info("🔗 MAX привязан к сотруднику %s (max_chat_id=%s)", emp.pk, user_id)
+
+    token = (settings.MAX_BOT_TOKEN or "").strip()
+    if token:
+        name = emp.user.get_full_name() or emp.user.username
+        send_max_message(
+            access_token=token, chat_id=user_id,
+            text=(
+                f"✅ MAX привязан к профилю: {name}.\n"
+                "Сюда будут приходить уведомления о судебных событиях "
+                "(если включён чек «Уведомлять в MAX о судебных событиях» в профиле)."
+            ),
+        )
+
+
 def handle_max_event(data: dict):
     """Обработать один webhook-payload MAX (текст + вложения)."""
     if not isinstance(data, dict):
@@ -133,6 +170,15 @@ def handle_max_event(data: dict):
     user_id = str(sender.get("user_id") or recipient.get("chat_id") or "")
     if not user_id:
         logger.info("MAX webhook: skip, no user_id")
+        return
+
+    # Привязка MAX-аккаунта сотрудника по одноразовому коду из профиля.
+    # Если текст входящего = активный код → сохраняем user_id в
+    # Employee.max_chat_id и выходим (Client НЕ создаём — это сотрудник, а не лид).
+    from apps.maxchat import linkcode
+    emp_id = linkcode.claim(text)
+    if emp_id is not None:
+        _bind_employee_max(emp_id, user_id)
         return
 
     client, created = Client.objects.get_or_create(
