@@ -19,6 +19,10 @@
           <span class="gs-main">{{ c.last_name }} {{ c.first_name }} {{ c.patronymic }}</span>
           <span class="gs-meta">
             <span class="gs-status">{{ c.get_status_display }}</span>
+            {% comment %}Нашёлся по № арбитражного дела — показываем, почему.{% endcomment %}
+            {% if c.matched_case_number %}
+              · ⚖ {{ c.matched_case_number }}
+            {% endif %}
             {% for s in c.services.all %}
               · {{ s.name.short_name }}{% if s.common_status %} ({{ s.common_status.name }}){% endif %}{% if s.region %} — {{ s.region.name }}{% endif %}
             {% endfor %}

@@ -1755,6 +1755,30 @@ def global_search(request):
             Q(patronymic__icontains=word) | Q(username__icontains=word) |
             Q(phone__icontains=word) | Q(phones__phone__icontains=word)
         )
+
+    # Поиск по № арбитражного дела: «А12-8439/2026» → клиент этого дела.
+    # Ищем по обоим вариантам буквы «А» (кириллица/латиница) — см.
+    # apps/arbitr/case_number.py.
+    from apps.arbitr.case_number import case_number_variants
+    from apps.arbitr.models import ArbitrCase
+
+    case_matches = {}  # client_id → номер дела (для подписи «почему нашлось»)
+    variants = case_number_variants(q)
+    if variants:
+        cq = Q()
+        for v in variants:
+            cq |= Q(case_number__icontains=v)
+        case_matches = dict(
+            ArbitrCase.objects.filter(cq)
+            .filter(service__client__isnull=False)
+            .values_list("service__client_id", "case_number")
+        )
+        if case_matches:
+            # Подмешиваем найденных по делу к найденным по ФИО/телефону.
+            clients_qs = Client.objects.filter(
+                Q(pk__in=clients_qs.values("pk")) | Q(pk__in=case_matches.keys())
+            )
+
     clients = clients_qs.distinct().prefetch_related(
         "services__name", "services__common_status", "services__region",
     ).order_by("last_name", "first_name")[:12]
@@ -1784,6 +1808,8 @@ def global_search(request):
     )
     for c in clients:
         c.no_access = c.id not in visible_ids
+        # Нашёлся по номеру арбитражного дела — показываем номер в строке.
+        c.matched_case_number = case_matches.get(c.id)
         # Услуги БФЛ — для кнопки «Дело БФЛ» (Юрист БФЛ). services уже prefetch'нуты.
         c.bfl_services = ([] if c.no_access else
                           [s for s in c.services.all()
