@@ -1,0 +1,41 @@
+{% comment %}
+  Рекурсивный шаблон оглавления — включает сам себя для подразделов.
+  Ждёт в контексте: nodes (узлы уровня), current_id, open_ids.
+  Ветка раскрыта, если внутри неё текущая статья (open_ids приходит из view).
+{% endcomment %}
+{% load icons %}
+<ul class="wiki-tree">
+  {% for node in nodes %}
+    <li>
+      {% if node.children %}
+        <details {% if node.article.pk in open_ids %}open{% endif %}>
+          <summary>
+            <div class="wiki-node{% if node.article.pk == current_id %} is-current{% endif %}">
+              <button type="button" class="wiki-toggle" aria-label="Развернуть раздел">
+                {% icon "chevron-right" size=12 %}
+              </button>
+              {% comment %} stopPropagation — иначе клик по ссылке ещё и схлопнет ветку {% endcomment %}
+              <a href="{{ node.article.get_absolute_url }}" onclick="event.stopPropagation()">
+                <span class="wiki-node__num">{{ node.number }}.</span>{{ node.article.title }}
+                {% if not node.article.is_published %}
+                  <span class="wiki-node__draft">черновик</span>
+                {% endif %}
+              </a>
+            </div>
+          </summary>
+          {% include "wiki/partials/_tree.html" with nodes=node.children %}
+        </details>
+      {% else %}
+        <div class="wiki-node{% if node.article.pk == current_id %} is-current{% endif %}">
+          <span class="wiki-tree__leafpad"></span>
+          <a href="{{ node.article.get_absolute_url }}">
+            <span class="wiki-node__num">{{ node.number }}.</span>{{ node.article.title }}
+            {% if not node.article.is_published %}
+              <span class="wiki-node__draft">черновик</span>
+            {% endif %}
+          </a>
+        </div>
+      {% endif %}
+    </li>
+  {% endfor %}
+</ul>

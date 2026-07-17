@@ -90,6 +90,8 @@ reportlab==4.4.1
 python-docx==1.1.2
 pypdf==5.1.0
 pdfplumber==0.11.7  # 0.11.8+ требует Pillow>=12.2, а у нас закреплён pillow==12.1.0
+Markdown==3.7          # руководство пользователя (apps/wiki): markdown-тело статьи
+bleach==6.2.0          # санитайз HTML из markdown — python-markdown пропускает сырой HTML
 sentry-sdk[django]==2.20.0
 docker==7.1.0
 rules==3.5

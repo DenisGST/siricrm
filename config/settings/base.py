@@ -56,6 +56,7 @@ INSTALLED_APPS = [
     "apps.procedure",
     "apps.efrsb",
     "apps.reports",
+    "apps.wiki",
 
     # django-rules: object-level permissions (apps/<app>/rules.py авто-импортируются)
     "rules.apps.AutodiscoverRulesConfig",

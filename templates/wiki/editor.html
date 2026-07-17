@@ -1,0 +1,155 @@
+{% extends "wiki/base.html" %}
+{% load icons %}
+
+{% block title %}{% if is_new %}Новая статья{% else %}Правка: {{ article.title }}{% endif %} — Руководство{% endblock %}
+
+{% block extra_head %}
+<style>
+  .wiki-editor { max-width: 1400px; margin: 0 auto; padding: 22px 28px 80px; }
+  .wiki-editor__top {
+    display: flex; align-items: center; gap: 10px; margin-bottom: 16px; flex-wrap: wrap;
+  }
+  .wiki-editor__top h1 { font-size: 19px; font-weight: 700; color: #0f172a; margin: 0; flex: 1; }
+  .wiki-field { margin-bottom: 14px; }
+  .wiki-field label { display: block; font-size: 12px; font-weight: 600; color: #475569; margin-bottom: 4px; }
+  .wiki-field input[type=text], .wiki-field select {
+    width: 100%; height: 34px; padding: 0 10px; font-size: 14px;
+    border: 1px solid #cbd5e1; border-radius: 6px; background: #fff; outline: none;
+  }
+  .wiki-field input:focus, .wiki-field select:focus { border-color: #6366f1; }
+  .wiki-field__hint { font-size: 11px; color: #94a3b8; margin-top: 3px; }
+
+  .wiki-split { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; align-items: start; }
+  .wiki-split__pane { min-width: 0; }
+  .wiki-split__lbl {
+    font-size: 12px; font-weight: 600; color: #475569; margin-bottom: 5px;
+    display: flex; align-items: center; gap: 6px;
+  }
+  #wiki-body-input {
+    width: 100%; min-height: 460px; padding: 12px 14px;
+    font-size: 13.5px; line-height: 1.6;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    border: 1px solid #cbd5e1; border-radius: 8px; background: #fff;
+    outline: none; resize: vertical;
+  }
+  #wiki-body-input:focus { border-color: #6366f1; }
+  #wiki-preview {
+    min-height: 460px; padding: 14px 18px;
+    border: 1px solid #e2e8f0; border-radius: 8px; background: #f8fafc;
+    overflow-x: auto;
+  }
+  .wiki-md-help {
+    font-size: 11px; color: #64748b; background: #f1f5f9; border-radius: 6px;
+    padding: 8px 10px; margin-top: 10px; line-height: 1.7;
+  }
+  .wiki-md-help code { background: #fff; border: 1px solid #e2e8f0; border-radius: 3px; padding: 0 4px; }
+  .wiki-editor__actions {
+    display: flex; align-items: center; gap: 10px; margin-top: 20px;
+    padding-top: 16px; border-top: 1px solid #e2e8f0;
+  }
+  .wiki-check { display: flex; align-items: center; gap: 6px; font-size: 13px; color: #334155; }
+  @media (max-width: 900px) { .wiki-split { grid-template-columns: 1fr; } }
+</style>
+{% endblock %}
+
+{% block layout %}
+<form method="post"
+      action="{% if is_new %}{% url 'wiki:article_new' %}{% else %}{% url 'wiki:article_edit' article.slug %}{% endif %}"
+      class="wiki-editor">
+  {% csrf_token %}
+
+  <div class="wiki-editor__top">
+    <h1>
+      {% if is_new %}Новая статья{% else %}Правка{% if number %} · раздел {{ number }}{% endif %}{% endif %}
+    </h1>
+    {% if not is_new %}
+      <a href="{{ article.get_absolute_url }}" class="btn btn-ghost btn-sm">Открыть статью</a>
+    {% endif %}
+  </div>
+
+  <div class="wiki-field">
+    <label for="wiki-title">Заголовок</label>
+    <input type="text" id="wiki-title" name="title" value="{{ article.title }}"
+           placeholder="Например: Основной канбан" required autofocus>
+  </div>
+
+  <div class="wiki-split" style="margin-bottom:4px">
+    <div class="wiki-field" style="margin-bottom:0">
+      <label for="wiki-parent">Родительский раздел</label>
+      <select id="wiki-parent" name="parent">
+        <option value="">— верхний уровень —</option>
+        {% for node in parents %}
+          <option value="{{ node.article.pk }}"
+                  {% if article.parent_id == node.article.pk %}selected{% endif %}>
+            {{ node.number }}. {{ node.article.title }}
+          </option>
+        {% endfor %}
+      </select>
+      <div class="wiki-field__hint">Определяет место в оглавлении и нумерацию.</div>
+    </div>
+    <div class="wiki-field" style="margin-bottom:0">
+      <label for="wiki-slug">Адрес (slug)</label>
+      <input type="text" id="wiki-slug" name="slug" value="{{ article.slug }}"
+             placeholder="сгенерируется из заголовка">
+      <div class="wiki-field__hint">Часть ссылки /wiki/a/<b>…</b>/. Оставьте пустым — заполнится само.</div>
+    </div>
+  </div>
+
+  <div class="wiki-split" style="margin-top:16px">
+    <div class="wiki-split__pane">
+      <div class="wiki-split__lbl">{% icon "pencil" size=13 %} Текст статьи (Markdown)</div>
+      <textarea id="wiki-body-input" name="body"
+                placeholder="# Заголовок&#10;&#10;Обычный текст. **Жирный**, *курсив*.&#10;&#10;- пункт списка&#10;- ещё пункт"
+                hx-post="{% url 'wiki:preview' %}"
+                hx-trigger="keyup changed delay:400ms"
+                hx-target="#wiki-preview"
+                hx-swap="innerHTML">{{ article.body }}</textarea>
+      <div class="wiki-md-help">
+        <b>Подсказка по разметке:</b>
+        <code># </code>заголовок ·
+        <code>## </code>подзаголовок ·
+        <code>**жирный**</code> ·
+        <code>*курсив*</code> ·
+        <code>- </code>список ·
+        <code>1. </code>нумерованный ·
+        <code>[текст](ссылка)</code> ·
+        <code>&gt; </code>цитата ·
+        <code>`код`</code> ·
+        <code>| a | b |</code> таблица
+      </div>
+    </div>
+    <div class="wiki-split__pane">
+      <div class="wiki-split__lbl">{% icon "eye" size=13 %} Предпросмотр</div>
+      <div id="wiki-preview">
+        {% include "wiki/partials/_preview.html" %}
+      </div>
+    </div>
+  </div>
+
+  <div class="wiki-editor__actions">
+    <button type="submit" class="btn btn-primary btn-sm gap-1">
+      {% icon "save" size=14 %} Сохранить
+    </button>
+    <a href="{% if is_new %}{% url 'wiki:index' %}{% else %}{{ article.get_absolute_url }}{% endif %}"
+       class="btn btn-ghost btn-sm">Отмена</a>
+
+    <label class="wiki-check" style="margin-left:6px">
+      <input type="checkbox" name="is_published" class="checkbox checkbox-sm checkbox-primary"
+             {% if article.is_published or is_new %}checked{% endif %}>
+      Опубликована
+    </label>
+
+    <span class="wiki-head__spacer" style="flex:1"></span>
+
+    {% if not is_new %}
+      <button type="submit" formaction="{% url 'wiki:article_delete' article.slug %}"
+              formmethod="post" class="btn btn-ghost btn-sm text-error gap-1"
+              onclick="return confirm('Удалить статью «{{ article.title|escapejs }}»?{% if article.children.exists %} Вместе с ней удалятся и все её подразделы!{% endif %}')">
+        {% icon "trash" size=14 %} Удалить
+      </button>
+    {% endif %}
+  </div>
+</form>
+
+{% block layout_side %}{% endblock %}
+{% endblock %}

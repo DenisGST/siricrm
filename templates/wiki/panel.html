@@ -1,0 +1,131 @@
+{% extends "wiki/base.html" %}
+{% load icons %}
+
+{% block title %}{% if article %}{{ article.title }} — Руководство{% else %}Руководство пользователя{% endif %}{% endblock %}
+
+{% block head_actions %}
+  {% if can_edit %}
+    {% if article %}
+      <a href="{% url 'wiki:article_edit' article.slug %}" class="btn btn-ghost btn-xs gap-1">
+        {% icon "pencil" size=13 %} Править
+      </a>
+      <a href="{% url 'wiki:article_new' %}?parent={{ article.pk }}" class="btn btn-ghost btn-xs gap-1"
+         title="Добавить подраздел внутрь «{{ article.title }}»">
+        {% icon "plus" size=13 %} Подраздел
+      </a>
+    {% endif %}
+    <a href="{% url 'wiki:article_new' %}" class="btn btn-ghost btn-xs gap-1" title="Добавить раздел верхнего уровня">
+      {% icon "plus" size=13 %} Раздел
+    </a>
+    <span class="navbar-divider"></span>
+  {% endif %}
+{% endblock %}
+
+{% block layout %}
+<div class="wiki-layout">
+
+  {% comment %} ── Левая колонка: поиск + оглавление ── {% endcomment %}
+  <aside class="wiki-side">
+    <div class="wiki-search">
+      <span class="wiki-search__icon">{% icon "search" size=13 %}</span>
+      <input type="search" name="q" id="wiki-q" placeholder="Поиск по руководству…"
+             autocomplete="off"
+             hx-get="{% url 'wiki:search' %}"
+             hx-trigger="keyup changed delay:250ms, search"
+             hx-target="#wiki-side-body"
+             hx-swap="innerHTML"
+             hx-include="#wiki-cur">
+      <input type="hidden" id="wiki-cur" name="cur" value="{{ article.slug|default:'' }}">
+      <button type="button" class="wiki-search__clear" onclick="wikiClearSearch()"
+              title="Очистить поиск">✕</button>
+    </div>
+
+    <div id="wiki-side-body">
+      {% include "wiki/partials/_tree.html" with nodes=tree %}
+    </div>
+  </aside>
+
+  {% comment %} ── Правая колонка: контент ── {% endcomment %}
+  <main class="wiki-content">
+    {% if not article %}
+      <div class="wiki-empty" style="font-size:14px;padding:40px 0">
+        {% if can_edit %}
+          Руководство пока пустое. Нажмите «<b>+ Раздел</b>» в шапке, чтобы создать первую статью.
+        {% else %}
+          Руководство пока пустое.
+        {% endif %}
+      </div>
+    {% else %}
+      {% if article.ancestors %}
+        <div class="wiki-crumbs">
+          {% for a in article.ancestors %}
+            <a href="{{ a.get_absolute_url }}">{{ a.title }}</a>
+            <span>›</span>
+          {% endfor %}
+          <span>{{ article.title }}</span>
+        </div>
+      {% endif %}
+
+      <h1 class="wiki-title">
+        <span class="wiki-title__num">{{ number }}.</span> {{ article.title }}
+      </h1>
+
+      <div class="wiki-meta">
+        {% if not article.is_published %}
+          <span class="wiki-node__draft">черновик — виден только редакторам</span>
+        {% endif %}
+        <span>Обновлено {{ article.updated_at|date:"d.m.Y" }}{% if article.updated_by %}, {{ article.updated_by }}{% endif %}</span>
+        {% if can_edit %}
+          <span class="wiki-head__spacer"></span>
+          <form method="post" action="{% url 'wiki:article_move' article.slug %}" style="display:inline">
+            {% csrf_token %}
+            <button name="dir" value="up" class="btn btn-ghost btn-xs btn-square" title="Поднять в оглавлении">
+              {% icon "chevron-up" size=13 %}
+            </button>
+            <button name="dir" value="down" class="btn btn-ghost btn-xs btn-square" title="Опустить в оглавлении">
+              {% icon "chevron-down" size=13 %}
+            </button>
+          </form>
+        {% endif %}
+      </div>
+
+      <article class="wiki-body">
+        {{ article_html }}
+      </article>
+
+      {% if prev_article or next_article %}
+        <nav class="wiki-nav">
+          {% if prev_article %}
+            <a href="{{ prev_article.get_absolute_url }}">
+              <span class="wiki-nav__lbl">← Предыдущий раздел</span>
+              <span class="wiki-nav__ttl">{{ prev_article.title }}</span>
+            </a>
+          {% endif %}
+          {% if next_article %}
+            <a href="{{ next_article.get_absolute_url }}" class="wiki-nav__next">
+              <span class="wiki-nav__lbl">Следующий раздел →</span>
+              <span class="wiki-nav__ttl">{{ next_article.title }}</span>
+            </a>
+          {% endif %}
+        </nav>
+      {% endif %}
+    {% endif %}
+  </main>
+</div>
+
+<script>
+  function wikiClearSearch() {
+    const inp = document.getElementById('wiki-q');
+    inp.value = '';
+    htmx.trigger(inp, 'search');   // form.reset() не годится: нужно перерисовать колонку
+    inp.focus();
+  }
+  // «/» — фокус в поиск, как в привычных вики.
+  document.addEventListener('keydown', (e) => {
+    if (e.key === '/' && !/^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName)) {
+      e.preventDefault();
+      document.getElementById('wiki-q').focus();
+    }
+  });
+</script>
+{% endblock %}

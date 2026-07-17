@@ -1,0 +1,26 @@
+{% comment %}
+  Тело левой колонки. Пустой запрос — обычное оглавление; есть запрос —
+  результаты поиска вместо него.
+{% endcomment %}
+{% if not q %}
+  {% include "wiki/partials/_tree.html" with nodes=tree %}
+{% elif results %}
+  <div class="wiki-empty" style="padding-bottom:4px">
+    Найдено: {{ results|length }}
+  </div>
+  {% for r in results %}
+    <a class="wiki-result" href="{{ r.article.get_absolute_url }}">
+      <div class="wiki-result__title">
+        <span class="wiki-node__num">{{ r.number }}.</span>{{ r.article.title }}
+      </div>
+      {% if r.snippet %}
+        <div class="wiki-result__snippet">{{ r.snippet }}</div>
+      {% endif %}
+    </a>
+  {% endfor %}
+{% else %}
+  <div class="wiki-empty">
+    По запросу «{{ q }}» ничего не нашлось.<br>
+    Попробуйте другое слово или его часть.
+  </div>
+{% endif %}

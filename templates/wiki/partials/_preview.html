@@ -1,0 +1,8 @@
+{% comment %}Живой предпросмотр тела статьи в редакторе.{% endcomment %}
+<article class="wiki-body">
+  {% if article_html %}
+    {{ article_html }}
+  {% else %}
+    <p style="color:#94a3b8">Здесь появится предпросмотр. Начните печатать текст слева.</p>
+  {% endif %}
+</article>

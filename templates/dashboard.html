@@ -478,6 +478,12 @@
 
       <!-- Справа: уведомления + Telegram -->
       <div class="navbar-end gap-0">
+        <div class="tooltip tooltip-bottom" data-tip="Руководство пользователя">
+          <a href="{% url 'wiki:index' %}" target="_blank" rel="noopener"
+             class="btn btn-ghost btn-xs btn-square" style="color:#6366f1">
+            {% icon "help-circle" size=15 %}
+          </a>
+        </div>
         <div class="tooltip tooltip-bottom" data-tip="Уведомления">
           <button type="button" class="btn btn-ghost btn-xs btn-square indicator"
                   data-notif-bell onclick="toggleNotifications()">
