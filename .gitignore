@@ -25,10 +25,12 @@ static_collected/
 *.py,cover
 
 # Local settings / secrets
-.env
-.env.prod
-.env.dev
-.env.*.local
+# 🛑 Игнорируем ВСЕ .env* — любой новый .env.<что-угодно> (.env.fornex и т.п.)
+# считается секретом по умолчанию. Раньше перечислялись только .env/.env.prod/
+# .env.dev/.env.*.local, и файл с другим суффиксом мог уехать в публичный репо
+# первым же `git add -A`. Исключение — шаблоны без секретов, они коммитятся.
+.env*
+!.env.*.example
 *.local.py
 settings_local.py
 *.session*
