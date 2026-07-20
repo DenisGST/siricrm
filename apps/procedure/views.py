@@ -9,6 +9,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
+from urllib.parse import quote
 
 from django.conf import settings
 from django.contrib.auth.decorators import login_required, user_passes_test
@@ -1490,6 +1491,108 @@ def case_envelopes(request, service_id):
     return resp
 
 
+# ── Выгрузка для Почты России (файл загрузки заказов в ЛК otpravka.pochta.ru) ──
+
+def _pochta_selection(request, case):
+    """Разбирает параметры выгрузки (общее для модалки предпросмотра и скачивания).
+
+    Построчные правки приходят как `mass:<key>` (вес в граммах) и `notify:<key>`
+    (галочка «с уведомлением») — ключ строки задаётся в pochta_export._item.
+    """
+    src = request.POST if request.method == "POST" else request.GET
+    ids = src.getlist("req_ids")
+    reqs = list(
+        Request.objects.filter(case=case, pk__in=ids)
+        .select_related("recipient", "request_type").order_by("outgoing_number")
+    ) if ids else []
+    mass = {}
+    for name, value in src.items():
+        if not name.startswith("mass:"):
+            continue
+        try:
+            grams = int(str(value).strip())
+        except (TypeError, ValueError):
+            continue
+        if grams > 0:
+            mass[name[len("mass:"):]] = grams
+    return {
+        "ids": ids,
+        "requests": reqs,
+        "with_creditors": src.get("creditors") == "1",
+        "with_debtor": src.get("debtor") == "1",
+        "mass_overrides": mass,
+        "notify_keys": src.getlist("notify_keys"),
+    }
+
+
+@never_cache
+@login_required
+@require_procedures
+@require_POST
+def requests_pochta_modal(request, service_id):
+    """Предпросмотр выгрузки для Почты: что уйдёт в файл, что отсеяно и почему."""
+    try:
+        service = _bfl_service(request, service_id)
+    except _NotBFL as exc:
+        return HttpResponseForbidden(str(exc))
+    case = services.ensure_case(service)
+    sel = _pochta_selection(request, case)
+    from . import pochta_export
+
+    items = pochta_export.collect_items(
+        case, requests=sel["requests"], with_creditors=sel["with_creditors"],
+        with_debtor=sel["with_debtor"], mass_overrides=sel["mass_overrides"],
+        notify_keys=sel["notify_keys"],
+    )
+    # split_ready проставляет `problems` прямо в строках — в модалке показываем
+    # единым списком: вес и галочку уведомления юрист правит у любой строки,
+    # в том числе чтобы снять перевес.
+    ready, skipped = pochta_export.split_ready(items)
+    return render(request, "procedure/_pochta_export_modal.html", {
+        "service": service, "case": case, "sel": sel,
+        "rows": items, "ready": ready, "skipped": skipped,
+        "index_from": pochta_export.index_from_for_case(case),
+    })
+
+
+@never_cache
+@login_required
+@require_procedures
+def requests_pochta_export(request, service_id):
+    """Файл загрузки заказов для ЛК otpravka.pochta.ru (.xlsx по шаблону Почты)."""
+    try:
+        service = _bfl_service(request, service_id)
+    except _NotBFL as exc:
+        return HttpResponseForbidden(str(exc))
+    case = services.ensure_case(service)
+    sel = _pochta_selection(request, case)
+    from . import pochta_export
+
+    xlsx, ready, skipped = pochta_export.export_case(
+        case, requests=sel["requests"],
+        with_creditors=sel["with_creditors"], with_debtor=sel["with_debtor"],
+        mass_overrides=sel["mass_overrides"], notify_keys=sel["notify_keys"],
+    )
+    if not xlsx:
+        return HttpResponse(
+            "<div style='padding:24px;font-family:sans-serif'>Нечего выгружать: "
+            "у выбранных адресатов не хватает реквизитов (наименование, адрес, индекс).</div>",
+            content_type="text/html; charset=utf-8",
+        )
+    fio = (service.client.last_name or "клиент").strip()
+    filename = f"Почта {fio} ({len(ready)} шт).xlsx"
+    resp = HttpResponse(
+        xlsx,
+        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+    # 🛑 Кириллица в имени файла — только через RFC 5987 (filename*), иначе
+    # браузер получит мусор в заголовке.
+    resp["Content-Disposition"] = (
+        f"attachment; filename=\"pochta.xlsx\"; filename*=UTF-8''{quote(filename)}"
+    )
+    return resp
+
+
 @never_cache
 @login_required
 @require_procedures
@@ -1957,20 +2060,26 @@ def request_upload(request, service_id, req_id):
     client = req.case.service.client
     emp = _actor(request)
     _attach(client, sf, emp)
+    from apps.afd.pdf_utils import pdf_page_count
     if is_docx:
         req.document_docx = sf
         try:
             from apps.afd.pdf_utils import docx_to_pdf
-            pdf_sf = _store(docx_to_pdf(data), filename=f"{f.name[:-5]}.pdf", content_type="application/pdf")
+            pdf_bytes = docx_to_pdf(data)
+            pdf_sf = _store(pdf_bytes, filename=f"{f.name[:-5]}.pdf", content_type="application/pdf")
             _attach(client, pdf_sf, emp)
             req.document_pdf = pdf_sf
+            req.pages_count = pdf_page_count(pdf_bytes) or None
         except Exception:
             import logging
             logging.getLogger(__name__).exception("request_upload: docx→pdf failed")
     else:
         req.document_pdf = sf
+        req.pages_count = pdf_page_count(data) or None
     req.generated_at = timezone.now()
-    req.save(update_fields=["document_docx", "document_pdf", "generated_at", "updated_at"])
+    req.save(update_fields=[
+        "document_docx", "document_pdf", "pages_count", "generated_at", "updated_at",
+    ])
     return _req_trigger()
 
 

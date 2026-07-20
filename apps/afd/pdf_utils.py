@@ -68,5 +68,18 @@ def merge_pdfs(pdf_chunks: list[bytes]) -> bytes:
     return out.getvalue()
 
 
+def pdf_page_count(pdf_bytes: bytes) -> int:
+    """Число страниц в PDF. На битом/пустом файле возвращает 0 (не падает)."""
+    from pypdf import PdfReader
+
+    if not pdf_bytes:
+        return 0
+    try:
+        return len(PdfReader(io.BytesIO(pdf_bytes)).pages)
+    except Exception:
+        log.exception("pdf_page_count: не смог прочитать PDF")
+        return 0
+
+
 def new_token() -> str:
     return uuid.uuid4().hex

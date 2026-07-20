@@ -1,0 +1,140 @@
+{% comment %}
+Выгрузка для Почты России: предпросмотр перед скачиванием файла загрузки ЛК.
+Контекст: service, case, sel, rows (все строки с полем problems), ready, skipped, index_from.
+
+Вес и «с уведомлением» правятся построчно. Изменение веса / состава пересобирает
+модалку (hx-post на себя же) — чтобы пересчитались перевес и счётчики; галочки
+уведомления пересборку не дёргают, но едут в форме и переживают её.
+Скачивание — обычным GET через window.location (HTMX файлы качать не умеет).
+{% endcomment %}
+<dialog id="pochta-export-modal" class="modal modal-middle modal-open">
+  <div class="modal-box w-full max-w-4xl">
+    <h3 class="font-bold text-lg mb-1">Выгрузка для Почты России</h3>
+    <p class="text-xs text-base-content/60 mb-3">
+      Файл загрузки заказов для личного кабинета
+      <a class="link" href="https://otpravka.pochta.ru/" target="_blank" rel="noopener">otpravka.pochta.ru</a>.
+      Конверты со ШПИ и форму 103 печатаете уже там, после загрузки файла.
+    </p>
+
+    <form id="pochta-export-form"
+          hx-post="{% url 'procedure:requests_pochta_modal' service.id %}"
+          hx-target="#pochta-export-modal" hx-swap="outerHTML"
+          hx-trigger="change from:.pochta-opt">
+      {% csrf_token %}
+      {% for rid in sel.ids %}<input type="hidden" name="req_ids" value="{{ rid }}">{% endfor %}
+
+      <div class="flex flex-wrap gap-x-6 gap-y-2 items-center mb-3 p-2 bg-base-200 rounded">
+        <label class="flex items-center gap-2 cursor-pointer">
+          <input type="checkbox" name="creditors" value="1" class="checkbox checkbox-sm pochta-opt"
+                 {% if sel.with_creditors %}checked{% endif %}>
+          <span class="text-sm">Добавить кредиторов дела</span>
+        </label>
+        <label class="flex items-center gap-2 cursor-pointer">
+          <input type="checkbox" name="debtor" value="1" class="checkbox checkbox-sm pochta-opt"
+                 {% if sel.with_debtor %}checked{% endif %}>
+          <span class="text-sm">Добавить должника</span>
+        </label>
+        <span class="ml-auto text-sm">
+          Уйдёт в файл: <b class="text-success">{{ ready|length }}</b>
+          {% if skipped %} · не уйдёт: <b class="text-error">{{ skipped|length }}</b>{% endif %}
+        </span>
+      </div>
+
+      {% if rows %}
+        <div class="overflow-x-auto max-h-96 overflow-y-auto border border-base-300 rounded mb-3">
+          <table class="table table-xs table-pin-rows">
+            <thead>
+              <tr>
+                <th>Адресат</th>
+                <th>Адрес</th>
+                <th class="whitespace-nowrap">Вес, г</th>
+                <th class="whitespace-nowrap text-center">
+                  Уведом-<br>ление
+                  <br><input type="checkbox" id="pochta-notify-all" class="checkbox checkbox-xs mt-1"
+                             title="Отметить все">
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for it in rows %}
+                <tr class="{% if it.problems %}bg-error/10{% endif %}">
+                  <td>
+                    {{ it.name|default:"— без наименования —" }}
+                    {% if it.problems %}
+                      <div class="text-error text-xs">{{ it.problems|join:", " }}</div>
+                    {% endif %}
+                  </td>
+                  <td class="text-base-content/70">{{ it.address|default:"—" }}</td>
+                  <td>
+                    <input type="number" name="mass:{{ it.key }}" value="{{ it.weight_g }}"
+                           min="1" max="2500" step="1"
+                           class="input input-bordered input-xs pochta-opt"
+                           style="width:5.5rem"
+                           title="{% if it.weight_manual %}Задан вручную{% else %}Посчитан: конверт + страницы документа{% endif %}">
+                  </td>
+                  <td class="text-center">
+                    <input type="checkbox" name="notify_keys" value="{{ it.key }}"
+                           class="checkbox checkbox-sm pochta-notify"
+                           {% if it.notify %}checked{% endif %}>
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <div class="alert alert-warning text-sm mb-3">
+          Нечего выгружать. Отметьте запросы чекбоксами в таблице или добавьте кредиторов/должника.
+        </div>
+      {% endif %}
+    </form>
+
+    {% if index_from %}
+      <p class="text-xs text-base-content/60 mb-2">Индекс ОПС отправки (INDEXFROM): <b>{{ index_from }}</b></p>
+    {% else %}
+      <div class="alert alert-warning text-xs mb-2 py-2">
+        У финуправляющего дела не указан индекс ОПС отправки — колонка INDEXFROM уйдёт пустой.
+        Заполните его в Справочниках → Арбитражные управляющие.
+      </div>
+    {% endif %}
+
+    <div class="modal-action">
+      <button type="button" class="btn btn-primary btn-sm" {% if not ready %}disabled{% endif %}
+              onclick="pochtaDownload()">Скачать .xlsx</button>
+      <button type="button" class="btn btn-sm" onclick="this.closest('dialog').remove()">Закрыть</button>
+    </div>
+  </div>
+  <form method="dialog" class="modal-backdrop"><button onclick="this.closest('dialog').remove()">close</button></form>
+
+  {% comment %}🛑 IIFE — иначе при повторном открытии модалки top-level const падает «already declared».{% endcomment %}
+  <script>
+  (function () {
+    window.pochtaDownload = function () {
+      const form = document.getElementById('pochta-export-form');
+      if (!form) return;
+      const params = new URLSearchParams();
+      new FormData(form).forEach(function (v, k) {
+        if (k !== 'csrfmiddlewaretoken') params.append(k, v);
+      });
+      window.location = "{% url 'procedure:requests_pochta_export' service.id %}?" + params.toString();
+    };
+
+    {% comment %}«Отметить все» — чисто клиентский тумблер, пересборку не дёргает.{% endcomment %}
+    const all = document.getElementById('pochta-notify-all');
+    const boxes = document.querySelectorAll('#pochta-export-form .pochta-notify');
+    if (all) {
+      const sync = function () {
+        const n = document.querySelectorAll('#pochta-export-form .pochta-notify:checked').length;
+        all.checked = (boxes.length > 0 && n === boxes.length);
+        all.indeterminate = (n > 0 && n < boxes.length);
+      };
+      all.addEventListener('change', function () {
+        boxes.forEach(function (b) { b.checked = all.checked; });
+        all.indeterminate = false;
+      });
+      boxes.forEach(function (b) { b.addEventListener('change', sync); });
+      sync();
+    }
+  })();
+  </script>
+</dialog>

@@ -18,6 +18,12 @@
          hx-include="#req-sort, #req-dir">
   <div class="ml-auto flex items-center gap-2">
     <span id="req-sel-count" class="text-xs text-base-content/60"></span>
+    {% comment %}Выгрузка для Почты РФ — по отмеченным запросам (кредиторы/должник добавляются в модалке).{% endcomment %}
+    <button id="req-pochta" type="button" class="btn btn-sm btn-outline" disabled
+            hx-post="{% url 'procedure:requests_pochta_modal' service.id %}"
+            hx-include="#req-table-wrap input[name=req_ids]:checked"
+            hx-target="body" hx-swap="beforeend"
+            title="Файл загрузки заказов для ЛК Почты России">{% icon "mail" size=15 %} Выгрузка для Почты</button>
     <button id="req-batch-del" type="button" class="btn btn-sm btn-outline btn-error" disabled
             hx-post="{% url 'procedure:request_batch_delete' service.id %}"
             hx-include="#req-table-wrap input[name=req_ids]:checked"
@@ -137,8 +143,10 @@
     var checks = document.querySelectorAll('#req-table-wrap input.req-check');
     var n = document.querySelectorAll('#req-table-wrap input.req-check:checked').length;
     var c = document.getElementById('req-sel-count'), b = document.getElementById('req-batch-del');
+    var p = document.getElementById('req-pochta');
     if (c) c.textContent = n ? ('Выбрано: ' + n) : '';
     if (b) b.disabled = (n === 0);
+    if (p) p.disabled = (n === 0);
     var all = document.getElementById('req-check-all');
     if (all) all.checked = (checks.length > 0 && n === checks.length);
   };

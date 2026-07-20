@@ -10,7 +10,8 @@ class ArbitrationManagerForm(forms.ModelForm):
         model = ArbitrationManager
         fields = [
             "last_name", "first_name", "patronymic", "inn", "snils",
-            "corr_address", "phone", "email", "sro_text", "employee", "is_active",
+            "corr_address", "ops_index", "phone", "email", "sro_text",
+            "employee", "is_active",
         ]
 
 

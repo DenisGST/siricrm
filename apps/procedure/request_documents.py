@@ -12,7 +12,7 @@ from django.db.models import Max
 from django.utils import timezone
 
 from apps.afd.docx_engine import render_docx
-from apps.afd.pdf_utils import docx_to_pdf
+from apps.afd.pdf_utils import docx_to_pdf, pdf_page_count
 from apps.crm import client_log
 from apps.files.folder_utils import _mk, get_or_create_root
 from apps.files.models import ClientFile, StoredFile
@@ -426,8 +426,11 @@ def save_edited_document(req, new_docx_bytes: bytes, *, employee=None):
     _attach(client, docx_sf, employee)
     req.document_docx = docx_sf
     req.document_pdf = pdf_sf
+    req.pages_count = pdf_page_count(pdf_bytes) or None
     req.generated_at = timezone.now()
-    req.save(update_fields=["document_docx", "document_pdf", "generated_at", "updated_at"])
+    req.save(update_fields=[
+        "document_docx", "document_pdf", "pages_count", "generated_at", "updated_at",
+    ])
     return req
 
 
@@ -486,10 +489,11 @@ def generate_request_document(req, *, with_signature=False, marriage_cert="", em
 
     req.document_pdf = pdf_sf
     req.document_docx = docx_sf
+    req.pages_count = pdf_page_count(pdf_bytes) or None
     req.with_signature = bool(with_signature)
     req.generated_at = timezone.now()
     req.save(update_fields=[
-        "outgoing_number", "document_pdf", "document_docx",
+        "outgoing_number", "document_pdf", "document_docx", "pages_count",
         "with_signature", "generated_at", "updated_at",
     ])
     try:

@@ -19,8 +19,15 @@
         <label class="form-control"><span class="label-text text-xs">СНИЛС</span>
           <input type="text" name="snils" value="{{ form.snils.value|default:'' }}" class="input input-bordered input-sm"></label>
       </div>
-      <label class="form-control"><span class="label-text text-xs">Адрес для корреспонденции</span>
-        <input type="text" name="corr_address" value="{{ form.corr_address.value|default:'' }}" class="input input-bordered input-sm"></label>
+      <div class="grid grid-cols-4 gap-2">
+        <label class="form-control col-span-3"><span class="label-text text-xs">Адрес для корреспонденции</span>
+          <input type="text" name="corr_address" value="{{ form.corr_address.value|default:'' }}" class="input input-bordered input-sm"></label>
+        <label class="form-control"><span class="label-text text-xs">Индекс ОПС отправки</span>
+          <input type="text" name="ops_index" value="{{ form.ops_index.value|default:'' }}" maxlength="6"
+                 inputmode="numeric" pattern="[0-9]{6}" placeholder="369000"
+                 title="6 цифр — отделение, через которое сдаётся почта (INDEXFROM в выгрузке для Почты)"
+                 class="input input-bordered input-sm"></label>
+      </div>
       <div class="grid grid-cols-2 gap-2">
         <label class="form-control"><span class="label-text text-xs">Телефон / факс</span>
           <input type="text" name="phone" value="{{ form.phone.value|default:'' }}" class="input input-bordered input-sm"></label>

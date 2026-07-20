@@ -604,6 +604,11 @@ class Request(TimeStampedModel):
         "files.StoredFile", on_delete=models.SET_NULL, null=True, blank=True,
         related_name="+", verbose_name="Документ (.docx)",
     )
+    pages_count = models.PositiveSmallIntegerField(
+        "Страниц в документе", null=True, blank=True,
+        help_text="Считается при формировании/загрузке PDF. Нужен для веса письма "
+                  "в выгрузке для Почты России (пустой → вес по умолчанию).",
+    )
 
     created_by = models.ForeignKey(
         "core.Employee", on_delete=models.SET_NULL, null=True, blank=True,
@@ -653,6 +658,11 @@ class ArbitrationManager(TimeStampedModel):
     inn = models.CharField("ИНН", max_length=20, blank=True)
     snils = models.CharField("СНИЛС", max_length=20, blank=True)
     corr_address = models.CharField("Адрес для корреспонденции", max_length=400, blank=True)
+    ops_index = models.CharField(
+        "Индекс ОПС отправки", max_length=6, blank=True,
+        help_text="Шестизначный индекс отделения, через которое АУ сдаёт почту "
+                  "(колонка INDEXFROM в выгрузке для Почты России).",
+    )
     phone = models.CharField("Телефон / факс", max_length=120, blank=True)
     email = models.CharField("E-mail", max_length=255, blank=True)
     sro = models.ForeignKey(
