@@ -44,7 +44,39 @@ def poll_telegram_leads():
         cache.delete(POLL_LOCK_KEY)
 
 
-def _poll_once():
+@shared_task(name="telegram.poll_bot_private", time_limit=POLL_TIMEOUT + 15)
+def poll_bot_private():
+    """Тот же getUpdates, но обрабатываем ТОЛЬКО личку бота: коды привязки
+    аккаунта сотрудника (персональные уведомления о судебных событиях).
+
+    Отдельная задача, потому что `poll-telegram-leads` выключен в beat на
+    обоих серверах (лид-канал не настроен), а привязка нужна.
+
+    🛑 Одновременно с `poll_telegram_leads` включать НЕЛЬЗЯ: getUpdates на
+    один токен из двух мест — 409 Conflict и разъезжающиеся offset'ы.
+    Общий SETNX-лок (POLL_LOCK_KEY) страхует от параллельного запуска,
+    но offset'ы у задач разные — включаем в beat что-то одно.
+    Если понадобятся ОБА (лиды + привязка) — включать только
+    `poll-telegram-leads`: его `_poll_once` уже умеет и то, и другое.
+    """
+    from django.conf import settings
+
+    if not BOT_TOKEN:
+        return {"skipped": "no_bot_token"}
+    # 🛑 На dev тот же токен поллит бот мониторинга (MONITOR_BOT_POLL=true) —
+    # второй getUpdates даёт 409 Conflict. Там коды привязки ловит он сам
+    # (apps/core/tasks._handle_monitor_update), а мы уступаем.
+    if getattr(settings, "MONITOR_BOT_POLL", False):
+        return {"skipped": "monitor_bot_owns_polling"}
+    if not cache.add(POLL_LOCK_KEY, "1", timeout=POLL_TIMEOUT + 10):
+        return {"skipped": "locked"}
+    try:
+        return _poll_once(private_only=True)
+    finally:
+        cache.delete(POLL_LOCK_KEY)
+
+
+def _poll_once(private_only: bool = False):
     offset = cache.get(OFFSET_CACHE_KEY)
     params = {
         "timeout": POLL_TIMEOUT,
@@ -82,6 +114,18 @@ def _poll_once():
             continue
         chat = msg.get("chat") or {}
         chat_id = str(chat.get("id") or "")
+        # Личка бота — это НЕ лид, а сотрудник: /start или код привязки
+        # аккаунта для персональных уведомлений (см. _handle_private_message).
+        if (chat.get("type") or "") == "private":
+            try:
+                _handle_private_message(msg)
+            except Exception:  # noqa: BLE001 — приватка не должна ронять поллинг
+                logger.exception("telegram-bot: ошибка обработки лички")
+            continue
+        # Режим «только личка» (задача poll_bot_private): всё остальное
+        # пролистываем, лиды не создаём.
+        if private_only:
+            continue
         if LEADS_CHANNEL_ID and chat_id != LEADS_CHANNEL_ID:
             logger.info("telegram-leads polling: пропущен chat_id=%s", chat_id)
             continue
@@ -100,3 +144,81 @@ def _poll_once():
         cache.set(OFFSET_CACHE_KEY, last_id + 1, timeout=7 * 24 * 3600)
 
     return {"updates": len(updates), "leads": leads}
+
+
+# ─── личка бота: привязка аккаунта сотрудника ──────────────
+
+
+def _handle_private_message(msg: dict):
+    """Приватное сообщение боту: одноразовый код привязки или подсказка.
+
+    Зеркало MAX-флоу (`apps/maxchat/processing.handle_max_event`): если текст —
+    активный код из профиля сотрудника, сохраняем его chat_id в
+    `Employee.telegram_chat_id`. Клиента из лички НЕ создаём — это сотрудник.
+    """
+    from .bot_sender import send_bot_message
+    from . import linkcode
+
+    chat_id = ((msg.get("chat") or {}).get("id"))
+    text = (msg.get("text") or "").strip()
+    if not chat_id:
+        return
+
+    emp_id = linkcode.claim(text)
+    if emp_id is not None:
+        _bind_employee_telegram(emp_id, int(chat_id))
+        return
+
+    # 🛑 На dev тот же токен параллельно поллит бот мониторинга
+    # (MONITOR_BOT_POLL=true), и апдейты между поллерами делятся случайно.
+    # Своим он отвечает клавиатурой отчётов — не перебиваем его подсказкой.
+    # Код привязки выше обрабатываем в любом случае: монитор его игнорирует.
+    from django.conf import settings
+
+    from apps.core.tasks import _monitor_allowed_ids
+    if getattr(settings, "MONITOR_BOT_POLL", False) and \
+            str(chat_id) in _monitor_allowed_ids():
+        return
+
+    # Не код — короткая подсказка (на /start и на любой другой текст).
+    send_bot_message(
+        chat_id,
+        "Это служебный бот SiriCRM.\n"
+        "Чтобы получать уведомления о судебных событиях, откройте свой профиль "
+        "в CRM → «Уведомления в Telegram» → «Получить код привязки» и отправьте "
+        "этот код сюда.",
+        parse_mode=None,
+    )
+
+
+def _bind_employee_telegram(emp_id: int, chat_id: int):
+    """Привязать Telegram chat_id к профилю сотрудника (по одноразовому коду).
+
+    Снимает этот chat_id с других сотрудников (поле unique), сохраняет и
+    шлёт сотруднику подтверждение в Telegram.
+    """
+    from apps.core.models import Employee
+
+    from .bot_sender import send_bot_message
+
+    try:
+        emp = Employee.objects.select_related("user").get(pk=emp_id)
+    except Employee.DoesNotExist:
+        logger.warning("TG link: сотрудник %s не найден (код устарел?)", emp_id)
+        return
+
+    # chat_id уникален на Employee — снимем его с прежних владельцев (перепривязка).
+    Employee.objects.filter(telegram_chat_id=chat_id).exclude(pk=emp.pk).update(
+        telegram_chat_id=None)
+    emp.telegram_chat_id = chat_id
+    emp.save(update_fields=["telegram_chat_id"])
+    logger.info("🔗 Telegram привязан к сотруднику %s (chat_id=%s)", emp.pk, chat_id)
+
+    name = emp.user.get_full_name() or emp.user.username
+    send_bot_message(
+        chat_id,
+        f"✅ Telegram привязан к профилю: {name}.\n"
+        "Сюда будут приходить уведомления о судебных событиях "
+        "(если включён чек «Уведомлять в Telegram о судебных событиях» в профиле).",
+        parse_mode=None,
+    )

@@ -201,6 +201,10 @@ class Employee(models.Model):
     # уведомления о судебных событиях. По умолчанию выключено у всех.
     notify_court_events_max = models.BooleanField(
         "Уведомлять в MAX о судебных событиях", default=False)
+    # То же самое, но в Telegram (через бота уведомлений). Каналы независимы:
+    # можно включить оба — придёт в оба, ни одного — не придёт никуда.
+    notify_court_events_telegram = models.BooleanField(
+        "Уведомлять в Telegram о судебных событиях", default=False)
     is_active = models.BooleanField("Активен", default=True)
     is_online = models.BooleanField(default=False, verbose_name='Онлайн')
     is_owner = models.BooleanField(

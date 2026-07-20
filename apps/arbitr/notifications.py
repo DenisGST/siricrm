@@ -1,6 +1,7 @@
-"""Уведомления для арбитражного мониторинга (MAX-бот, позже — TG)."""
+"""Уведомления для арбитражного мониторинга (MAX-бот + Telegram-бот)."""
 from __future__ import annotations
 
+import html
 import logging
 
 from django.conf import settings
@@ -37,10 +38,37 @@ def _case_fio(case: ArbitrCase) -> str:
     return fio or "(без ФИО)"
 
 
-def _build_court_event_text(case: ArbitrCase, new_events_detail: list) -> str:
-    """Собирает текст персонального уведомления (MAX markdown).
+class _MarkdownFmt:
+    """Разметка MAX (markdown). Скобки [] внутри подписи ссылки рвут разметку."""
 
-    Формат:
+    @staticmethod
+    def esc(s: str) -> str:
+        return s or ""
+
+    @staticmethod
+    def link(text: str, url: str) -> str:
+        return f"[{_md_link_text(text)}]({url})"
+
+
+class _HtmlFmt:
+    """Разметка Telegram (parse_mode=HTML) — экранируем < > &."""
+
+    @staticmethod
+    def esc(s: str) -> str:
+        return html.escape(s or "", quote=False)
+
+    @staticmethod
+    def link(text: str, url: str) -> str:
+        return f'<a href="{html.escape(url or "", quote=True)}">{html.escape(text or "", quote=False)}</a>'
+
+
+def _build_court_event_text(
+    case: ArbitrCase, new_events_detail: list, fmt=_MarkdownFmt,
+) -> str:
+    """Собирает текст персонального уведомления.
+
+    Формат (одинаков для обоих каналов, отличается только разметка ссылок —
+    `fmt` = _MarkdownFmt для MAX / _HtmlFmt для Telegram):
         [A12-1234/2025](kad-карточка) Фамилия Имя Отчество
         Новая запись: Отзыв
         Новый файл: [Определение](kad-ссылка-на-файл)
@@ -49,9 +77,9 @@ def _build_court_event_text(case: ArbitrCase, new_events_detail: list) -> str:
     fio = _case_fio(case)
     case_number = case.case_number or "(номер не указан)"
     if case.kad_url:
-        header = f"[{_md_link_text(case_number)}]({case.kad_url}) {fio}"
+        header = f"{fmt.link(case_number, case.kad_url)} {fmt.esc(fio)}"
     else:
-        header = f"{case_number} {fio}"
+        header = fmt.esc(f"{case_number} {fio}")
 
     lines = [header]
     shown = new_events_detail[:MAX_EVENTS_IN_NOTIFY]
@@ -63,25 +91,26 @@ def _build_court_event_text(case: ArbitrCase, new_events_detail: list) -> str:
         # НЕ используем: kad кладёт туда ФИО судьи, а не описание записи.
         label = kind or desc or "(без описания)"
         date_part = f" ({date})" if date else ""
-        lines.append(f"Новая запись{date_part}: {label}")
+        lines.append(fmt.esc(f"Новая запись{date_part}: {label}"))
         # Суть/результат — отдельной строкой (если есть и не дублирует тип).
         if desc and desc != label:
-            lines.append(desc)
+            lines.append(fmt.esc(desc))
         for att in ev.get("attachments") or []:
             fname = (att.get("name") or "").strip() or "файл"
             url = (att.get("kad_url") or "").strip()
             if url and not att.get("is_locked"):
-                lines.append(f"Новый файл: [{_md_link_text(fname)}]({url})")
+                lines.append(f"Новый файл: {fmt.link(fname, url)}")
             else:
-                lines.append(f"Новый файл: {fname}")
+                lines.append(fmt.esc(f"Новый файл: {fname}"))
 
     hidden = len(new_events_detail) - len(shown)
     if hidden > 0:
-        lines.append(f"…и ещё {hidden} нов. записей — см. карточку дела на kad.")
+        lines.append(fmt.esc(f"…и ещё {hidden} нов. записей — см. карточку дела на kad."))
 
     text = "\n".join(lines)
     if len(text) > MAX_TEXT_LEN:
-        # Режем по границе строки (чтобы не порвать markdown-ссылку [..](..)).
+        # Режем по границе строки (чтобы не порвать ссылку — она всегда
+        # целиком внутри одной строки, в любой из двух разметок).
         cut = text.rfind("\n", 0, MAX_TEXT_LEN)
         if cut <= 0:
             cut = MAX_TEXT_LEN
@@ -92,14 +121,23 @@ def _build_court_event_text(case: ArbitrCase, new_events_detail: list) -> str:
 def send_court_event_notifications(
     case: ArbitrCase, *, new_events_detail: list,
 ) -> int:
-    """Персональные MAX-уведомления сотрудникам о новых судебных событиях по делу.
+    """Персональные уведомления сотрудникам о новых судебных событиях по делу.
 
-    Шлём каждому сотруднику с `notify_court_events_max=True` и привязанным
-    `max_chat_id`. Только НЕПУСТЫЕ (передан хотя бы один new_event) — пустые
-    парсинги молчат. Возвращает число успешных отправок.
+    Два независимых канала — MAX и Telegram; сотрудник может включить любой,
+    оба или ни одного (чеки в профиле + привязанный chat_id соответствующего
+    бота). Только НЕПУСТЫЕ (передан хотя бы один new_event) — пустые парсинги
+    молчат. Возвращает суммарное число успешных отправок по обоим каналам.
     """
     if not new_events_detail:
         return 0
+    return (
+        _send_court_events_max(case, new_events_detail)
+        + _send_court_events_telegram(case, new_events_detail)
+    )
+
+
+def _send_court_events_max(case: ArbitrCase, new_events_detail: list) -> int:
+    """Рассылка в MAX: `notify_court_events_max=True` + привязанный max_chat_id."""
     token = (settings.MAX_BOT_TOKEN or "").strip()
     if not token:
         return 0
@@ -115,7 +153,7 @@ def send_court_event_notifications(
     if not recipients:
         return 0
 
-    text = _build_court_event_text(case, new_events_detail)
+    text = _build_court_event_text(case, new_events_detail, _MarkdownFmt)
     sent = 0
     for chat_id in recipients:
         try:
@@ -130,7 +168,47 @@ def send_court_event_notifications(
             sent += 1
         else:
             logger.error("Court-event MAX send failed to %s: %s", chat_id, err)
-    logger.info("Court-event notify: case=%s → %s/%s sent",
+    logger.info("Court-event notify (MAX): case=%s → %s/%s sent",
+                case.case_number, sent, len(recipients))
+    return sent
+
+
+def _send_court_events_telegram(case: ArbitrCase, new_events_detail: list) -> int:
+    """Рассылка в Telegram: `notify_court_events_telegram=True` + telegram_chat_id.
+
+    🛑 Сотрудник должен один раз написать боту (нажать Start / отправить код
+    привязки) — иначе Telegram отвечает «chat not found»: бот не может писать
+    первым. Привязка как раз и делается сообщением боту, так что у привязанных
+    диалог уже открыт.
+    """
+    from apps.telegram.bot_sender import bot_token, send_bot_message
+
+    if not bot_token():
+        return 0
+
+    from apps.core.models import Employee
+    recipients = list(
+        Employee.objects
+        .filter(notify_court_events_telegram=True, is_active=True)
+        .exclude(telegram_chat_id__isnull=True)
+        .values_list("telegram_chat_id", flat=True)
+    )
+    if not recipients:
+        return 0
+
+    text = _build_court_event_text(case, new_events_detail, _HtmlFmt)
+    sent = 0
+    for chat_id in recipients:
+        try:
+            ok, _mid, err = send_bot_message(chat_id, text, parse_mode="HTML")
+        except Exception:  # noqa: BLE001 — уведомление не должно ронять парсинг
+            logger.exception("Court-event TG send crashed for %s", chat_id)
+            continue
+        if ok:
+            sent += 1
+        else:
+            logger.error("Court-event TG send failed to %s: %s", chat_id, err)
+    logger.info("Court-event notify (TG): case=%s → %s/%s sent",
                 case.case_number, sent, len(recipients))
     return sent
 

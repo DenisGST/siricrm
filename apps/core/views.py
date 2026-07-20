@@ -1157,6 +1157,7 @@ def _profile_ctx(request, emp, is_self, **extra):
         "profile_form": ProfileForm(instance=emp),
         "password_form": _password_form(emp, is_self),
         "max_bot_link": getattr(settings, "MAX_BOT_LINK", ""),
+        "tg_bot_link": getattr(settings, "TELEGRAM_BOT_LINK", ""),
     }
     ctx.update(extra)
     return ctx
@@ -1315,4 +1316,37 @@ def profile_max(request, pk=None):
     return render(request, "core/partials/_profile_max.html", {
         "emp": emp, "is_self": is_self, "max_link_code": code,
         "max_bot_link": getattr(settings, "MAX_BOT_LINK", ""),
+    })
+
+
+@login_required
+@require_POST
+def profile_telegram(request, pk=None):
+    """Привязка Telegram-аккаунта сотрудника (для персональных уведомлений).
+
+    Зеркало `profile_max`: action=issue — выдать одноразовый код (сотрудник
+    отправит его боту), action=unlink — отвязать (стереть telegram_chat_id).
+    Сама привязка происходит в поллере getUpdates (см.
+    apps/telegram/tasks._bind_employee_telegram) — код служит паролем на 15 минут.
+    """
+    from django.conf import settings
+
+    from apps.telegram import linkcode
+
+    emp, is_self = _profile_target(request, pk)
+    if emp is None:
+        return HttpResponse("forbidden", status=403)
+
+    action = request.POST.get("action") or "issue"
+    code = None
+    if action == "unlink":
+        emp.telegram_chat_id = None
+        emp.save(update_fields=["telegram_chat_id"])
+        emp.refresh_from_db()
+    else:  # issue
+        code = linkcode.issue(emp.pk)
+
+    return render(request, "core/partials/_profile_telegram.html", {
+        "emp": emp, "is_self": is_self, "tg_link_code": code,
+        "tg_bot_link": getattr(settings, "TELEGRAM_BOT_LINK", ""),
     })

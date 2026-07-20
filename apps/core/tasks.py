@@ -226,6 +226,17 @@ def _handle_monitor_update(upd: dict, allowed: set):
     msg = upd.get("message")
     if msg:
         chat_id = str(msg.get("chat", {}).get("id") or "")
+        # Этот же бот на dev принимает коды привязки Telegram сотрудника
+        # (персональные уведомления о судебных событиях): на dev поллер лички
+        # `telegram.poll_bot_private` уступает нам токен, чтобы не ловить 409.
+        # Код — самостоятельный пароль, allowlist мониторинга тут не при чём.
+        if (msg.get("chat") or {}).get("type") == "private":
+            from apps.telegram import linkcode
+            from apps.telegram.tasks import _bind_employee_telegram
+            emp_id = linkcode.claim(msg.get("text") or "")
+            if emp_id is not None:
+                _bind_employee_telegram(emp_id, int(chat_id))
+                return
         if chat_id not in allowed:
             logger.warning("monitor bot: сообщение от неавторизованного chat_id=%s — отказ", chat_id)
             _tg_api("sendMessage", {"chat_id": chat_id,

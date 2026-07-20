@@ -47,6 +47,15 @@ app.conf.beat_schedule = {
         'task': 'telegram.poll_telegram_leads',
         'schedule': 10,
     },
+    # Личка Telegram-бота: коды привязки аккаунта сотрудника (персональные
+    # уведомления о судебных событиях). Отдельная запись, потому что
+    # poll-telegram-leads выключен (лид-канал не настроен).
+    # 🛑 Одновременно с poll-telegram-leads НЕ включать — 409 Conflict
+    # на getUpdates (один токен, два поллера). См. docstring задачи.
+    'poll-telegram-bot-private': {
+        'task': 'telegram.poll_bot_private',
+        'schedule': 10,
+    },
     # Мониторинг арбитражных дел (kad.arbitr.ru). Сами таски имеют
     # внутреннюю проверку «работаем только 18:00–08:00», поэтому beat
     # просто будит их часто — оверхеда нет, реальная работа в окне.

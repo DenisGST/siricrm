@@ -275,6 +275,9 @@ TELEGRAM_PHONE = config("TELEGRAM_PHONE", default="")
 # Токен leads-бота (@Sirius_system_bot). Раньше читался только в leads_bot.py
 # через decouple; вынесли в settings — нужен health-монитору для TG-алёртов.
 TELEGRAM_BOT_TOKEN = config("TELEGRAM_BOT_TOKEN", default="")
+# Публичная ссылка на нашего Telegram-бота (для инструкции привязки в профиле).
+# Опционально — если пусто, в профиле просто не будет кнопки «открыть бота».
+TELEGRAM_BOT_LINK = config("TELEGRAM_BOT_LINK", default="")
 
 # --- DaData ---
 DADATA_API_KEY = config("DADATA_API_KEY", default="")
