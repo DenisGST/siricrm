@@ -92,6 +92,18 @@ def _poll_once(private_only: bool = False):
         logger.warning("telegram-leads polling: запрос упал: %s", e)
         return {"error": str(e)}
 
+    if r.status_code == 401:
+        # Токен отозван/протух: beat будит нас каждые 10с, а чинится это только
+        # руками (новый токен в .env + force-recreate). Не засоряем лог —
+        # предупреждаем раз в час.
+        if cache.add("telegram_bot:401_logged", "1", timeout=3600):
+            logger.error(
+                "telegram polling: TELEGRAM_BOT_TOKEN отклонён (401 Unauthorized) — "
+                "привязка Telegram и уведомления о судебных событиях не работают, "
+                "нужен действующий токен бота"
+            )
+        return {"error": "unauthorized"}
+
     if r.status_code != 200:
         logger.warning("telegram-leads polling: %s %s", r.status_code, r.text[:300])
         return {"error": f"http_{r.status_code}"}
