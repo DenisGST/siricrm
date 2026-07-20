@@ -28,10 +28,21 @@ class Command(BaseCommand):
             action="store_true",
             help="Перезаписать заголовок и текст существующих статей из кода.",
         )
+        parser.add_argument(
+            "--only",
+            metavar="SLUG",
+            action="append",
+            help=(
+                "Ограничить действие перечисленными slug'ами (можно повторять). "
+                "Вместе с --force-text перезаписывает ТОЛЬКО их — остальные статьи "
+                "и правки, сделанные в UI, не трогаются."
+            ),
+        )
 
     @transaction.atomic
     def handle(self, *args, **opts):
         self.force = opts["force_text"]
+        self.only = set(opts["only"] or [])
         self.created = self.updated = self.skipped = 0
         self._walk(CONTENT, parent=None, order=10)
         self.stdout.write(self.style.SUCCESS(
@@ -61,6 +72,13 @@ class Command(BaseCommand):
             )
             self.created += 1
             self.stdout.write(f"  + {node['slug']}")
+            return art
+
+        # С --only существующие статьи вне списка не трогаем вовсе (ни текст,
+        # ни место в дереве) — иначе адресная правка задела бы чужие правки из UI.
+        # Отсутствующие статьи создаются всегда: создание ничего не затирает.
+        if self.only and node["slug"] not in self.only:
+            self.skipped += 1
             return art
 
         # Существует: место в дереве синхронизируем всегда (чтобы порядок в
