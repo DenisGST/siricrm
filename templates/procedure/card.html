@@ -1,4 +1,5 @@
 {% load permissions_tags %}
+{% load icons %}
 {% comment %}
   Карточка процедуры банкротства — полноэкранный экран по услуге БФЛ.
   Свопится в #content-area (как чат). Вкладки грузятся в #procedure-tab-body.
@@ -23,6 +24,14 @@
          hx-get="{% url 'procedure:stages_bar' service.id %}"
          hx-trigger="load, procStagesChanged from:body"
          hx-swap="innerHTML"></div>
+    {% comment %} Кнопка «Файловый менеджер клиента» — правый верхний угол {% endcomment %}
+    <button type="button"
+            class="btn btn-sm btn-outline btn-square flex-shrink-0"
+            title="Файловый менеджер клиента"
+            hx-get="{% url 'files:manager' client.id %}"
+            hx-target="body" hx-swap="beforeend">
+      {% icon "folder" size=18 %}
+    </button>
   </div>
 
   {% comment %} Строка вкладок {% endcomment %}
