@@ -207,6 +207,16 @@ class Client(TimeStampedModel):
             return format_phone(self.whatsapp_phone)
         return ""
 
+    @property
+    def has_bfl_service(self) -> bool:
+        """Есть ли у клиента услуга БФЛ — для кнопки «Рабочее место юриста» на
+        канбан-карточке (рабочее место открывается только по делу БФЛ). Читает
+        prefetch-кэш `services__name`, если он есть, иначе делает 1 запрос."""
+        return any(
+            getattr(s.name, "short_name", "") == "БФЛ"
+            for s in self.services.all()
+        )
+
     def __str__(self):
         return f"{self.first_name} {self.last_name} (@{self.username})"
 

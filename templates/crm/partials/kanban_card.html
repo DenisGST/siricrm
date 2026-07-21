@@ -130,6 +130,22 @@
         hx-on:click="event.stopPropagation()">
         {% icon "folder" size=18 %}
       </button>
+      {% comment %}Переход на рабочее место юриста (дело БФЛ). Только у клиентов
+      с услугой БФЛ и при праве can_access_procedures; открывается в #content-area,
+      как из глобального поиска (кнопка «Дело БФЛ»).{% endcomment %}
+      {% if user|can_access_procedures and client.has_bfl_service %}
+      <button
+        type="button"
+        class="kanban-action-btn text-base-content/50 hover:text-primary"
+        hx-get="{% url 'procedure:open_client_case' %}?client_id={{ client.id }}"
+        hx-target="#content-area"
+        hx-swap="innerHTML"
+        title="Рабочее место юриста (дело БФЛ)"
+        onclick="event.stopPropagation()"
+        hx-on:click="event.stopPropagation()">
+        {% icon "femida" size=18 %}
+      </button>
+      {% endif %}
       <button
         type="button"
         class="kanban-action-btn text-base-content/50"
