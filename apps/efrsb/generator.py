@@ -118,6 +118,18 @@ def _sro_full(am) -> str:
     return f"{name} ({', '.join(meta)})" if meta else name
 
 
+def _fu_approved(am) -> str:
+    """«утверждён» / «утверждена» — согласование по полу управляющего.
+
+    Пол берём по отчеству (женские -вна/-чна, иначе мужская форма). В справочнике
+    АУ пола нет, а заводить ради одного слова избыточно. 🛑 Эвристика: если
+    промахнулась — АУ правит формулировку в тексте перед сохранением.
+    (Та же логика, что в apps.kommersant.generator — держим согласованно.)
+    """
+    patronymic = (getattr(am, "patronymic", "") or "").strip().lower()
+    return "утверждена" if patronymic.endswith(("вна", "чна")) else "утверждён"
+
+
 def build_context(case, *, message_type=None, subtype=None, procedure=None, overrides=None) -> dict:
     """Плоский dict плейсхолдеров. Публикация не требуется — можно звать до её создания."""
     overrides = dict(overrides or {})
@@ -143,6 +155,7 @@ def build_context(case, *, message_type=None, subtype=None, procedure=None, over
         "индекс": idx, "адрес регистрации": addr_reg,
         # Финуправляющий (публикатор)
         "ФИО Финансовый управляющий": am.full_fio if am else "",
+        "утверждён ФУ": _fu_approved(am),   # утверждён / утверждена — по полу
         "ФамилияИО АУ": am.short_fio if am else "",
         "ИНН АУ": am.inn if am else "", "СНИЛС АУ": am.snils if am else "",
         "Адрес арбитражного управляющего": am.corr_address if am else "",
@@ -157,6 +170,7 @@ def build_context(case, *, message_type=None, subtype=None, procedure=None, over
         "номер дела": (arb.case_number if arb else ""),
         "вид процедуры": (proc.get_kind_display() if proc else ""),
         "дата решения": _fmt(proc.intro_date) if proc else "",
+        "дата завершения": _fmt(proc.end_date) if proc else "",  # определение об окончании
         "срок процедуры": (str(proc.term_months) if proc and proc.term_months else ""),
         "дата следующего заседания": _fmt(proc.next_hearing_date) if proc else "",
         "дата публикации ЕФРСБ": _fmt(proc.publication_efrsb_date) if proc else "",
@@ -229,6 +243,7 @@ _LABELS = {
     "адрес суда": "Адрес арбитражного суда",
     "номер дела": "Номер дела",
     "дата решения": "Дата решения суда (введение процедуры)",
+    "дата завершения": "Дата определения о завершении процедуры",
     "срок процедуры": "Срок процедуры, мес.",
     "дата следующего заседания": "Дата следующего судебного заседания",
 }
