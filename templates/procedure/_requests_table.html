@@ -62,7 +62,7 @@
         <td class="text-sm whitespace-nowrap align-middle">
           {% if r.document_pdf_id or r.document_docx_id %}
             {% if r.document_pdf_id %}<a class="link link-primary" href="{% url 'files:stored_download' r.document_pdf_id %}?inline=1" onclick="procPreview(this.href, 'Запрос № {{ r.outgoing_number|default:'' }}'); return false">PDF</a>{% endif %}
-            {% if r.document_docx_id %}{% if r.document_pdf_id %} · {% endif %}<a class="link" href="{% url 'files:stored_download' r.document_docx_id %}" onclick="procPreviewOffice('{% url 'procedure:office_pdf' service.id r.document_docx_id %}', 'Запрос № {{ r.outgoing_number|default:'' }} (docx)'); return false">docx</a>{% endif %}
+            {% if r.document_docx_id %}{% if r.document_pdf_id %} · {% endif %}<a class="link" href="{% url 'files:stored_download' r.document_docx_id %}?dl={{ r.document_docx_name|urlencode }}" title="Скачать «{{ r.document_docx_name }}»">docx ⬇</a>{% endif %}
           {% else %}<span class="text-base-content/40">нет</span>{% endif %}
         </td>
         <td class="text-sm">

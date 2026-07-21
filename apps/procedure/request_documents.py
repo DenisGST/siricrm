@@ -418,7 +418,7 @@ def apply_paragraph_edits(docx_bytes: bytes, edits: dict) -> bytes:
 def save_edited_document(req, new_docx_bytes: bytes, *, employee=None):
     """Пересохранить отредактированный .docx: re-PDF + S3 + подшивка + обновить req."""
     pdf_bytes = docx_to_pdf(new_docx_bytes)
-    base = f"Исх {req.outgoing_number} — {req.title}"[:120]
+    base = request_document_basename(req)
     docx_sf = _store(new_docx_bytes, filename=f"{base}.docx", content_type=DOCX_CT)
     pdf_sf = _store(pdf_bytes, filename=f"{base}.pdf", content_type="application/pdf")
     client = req.case.service.client
@@ -432,6 +432,85 @@ def save_edited_document(req, new_docx_bytes: bytes, *, employee=None):
         "document_docx", "document_pdf", "pages_count", "generated_at", "updated_at",
     ])
     return req
+
+
+# ── Понятное имя файла документа запроса («Запрос в ЛРР по Каныгину ДВ») ─────
+import re as _re
+
+_FN_BAD = _re.compile(r'[\\/:*?"<>|\r\n\t]+')
+
+
+def _safe_filename(name: str) -> str:
+    return _re.sub(r"\s{2,}", " ", _FN_BAD.sub(" ", name or "")).strip()
+
+
+def _guess_gender(client) -> str:
+    g = (getattr(client, "gender", "") or "").strip().lower()
+    if g in ("male", "female"):
+        return g
+    pa = (getattr(client, "patronymic", "") or "").strip().lower()
+    if pa.endswith(("вна", "чна", "нична")):
+        return "female"
+    if pa.endswith(("вич", "ич", "ыч")):
+        return "male"
+    return ""
+
+
+def _surname_dative(last: str, gender: str) -> str:
+    """Грубая дательная форма фамилии для имени файла (не уверены → как есть)."""
+    l = (last or "").strip()
+    if not l:
+        return l
+    low = l.lower().replace("ё", "е")
+    # Явные женские формы фамилий (по окончанию, независимо от пола-поля).
+    if low.endswith(("ова", "ева", "ина", "ына")):
+        return l[:-1] + "ой"
+    if low.endswith(("ская", "цкая")):
+        return l[:-2] + "ой"
+    # Явные мужские формы.
+    if low.endswith(("ов", "ев", "ин", "ын", "цын")):
+        return l + "у"
+    if low.endswith(("ский", "цкий", "ской", "цкой")):
+        return l[:-2] + "ому"
+    # Несклоняемые (-ых/-их/-ко/-аго, гласный на конце кроме -а/-я).
+    if low.endswith(("ых", "их", "ко", "аго", "яго", "ово")) or low[-1] in "оеиуюыэ":
+        return l
+    # Фамилии-прилагательные.
+    if gender == "female" and low.endswith(("ая", "яя")):
+        return l[:-2] + "ой"
+    if gender != "female" and low.endswith(("ый", "ой")):
+        return l[:-2] + "ому"
+    if gender != "female" and low.endswith("ий"):
+        return l[:-2] + "ему"
+    # Согласная / мягкий знак — склоняется только мужская.
+    if low.endswith("ь"):
+        return (l[:-1] + "ю") if gender != "female" else l
+    if low[-1] in "бвгдзйклмнпрстфхцчшщ":
+        return (l + "у") if gender != "female" else l
+    return l
+
+
+def _client_dative_short(client) -> str:
+    """«Каныгину ДВ» — фамилия в дательном + инициалы без точек (как просил юрист)."""
+    if client is None:
+        return ""
+    fi = (getattr(client, "first_name", "") or "").strip()
+    pa = (getattr(client, "patronymic", "") or "").strip()
+    initials = (fi[:1].upper() if fi else "") + (pa[:1].upper() if pa else "")
+    surn = _surname_dative(getattr(client, "last_name", "") or "", _guess_gender(client))
+    return (surn + (" " + initials if initials else "")).strip()
+
+
+def request_document_basename(req) -> str:
+    """Понятное имя файла: «<тип без скобок> по <Фамилия Инициалы>»."""
+    title = (getattr(req, "title", "") or "Запрос").split("(")[0].strip()
+    try:
+        client = req.case.service.client
+    except Exception:
+        client = None
+    who = _client_dative_short(client)
+    name = f"{title} по {who}".strip() if who else title
+    return _safe_filename(name)[:120] or "Запрос"
 
 
 def _store(file_bytes, *, filename, content_type):
@@ -479,7 +558,7 @@ def generate_request_document(req, *, with_signature=False, marriage_cert="", em
             docx_bytes = _apply_signature(docx_bytes, am)
     pdf_bytes = docx_to_pdf(docx_bytes)
 
-    base = f"Исх {req.outgoing_number} — {req.title}"[:120]
+    base = request_document_basename(req)
     docx_sf = _store(docx_bytes, filename=f"{base}.docx", content_type=DOCX_CT)
     pdf_sf = _store(pdf_bytes, filename=f"{base}.pdf", content_type="application/pdf")
 

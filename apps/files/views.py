@@ -391,7 +391,11 @@ def download_stored_file(request, file_id):
     # S3 отдать с Content-Disposition: inline + правильным Content-Type, иначе
     # Beget отдаёт attachment + octet-stream и браузер скачивает вместо показа.
     inline = request.GET.get("inline") == "1"
+    dl_name = (request.GET.get("dl") or "").strip()
     kwargs = {"expiration": 300}
+    if not inline and dl_name:
+        # ?dl=<имя> — скачать под понятным именем (напр. «Запрос в ЛРР по Каныгину ДВ.docx»).
+        kwargs["download_name"] = dl_name
     if inline:
         ptype = _preview_type(stored.filename, stored.content_type)
         ctype = (stored.content_type or "").lower()

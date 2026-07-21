@@ -635,6 +635,17 @@ class Request(TimeStampedModel):
         return self.recipient_name or "—"
 
     @property
+    def document_docx_name(self) -> str:
+        """Понятное имя для скачивания .docx («Запрос в ЛРР по Каныгину ДВ.docx»)."""
+        from .request_documents import request_document_basename
+        return request_document_basename(self) + ".docx"
+
+    @property
+    def document_pdf_name(self) -> str:
+        from .request_documents import request_document_basename
+        return request_document_basename(self) + ".pdf"
+
+    @property
     def is_overdue(self) -> bool:
         from django.utils import timezone
         return bool(
