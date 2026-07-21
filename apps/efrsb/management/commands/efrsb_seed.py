@@ -184,6 +184,23 @@ _SUBTYPE_TEXT_TEMPLATES = {
     ),
 }
 
+# Шаблоны ТЕКСТА на уровне ТИПА (не подтипа). ФИО не склоняем (именительный, через
+# тире — конвенция apps.kommersant). {дата собрания} поля в CRM нет — АУ вписывает.
+_TYPE_TEXT_TEMPLATES = {
+    "MeetingResult": (
+        "Решением {арбитражного суда} по делу № {номер дела} от {дата решения} г. "
+        "в отношении должника — {ФИО должника} ({дата рождения} г/р, уроженец: "
+        "{место рождения}, адрес: {адрес регистрации}, ИНН {ИНН}, СНИЛС {СНИЛС}) — "
+        "{введена процедура}. Финансовым управляющим {утверждён ФУ} "
+        "{ФИО Финансовый управляющий} (ИНН {ИНН АУ}, СНИЛС {СНИЛС АУ}, "
+        "адрес для корреспонденции: {Адрес арбитражного управляющего}), "
+        "член {СРО полностью}. "
+        "Настоящим уведомляю о том, что заочное собрание кредиторов, назначенное на "
+        "{дата собрания}, признано несостоявшимся. Решений на собрании кредиторов "
+        "не принималось."
+    ),
+}
+
 _EVENT_TYPES = [
     ("efrsb_published_detected", "Публикация в ЕФРСБ обнаружена", "system", False, ""),
     ("efrsb_violation", "Публикация ЕФРСБ с нарушением срока", "system", True,
@@ -334,6 +351,7 @@ class Command(BaseCommand):
                 is_bfl=(code in _BFL_CODES),
                 sets_efrsb_date=(code in _SETS_DATE_CODES),
                 template=tpl if tpl else None,
+                text_template=_TYPE_TEXT_TEMPLATES.get(code, ""),
             )
             return "created"
         # обновляем «истину» из справочника, не затирая правки АУ
@@ -346,6 +364,11 @@ class Command(BaseCommand):
             obj.api_type, changed = code, True
         if obj.template_id is None and tpl:
             obj.template, changed = tpl, True
+        # Текст-шаблон типа: только если пусто (или --force-templates) — правки АУ храним.
+        seed_tpl = _TYPE_TEXT_TEMPLATES.get(code)
+        if seed_tpl and (self.force_templates or not (obj.text_template or "").strip()):
+            if obj.text_template != seed_tpl:
+                obj.text_template, changed = seed_tpl, True
         if changed:
             obj.save()
             return "updated"

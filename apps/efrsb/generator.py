@@ -141,6 +141,19 @@ def build_context(case, *, message_type=None, subtype=None, procedure=None, over
     fio = " ".join(filter(None, [client.last_name, client.first_name, client.patronymic])).strip()
     court_name, court_address = _court(case.service, arb)
 
+    # Фраза о введённой процедуре — по виду ТЕКУЩЕЙ процедуры (для типов, общих
+    # для реструктуризации и реализации, напр. «результаты собрания кредиторов»).
+    _kind = proc.kind if proc else ""
+    _term = str(proc.term_months) if (proc and proc.term_months) else ""
+    if _kind == "realization":
+        intro_procedure = "введена процедура реализации имущества гражданина"
+        if _term:
+            intro_procedure += f" сроком на {_term} месяцев"
+    elif _kind == "restructuring":
+        intro_procedure = "введена процедура реструктуризации долгов гражданина"
+    else:
+        intro_procedure = "введена процедура"
+
     ctx = {
         # Тип/подтип
         "Тип сообщения": (message_type.name if message_type else ""),
@@ -169,6 +182,7 @@ def build_context(case, *, message_type=None, subtype=None, procedure=None, over
         "адрес суда": court_address,
         "номер дела": (arb.case_number if arb else ""),
         "вид процедуры": (proc.get_kind_display() if proc else ""),
+        "введена процедура": intro_procedure,  # адаптируется под реструктуризацию/реализацию
         "дата решения": _fmt(proc.intro_date) if proc else "",
         "дата завершения": _fmt(proc.end_date) if proc else "",  # определение об окончании
         "срок процедуры": (str(proc.term_months) if proc and proc.term_months else ""),
@@ -246,8 +260,11 @@ _LABELS = {
     "дата завершения": "Дата определения о завершении процедуры",
     "срок процедуры": "Срок процедуры, мес.",
     "дата следующего заседания": "Дата следующего судебного заседания",
+    "дата собрания": "Дата собрания кредиторов",
 }
 _DIGIT_RULES = {"ИНН": (10, 12), "ИНН АУ": (10, 12), "СНИЛС": (11,), "СНИЛС АУ": (11,)}
+# Плейсхолдеры без поля в CRM — АУ дописывает прямо в тексте (остаются видимыми).
+_MANUAL_KEYS = {"дата собрания"}
 
 
 def check_problems(case, message_type, subtype, *, procedure=None) -> list[dict]:
@@ -261,6 +278,9 @@ def check_problems(case, message_type, subtype, *, procedure=None) -> list[dict]
     for key in placeholders_in(tpl):
         val = str(ctx.get(key) or "").strip()
         label = _LABELS.get(key, key)
+        if key in _MANUAL_KEYS:
+            problems.append({"label": label, "note": "нет поля в CRM — впишите в текст"})
+            continue
         if not val:
             problems.append({"label": label, "note": "не заполнено"})
             continue
