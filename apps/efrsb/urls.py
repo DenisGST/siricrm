@@ -8,7 +8,6 @@ urlpatterns = [
     # Вкладка «Публикации» (контейнер) + под-вкладки
     path("service/<uuid:service_id>/tab/publications/", views.tab_publications, name="tab_publications"),
     path("service/<uuid:service_id>/efrsb/", views.subtab_efrsb, name="subtab_efrsb"),
-    path("service/<uuid:service_id>/kommersant/", views.subtab_kommersant, name="subtab_kommersant"),
     # Поиск должника / мониторинг
     path("service/<uuid:service_id>/efrsb/resolve/", views.resolve_bankrupt, name="resolve_bankrupt"),
     path("service/<uuid:service_id>/efrsb/confirm/", views.confirm_bankrupt, name="confirm_bankrupt"),

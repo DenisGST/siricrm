@@ -1288,6 +1288,40 @@ def profile_efrsb(request, pk=None):
 
 @login_required
 @require_POST
+def profile_kommersant(request, pk=None):
+    """Почта сотрудника-АУ для подачи заявок в «Коммерсантъ»: e-mail (открыто) +
+    пароль (шифруется в БД). Блок есть только у роли «Арбитражный управляющий».
+
+    SMTP/IMAP-хосты выводятся из домена адреса (apps.kommersant.mail_accounts),
+    поэтому здесь — только e-mail и пароль. Пароль write-only: пустое поле = не
+    менять, ввод = заменить, галочка = стереть; открытый текст в браузер не отдаём.
+    """
+    emp, is_self = _profile_target(request, pk)
+    if emp is None:
+        return HttpResponse("forbidden", status=403)
+    if not emp.is_arbitration_manager:
+        return HttpResponse("forbidden", status=403)
+
+    emp.kommersant_email = (request.POST.get("kommersant_email") or "").strip()
+    update_fields = ["kommersant_email"]
+
+    if request.POST.get("kommersant_password_clear"):
+        emp.set_kommersant_password("")
+        update_fields.append("kommersant_password_enc")
+    else:
+        new_pw = request.POST.get("kommersant_password") or ""
+        if new_pw:
+            emp.set_kommersant_password(new_pw)
+            update_fields.append("kommersant_password_enc")
+    emp.save(update_fields=update_fields)
+    emp.refresh_from_db()
+    return render(request, "core/partials/_profile_kommersant.html", {
+        "emp": emp, "is_self": is_self, "saved": True,
+    })
+
+
+@login_required
+@require_POST
 def profile_max(request, pk=None):
     """Привязка MAX-аккаунта сотрудника (для персональных уведомлений).
 

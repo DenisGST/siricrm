@@ -197,6 +197,15 @@ class Employee(models.Model):
     efrsb_login = models.CharField("Логин ЕФРСБ", max_length=255, blank=True)
     efrsb_password_enc = models.CharField(
         "Пароль ЕФРСБ (шифр.)", max_length=512, blank=True)
+    # Почтовый ящик для подачи заявок на публикацию в «Коммерсантъ» и приёма счетов
+    # (apps.kommersant). Заявку подаёт сам АУ со своего ящика, счёт ИД шлёт ответом
+    # ему же — поэтому одна учётка на отправку (SMTP) и приём (IMAP). SMTP/IMAP-хосты
+    # определяются автоматически по домену адреса (apps.kommersant.mail_accounts),
+    # поэтому в профиле сотрудник вводит только e-mail и пароль.
+    # 🛑 Пароль — ТОЛЬКО шифртекст (Fernet), через set/get_kommersant_password().
+    kommersant_email = models.EmailField("E-mail для «Коммерсанта»", max_length=255, blank=True)
+    kommersant_password_enc = models.CharField(
+        "Пароль почты «Коммерсанта» (шифр.)", max_length=512, blank=True)
     # Личная настройка на странице профиля: слать этому сотруднику в MAX
     # уведомления о судебных событиях. По умолчанию выключено у всех.
     notify_court_events_max = models.BooleanField(
@@ -322,6 +331,24 @@ class Employee(models.Model):
     @property
     def has_efrsb_password(self) -> bool:
         return bool(self.efrsb_password_enc)
+
+    def set_kommersant_password(self, raw: str):
+        """Пароль почты «Коммерсанта» в БД — в зашифрованном виде (пусто → очистить)."""
+        from apps.core.crypto import encrypt_secret
+        self.kommersant_password_enc = encrypt_secret(raw) if raw else ""
+
+    def get_kommersant_password(self) -> str:
+        from apps.core.crypto import decrypt_secret
+        return decrypt_secret(self.kommersant_password_enc)
+
+    @property
+    def has_kommersant_password(self) -> bool:
+        return bool(self.kommersant_password_enc)
+
+    @property
+    def kommersant_mail_configured(self) -> bool:
+        """Готов ли ящик АУ к подаче заявок (адрес + сохранённый пароль)."""
+        return bool(self.kommersant_email and self.kommersant_password_enc)
 
 
 class EmployeeLog(models.Model):

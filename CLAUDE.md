@@ -59,6 +59,7 @@ apps/scans          — «Входящие сканы»: приём с офис�
 apps/accounting     — рабочее место бухгалтера: разнесение входящих платежей (выписка ТБанк + эквайринг, см. ниже)
 apps/procedure      — рабочее место помощника АУ: карточка дела о банкротстве (стадии/процедуры/сроки/данные должника, см. ниже) — Этап 1, на проде с 15.06.2026
 apps/efrsb          — интеграция с ЕФРСБ (fedresurs.ru): генератор текстов сообщений (движок АФД) + read-API мониторинг публикаций; вкладка «Публикации» карточки дела (см. ниже)
+apps/kommersant     — публикации в газете «Коммерсантъ»: текст сообщения, бланк заявки ИД, подача по email с ящика АУ, приём счёта по IMAP (см. ниже)
 apps/reports        — раздел «Отчёты»: аналитика/отчётность (вкладки), 1-й отчёт «Отдел продаж» + бюджет ОП (см. ниже)
 config/             — settings/, urls, asgi (ASGI: HTTP+WS через daphne), celery
 templates/          — Django-шаблоны (проект НЕ использует base.html — dashboard.html самодостаточен)
@@ -376,7 +377,7 @@ Helper `apps.core.permissions.can_view_all_clients(user)` + шаблонный �
 
 ## ЕФРСБ — публикации в Федресурс (`apps/efrsb`)
 
-Тонкий слой над `apps/procedure`. Вкладка **«Публикации»** в карточке дела БФЛ → под-вкладки **ЕФРСБ** (реализована) и **КоммерсантЪ** (заглушка, отдельная ветка). **На проде**, каталог засеян. Генерация текста и копирование работают **уже сейчас**; read-API часть (проверка публикации, мониторинг) **СПЯЩАЯ** — `EFRSB_ENABLED=False`, кредов нет → `is_configured()=False`, кнопки проверки/мониторинга скрыты, beat `disabled`.
+Тонкий слой над `apps/procedure`. Вкладка **«Публикации»** в карточке дела БФЛ → под-вкладки **ЕФРСБ** (`apps/efrsb`) и **КоммерсантЪ** (`apps/kommersant`, см. раздел ниже). **На проде**, каталог засеян. Генерация текста и копирование работают **уже сейчас**; read-API часть (проверка публикации, мониторинг) **СПЯЩАЯ** — `EFRSB_ENABLED=False`, кредов нет → `is_configured()=False`, кнопки проверки/мониторинга скрыты, beat `disabled`.
 
 🛑 **У fedresurs/Интерфакс НЕТ публикационного API для третьих лиц.** Проверено по `fedresurs.ru/help#bankrupt` (доки в `OLD/EFRSB/`): и SOAP, и REST сервисы оператора — **только ЧТЕНИЕ** (памятка `Connection_info.pdf`; актуальная read-спека `Service_rest_1.4.0.pdf` добавляет только методы чтения). 🛑 **Импорт сообщения через XML тоже невозможен**: в руководстве ЛК АУ (`au_guide.pdf`) нет ни «импорта», ни «xml», ни «из файла» — сообщение создаётся **заполнением веб-формы** и подписывается УКЭП; XML-схемы (`PublicationsStructure.pdf`/`Messages_Structure.pdf`) описывают лишь **формат контента**, а не канал подачи. Машинно публикуют только крупные операторы (АСВ/ЦБ/ФНС/операторы СРО — см. `PublisherType` в схеме). **Единственный путь: генерируем текст → АУ вставляет его в ЛК вручную → мониторим факт/сроки через read-API.** Шов `submission.submit_publication` (`raise SubmissionNotAvailable`) + статус `submitted` оставлены на случай, если подачу когда-нибудь откроют.
 
@@ -406,6 +407,12 @@ Helper `apps.core.permissions.can_view_all_clients(user)` + шаблонный �
 - **Модели**: `EfrsbMessageType` (код=официальный; `api_kind` message/report, `applicable_kinds`, `is_bfl`, `sets_efrsb_date`, `text_template`), `EfrsbMessageSubtype` (FK на тип; `code`=`courtDecisionType`, `applicable_kinds`, `is_bfl`, `text_template`), `EfrsbBankruptLink` (1:1 к делу; кэш `bankrupt_guid` + candidates + throttle), `EfrsbPublication` (единый реестр: наши `internal` + обнаруженные `discovered`, поле `subtype`; дедуп по `fedresurs_guid`), `EfrsbPublicationFile`.
 - 🛑 **Сид `efrsb_seed` НЕ в deploy-handler — гонять вручную** (как `procedure_seed`): грузит каталог из `reference_data/*.json` + подтипы + типы лога. Идемпотентен и **НЕ затирает правки АУ** (шаблоны / `is_bfl` / `applicable_kinds`). Перезалить текстовые шаблоны из кода — **`efrsb_seed --force-templates`**.
 - Деплой: миграции авто, рестарт `web`/`celery`/`celery-beat`, новых контейнеров нет. Проверено на demo-контуре (auth / search_bankrupts / get_messages / upsert+дедуп / `check_publication` — работают). Подробно — память `efrsb-integration`.
+
+## КоммерсантЪ — публикации в газете (`apps/kommersant`)
+
+**Полное описание:** [`kommersant_integration_claude.md`](./kommersant_integration_claude.md) — жизненный цикл (текст→бланк→отправка→счёт→оплата→выход), денежный контур, генератор текста, бланк заявки на Word content controls, email-транспорт с ящика АУ, приём счёта по IMAP, почтовые креды в профиле, сид, деплой, что не проверено.
+
+Кратко: под-вкладка **«КоммерсантЪ»** вкладки «Публикации» карточки БФЛ (была заглушка в `apps/efrsb`, теперь отдельное приложение). Брат `apps/efrsb`, но с **денежным контуром** (публикация платная предоплатная, ~8–12 тыс ₽, деньги до 14:00 мск даты приёма → номер субботы; статусы `sent/invoiced/paid` раздельные). Три задачи: (1) текст публикации реализации/реструктуризации (`generator.py`, контекст переиспользован из `apps.efrsb`), (2) отправка запроса счёта email с личного ящика АУ (`mailer.py`, регламент `bankruptcy.kommersant.ru/index.php?publemail`), (3) приём счёта по IMAP (матчинг строго по In-Reply-To, beat `kommersant-poll-invoices` 15 мин). 🛑 **Почта АУ — в профиле** (`Employee.kommersant_email`/`kommersant_password_enc` Fernet, карточка только при `role="arbitration"`); вводится **только email+пароль**, SMTP/IMAP по домену (`mail_accounts.py`). 🛑 **Бланк заявки ИД на Word content controls** (`<w:sdt>`) — `render_docx` их не видит, готовый шаблон в `OLD/Коммерсант/`. 🛑 SMTP/IMAP только в Celery (daphne). Разведка по API ИД («Ъ-Публикатор») — память `kommersant-integration-research`. Деплой — обычный `deploy` (зависимостей нет) + вручную `kommersant_seed` + рестарт `celery`/`celery-beat`. 🛑 **Вживую почта не тестировалась** (кредов АУ ещё нет), формулировки шаблонов — DRAFT.
 
 ## Отчёты — раздел отчётности (apps/reports)
 
@@ -450,6 +457,7 @@ gunzip -c backups/db-XXXX.sql.gz | docker compose -f <compose> --env-file <env> 
 - [`bubble_integration_claude.md`](./bubble_integration_claude.md) — импорт данных из bubble.io (BubbleRecord-буфер, appliers, доливка)
 - [`scans_integration_claude.md`](./scans_integration_claude.md) — Входящие сканы: scan-agent (трей/автозагрузка), лоток `/scans/`, привязка по `scanner_name`
 - [`accounting_integration_claude.md`](./accounting_integration_claude.md) — Бухгалтерский учёт + ТБанк (выписка р/с поллинг, эквайринг вебхук+prepay, ручное разнесение, подпись/гоччи)
+- [`kommersant_integration_claude.md`](./kommersant_integration_claude.md) — публикации в газете «Коммерсантъ» (`apps/kommersant`): текст, бланк заявки (Word content controls), email-подача с ящика АУ, приём счёта по IMAP, денежный контур
 
 Внутренние модули (детально):
 - [`reports.md`](./reports.md) — раздел «Отчёты» (`apps/reports`): отчёт «Отдел продаж», бюджет ОП (`SalesBudget`/`SalesBudgetEntry` + правило начисления), сортировка/фильтр, флаг `IncomeType.is_legal_services`

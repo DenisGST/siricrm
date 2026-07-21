@@ -10,7 +10,7 @@
        hx-get="{% url 'efrsb:subtab_efrsb' service.id %}"
        hx-target="#pub-subtab-body" hx-swap="innerHTML">ЕФРСБ</a>
     <a class="tab" data-subtab="kommersant"
-       hx-get="{% url 'efrsb:subtab_kommersant' service.id %}"
+       hx-get="{% url 'kommersant:subtab' service.id %}"
        hx-target="#pub-subtab-body" hx-swap="innerHTML">КоммерсантЪ</a>
   </div>
 

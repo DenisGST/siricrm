@@ -1,0 +1,62 @@
+{% comment %}Готовый текст сообщения для «Коммерсанта» — посмотреть/скопировать.
+  Контекст: service, pub.{% endcomment %}
+<dialog id="kom-text-modal" class="modal modal-middle modal-open">
+  <div class="modal-box w-full max-w-3xl">
+    <h3 class="font-bold text-lg mb-1">Текст сообщения</h3>
+    <p class="text-sm text-base-content/70 mb-2">{{ pub.type_label }}</p>
+
+    {% if pub.text %}
+      <textarea id="kom-text-area" readonly rows="16"
+                class="textarea textarea-bordered w-full text-sm"
+                style="font-family:ui-monospace,Menlo,Consolas,monospace;line-height:1.45">{{ pub.text }}</textarea>
+
+      <div class="flex flex-wrap items-center gap-2 mt-2">
+        <button type="button" id="kom-copy-btn" class="btn btn-primary btn-sm">📋 Копировать текст</button>
+        {% if pub.blank_pdf_id %}
+          <a class="btn btn-ghost btn-sm" href="{% url 'files:stored_download' pub.blank_pdf_id %}?inline=1"
+             onclick="procPreview(this.href, '{{ pub.title|escapejs }}'); return false">Заявка PDF</a>
+        {% endif %}
+        {% if pub.blank_docx_id %}
+          <a class="btn btn-ghost btn-sm" href="{% url 'files:stored_download' pub.blank_docx_id %}">Заявка .docx</a>
+        {% endif %}
+        <span class="text-xs text-base-content/50 ml-auto">Файлы — в папке клиента «Публикации Коммерсантъ»</span>
+      </div>
+    {% else %}
+      <div class="alert alert-warning text-sm">
+        Текст ещё не сформирован — нажмите «Сформировать текст» в строке публикации.
+      </div>
+    {% endif %}
+
+    <div class="modal-action">
+      <button type="button" class="btn btn-sm" onclick="this.closest('dialog').remove()">Закрыть</button>
+    </div>
+  </div>
+  <form method="dialog" class="modal-backdrop"><button onclick="this.closest('dialog').remove()">close</button></form>
+</dialog>
+
+<script>
+(function () {
+  // IIFE, без top-level const — модалка открывается повторно (htmx-modal-script-iife).
+  var btn = document.getElementById('kom-copy-btn');
+  var ta = document.getElementById('kom-text-area');
+  if (!btn || !ta) return;
+  btn.addEventListener('click', function () {
+    function done() {
+      if (window.showToast) window.showToast('Текст скопирован в буфер обмена', 'success');
+      btn.textContent = '✓ Скопировано';
+      setTimeout(function () { btn.textContent = '📋 Копировать текст'; }, 1800);
+    }
+    function fallback() {
+      ta.removeAttribute('readonly');
+      ta.select();
+      try { document.execCommand('copy'); done(); }
+      catch (e) { if (window.showToast) window.showToast('Не удалось скопировать — выделите текст вручную', 'warning'); }
+      ta.setAttribute('readonly', 'readonly');
+      window.getSelection().removeAllRanges();
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(ta.value).then(done, fallback);
+    } else { fallback(); }
+  });
+})();
+</script>

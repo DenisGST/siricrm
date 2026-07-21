@@ -1,0 +1,68 @@
+{% comment %}Реквизиты счёта ИД и отметка оплаты. Контекст: service, pub.
+  Номер/дата/сумма подтягиваются из письма эвристикой — здесь их можно поправить.{% endcomment %}
+<dialog id="kom-invoice-modal" class="modal modal-middle modal-open">
+  <div class="modal-box w-full max-w-xl">
+    <h3 class="font-bold text-lg mb-1">Счёт на публикацию</h3>
+    <p class="text-sm text-base-content/70 mb-3">{{ pub.type_label }}</p>
+
+    {% if pub.invoice_file_id %}
+      <div class="alert alert-info text-xs py-2 mb-3">
+        Счёт получен {{ pub.invoice_received_at|date:"d.m.Y H:i" }} —
+        <a class="link link-primary" href="{% url 'files:stored_download' pub.invoice_file_id %}?inline=1"
+           onclick="procPreview(this.href, 'Счёт «Коммерсантъ»'); return false">{{ pub.invoice_file.filename|truncatechars:40 }}</a>
+      </div>
+    {% else %}
+      <div class="alert alert-warning text-xs py-2 mb-3">
+        Счёт из почты пока не получен. Реквизиты можно внести вручную.
+      </div>
+    {% endif %}
+
+    <form hx-post="{% url 'kommersant:invoice_save' service.id pub.pk %}"
+          hx-target="#kom-invoice-modal" hx-swap="outerHTML">
+      {% csrf_token %}
+
+      <div class="grid grid-cols-2 gap-3">
+        <label class="form-control">
+          <span class="label-text text-xs">Номер счёта</span>
+          <input type="text" name="invoice_number" value="{{ pub.invoice_number }}"
+                 class="input input-bordered input-sm">
+        </label>
+        <label class="form-control">
+          <span class="label-text text-xs">Дата счёта</span>
+          <input type="date" name="invoice_date"
+                 value="{{ pub.invoice_date|date:'Y-m-d' }}"
+                 class="input input-bordered input-sm">
+        </label>
+        <label class="form-control">
+          <span class="label-text text-xs">Сумма, ₽</span>
+          <input type="text" name="invoice_amount"
+                 value="{{ pub.invoice_amount|default_if_none:'' }}"
+                 class="input input-bordered input-sm" placeholder="8000.00">
+        </label>
+        <label class="form-control">
+          <span class="label-text text-xs">Дата оплаты</span>
+          <input type="date" name="paid_date" value="{{ pub.paid_date|date:'Y-m-d' }}"
+                 class="input input-bordered input-sm">
+        </label>
+      </div>
+
+      <label class="label cursor-pointer justify-start gap-2 mt-2">
+        <input type="checkbox" name="is_paid" class="toggle toggle-primary toggle-sm"
+               {% if pub.is_paid %}checked{% endif %}>
+        <span class="label-text text-sm">Счёт оплачен</span>
+      </label>
+
+      <div class="alert alert-warning text-xs py-2 mt-2">
+        Деньги должны поступить на счёт АО «Коммерсантъ» <b>не позднее 14:00 мск</b>
+        в дату окончания приёма сообщений, иначе публикация уедет в следующий номер.
+        В назначении платежа обязательно указать наименование должника и номер счёта.
+      </div>
+
+      <div class="modal-action">
+        <button type="submit" class="btn btn-primary btn-sm">Сохранить</button>
+        <button type="button" class="btn btn-sm" onclick="this.closest('dialog').remove()">Отмена</button>
+      </div>
+    </form>
+  </div>
+  <form method="dialog" class="modal-backdrop"><button onclick="this.closest('dialog').remove()">close</button></form>
+</dialog>

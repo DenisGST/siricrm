@@ -1,0 +1,46 @@
+{% comment %}Отметить выход публикации. Контекст: service, pub.
+  Дата публикации дублируется в Procedure.publication_kommersant_date — это якорь
+  для мероприятий-сроков, поэтому после сохранения дедлайны пересчитываются.{% endcomment %}
+<dialog id="kom-published-modal" class="modal modal-middle modal-open">
+  <div class="modal-box w-full max-w-lg">
+    <h3 class="font-bold text-lg mb-1">Публикация вышла</h3>
+    <p class="text-sm text-base-content/70 mb-3">{{ pub.type_label }}</p>
+
+    <form hx-post="{% url 'kommersant:published_save' service.id pub.pk %}"
+          hx-target="#kom-published-modal" hx-swap="outerHTML">
+      {% csrf_token %}
+
+      <label class="form-control mb-2">
+        <span class="label-text text-xs">Дата публикации</span>
+        <input type="date" name="publication_date"
+               value="{{ pub.publication_date|date:'Y-m-d' }}"
+               class="input input-bordered input-sm" required>
+      </label>
+
+      <div class="grid grid-cols-2 gap-3">
+        <label class="form-control">
+          <span class="label-text text-xs">Номер газеты</span>
+          <input type="text" name="newspaper_number" value="{{ pub.newspaper_number }}"
+                 class="input input-bordered input-sm" placeholder="№ 103">
+        </label>
+        <label class="form-control">
+          <span class="label-text text-xs">Номер объявления</span>
+          <input type="text" name="announcement_number" value="{{ pub.announcement_number }}"
+                 class="input input-bordered input-sm">
+        </label>
+      </div>
+
+      <div class="alert alert-info text-xs py-2 mt-3">
+        Дата попадёт в процедуру как «Дата публикации в КоммерсантЪ» — по ней
+        пересчитаются сроки мероприятий. Претензии по публикации ИД принимает
+        в течение семи дней с даты выхода.
+      </div>
+
+      <div class="modal-action">
+        <button type="submit" class="btn btn-primary btn-sm">Сохранить</button>
+        <button type="button" class="btn btn-sm" onclick="this.closest('dialog').remove()">Отмена</button>
+      </div>
+    </form>
+  </div>
+  <form method="dialog" class="modal-backdrop"><button onclick="this.closest('dialog').remove()">close</button></form>
+</dialog>

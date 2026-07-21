@@ -1,0 +1,50 @@
+{% comment %}Почта сотрудника-АУ для подачи заявок в «Коммерсантъ». Виден только при
+role="arbitration". С этого ящика уходят заявки, на него же приходит счёт. SMTP/IMAP
+определяются по домену адреса — сотрудник вводит только e-mail и пароль. Пароль
+write-only: открытый текст в браузер НЕ отдаём, показываем лишь признак «сохранён».{% endcomment %}
+<div id="profile-kommersant-block">
+  <form hx-post="{% url 'core:profile_kommersant' emp.pk %}"
+        hx-target="#profile-kommersant-block" hx-swap="outerHTML"
+        class="space-y-3">
+    {% csrf_token %}
+
+    <div class="max-w-xs">
+      <label class="label py-1"><span class="label-text text-xs">E-mail</span></label>
+      <input type="email" name="kommersant_email" value="{{ emp.kommersant_email }}"
+             autocomplete="off" placeholder="au@example.ru"
+             class="input input-bordered input-sm w-full">
+    </div>
+
+    <div class="max-w-xs">
+      <label class="label py-1">
+        <span class="label-text text-xs">Пароль</span>
+        {% if emp.has_kommersant_password %}
+          <span class="badge badge-success badge-xs">сохранён</span>
+        {% else %}
+          <span class="badge badge-ghost badge-xs">не задан</span>
+        {% endif %}
+      </label>
+      <input type="password" name="kommersant_password"
+             autocomplete="new-password"
+             placeholder="{% if emp.has_kommersant_password %}•••••••• (оставьте пустым, чтобы не менять){% else %}пароль приложения{% endif %}"
+             class="input input-bordered input-sm w-full">
+      <span class="block text-[11px] text-base-content/50 mt-0.5">
+        Для Яндекса и Mail.ru нужен <b>пароль приложения</b> (обычный пароль почта
+        отклонит) и включённый IMAP в настройках ящика. Хранится в зашифрованном виде.
+      </span>
+    </div>
+
+    {% if emp.has_kommersant_password %}
+      <label class="cursor-pointer flex items-center gap-2 max-w-xs">
+        <input type="checkbox" name="kommersant_password_clear" value="1"
+               class="checkbox checkbox-error checkbox-sm">
+        <span class="label-text text-xs">Удалить сохранённый пароль</span>
+      </label>
+    {% endif %}
+
+    <div class="flex items-center gap-3">
+      <button type="submit" class="btn btn-sm btn-primary">Сохранить</button>
+      {% if saved %}<span class="text-success text-xs">Сохранено.</span>{% endif %}
+    </div>
+  </form>
+</div>

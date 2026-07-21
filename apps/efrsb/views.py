@@ -2,7 +2,7 @@
 
 Вкладка «Публикации» карточки дела (apps.procedure) → под-вкладки ЕФРСБ / КоммерсантЪ.
 ЕФРСБ: генерация текста сообщений (движок АФД), реестр публикаций, (A2/A3) поиск
-должника и мониторинг. КоммерсантЪ — заглушка (другая ветка).
+должника и мониторинг. Под-вкладка КоммерсантЪ живёт в apps.kommersant.
 
 Гейт/гард услуги БФЛ переиспользуем из apps.procedure (require_procedures, _bfl_service).
 """
@@ -104,17 +104,6 @@ def tab_publications(request, service_id):
     except _NotBFL as exc:
         return HttpResponseForbidden(str(exc))
     return render(request, "efrsb/_tab_publications.html", {"service": service})
-
-
-@never_cache
-@login_required
-@require_procedures
-def subtab_kommersant(request, service_id):
-    try:
-        service, _ = _case(request, service_id)
-    except _NotBFL as exc:
-        return HttpResponseForbidden(str(exc))
-    return render(request, "efrsb/_subtab_kommersant.html", {"service": service})
 
 
 # ── Под-вкладка ЕФРСБ ───────────────────────────────────────────────────────

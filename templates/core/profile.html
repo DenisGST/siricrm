@@ -46,12 +46,22 @@
     </div>
   </div>
 
-  {% comment %}Креды ЕФРСБ — только для сотрудников-АУ (role="arbitration").{% endcomment %}
+  {% comment %}Креды ЕФРСБ + почта «Коммерсанта» — только для сотрудников-АУ (role="arbitration").{% endcomment %}
   {% if emp.is_arbitration_manager %}
   <div class="card bg-base-100 shadow-sm mt-4">
     <div class="card-body p-4">
       <h3 class="font-semibold text-sm mb-2">Доступ к ЕФРСБ (Федресурс)</h3>
       {% include "core/partials/_profile_efrsb.html" %}
+    </div>
+  </div>
+  <div class="card bg-base-100 shadow-sm mt-4">
+    <div class="card-body p-4">
+      <h3 class="font-semibold text-sm mb-2">Почта для публикаций в «Коммерсантъ»</h3>
+      <p class="text-xs text-base-content/60 mb-2">
+        С этого ящика подаются заявки на публикацию в газете «Коммерсантъ» и на него
+        приходит счёт на оплату. Указывается почта арбитражного управляющего.
+      </p>
+      {% include "core/partials/_profile_kommersant.html" %}
     </div>
   </div>
   {% endif %}

@@ -1,0 +1,6 @@
+{% comment %}Поле текста сообщения. Отдельный партиал — «Сгенерировать текст»
+  свопит ТОЛЬКО его (outerHTML по #kom-msg-text), не трогая остальную форму.{% endcomment %}
+<textarea id="kom-msg-text" name="text" rows="12"
+          class="textarea textarea-bordered w-full text-sm"
+          style="font-family:ui-monospace,Menlo,Consolas,monospace;line-height:1.45"
+          placeholder="Текст сообщения для публикации в газете «Коммерсантъ»">{{ text_value }}</textarea>

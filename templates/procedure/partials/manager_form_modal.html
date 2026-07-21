@@ -70,6 +70,12 @@
         <input type="file" name="signature" accept="image/png,image/*" class="block w-full text-xs border border-base-300 rounded p-1">
         <p class="text-xs text-base-content/50 mt-1">Используется при формировании запроса «с подписью и печатью».</p>
       </div>
+      {% if obj.employee_id %}
+      <p class="text-xs text-base-content/50">
+        Почта для подачи заявок в «Коммерсантъ» настраивается в личном профиле
+        сотрудника-АУ (роль «Арбитражный управляющий») → «Почта для публикаций в «Коммерсантъ»».
+      </p>
+      {% endif %}
       {% if form.errors %}<div class="alert alert-error text-sm">{% for f, e in form.errors.items %}<div>{{ f }}: {{ e|join:", " }}</div>{% endfor %}</div>{% endif %}
       <div class="modal-action">
         <button type="submit" class="btn btn-primary btn-sm">Сохранить</button>

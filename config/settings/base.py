@@ -55,6 +55,7 @@ INSTALLED_APPS = [
     "apps.notifications",
     "apps.procedure",
     "apps.efrsb",
+    "apps.kommersant",
     "apps.reports",
     "apps.wiki",
 

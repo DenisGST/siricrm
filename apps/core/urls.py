@@ -14,6 +14,7 @@ urlpatterns = [
     path('profile/<int:pk>/avatar/', views.profile_avatar, name='profile_avatar'),
     path('profile/<int:pk>/avatar/delete/', views.profile_avatar_delete, name='profile_avatar_delete'),
     path('profile/<int:pk>/efrsb/', views.profile_efrsb, name='profile_efrsb'),
+    path('profile/<int:pk>/kommersant/', views.profile_kommersant, name='profile_kommersant'),
     path('profile/<int:pk>/max/', views.profile_max, name='profile_max'),
     path('profile/<int:pk>/telegram/', views.profile_telegram, name='profile_telegram'),
 

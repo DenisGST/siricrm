@@ -1,0 +1,238 @@
+{% comment %}
+  Под-вкладка «КоммерсантЪ»: реестр публикаций и их денежный контур
+  (текст → заявка → отправка в ИД → счёт → оплата → выход в номере).
+  Самоперезагрузка по reloadKommersant. procPreview — глобальная (dashboard.html).
+{% endcomment %}
+<div id="kom-pane"
+     hx-trigger="reloadKommersant from:body"
+     hx-get="{% url 'kommersant:subtab' service.id %}"
+     hx-swap="outerHTML">
+  <style>
+    #kom-pane .kom-act{display:inline-flex;align-items:center;justify-content:center;
+      min-width:26px;height:26px;padding:0 5px;border:none;background:transparent;border-radius:5px;
+      cursor:pointer;color:#94a3b8;font-size:14px;transition:color .12s,background .12s}
+    #kom-pane .kom-act:hover{background:var(--ms-bg,#eef1f4);color:var(--act-hc,#2563eb)}
+    #kom-pane .kom-act:disabled{opacity:.35;cursor:not-allowed}
+  </style>
+
+  <div class="flex flex-col gap-3">
+
+    {% comment %} ── Готовность почты АУ ── {% endcomment %}
+    <div class="flex items-center gap-2 flex-wrap text-sm border border-base-300 rounded p-2 bg-base-100">
+      <span class="font-semibold">Подача заявок:</span>
+      {% if not manager %}
+        <span class="badge badge-ghost badge-sm">нет управляющего</span>
+        <span class="text-xs text-base-content/60">в процедуре не назначен АУ — заявку подавать некому</span>
+      {% elif not manager_has_employee %}
+        <span class="badge badge-warning badge-sm">АУ без учётки</span>
+        <span class="text-xs text-base-content/60">
+          {{ manager.short_fio }} не привязан к сотруднику — почту для заявок настраивает сам АУ в профиле
+        </span>
+      {% elif mail_ready %}
+        <span class="badge badge-success badge-sm">почта настроена</span>
+        <span class="text-xs text-base-content/60">{{ manager.short_fio }}</span>
+        {% if not imap_ready %}
+          <span class="badge badge-warning badge-sm">без приёма счёта</span>
+          <span class="text-xs text-base-content/60">счёт придётся вносить вручную</span>
+        {% endif %}
+      {% else %}
+        <span class="badge badge-warning badge-sm">почта не настроена</span>
+        <span class="text-xs text-base-content/60">
+          {{ manager.short_fio }} — заведите e-mail и пароль в личном профиле
+          (роль «Арбитражный управляющий» → «Почта для публикаций в «Коммерсантъ»)
+        </span>
+      {% endif %}
+      <span class="text-xs text-base-content/40 ml-auto">заявки уходят на {{ kommersant_email }}</span>
+    </div>
+
+    {% comment %} ── Добавить сообщение ── {% endcomment %}
+    <form class="flex flex-wrap items-end gap-2"
+          hx-post="{% url 'kommersant:publication_add' service.id %}"
+          hx-target="body" hx-swap="beforeend">
+      {% csrf_token %}
+      <label class="flex flex-col gap-1" style="min-width:420px">
+        <span class="label-text text-xs">Тип сообщения</span>
+        <select name="message_type" id="kom-type" class="select select-bordered select-sm w-full">
+          <option value="">— выберите тип —</option>
+          {% for t in message_types %}
+            <option value="{{ t.pk }}"
+                    data-kinds="{{ t.applicable_kinds|join:',' }}">{{ t.name }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <button type="submit" class="btn btn-primary btn-sm" id="kom-add-btn" disabled>
+        ➕ Добавить сообщение
+      </button>
+      {% if not message_types %}
+        <span class="text-xs" style="color:#dc2626">
+          Каталог пуст — выполните <code>python manage.py kommersant_seed</code>.
+        </span>
+      {% endif %}
+    </form>
+
+    {% comment %} ── Реестр ── {% endcomment %}
+    <div class="overflow-x-auto border border-base-300 rounded-lg">
+      <table class="table table-xs">
+        <thead>
+          <tr>
+            <th>Сообщение</th>
+            <th>Статус</th>
+            <th>Заявка</th>
+            <th>Счёт</th>
+            <th>Публикация</th>
+            <th class="text-right">Действия</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for p in publications %}
+          <tr>
+            <td class="align-top">
+              <div class="font-medium">{{ p.type_label }}</div>
+              <div class="text-xs text-base-content/50">
+                создано {{ p.created_at|date:"d.m.Y" }}
+                {% if p.text %} · текст готов{% endif %}
+              </div>
+              {% if p.send_error %}
+                <div class="text-xs" style="color:#dc2626">Ошибка отправки: {{ p.send_error|truncatechars:90 }}</div>
+              {% endif %}
+            </td>
+
+            <td class="align-top text-xs whitespace-nowrap">
+              {% if p.status == 'published' %}
+                <span class="badge badge-success badge-sm">опубликовано</span>
+              {% elif p.status == 'paid' %}
+                <span class="badge badge-info badge-sm">оплачено</span>
+              {% elif p.status == 'invoiced' %}
+                <span class="badge badge-warning badge-sm">счёт получен</span>
+              {% elif p.status == 'sent' %}
+                <span class="badge badge-warning badge-sm">ждём счёт</span>
+              {% elif p.status == 'cancelled' %}
+                <span class="badge badge-ghost badge-sm">отменено</span>
+              {% elif p.status == 'generated' %}
+                <span class="badge badge-ghost badge-sm">текст готов</span>
+              {% else %}
+                <span class="badge badge-ghost badge-sm">черновик</span>
+              {% endif %}
+            </td>
+
+            <td class="align-top text-xs whitespace-nowrap">
+              {% if p.blank_pdf_id %}
+                <a class="link link-primary" href="{% url 'files:stored_download' p.blank_pdf_id %}?inline=1"
+                   onclick="procPreview(this.href, '{{ p.type_label|escapejs }}'); return false">PDF</a>
+                {% if p.blank_docx_id %}
+                  · <a class="link" href="{% url 'files:stored_download' p.blank_docx_id %}">docx</a>
+                {% endif %}
+                <div class="text-base-content/50">вложений: {{ p.attachments.count }}</div>
+              {% else %}
+                <span class="text-base-content/40">не сформирована</span>
+              {% endif %}
+              {% if p.sent_at %}
+                <div class="text-base-content/50">отправлена {{ p.sent_at|date:"d.m.Y H:i" }}</div>
+              {% endif %}
+            </td>
+
+            <td class="align-top text-xs whitespace-nowrap">
+              {% if p.invoice_file_id or p.invoice_number %}
+                {% if p.invoice_number %}<div>№ {{ p.invoice_number }}</div>{% endif %}
+                {% if p.invoice_amount %}<div>{{ p.invoice_amount }} ₽</div>{% endif %}
+                {% if p.invoice_file_id %}
+                  <a class="link link-primary" href="{% url 'files:stored_download' p.invoice_file_id %}?inline=1"
+                     onclick="procPreview(this.href, 'Счёт'); return false">файл</a>
+                {% endif %}
+                {% if p.is_paid %}
+                  <div style="color:#16a34a">оплачен {{ p.paid_date|date:"d.m.Y" }}</div>
+                {% else %}
+                  <div style="color:#dc2626">не оплачен</div>
+                {% endif %}
+              {% else %}
+                <span class="text-base-content/40">—</span>
+              {% endif %}
+            </td>
+
+            <td class="align-top text-xs whitespace-nowrap">
+              {% if p.publication_date %}
+                <div>{{ p.publication_date|date:"d.m.Y" }}</div>
+                <div class="text-base-content/50">
+                  {% if p.newspaper_number %}газета {{ p.newspaper_number }}{% endif %}
+                  {% if p.announcement_number %} · объявл. {{ p.announcement_number }}{% endif %}
+                </div>
+              {% else %}
+                <span class="text-base-content/40">—</span>
+              {% endif %}
+            </td>
+
+            <td class="text-right align-top whitespace-nowrap">
+              <div class="inline-flex flex-nowrap gap-1 align-middle">
+                {% if p.text %}
+                <button type="button" class="kom-act" style="--act-hc:#16a34a"
+                        hx-get="{% url 'kommersant:publication_text' service.id p.pk %}"
+                        hx-target="body" hx-swap="beforeend"
+                        title="Показать текст сообщения">📄</button>
+                {% endif %}
+
+                <button type="button" class="kom-act" style="--act-hc:#2563eb"
+                        hx-get="{% url 'kommersant:publication_edit' service.id p.pk %}"
+                        hx-target="body" hx-swap="beforeend"
+                        title="{% if p.text %}Править текст{% else %}Сформировать текст{% endif %}">✎</button>
+
+                <button type="button" class="kom-act" style="--act-hc:#7c3aed"
+                        hx-post="{% url 'kommersant:blank_generate' service.id p.pk %}" hx-swap="none"
+                        {% if not p.text %}disabled{% endif %}
+                        title="Сформировать бланк заявки (с факсимиле АУ)">🧾</button>
+
+                <button type="button" class="kom-act" style="--act-hc:#ea580c"
+                        hx-get="{% url 'kommersant:send_modal' service.id p.pk %}"
+                        hx-target="body" hx-swap="beforeend"
+                        title="Запросить счёт — отправить заявку в «Коммерсантъ»">✉</button>
+
+                {% if p.status == 'sent' and imap_ready %}
+                <button type="button" class="kom-act" style="--act-hc:#0891b2"
+                        hx-post="{% url 'kommersant:fetch_invoice' service.id p.pk %}" hx-swap="none"
+                        title="Проверить почту — не пришёл ли счёт">⟳</button>
+                {% endif %}
+
+                <button type="button" class="kom-act" style="--act-hc:#0d9488"
+                        hx-get="{% url 'kommersant:invoice_modal' service.id p.pk %}"
+                        hx-target="body" hx-swap="beforeend"
+                        title="Счёт и оплата">₽</button>
+
+                <button type="button" class="kom-act" style="--act-hc:#16a34a"
+                        hx-get="{% url 'kommersant:published_modal' service.id p.pk %}"
+                        hx-target="body" hx-swap="beforeend"
+                        title="Отметить выход публикации">✓</button>
+
+                <button type="button" class="kom-act" style="--act-hc:#dc2626"
+                        hx-post="{% url 'kommersant:publication_delete' service.id p.pk %}"
+                        hx-swap="none"
+                        hx-confirm="Удалить публикацию «{{ p.type_label }}»?"
+                        title="Удалить">🗑</button>
+              </div>
+            </td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="6" class="text-center text-base-content/50 py-4">
+            Публикаций пока нет. Выберите тип сообщения и сформируйте его текст.
+          </td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="text-xs text-base-content/50">
+      Публикация платная и предоплатная: сообщение выходит в ближайшем номере при условии,
+      что деньги поступили на счёт АО «Коммерсантъ» не позднее 14:00 мск даты окончания приёма.
+    </div>
+
+  </div>
+</div>
+
+<script>
+(function () {
+  // IIFE, без top-level const — партиал перезагружается по reloadKommersant
+  // (htmx-modal-script-iife).
+  var sel = document.getElementById('kom-type');
+  var btn = document.getElementById('kom-add-btn');
+  if (!sel || !btn) return;
+  sel.addEventListener('change', function () { btn.disabled = !sel.value; });
+})();
+</script>
