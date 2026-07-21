@@ -5,12 +5,9 @@
 «Корреспонденция» → получает .xlsx строго в формате официального шаблона Почты →
 загружает его в otpravka.pochta.ru, там же печатает конверты со ШПИ и форму 103.
 
-🛑 Файл собирается ПОВЕРХ официального шаблона Почты
-`reference_data/pochta_upload_template.xlsx` (3 листа: «Лист» + «Инструкция» +
-«Раскр. списки» со списками валидации). Собранный «с нуля» одинокий лист «Лист»
-ЛК отбивал «Неверный формат файла» — строгий разбор требует полную структуру
-шаблона (проверено 21.07.2026). Порядок/имена колонок (COLUMNS) — из шапки
-шаблона, не переименовывать и не переставлять: ЛК разбирает файл по позициям.
+🛑 Один лист «Лист», шапка COLUMNS, дальше строки. Порядок/имена колонок — из
+официального шаблона Почты `OLD/Почта РФ/otpravka_sample …xlsx`, не переименовывать
+и не переставлять: ЛК разбирает файл по позициям.
 
 Заполняем только то, что осмысленно для заказного письма; остальное остаётся
 пустым и берётся из настроек ЛК (так же, как в рабочем образце юриста).
@@ -18,7 +15,6 @@
 from __future__ import annotations
 
 import io
-import os
 import re
 
 from apps.afd.envelope import (
@@ -248,21 +244,14 @@ def build_rows(items: list[dict], *, index_from: str = "") -> list[dict]:
     return rows
 
 
-TEMPLATE_PATH = os.path.join(
-    os.path.dirname(__file__), "reference_data", "pochta_upload_template.xlsx",
-)
-
-
 def build_workbook(rows: list[dict]) -> bytes:
-    """xlsx поверх официального шаблона Почты (3 листа, валидации, шапка).
+    """xlsx для загрузки в ЛК Почты: один лист «Лист», шапка COLUMNS, дальше строки."""
+    from openpyxl import Workbook
 
-    Строки данных дописываются в лист «Лист» под шапкой. 🛑 Дописываем ПО ПОЗИЦИЯМ
-    колонок (не по имени) — шапка шаблона и есть источник COLUMNS.
-    """
-    import openpyxl
-
-    wb = openpyxl.load_workbook(TEMPLATE_PATH)
-    ws = wb[SHEET_NAME]
+    wb = Workbook()
+    ws = wb.active
+    ws.title = SHEET_NAME
+    ws.append(COLUMNS)
     for row in rows:
         ws.append([row.get(c) for c in COLUMNS])
     buf = io.BytesIO()
