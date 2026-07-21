@@ -41,6 +41,12 @@ MAILCATEGORY_ORDERED = 1     # «Письмо заказное»
 NOTIFICATION_SIMPLE = "S"    # простое уведомление о вручении (ф.119)
 NOTICE_PAYMENT_CASHLESS = "C"  # оплата уведомления — безналичная
 
+# 🛑 Лимиты длины полей Почты (из подсказок шаблона). Превышение → ЛК отбивает
+# весь файл «Некоторые значения полей превышают максимально разрешенную длину».
+MAX_ADRESAT = 200            # наименование получателя
+MAX_ADDRESSLINE = 200        # адрес
+MAX_COMMENT = 200            # комментарий к отправлению
+
 # ── вес ─────────────────────────────────────────────────────────────────────
 ENVELOPE_WEIGHT_G = 10       # конверт C5
 PAGE_WEIGHT_G = 5            # лист А4 80 г/м²
@@ -92,6 +98,23 @@ def address_line(party: dict) -> str:
 
 
 # ── сбор адресатов ──────────────────────────────────────────────────────────
+def fit_name(party: dict) -> str:
+    """Наименование получателя в пределах лимита Почты (ADRESAT ≤200).
+
+    Полные официальные названия госорганов бывают длиннее 200 символов — тогда
+    берём короткое наименование (`ФКУ "Центр ГИМС МЧС…"`); если и оно длинное —
+    как крайняя мера режем по границе слова (лучше, чем отбитый Почтой файл).
+    """
+    name = clean(party.get("name"))
+    if len(name) <= MAX_ADRESAT:
+        return name
+    short = clean(party.get("short_name"))
+    if short and len(short) <= MAX_ADRESAT:
+        return short
+    cut = (short or name)[:MAX_ADRESAT]
+    return cut[:cut.rfind(" ")].rstrip() if " " in cut[150:] else cut.rstrip()
+
+
 def _item(party: dict, *, kind: str, key: str, ordernum: str = "",
           pages: int | None = None, comment: str = "") -> dict:
     """Единая строка-кандидат на отправку (до раскладки по колонкам).
@@ -103,12 +126,12 @@ def _item(party: dict, *, kind: str, key: str, ordernum: str = "",
     return {
         "kind": kind,                      # request | creditor | debtor
         "key": key,
-        "name": clean(party.get("name")),
+        "name": fit_name(party),
         "address": address_line(party),
         "index": clean(party.get("index")),
         "ordernum": ordernum,
         "pages": pages,
-        "comment": comment,
+        "comment": clean(comment)[:MAX_COMMENT],
         "weight_g": grams,
         "weight_kg": weight_kg(grams),
         "weight_manual": False,            # вес введён юристом, а не посчитан
@@ -126,7 +149,7 @@ def items_for_requests(requests) -> list[dict]:
             party, kind="request", key=f"req:{req.pk}",
             ordernum=(f"Исх-{num}" if num else ""),
             pages=req.pages_count,
-            comment=clean(req.title)[:200],
+            comment=req.title,
         ))
     return out
 
@@ -177,6 +200,11 @@ def split_ready(items: list[dict]) -> tuple[list[dict], list[dict]]:
             problems.append("нет адреса")
         elif not (it["index"] or extract_index(it["address"])):
             problems.append("нет индекса")
+        elif len(it["address"]) > MAX_ADDRESSLINE:
+            # Адрес резать нельзя (сломает доставку) — отдаём юристу на правку.
+            problems.append(
+                f"адрес длиннее {MAX_ADDRESSLINE} символов — сократите его"
+            )
         if it["weight_g"] > LETTER_MAX_WEIGHT_G:
             problems.append(
                 f"перевес {it['weight_g']} г при пределе {LETTER_MAX_WEIGHT_G} г — "

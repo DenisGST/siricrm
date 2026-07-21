@@ -47,10 +47,14 @@ def _fonts():
 
 
 # ── сборщики «сторон» (party = {name, address, index}) ──────────────────────
-def _party(name="", address="", index=""):
+def _party(name="", address="", index="", short_name=""):
+    # short_name — запасное короткое наименование (для внешних форматов с лимитом
+    # длины, напр. поле ADRESAT ≤200 в выгрузке для Почты). Рендер конвертов его
+    # игнорирует и печатает name.
     return {"name": (name or "").strip(),
             "address": (address or "").strip(),
-            "index": (index or "").strip()}
+            "index": (index or "").strip(),
+            "short_name": (short_name or "").strip()}
 
 
 def sender_from_executor(executor=None):
@@ -77,7 +81,7 @@ def party_from_legal_entity(le):
     addr = (le.postal_address or le.legal_address or le.actual_address or "").strip()
     # Индекс: сохранённый postal_code (напр. добит DaData у МРЭО) → из текста адреса.
     idx = (getattr(le, "postal_code", "") or "").strip() or extract_index(addr)
-    return _party(le.name or le.short_name, addr, idx)
+    return _party(le.name or le.short_name, addr, idx, short_name=le.short_name or "")
 
 
 def party_from_address(addr, name=""):
