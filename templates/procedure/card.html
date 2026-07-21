@@ -25,8 +25,12 @@
          hx-trigger="load, procStagesChanged from:body"
          hx-swap="innerHTML"></div>
     {% comment %} Кнопка «Файловый менеджер клиента» — правый верхний угол {% endcomment %}
+    <style>
+      #procedure-card .proc-files-btn:hover{background:#facc15;border-color:#facc15;color:#000}
+      #procedure-card .proc-files-btn:hover svg{color:#000}
+    </style>
     <button type="button"
-            class="btn btn-sm btn-outline btn-square flex-shrink-0"
+            class="btn btn-sm btn-outline btn-square flex-shrink-0 proc-files-btn"
             title="Файловый менеджер клиента"
             hx-get="{% url 'files:manager' client.id %}"
             hx-target="body" hx-swap="beforeend">
