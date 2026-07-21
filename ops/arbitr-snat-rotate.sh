@@ -3,33 +3,46 @@
 # arbitr-runner контейнерам по расписанию (МСК) и перевыставляет
 # per-runner iptables SNAT-правила (match по docker source-IP).
 #
-# Расписание (МСК) — какой IP активен в какие часы:
-#   21:00–05:00 → 45.90.35.187
-#   05:00–15:00 → 31.128.40.116
-#   09:00–17:00 → 45.12.239.248
-#   11:00–20:00 → 109.172.47.2
-#   00:00–08:00 → 45.84.225.250
+# Каждый runner имеет «домашний» IP (или пару IP). Rotator для каждого
+# runner'а выбирает первый активный из его списка. Так гарантируется что
+# runner-d НЕ игнорируется когда активных IP < 4 — раньше был баг: rotator
+# раздавал ACTIVE-IP по индексу [0]→a, [1]→b, [2]→c, [3]→d, а активных
+# всегда ≤ 3 → d был disabled 24/7.
 #
-# Раннеры (a/b/c/d) получают по одному IP из активных. Если активных меньше
-# четырёх — лишние раннеры пишут в Redis `arbitr:runner_ip:<id>` пустую
-# строку (TTL 120с), сами таски это видят и спят тик. Порядок назначения
-# IP по списку ACTIVE: 187, 116, 248, 002, 250 (новый — в конце, чтоб не
-# сдвигать «насиженные» раннер-↔-IP в основных окнах).
+# Домашние IP:
+#   a → 45.84.225.250 (00–08 МСК) ИЛИ 45.90.35.187 (21–05 МСК)
+#       — ночной; 00–05 оба активны, приоритет 250 (свежий IP чаще).
+#   b → 31.128.40.116 (05–15 МСК)  — утренний
+#   c → 45.12.239.248 (09–17 МСК)  — дневной 1
+#   d → 109.172.47.2  (11–20 МСК)  — дневной 2
 #
-# SNAT-правила (POSTROUTING table nat):
-#   -s <docker_ip_runner_a> -d <kad> -j SNAT --to-source <assigned_ip_a>
-#   -s <docker_ip_runner_b> -d <kad> -j SNAT --to-source <assigned_ip_b>
-#   -s <docker_ip_runner_c> -d <kad> -j SNAT --to-source <assigned_ip_c>
+# Покрытие runner'ов по часам (МСК):
+#   00–05  a(250)                 = 1
+#   05–08  a(250) + b(116)        = 2
+#   08–09  b(116)                 = 1
+#   09–11  b(116) + c(248)        = 2
+#   11–15  b(116) + c(248) + d(002) = 3  (пик параллельности)
+#   15–17  c(248) + d(002)        = 2
+#   17–20  d(002)                 = 1
+#   20–21  ничего активного       = 0
+#   21–24  a(187)                 = 1
 #
-# Docker source-IP контейнеров получаем через `docker inspect`. Они стабильны
-# пока контейнер не пересоздан. Если контейнер не найден — правило не ставим
-# и в Redis пишем «empty».
+# SNAT-правила (POSTROUTING table nat) и в Redis `arbitr:runner_ip:<id>`
+# для каждого активного runner'а. Docker source-IP берём через `docker inspect`.
 
 set -e
 
 KAD_IP="185.129.103.123"
 RUNNERS=("a" "b" "c" "d")
 CONTAINERS=("siricrm-arbitr-runner-1" "siricrm-arbitr-runner-b-1" "siricrm-arbitr-runner-c-1" "siricrm-arbitr-runner-d-1")
+
+# Домашние IP каждого runner'а — упорядоченный список; выбираем первый
+# активный из ACTIVE. Разделитель — пробел.
+declare -A RUNNER_HOME_IPS
+RUNNER_HOME_IPS["a"]="45.84.225.250 45.90.35.187"
+RUNNER_HOME_IPS["b"]="31.128.40.116"
+RUNNER_HOME_IPS["c"]="45.12.239.248"
+RUNNER_HOME_IPS["d"]="109.172.47.2"
 
 HOUR=$(TZ=Europe/Moscow date +%H)
 HOUR=$((10#$HOUR))
@@ -59,16 +72,25 @@ for i in "${!RUNNERS[@]}"; do
     RUNNER_DOCKER_IP[$R]="$IP"
 done
 
-# Назначаем активные IP раннерам по порядку (a, b, c). Лишним — пусто.
+# Назначаем каждому runner'у первый АКТИВНЫЙ IP из его домашнего списка.
+# Если ни один из «домашних» IP не активен сейчас — runner disabled.
 declare -A RUNNER_ASSIGNED
-N_ACTIVE=${#ACTIVE[@]}
-for i in "${!RUNNERS[@]}"; do
-    R="${RUNNERS[$i]}"
-    if [ $i -lt $N_ACTIVE ]; then
-        RUNNER_ASSIGNED[$R]="${ACTIVE[$i]}"
-    else
-        RUNNER_ASSIGNED[$R]=""
-    fi
+in_active() {
+    local needle="$1"
+    for x in "${ACTIVE[@]}"; do
+        [ "$x" = "$needle" ] && return 0
+    done
+    return 1
+}
+for R in "${RUNNERS[@]}"; do
+    ASSIGNED=""
+    for IP in ${RUNNER_HOME_IPS[$R]}; do
+        if in_active "$IP"; then
+            ASSIGNED="$IP"
+            break
+        fi
+    done
+    RUNNER_ASSIGNED[$R]="$ASSIGNED"
 done
 
 # Ставим per-runner SNAT-правила.
