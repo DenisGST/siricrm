@@ -90,10 +90,13 @@
         {% endif %}
       </select>
 
-      {% comment %}id обязателен: при swap всей модалки htmx восстанавливает
+      {% comment %}🛑 name=log_q, НЕ q: карточка канбана наследует
+         hx-include="#kanban-filter-form", и её q (поиск по клиентам) иначе
+         прилетал бы сюда как фильтр по тексту комментария — лента пустела.
+         id обязателен: при swap всей модалки htmx восстанавливает
          фокус и позицию курсора у элемента с тем же id — иначе при живом
          поиске поле пересоздаётся и печатать невозможно.{% endcomment %}
-      <input type="search" name="q" id="log-q" value="{{ filter_q }}" placeholder="🔎 поиск в комментарии"
+      <input type="search" name="log_q" id="log-q" value="{{ filter_q }}" placeholder="🔎 поиск в комментарии"
              class="input input-bordered input-xs flex-1 min-w-[150px]">
 
       {% if filter_kind or filter_source or filter_type or filter_q %}
@@ -226,7 +229,7 @@
       form.querySelector('[name=kind]').value = '';
       form.querySelector('[name=source]').value = '';
       form.querySelector('[name=type]').value = '';
-      form.querySelector('[name=q]').value = '';
+      form.querySelector('[name=log_q]').value = '';
       htmx.trigger(form, 'change');
     }
 
@@ -373,13 +376,26 @@
     // Авто-скролл ленты вниз (как в чате — самое свежее снизу). Лента
     // отсортирована по возрастанию created_at (см. client_events_modal во
     // views.py: order_by("created_at")). Двойной rAF — чтобы дождаться
-    // раскладки модалки (иначе scrollHeight ещё не финальный и промахиваемся).
+    // раскладки модалки.
+    // На длинных лентах (100+ записей) высота доезжает позже (шрифты/иконки)
+    // и одного двойного rAF может не хватить — скролл промахивается мимо низа.
+    // Прижимаем к низу, пока высота не стабилизируется (5 кадров подряд),
+    // но сразу отступаем, если пользователь начал скроллить сам.
     (function() {
-      const scrollToBottom = () => {
-        const feed = document.getElementById('log-feed');
-        if (feed) feed.scrollTop = feed.scrollHeight;
+      const feed = document.getElementById('log-feed');
+      if (!feed) return;
+      let prev = -1, stable = 0, userScrolled = false;
+      const stop = () => { userScrolled = true; };
+      feed.addEventListener('wheel', stop, { passive: true, once: true });
+      feed.addEventListener('touchstart', stop, { passive: true, once: true });
+      const stick = () => {
+        if (userScrolled) return;
+        feed.scrollTop = feed.scrollHeight;
+        stable = (feed.scrollHeight === prev) ? stable + 1 : 0;
+        prev = feed.scrollHeight;
+        if (stable < 5) requestAnimationFrame(stick);
       };
-      requestAnimationFrame(() => requestAnimationFrame(scrollToBottom));
+      requestAnimationFrame(stick);
     })();
 
     // Экспорт на window: эти функции вызываются из inline-атрибутов (onclick /

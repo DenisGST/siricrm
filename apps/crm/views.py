@@ -5,6 +5,7 @@ from django.core.cache import cache
 from django.contrib.auth.decorators import login_required
 from django.http import HttpResponse, HttpResponseBadRequest, HttpResponseForbidden, JsonResponse
 from django.views.decorators.http import require_POST
+from django.views.decorators.cache import never_cache
 from django.template.loader import render_to_string
 import logging
 
@@ -2533,6 +2534,7 @@ def service_transfer(request, pk):
 
 
 @login_required
+@never_cache
 def client_events_modal(request, client_id):
     """Модалка лога клиента: события + действия в одной хронологии.
 
@@ -2540,7 +2542,15 @@ def client_events_modal(request, client_id):
       ?kind=event|action|''  (пусто = все)
       ?source=system|court|client|legal_entity|employee  (только для events)
       ?type=<code>           (код EventType ИЛИ ActionType, в зависимости от kind)
-      ?q=<строка>            (поиск в comment)
+      ?log_q=<строка>        (поиск в comment)
+
+    🛑 Параметр НАЗЫВАЕТСЯ log_q, а НЕ q — намеренно. Карточка клиента
+    в канбане лежит внутри элемента с hx-include="#kanban-filter-form",
+    а hx-include в htmx НАСЛЕДУЕТСЯ потомками. Поэтому открытие модалки
+    из канбана тащит с собой все поля фильтра канбана, включая его q —
+    строку поиска по КЛИЕНТАМ. Совпадение имён приводило к тому, что
+    лента резалась по тексту комментария (баг: «добавил комментарий,
+    переоткрыл модалку — его нет»). Не переименовывать обратно.
     """
     client = get_object_or_404(
         Client.objects.prefetch_related("employees__user"), pk=client_id,
@@ -2549,7 +2559,7 @@ def client_events_modal(request, client_id):
     f_kind   = (request.GET.get("kind") or "").strip()
     f_source = (request.GET.get("source") or "").strip()
     f_type   = (request.GET.get("type") or "").strip()
-    f_q      = (request.GET.get("q") or "").strip()
+    f_q      = (request.GET.get("log_q") or "").strip()
 
     qs = ClientLogEntry.objects.filter(client=client).select_related(
         "employee__user", "event_type", "action_type", "stored_file",
