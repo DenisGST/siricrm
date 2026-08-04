@@ -470,6 +470,60 @@ print(p["remaining"] + p["count"])   # сколько в Bubble за перио�
 
 🛑 У `bubble_api.count_total(entity)` **нет параметра constraints**, а у `fetch_page` **нет sort_field** — считать через `fetch_page(..., limit=1, constraints=...)` и складывать `remaining + count`.
 
+### Доливка апреля–мая 2026 — сделано 4 августа, дыра закрыта
+
+| Месяц | В Bubble | У нас теперь | Расхождение |
+|---|---|---|---|
+| апрель | 4 107 | 4 107 | **0** |
+| май | 3 682 | 3 682 | **0** |
+
+**5 897 сообщений, 1 506 с вложениями.** Основной проход — 5 мин 32 с, добор вложений — ещё ~8 мин.
+
+Не прошло **11**: девять от двух номеров, которых нет в базе клиентов (`+79953389280`, `+79651554510`), и два пустых (`нет type/body/caption`).
+
+Схема проходом по страницам (постранично: отобрать отсутствующие → в буфер → сразу apply). Идемпотентно, повтор безопасен:
+
+```python
+CONS = [{"key":"Created Date","constraint_type":"greater than","value":"2026-04-01T00:00:00Z"},
+        {"key":"Created Date","constraint_type":"less than",   "value":"2026-06-01T00:00:00Z"}]
+have = set(BubbleRecord.objects.filter(entity="MessageWSP").values_list("bubble_id", flat=True))
+# ... fetch_page(cursor) → пропустить bid in have → update_or_create + approved=True/status=pending → apply_record
+```
+
+### 🛑 Вложения WA: `body` протухает, чинить перезапросом Data API
+
+`apply_messagewsp` качает медиа **только из `body`** и игнорирует `url_file` (известный дефект, см. выше). А `body` для медиа — подписанная ссылка `*.cdn.bubble.io`, которая **через время отдаёт 403**. На апрельской переписке это дало 189 несклеенных вложений (договоры, доверенности, согласия на обработку ПДн, памятки).
+
+Лечится повторным запросом одной записи — Data API ходит к источнику, а не в CDN-кэш, и возвращает живой `url_file`:
+
+```python
+r = requests.get(f"{bubble_api.API_BASE}/MessageWSP/{bid}", headers=bubble_api._headers(), timeout=45)
+obj  = (r.json() or {}).get("response") or {}
+link = (obj.get("url_file") or "").strip() or (obj.get("body") or "").strip()
+stored = download_to_storedfile(link, name_from_url(link), f"wamedia_{bid}"[:64])
+Message.objects.filter(id=mid).update(file=stored, file_name=stored.filename)
+```
+
+Итог починки: **152 из 189 прикреплены**. Из оставшихся 37 реально мёртвых медиа только **11** — остальные вообще не файлы:
+
+- 20 — ссылки на страницу оплаты `fo-y.ru` (404),
+- 4 — ссылки на карты 2ГИС (403),
+- 1 — прочая внешняя ссылка, 1 — таймаут.
+
+🛑 **Не считать файлом любую http-ссылку** — в WA-переписке их полно (оплата, карты, статьи). Иначе счётчик ошибок раздувается втрое. Фильтровать по расширению/Content-Type либо по хосту.
+
+### Старые годы намеренно НЕ переносим
+
+Остаются невыгруженными **73 772** сообщения: 2021 целиком, 2022 целиком, половина 2023. Решение пользователя от 4 августа — **не трогать**: дела тех лет закрыты. Схема доливки та же (сменить окно в `CONS`), если когда-нибудь понадобится.
+
+Итого в буфере после работ: **270 852** MessageWSP из 344 624 в Bubble.
+
+### Даты сообщений — смотреть `telegram_date`, а не `created_at`
+
+`Message.created_at` — это `auto_now_add`, то есть **время импорта**. Настоящее время сообщения applier кладёт в **`telegram_date`** (`parse_bubble_dt(v("Created Date"))`). Чат сортирует и печатает именно его (`apps/crm/views.py` → `.order_by("telegram_date","id")`, шаблон `telegram_message.html` → `msg.telegram_date|default:msg.created_at`). При проверке импорта глазами легко принять `created_at` за поломку хронологии — это ложная тревога.
+
+Список чатов при этом не перетасовывается: `apply_messagewsp` поднимает `Client.last_message_at` только если импортируемое сообщение **новее** уже записанного.
+
 ## Сорorrespondence (запросы юристов в госорганы) — модель и UI-задел
 
 Модель **`apps.crm.Correspondence`** уже в БД с миграцией, **33 780+ записей** имеется (на 4 июня 2026), мапится из Bubble `Сorrespondence` (с кириллической С — особенность Bubble) через `apply_correspondence`. Поля Siri-модели:
