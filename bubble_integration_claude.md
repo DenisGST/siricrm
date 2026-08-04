@@ -390,6 +390,86 @@ python manage.py fetch_bubble_since 2 --entities Files
 - **`apply_man` НЕ создаёт `ClientAddress`** из `raw.AdresR`/`postIndex`/`numbHouse`/`SubjectRF`. Адрес уходит в `Client.notes` или теряется.
 - **`apply_correspondence`** мапит `response_text` из `raw.textResponce` — корректно. Поле `raw.answer` (краткий ответ) **не маппится** (теряется). Если важно — добавить отдельное поле или дописать в `response_text`.
 
+## Дозалив 4 августа 2026 (перерыв с 21 июля)
+
+Юристы ещё формируют документы в Bubble. Дотянуто на прод.
+
+| Сущность | В Bubble | Было у нас | Дотянуто |
+|---|---|---|---|
+| Files | 570 177 | 569 918 | **+362** |
+| Сorrespondence | 35 665 | 35 338 | **+335** |
+| Money | 44 334 | 44 301 | +33 |
+| Events | 11 961 | 11 952 | +9 |
+| Man | 6 561 | 6 557 | +4 |
+| PropetyAnketa | 3 006 | 3 005 | +1 (не применён: `NameProperty='только прописка'` — это ответ «нет») |
+| ProjectBFL, Kreditors | — | — | 0 |
+
+```bash
+python manage.py fetch_bubble_since 75 --entities "Man,ProjectBFL,Kreditors,PropetyAnketa,Events,Сorrespondence,Money"
+python manage.py fetch_bubble_since 30 --entities "Files"   # окно уже: таблица 570k
+```
+
+Files: **362/362 imported, 0 ошибок, ~77 МБ, 10 минут**. Все ссылки живые (278 `docs.google.com` + 84 `drive.google.com`), WA-заглушек в партии **не было вовсе** — при коротком интервале между fetch'ами они не копятся.
+
+### 🛑 `apply_approved` берёт ВСЁ approved, а не только pending
+
+`appliers.apply_approved(entity)` фильтрует `approved=True` + `exclude(status="imported")` — значит тянет и застарелые `skipped`/`error`. На проде это 14 256 записей «Старый файл Bubble S3 (appforest) — недоступен» + 14 error: `apply_bubble Files` будет впустую долбиться в мёртвые ссылки часами.
+
+Обходить **точечным apply** (так и сделано 4 августа):
+
+```python
+ids = list(BubbleRecord.objects.filter(entity="Files", approved=True, status="pending")
+           .values_list("id", flat=True))
+for rid in ids:
+    apply_record(BubbleRecord.objects.get(id=rid))
+```
+
+Либо сперва снять хвост: `...filter(entity="Files", approved=True, status__in=["skipped","error"]).update(approved=False)`.
+
+### Новые Man: сверка по ФИО + дате рождения
+
+Поля Man: `lName` / `fName` / `mName` / `dateR`. **Телефона в Man нет вовсе** — сверять по ФИО+дате рождения.
+
+🛑 **`dateR` приходит в UTC, часто как 21:00 предыдущего дня** — `1994-01-27T21:00:00Z` это 28 января по Москве. Расхождение с `Client.birth_date` ровно в один день = **тот же человек**, а не однофамилец. Двое из четырёх (Алладах Момен, Гущина А. Л.) уже были заведены менеджерами вручную — привязаны через `overrides.merge_into_client_id`, дублей не создано.
+
+🛑 **`mName = "НетОтчества"` — служебная заглушка Bubble, applier пишет её в `Client.patronymic` как есть.** Чистить после apply:
+
+```python
+Client.objects.filter(patronymic__iexact="НетОтчества").update(patronymic="")
+```
+
+Все четверо пришли **без ProjectBFL** — в Bubble у них нет дела, это контакты без услуги. Не ошибка импорта.
+
+### MessageWSP: новых сообщений НЕТ, но в истории дыра
+
+После 30 мая 2026 в Bubble создано **17 сообщений** (все 30–31 мая). Отдел перешёл в Siri, свежей переписки в Bubble не появляется — доливать «свежее» не нужно.
+
+Но 79 617 записей истории **никогда не выкачивались** (лимит курсора 50k, часть окон пропущена при первичной миграции):
+
+| Период | В Bubble | У нас | Не хватает |
+|---|---|---|---|
+| 2021 | 8 355 | 0 | 8 355 |
+| 2022 | 43 977 | 0 | 43 977 |
+| 2023 | 58 720 | 37 279 | 21 441 |
+| 2024 | 91 323 | 91 323 | 0 |
+| 2025 | 120 490 | 120 491 | 0 |
+| 2026 январь–март | 13 970 | 13 970 | 0 |
+| **2026 апрель** | 4 107 | 1 885 | **2 222** |
+| **2026 май** | 3 682 | **59** | **3 623** |
+
+🛑 Дыра **апрель–май 2026** — не мусор, а живая переписка активных клиентов с вложениями (хранилище `1msg-ru.hb.ru-msk.vkcloud-storage.ru`): ход дела, возврат денег, пересылка справок. За май есть 59 сообщений из 3 682 — месяц отсутствует практически целиком. Это первый кандидат на доливку, если понадобится история чатов.
+
+Диагностика пробела (счётчики Bubble против буфера):
+
+```python
+c = [{"key":"Created Date","constraint_type":"greater than","value":"2026-05-01T00:00:00Z"},
+     {"key":"Created Date","constraint_type":"less than","value":"2026-06-01T00:00:00Z"}]
+p = bubble_api.fetch_page("MessageWSP", cursor=0, limit=1, constraints=c)
+print(p["remaining"] + p["count"])   # сколько в Bubble за период
+```
+
+🛑 У `bubble_api.count_total(entity)` **нет параметра constraints**, а у `fetch_page` **нет sort_field** — считать через `fetch_page(..., limit=1, constraints=...)` и складывать `remaining + count`.
+
 ## Сорorrespondence (запросы юристов в госорганы) — модель и UI-задел
 
 Модель **`apps.crm.Correspondence`** уже в БД с миграцией, **33 780+ записей** имеется (на 4 июня 2026), мапится из Bubble `Сorrespondence` (с кириллической С — особенность Bubble) через `apply_correspondence`. Поля Siri-модели:
