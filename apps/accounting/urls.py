@@ -22,6 +22,7 @@ urlpatterns = [
     path("poll-now/", views.poll_now, name="poll_now"),
 
     # Эквайринг (публичные эндпоинты для страницы оплаты fo-y.ru)
+    path("acquiring/pay/", views.acquiring_pay, name="acquiring_pay"),
     path("acquiring/prepay/", views.acquiring_prepay, name="acquiring_prepay"),
     path("acquiring/webhook/", views.acquiring_webhook, name="acquiring_webhook"),
 ]

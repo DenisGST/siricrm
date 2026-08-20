@@ -197,6 +197,54 @@ requests.post(f"{base}/Init", json=p)   # → PaymentURL; тест-карта 43
   эквайринг проверен реальным платежом (prepay из fo-y.ru + нотификация ТБанк IP 91.218.132.2).
 - Поллинг выписки на проде автономен (beat вкл.). Эквайринг — вебхук на боевом терминале.
 
+## 🛑 Оплата с сайта: серверный Init вместо JS-виджета (20.08.2026)
+
+**Симптом.** С начала августа посетители fo-y.ru жали «Оплатить» по 5–10 раз подряд и не
+могли заплатить. В CRM это видно как всплеск `AcquiringPrepay` при обвале оплат:
+17.08 — 105 попыток от 5 человек и 2 платежа (в июле было 3 попытки → 3 платежа).
+
+**Причина.** Страница грузила виджет `securepay.tinkoff.ru/html/payForm/js/tinkoff_v2.js`,
+а этот хост отдаёт сертификат **Russian Trusted Sub CA (Минцифры)**. В браузере без этого
+корня скрипт блокируется (`ERR_CERT_AUTHORITY_INVALID`), `window.pay` остаётся `undefined`,
+и `tbankPay()` падает с `ReferenceError: pay is not defined` — **молча**. Beacon `prepay`
+при этом успевал уйти (он до `pay()`), поэтому в CRM попытки копились, а платежей не было.
+Платили только те, у кого корень Минцифры установлен (Яндекс.Браузер, приложение ТБанка).
+Та же ловушка, что с MAX API (`certs/russian_trusted_ca.pem`).
+
+🛑 Самому виджету `HOST_URL` зашит в код (`d={HOST_URL:"https://securepay.tinkoff.ru"…}`) —
+самостоятельным хостингом файла проблема не лечится, XHR всё равно уйдёт на недоверенный хост.
+
+**Решение.** Init делаем на сервере, плательщика уводим на `pay.tbank.ru`:
+
+| хост | сертификат | роль |
+|---|---|---|
+| `securepay.tinkoff.ru` | Russian Trusted Sub CA | 🛑 не использовать |
+| `securepay.tbank.ru` | Let's Encrypt | API (`/v2/Init`) |
+| `pay.tbank.ru` | Let's Encrypt | страница оплаты, ссылка из `PaymentURL` |
+
+- `integrations.acquiring_init(...)` — подпись прежним `acquiring_token` (🛑 `DATA` в подпись
+  не входит), `Amount` в копейках, вернёт `PaymentURL`.
+- `views.acquiring_pay` — публичный `POST /accounting/acquiring/pay/` (csrf-exempt, как вебхук):
+  сохраняет `AcquiringPrepay`, зовёт Init, отдаёт `302` на `pay.tbank.ru`. Ошибка → страница
+  `templates/accounting/pay_error.html` (502).
+- `OrderId` остаётся в формате `FOY-<ms>-<rnd>` — по нему склеиваются prepay, нотификация и
+  реестр бухгалтера. Вебхук `acquiring_webhook` не менялся.
+- Настройка `TBANK_ACQUIRING_API_BASE` (дефолт теперь `https://securepay.tbank.ru/v2`) +
+  опц. `TBANK_ACQUIRING_SUCCESS_URL`/`TBANK_ACQUIRING_FAIL_URL`.
+
+**На стороне сайта fo-y.ru** (Joomla, не наш репозиторий) — заменить форму на
+[`docs/foy-payment-form.html`](docs/foy-payment-form.html): убрать `<script>` виджета,
+функцию `tbankPay()` и скрытые поля `terminalkey/frame/language/order`, отправлять
+форму прямо на `https://siricrm.ru/accounting/acquiring/pay/`. **Пока сайт не поправлен,
+оплата не заработает** — эндпоинт готов, но форма его не вызывает.
+
+**Как проверять.** `curl -sS -o /dev/null -w '%{http_code} %{redirect_url}' -X POST
+https://siricrm.ru/accounting/acquiring/pay/ -d 'amount=1&name=Тест&phone=+79990000000'`
+→ ждём `302 https://pay.tbank.ru/...`. Клиентскую часть — реальным Chrome
+(`docker exec siricrm-arbitr-runner-1`), смотреть `typeof window.pay` и console.
+
+---
+
 ## TODO / дальше по ТЗ (не сделано)
 
 1. **Уведомления сотрудников о поступлении и разнесении платежей + событийка.** При новом входящем

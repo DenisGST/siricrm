@@ -8,12 +8,13 @@
 """
 import json
 import logging
+import uuid
 from datetime import timedelta
 
 from django.conf import settings
 from django.contrib.auth.decorators import login_required
 from django.db.models import Prefetch, Q, Sum
-from django.http import HttpResponse, HttpResponseBadRequest
+from django.http import HttpResponse, HttpResponseBadRequest, HttpResponseRedirect
 from django.shortcuts import get_object_or_404, render
 from django.urls import reverse
 from django.utils import timezone
@@ -372,3 +373,56 @@ def acquiring_prepay(request):
         },
     )
     return HttpResponse("OK")
+
+
+@csrf_exempt
+@require_POST
+def acquiring_pay(request):
+    """Приём формы оплаты со страницы fo-y.ru: сумма + ФИО + телефон + услуга.
+
+    Делаем Init на своей стороне и уводим плательщика на `pay.tbank.ru`.
+
+    🛑 Так сделано вместо JS-виджета ТБанка: виджет грузится с
+    `securepay.tinkoff.ru`, у которого сертификат Russian Trusted CA — браузеры
+    без этого корня блокируют скрипт, `pay()` не определяется и кнопка
+    «Оплатить» молча ничего не делает (сентябрь 2025 → массово с августа 2026:
+    десятки повторных нажатий на одного плательщика и ноль оплат).
+
+    Публичный эндпоинт (как вебхук): CSRF-exempt, обычный POST формы —
+    межсайтовая навигация форм CORS не требует.
+    """
+    amount = services.parse_amount(request.POST.get("amount"))
+    name = (request.POST.get("name") or "").strip()
+    phone = (request.POST.get("phone") or "").strip()
+    description = (request.POST.get("description") or "").strip()
+    # OrderId держим в прежнем формате «FOY-<ms>-<rnd>» — по нему склеиваются
+    # prepay, нотификация и реестр бухгалтера.
+    order_id = (request.POST.get("order_id") or "").strip()
+    if not order_id:
+        order_id = f"FOY-{int(timezone.now().timestamp() * 1000)}-{uuid.uuid4().int % 1_000_000}"
+
+    if amount <= 0:
+        return _pay_error(request, "Укажите сумму оплаты.", order_id)
+
+    # ФИО/телефон ТБанк обратно не отдаёт — сохраняем до платежа, как раньше делал beacon.
+    AcquiringPrepay.objects.update_or_create(
+        order_id=order_id[:128],
+        defaults={"name": name[:255], "phone": phone[:32], "amount": amount or None},
+    )
+
+    res = integrations.acquiring_init(
+        order_id=order_id, amount=amount, description=description or "Оплата юридических услуг",
+        name=name, phone=phone,
+        success_url=settings.TBANK_ACQUIRING_SUCCESS_URL,
+        fail_url=settings.TBANK_ACQUIRING_FAIL_URL,
+    )
+    if not res["ok"]:
+        return _pay_error(request, res["error"], order_id)
+    return HttpResponseRedirect(res["payment_url"])
+
+
+def _pay_error(request, message: str, order_id: str = ""):
+    log.warning("Оплата с сайта не создана (OrderId=%s): %s", order_id, message)
+    return render(request, "accounting/pay_error.html",
+                  {"message": message, "back_url": request.META.get("HTTP_REFERER", "")},
+                  status=502)

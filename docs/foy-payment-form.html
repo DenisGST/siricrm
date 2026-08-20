@@ -1,0 +1,28 @@
+<!--
+  Новая форма оплаты для fo-y.ru (страница /index.php/oplata-uslug-tinkoff).
+
+  Заменяет JS-виджет ТБанка. Причина замены (20.08.2026):
+  виджет грузился с https://securepay.tinkoff.ru/html/payForm/js/tinkoff_v2.js,
+  а этот хост отдаёт сертификат Russian Trusted Sub CA (Минцифры). В браузере
+  без этого корня скрипт блокируется (ERR_CERT_AUTHORITY_INVALID), функция pay()
+  не определяется, и клик по «Оплатить» падал с ReferenceError: pay is not defined —
+  молча, без единого сообщения посетителю.
+
+  Теперь форма отправляется на siricrm.ru, CRM делает Init на securepay.tbank.ru
+  (сертификат Let's Encrypt) и перебрасывает плательщика на pay.tbank.ru.
+
+  ВАЖНО при установке:
+    1. Убрать <script src="https://securepay.tinkoff.ru/html/payForm/js/tinkoff_v2.js"></script>
+    2. Убрать функцию tbankPay() и старый <form name="TinkoffPayForm">
+    3. Вставить блок ниже. Никакого JS не нужно.
+    4. Скрытые поля terminalkey/frame/language/order больше не нужны —
+       их проставляет CRM на сервере.
+-->
+
+<form method="POST" action="https://siricrm.ru/accounting/acquiring/pay/">
+  <input class="tinkoffPayRow" type="text" placeholder="Сумма оплаты"     name="amount"      required>
+  <input class="tinkoffPayRow" type="text" placeholder="Услуга"           name="description">
+  <input class="tinkoffPayRow" type="text" placeholder="ФИО плательщика"  name="name"        required>
+  <input class="tinkoffPayRow" type="text" placeholder="Контактный телефон" name="phone"     required>
+  <input class="tinkoffPayRow" type="submit" value="Оплатить">
+</form>

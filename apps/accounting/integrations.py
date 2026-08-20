@@ -212,3 +212,83 @@ def parse_acquiring_notification(data: dict) -> dict:
         "order_id": order_id,
         "raw": data,
     }
+
+
+# ── Эквайринг: Init (создание платежа) ──────────────────────────────────────
+
+def normalize_pay_phone(raw: str) -> str:
+    """«8 962 067-70-71» / «+7 (950) 068-37-48» → «+79620677071». Мусор → как есть."""
+    digits = "".join(ch for ch in str(raw or "") if ch.isdigit())
+    if len(digits) == 11 and digits[0] in "78":
+        return "+7" + digits[1:]
+    if len(digits) == 10:
+        return "+7" + digits
+    return str(raw or "").strip()
+
+
+def acquiring_init(*, order_id: str, amount: Decimal, description: str = "",
+                   name: str = "", phone: str = "", email: str = "",
+                   success_url: str = "", fail_url: str = "") -> dict:
+    """Init интернет-эквайринга → ссылка на страницу оплаты `pay.tbank.ru`.
+
+    🛑 Зачем серверный Init, если у ТБанка есть JS-виджет: виджет
+    `securepay.tinkoff.ru/html/payForm/js/tinkoff_v2.js` намертво зашит на хост
+    `securepay.tinkoff.ru`, а тот отдаёт сертификат Russian Trusted Sub CA
+    (Минцифры). В браузере без этого корня скрипт не грузится
+    (`ERR_CERT_AUTHORITY_INVALID`), `window.pay` остаётся undefined и кнопка
+    «Оплатить» молча не работает. `securepay.tbank.ru` (API) и `pay.tbank.ru`
+    (страница оплаты) живут на Let's Encrypt и открываются везде.
+
+    Возвращает {"ok", "payment_url", "payment_id", "error"}.
+    """
+    terminal = (settings.TBANK_ACQUIRING_TERMINAL_KEY or "").strip()
+    password = (settings.TBANK_ACQUIRING_PASSWORD or "").strip()
+    if not terminal or not password:
+        return {"ok": False, "payment_url": "", "payment_id": "",
+                "error": "Эквайринг не настроен (нет TerminalKey/Password)"}
+
+    kopecks = int((Decimal(amount) * 100).to_integral_value())
+    if kopecks <= 0:
+        return {"ok": False, "payment_url": "", "payment_id": "",
+                "error": "Некорректная сумма"}
+
+    params = {
+        "TerminalKey": terminal,
+        "Amount": kopecks,
+        "OrderId": order_id,
+        "Description": (description or "Оплата услуг")[:250],
+    }
+    if success_url:
+        params["SuccessURL"] = success_url
+    if fail_url:
+        params["FailURL"] = fail_url
+    # 🛑 Token считается ТОЛЬКО по корневым скалярам — DATA в подпись не входит.
+    params["Token"] = acquiring_token(params, password)
+
+    data = {}
+    if phone:
+        data["Phone"] = normalize_pay_phone(phone)
+    if email:
+        data["Email"] = email
+    if name:
+        data["Name"] = name[:250]
+    if data:
+        params["DATA"] = data
+
+    url = f"{settings.TBANK_ACQUIRING_API_BASE.rstrip('/')}/Init"
+    try:
+        resp = requests.post(url, json=params, timeout=_TIMEOUT)
+        payload = resp.json()
+    except (requests.RequestException, ValueError) as e:
+        log.warning("Эквайринг Init: сеть/формат — %s", e)
+        return {"ok": False, "payment_url": "", "payment_id": "",
+                "error": "Платёжный сервис недоступен, попробуйте позже"}
+
+    if not payload.get("Success"):
+        log.warning("Эквайринг Init отказ (OrderId=%s): %s / %s / %s", order_id,
+                    payload.get("ErrorCode"), payload.get("Message"), payload.get("Details"))
+        return {"ok": False, "payment_url": "", "payment_id": "",
+                "error": payload.get("Details") or payload.get("Message") or "Отказ банка"}
+
+    return {"ok": True, "payment_url": payload.get("PaymentURL", ""),
+            "payment_id": str(payload.get("PaymentId", "")), "error": ""}

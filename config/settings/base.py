@@ -78,7 +78,12 @@ DEVOPS_AGENT_TOKEN_PROD = config("DEVOPS_AGENT_TOKEN_PROD", default="")
 # --- Бухгалтерия / ТБанк (apps.accounting) ---
 # Секреты только из env. Пустой токен → поллинг no-op (источник «не настроен»).
 TBANK_BUSINESS_API_BASE = config("TBANK_BUSINESS_API_BASE", default="https://business.tbank.ru/openapi")
-TBANK_ACQUIRING_API_BASE = config("TBANK_ACQUIRING_API_BASE", default="https://securepay.tinkoff.ru/v2")
+# 🛑 securepay.TBANK.ru, а НЕ securepay.tinkoff.ru: у второго сертификат от
+# Russian Trusted CA (Минцифры), которого нет ни в браузерах, ни в certifi.
+TBANK_ACQUIRING_API_BASE = config("TBANK_ACQUIRING_API_BASE", default="https://securepay.tbank.ru/v2")
+# Куда возвращать плательщика со страницы оплаты ТБанка.
+TBANK_ACQUIRING_SUCCESS_URL = config("TBANK_ACQUIRING_SUCCESS_URL", default="")
+TBANK_ACQUIRING_FAIL_URL = config("TBANK_ACQUIRING_FAIL_URL", default="")
 TBANK_BUSINESS_API_TOKEN = config("TBANK_BUSINESS_API_TOKEN", default="")
 TBANK_ACCOUNT_NUMBER = config("TBANK_ACCOUNT_NUMBER", default="")
 TBANK_ACQUIRING_TERMINAL_KEY = config("TBANK_ACQUIRING_TERMINAL_KEY", default="")
