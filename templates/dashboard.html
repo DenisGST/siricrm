@@ -1047,6 +1047,20 @@ document.addEventListener('htmx:afterRequest', (event) => {
     if (poller && window.htmx) htmx.trigger(poller, 'refresh-count');
   });
 
+  // ── Клик по строке таблицы → карточка записи (запросы / входящие / исходящие).
+  // Делегирование на document: работает для любой таблицы, где у <tr> есть
+  // data-edit-url, и переживает перезагрузку партиала. Клики по интерактивным
+  // элементам строки (кнопки действий, ссылки на файлы, чекбокс выбора) не
+  // должны открывать карточку — поэтому они отсекаются первыми. ──
+  document.addEventListener('click', function (e) {
+    if (!e.target || !e.target.closest) return;
+    if (e.target.closest('a, button, input, label, select, textarea')) return;
+    var tr = e.target.closest('tr[data-edit-url]');
+    if (!tr) return;
+    window.htmx.ajax('GET', tr.getAttribute('data-edit-url'),
+                     { target: 'body', swap: 'beforeend' });
+  });
+
   // ── Быстрый предпросмотр файла в модалке (глобально — не в HTMX-партиале,
   // иначе при innerHTML-свопе вкладки скрипт мог не выполниться и onclick падал
   // на дефолтный href = скачивание). procPreview(url) — iframe (PDF/картинки);

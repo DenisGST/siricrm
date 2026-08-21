@@ -37,6 +37,11 @@ urlpatterns = [
     path("service/<uuid:service_id>/requests/pochta/", views.requests_pochta_modal, name="requests_pochta_modal"),
     path("service/<uuid:service_id>/requests/pochta/export/", views.requests_pochta_export, name="requests_pochta_export"),
     path("service/<uuid:service_id>/requests/<uuid:req_id>/envelope/", views.request_envelope, name="request_envelope"),
+    # Карточка запроса — правка всех параметров (клик по строке таблицы)
+    path("service/<uuid:service_id>/requests/<uuid:req_id>/card/", views.request_card, name="request_card"),
+    path("service/<uuid:service_id>/requests/<uuid:req_id>/card/save/", views.request_card_save, name="request_card_save"),
+    path("service/<uuid:service_id>/requests/<uuid:req_id>/card/text/", views.request_text_block, name="request_text_block"),
+    path("service/<uuid:service_id>/requests/<uuid:req_id>/card/text/save/", views.request_text_save, name="request_text_save"),
     path("service/<uuid:service_id>/requests/<uuid:req_id>/sent/", views.request_sent_form, name="request_sent_form"),
     path("service/<uuid:service_id>/requests/<uuid:req_id>/sent/save/", views.request_sent, name="request_sent"),
     path("service/<uuid:service_id>/requests/<uuid:req_id>/response/", views.request_response_form, name="request_response_form"),
@@ -52,6 +57,13 @@ urlpatterns = [
     # Корреспонденция: загрузка сканов (Входящие/Исходящие)
     path("service/<uuid:service_id>/correspondence/<str:direction>/upload/", views.correspondence_upload_form, name="correspondence_upload_form"),
     path("service/<uuid:service_id>/correspondence/<str:direction>/upload/save/", views.correspondence_upload, name="correspondence_upload"),
+    # Карточка письма корреспонденции (Входящие/Исходящие) — правка + вложения
+    path("service/<uuid:service_id>/correspondence/<uuid:corr_id>/card/", views.correspondence_card, name="correspondence_card"),
+    path("service/<uuid:service_id>/correspondence/<uuid:corr_id>/card/save/", views.correspondence_card_save, name="correspondence_card_save"),
+    # Доп. вложения: target = request | correspondence
+    path("service/<uuid:service_id>/attach/<str:target>/<uuid:obj_id>/", views.attachments_block, name="attachments_block"),
+    path("service/<uuid:service_id>/attach/<str:target>/<uuid:obj_id>/add/", views.attachments_add, name="attachments_add"),
+    path("service/<uuid:service_id>/attach/<str:target>/<uuid:obj_id>/<uuid:att_id>/delete/", views.attachment_delete, name="attachment_delete"),
     path("service/<uuid:service_id>/tab/<str:tab>/", views.tab_placeholder, name="tab_placeholder"),
     # Действия по делу/процедурам
     path("service/<uuid:service_id>/case/", views.update_case_block, name="update_case_block"),

@@ -1,0 +1,82 @@
+{% load icons %}
+{% comment %}Текст документа запроса внутри карточки — два состояния одного блока.
+  Контекст: service, req, editing, paras, error, saved.
+
+  🛑 Свёрнутый вид не грузит документ: абзацы тянутся из S3 и парсятся
+  python-docx, а карточка открывается кликом по каждой строке таблицы.
+  Разворот — hx-get на request_text_block, сохранение — hx-post на себя же
+  (карточка при этом остаётся открытой, в отличие от отдельной модалки правки,
+  которая по-прежнему висит на иконке ✎ в строке таблицы).{% endcomment %}
+<div id="req-text-block" class="border-t border-base-300 pt-3">
+  <div class="flex items-center gap-2 mb-1">
+    <span class="label-text text-xs font-semibold">Текст документа</span>
+    {% if saved %}<span class="badge badge-success badge-sm">сохранено, PDF пересобран</span>{% endif %}
+  </div>
+
+  {% if not req.document_docx_id %}
+    <p class="text-xs text-base-content/40">
+      Документ ещё не сформирован — править нечего.
+      Сформируйте его кнопкой {% icon "file-text" size=12 %} в строке таблицы или подгрузите готовый .docx.
+    </p>
+
+  {% elif not editing %}
+    <p class="text-xs text-base-content/50 mb-2">
+      Правка по абзацам: форматирование (шрифты, отступы) и подпись с печатью сохраняются,
+      PDF пересобирается после сохранения.
+    </p>
+    <button type="button" class="btn btn-outline btn-sm"
+            hx-get="{% url 'procedure:request_text_block' service.id req.pk %}"
+            hx-target="#req-text-block" hx-swap="outerHTML"
+            hx-indicator="#req-text-load">
+      {% icon "pencil" size=14 %} Редактировать текст
+      <span id="req-text-load" class="htmx-indicator">загружаю…</span>
+    </button>
+
+  {% else %}
+    {% if error %}<div class="alert alert-error text-sm mb-2">{{ error }}</div>{% endif %}
+    {% comment %}Своя форма — блок лежит ВНЕ формы карточки (они соседи, не вложены),
+      поэтому вложенных <form> тут не возникает.{% endcomment %}
+    <form hx-post="{% url 'procedure:request_text_save' service.id req.pk %}"
+          hx-target="#req-text-block" hx-swap="outerHTML"
+          hx-indicator="#req-text-busy" class="flex flex-col gap-2">
+      {% csrf_token %}
+      <div class="overflow-y-auto border border-base-300 rounded p-2 flex flex-col gap-2"
+           style="max-height:46vh">
+        {% for p in paras %}
+        <textarea name="p_{{ p.index }}" rows="2"
+                  class="textarea textarea-bordered textarea-sm w-full leading-snug"
+                  oninput="this.style.height='';this.style.height=this.scrollHeight+'px'">{{ p.text }}</textarea>
+        {% empty %}
+        <p class="text-sm text-base-content/50 py-3 text-center">
+          Нет редактируемого текста — документ состоит из картинок или таблиц.
+        </p>
+        {% endfor %}
+      </div>
+      <div class="flex items-center gap-2">
+        <button type="submit" class="btn btn-primary btn-sm" {% if not paras %}disabled{% endif %}>
+          Сохранить текст
+        </button>
+        <button type="button" class="btn btn-sm"
+                hx-get="{% url 'procedure:request_text_block' service.id req.pk %}?collapsed=1"
+                hx-target="#req-text-block" hx-swap="outerHTML">Свернуть</button>
+        <span id="req-text-busy" class="htmx-indicator text-xs text-base-content/60">
+          сохраняю и пересобираю PDF…
+        </span>
+      </div>
+      <p class="text-xs text-base-content/40">
+        🛑 Пересборка PDF идёт через LibreOffice — занимает несколько секунд.
+        Правки параметров запроса слева сохраняются отдельной кнопкой «Сохранить».
+      </p>
+    </form>
+  {% endif %}
+</div>
+
+<script>
+  (function () {
+    // Авто-высота textarea по содержимому (после каждого свопа блока).
+    var b = document.getElementById('req-text-block'); if (!b) return;
+    b.querySelectorAll('textarea').forEach(function (t) {
+      t.style.height = ''; t.style.height = t.scrollHeight + 'px';
+    });
+  })();
+</script>

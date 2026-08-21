@@ -1,0 +1,194 @@
+{% load icons %}
+{% comment %}Карточка письма корреспонденции — правка параметров + вложения.
+  Контекст: service, co (Correspondence), kinds, direction_choices,
+  delivery_choices, case_requests + контекст блока вложений.
+  На успехе вью отдаёт 204 + HX-Trigger reloadRequests.
+
+  🛑 Блок вложений — ВНЕ <form> (htmx подмешал бы файлы в каждое «Сохранить»);
+  кнопка отправки связана с формой атрибутом form=. Замена основного скана —
+  наоборот, обычное поле формы, уходит вместе с сохранением.{% endcomment %}
+<dialog id="corr-card-modal" class="modal modal-middle modal-open">
+  <div class="modal-box p-4" style="max-width:min(1060px,96vw);width:96vw;overflow:visible">
+    <div class="flex items-start justify-between mb-3">
+      <div>
+        <h3 class="font-bold text-lg">{{ co.get_direction_display }} — карточка письма</h3>
+        <p class="text-xs text-base-content/60">Добавлено {{ co.created_at|date:"d.m.Y H:i" }}</p>
+      </div>
+      <button type="button" class="btn btn-sm btn-ghost btn-circle" onclick="this.closest('dialog').remove()">✕</button>
+    </div>
+
+    <div class="grid grid-cols-2 gap-4">
+
+      {% comment %} ── Левая колонка: параметры письма ── {% endcomment %}
+      <form id="corr-card-form" class="flex flex-col gap-3"
+            hx-post="{% url 'procedure:correspondence_card_save' service.id co.pk %}"
+            hx-target="#corr-card-modal" hx-swap="outerHTML" hx-encoding="multipart/form-data">
+        {% csrf_token %}
+
+        <div class="grid grid-cols-2 gap-3">
+          <label class="form-control">
+            <span class="label-text text-xs">Раздел</span>
+            <select name="direction" class="select select-bordered select-sm">
+              {% for code, label in direction_choices %}
+              <option value="{{ code }}" {% if code == co.direction %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label class="form-control">
+            <span class="label-text text-xs">Способ отправки</span>
+            <select name="delivery_method" class="select select-bordered select-sm">
+              {% for code, label in delivery_choices %}
+              <option value="{{ code }}" {% if code == co.delivery_method %}selected{% endif %}>{{ label|default:"—" }}</option>
+              {% endfor %}
+            </select>
+          </label>
+        </div>
+
+        <label class="form-control">
+          <span class="label-text text-xs">Тип письма / документ</span>
+          <input type="text" name="subject_type" value="{{ co.subject_type }}"
+                 class="input input-bordered input-sm" placeholder="напр. Ответ Росреестра">
+        </label>
+
+        {% comment %}Контрагент — тот же серверный typeahead, что в загрузке скана.{% endcomment %}
+        <div class="form-control" data-ta style="position:relative">
+          <span class="label-text text-xs">Контрагент</span>
+          <div class="flex gap-2 items-center mb-1">
+            <select data-ta-param="kind" onchange="taRefresh(this)" class="select select-bordered select-xs flex-1">
+              <option value="">Все типы</option>
+              {% for k in kinds %}
+              <option value="{{ k.pk }}" {% if co.counterparty and k.pk == co.counterparty.kind_id %}selected{% endif %}>{{ k.short_name|default:k.name }}</option>
+              {% endfor %}
+            </select>
+            <label class="label cursor-pointer gap-1 py-0">
+              <input type="checkbox" data-ta-param="region" onchange="taRefresh(this)" class="checkbox checkbox-xs">
+              <span class="label-text text-xs">по региону</span>
+            </label>
+          </div>
+          <input type="text" data-ta-input name="q" autocomplete="off"
+                 class="input input-bordered input-sm w-full" placeholder="поиск по реестру…"
+                 value="{% if co.counterparty %}{{ co.counterparty.short_name|default:co.counterparty.name }}{% endif %}"
+                 data-ta-url="{% url 'procedure:recipient_search' service.id %}"
+                 oninput="taSearch(this)" onchange="corrCardRecipChanged()">
+          <input type="hidden" name="recipient_id" data-ta-id value="{{ co.counterparty_id|default_if_none:'' }}">
+          <input type="hidden" name="clear_counterparty" id="corr-clear-cp" value="">
+          <div data-ta-results style="position:absolute;top:100%;left:0;right:0;z-index:60"></div>
+          <button type="button" class="btn btn-ghost btn-xs self-start mt-1"
+                  onclick="corrCardClearRecipient()">✕ убрать контрагента</button>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <label class="form-control">
+            <span class="label-text text-xs">Исх. № / № письма</span>
+            <input type="text" name="outgoing_number" value="{{ co.outgoing_number }}"
+                   class="input input-bordered input-sm">
+          </label>
+          <label class="form-control">
+            <span class="label-text text-xs">Дата письма</span>
+            <input type="date" name="sent_at" value="{{ co.sent_at|date:'Y-m-d' }}"
+                   class="input input-bordered input-sm">
+          </label>
+        </div>
+
+        <div class="rounded p-2 flex flex-col gap-2" style="background:var(--ms-bg-soft,#f8fafc)">
+          <span class="label-text text-xs font-semibold">Контроль ответа</span>
+          <div class="grid grid-cols-2 gap-3 items-center">
+            <label class="label cursor-pointer justify-start gap-2 py-0">
+              <input type="checkbox" name="track_response" class="checkbox checkbox-sm"
+                     {% if co.track_response %}checked{% endif %}>
+              <span class="label-text text-xs">отслеживать ответ</span>
+            </label>
+            <label class="form-control">
+              <span class="label-text text-xs">Контрольная дата</span>
+              <input type="date" name="control_date" value="{{ co.control_date|date:'Y-m-d' }}"
+                     class="input input-bordered input-sm">
+            </label>
+            <label class="label cursor-pointer justify-start gap-2 py-0">
+              <input type="checkbox" name="response_received" class="checkbox checkbox-sm"
+                     {% if co.response_received %}checked{% endif %}>
+              <span class="label-text text-xs">ответ получен</span>
+            </label>
+            <label class="form-control">
+              <span class="label-text text-xs">Дата ответа</span>
+              <input type="date" name="response_date" value="{{ co.response_date|date:'Y-m-d' }}"
+                     class="input input-bordered input-sm">
+            </label>
+          </div>
+          <label class="form-control">
+            <span class="label-text text-xs">Номер ответа</span>
+            <input type="text" name="response_number" value="{{ co.response_number }}"
+                   class="input input-bordered input-sm">
+          </label>
+          <label class="form-control">
+            <span class="label-text text-xs">Текст / итог ответа</span>
+            <textarea name="response_text" rows="2" class="textarea textarea-bordered w-full text-sm">{{ co.response_text }}</textarea>
+          </label>
+        </div>
+
+        <label class="form-control">
+          <span class="label-text text-xs">Связь с запросом дела</span>
+          <select name="request_id" class="select select-bordered select-sm">
+            <option value="">— нет связи —</option>
+            {% for rq in case_requests %}
+            <option value="{{ rq.pk }}" {% if rq.pk == co.request_id %}selected{% endif %}>
+              № {{ rq.outgoing_number|default:"—" }} · {{ rq.title }} → {{ rq.recipient_display }}
+            </option>
+            {% endfor %}
+          </select>
+        </label>
+
+        <label class="form-control">
+          <span class="label-text text-xs">{% icon "message-square" size=12 %} Комментарий</span>
+          <textarea name="comments" rows="3" class="textarea textarea-bordered w-full text-sm"
+                    placeholder="Заметка по письму — видна в таблице.">{{ co.comments }}</textarea>
+        </label>
+
+        <div>
+          <label class="label py-1"><span class="label-text text-xs">Заменить основной скан</span></label>
+          <input type="file" name="scan" class="block w-full text-xs border border-base-300 rounded p-1">
+          <p class="text-xs text-base-content/40 mt-1">Оставьте пустым, чтобы сохранить текущий файл.</p>
+        </div>
+      </form>
+
+      {% comment %} ── Правая колонка: файлы (вне формы) ── {% endcomment %}
+      <div class="flex flex-col gap-4">
+        <div>
+          <span class="label-text text-xs font-semibold">Основной скан</span>
+          <p class="text-xs mt-1">
+            {% if co.stored_file_id %}
+              <a class="link link-primary" href="{% url 'files:stored_download' co.stored_file_id %}?inline=1"
+                 onclick="if(window.procPreview){procPreview(this.href, '{{ co.subject_type|escapejs|default:"Документ" }}'); return false}">{% icon "eye" size=13 %} {{ co.stored_file.filename }}</a>
+            {% elif co.file_link %}
+              <a class="link" href="{{ co.file_link }}" target="_blank" rel="noopener">{% icon "eye" size=13 %} внешняя ссылка (Google Drive) ↗</a>
+            {% else %}
+              <span class="text-base-content/40">файла нет</span>
+            {% endif %}
+          </p>
+        </div>
+
+        <div class="border-t border-base-300 pt-3">
+          {% include "procedure/partials/_attachments_block.html" %}
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-action mt-4">
+      <button type="submit" form="corr-card-form" class="btn btn-primary btn-sm">Сохранить</button>
+      <button type="button" class="btn btn-sm" onclick="this.closest('dialog').remove()">Отмена</button>
+    </div>
+  </div>
+  <form method="dialog" class="modal-backdrop"><button onclick="this.closest('dialog').remove()">close</button></form>
+</dialog>
+
+<script>
+  // Выбрали контрагента из подсказки — снимаем флаг «убрать» (taPick шлёт change).
+  window.corrCardRecipChanged = function () {
+    var f = document.getElementById('corr-clear-cp'); if (f) f.value = '';
+  };
+  window.corrCardClearRecipient = function () {
+    var box = document.getElementById('corr-card-form');
+    var id = box.querySelector('[data-ta-id]'); if (id) id.value = '';
+    var inp = box.querySelector('[data-ta-input]'); if (inp) inp.value = '';
+    var f = document.getElementById('corr-clear-cp'); if (f) f.value = '1';
+  };
+</script>

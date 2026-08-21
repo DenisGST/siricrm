@@ -1,5 +1,6 @@
 # apps/crm/models.py
 
+from django.contrib.contenttypes.fields import GenericRelation
 from django.db import models
 from django.contrib.auth.models import User
 from django.utils import timezone
@@ -1850,7 +1851,13 @@ class Correspondence(TimeStampedModel):
     response_text = models.TextField('Текст ответа', blank=True)
     response_number = models.CharField('Номер ответа', max_length=100, blank=True)
 
-    comments = models.TextField('Комментарии', blank=True)
+    comments = models.TextField('Комментарий', blank=True)
+
+    # Доп. файлы сверх основного скана — procedure.DocumentAttachment (generic).
+    attachments = GenericRelation(
+        'procedure.DocumentAttachment',
+        content_type_field='content_type', object_id_field='object_id',
+    )
 
     class Meta:
         verbose_name = 'Корреспонденция'

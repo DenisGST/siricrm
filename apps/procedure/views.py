@@ -976,6 +976,21 @@ def _req_sort_key(field):
     return by(getters.get(field, getters["created"]))
 
 
+def _attach_counts(model, objects) -> dict:
+    """{pk: число вложений} — одним запросом на таблицу (иначе N+1 на строку)."""
+    from django.contrib.contenttypes.models import ContentType
+    from django.db.models import Count
+
+    from .models import DocumentAttachment
+    if not objects:
+        return {}
+    ct = ContentType.objects.get_for_model(model)
+    rows = (DocumentAttachment.objects
+            .filter(content_type=ct, object_id__in=[o.pk for o in objects])
+            .values("object_id").annotate(n=Count("id")))
+    return {r["object_id"]: r["n"] for r in rows}
+
+
 def _requests_context(case, req_q="", req_sort="created", req_dir="desc") -> dict:
     """Отфильтрованный + отсортированный список запросов дела для таблицы.
 
@@ -1001,6 +1016,9 @@ def _requests_context(case, req_q="", req_sort="created", req_dir="desc") -> dic
             return q in hay
         requests = [r for r in requests if _match(r)]
     requests.sort(key=_req_sort_key(req_sort), reverse=(req_dir == "desc"))
+    counts = _attach_counts(Request, requests)
+    for r in requests:
+        r.attach_count = counts.get(r.pk, 0)
     return {
         "today": today,
         "requests": requests,
@@ -1025,6 +1043,10 @@ def _correspondence_context(case, req_q="", req_sort="created", req_dir="desc") 
             ArbitrAttachment.objects.filter(event__case=arb)
             .select_related("event").order_by("-event__event_date", "-created_at")
         )
+    corr = list(corr)
+    corr_counts = _attach_counts(Correspondence, corr)
+    for c in corr:
+        c.attach_count = corr_counts.get(c.pk, 0)
     return {
         "service": case.service,
         "case": case,
@@ -1848,13 +1870,13 @@ def request_generate(request, service_id, req_id):
 
 # ── Корреспонденция: загрузка сканов (Входящие/Исходящие) ───────────────────
 
-def _scan_to_storedfile(f):
+def _scan_to_storedfile(f, prefix="procedure/correspondence"):
     """Загрузить файл-скан в S3 → StoredFile (+ ссылка для предпросмотра)."""
     from apps.files.models import StoredFile
     from apps.files.s3_utils import upload_file_to_s3
     data = f.read()
     bucket, key = upload_file_to_s3(
-        data, prefix="procedure/correspondence", filename=f.name,
+        data, prefix=prefix, filename=f.name,
         content_type=(f.content_type or "application/octet-stream"),
     )
     return StoredFile.objects.create(
@@ -1932,6 +1954,57 @@ def correspondence_upload(request, service_id, direction):
 
 # ── Запросы: онлайн-редактирование документа (текст по абзацам) ──────────────
 
+def _doc_paragraphs(req) -> list:
+    """Редактируемые абзацы .docx документа запроса (пусто — документа нет).
+
+    🛑 Тянет файл из S3 и парсит python-docx — вызывать только по явному
+    действию юриста, не при каждом открытии карточки.
+    """
+    if not req.document_docx_id:
+        return []
+    from apps.files.s3_utils import download_file_from_s3
+
+    from .request_documents import extract_editable_paragraphs
+    data = download_file_from_s3(req.document_docx.bucket, req.document_docx.key)
+    return extract_editable_paragraphs(data)
+
+
+def _doc_paragraphs_safe(req):
+    """(абзацы, текст ошибки) — файл может быть недоступен в S3 (чужой бакет,
+    удалённый объект). Показываем это сообщением, а не 500-й."""
+    try:
+        return _doc_paragraphs(req), ""
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception("не удалось прочитать .docx запроса %s", req.pk)
+        return [], ("Не удалось открыть файл документа — он недоступен в хранилище. "
+                    "Сформируйте документ заново или подгрузите готовый.")
+
+
+def _posted_paragraphs(post) -> list:
+    """Правки абзацев из формы (p_<индекс>) — в том же виде, что отдаёт парсер."""
+    out = []
+    for k, v in post.items():
+        if not k.startswith("p_"):
+            continue
+        try:
+            out.append({"index": int(k[2:]), "text": v})
+        except ValueError:
+            pass
+    out.sort(key=lambda p: p["index"])
+    return out
+
+
+def _save_doc_text(req, post, employee):
+    """Применить правку абзацев к .docx и пересобрать PDF (LibreOffice)."""
+    from apps.files.s3_utils import download_file_from_s3
+
+    from .request_documents import apply_paragraph_edits, save_edited_document
+    data = download_file_from_s3(req.document_docx.bucket, req.document_docx.key)
+    edits = {p["index"]: p["text"] for p in _posted_paragraphs(post)}
+    save_edited_document(req, apply_paragraph_edits(data, edits), employee=employee)
+
+
 @never_cache
 @login_required
 @require_procedures
@@ -1942,14 +2015,9 @@ def request_edit_form(request, service_id, req_id):
         return HttpResponseForbidden(str(exc))
     case = services.ensure_case(service)
     req = get_object_or_404(Request, pk=req_id, case=case)
-    paras = []
-    if req.document_docx_id:
-        from apps.files.s3_utils import download_file_from_s3
-        from .request_documents import extract_editable_paragraphs
-        data = download_file_from_s3(req.document_docx.bucket, req.document_docx.key)
-        paras = extract_editable_paragraphs(data)
+    paras, error = _doc_paragraphs_safe(req)
     return render(request, "procedure/_request_edit_modal.html",
-                  {"service": service, "req": req, "paras": paras})
+                  {"service": service, "req": req, "paras": paras, "error": error})
 
 
 @login_required
@@ -1964,25 +2032,14 @@ def request_edit_save(request, service_id, req_id):
     req = get_object_or_404(Request, pk=req_id, case=case)
     if not req.document_docx_id:
         return HttpResponseBadRequest("Нет документа для редактирования")
-    from apps.files.s3_utils import download_file_from_s3
-    from .request_documents import apply_paragraph_edits, save_edited_document
-    edits = {}
-    for k, v in request.POST.items():
-        if k.startswith("p_"):
-            try:
-                edits[int(k[2:])] = v
-            except ValueError:
-                pass
-    data = download_file_from_s3(req.document_docx.bucket, req.document_docx.key)
     try:
-        new_docx = apply_paragraph_edits(data, edits)
-        save_edited_document(req, new_docx, employee=_actor(request))
+        _save_doc_text(req, request.POST, _actor(request))
     except Exception:
         import logging
         logging.getLogger(__name__).exception("request_edit_save failed")
         return render(request, "procedure/_request_edit_modal.html", {
             "service": service, "req": req,
-            "paras": [{"index": int(k[2:]), "text": v} for k, v in request.POST.items() if k.startswith("p_")],
+            "paras": _posted_paragraphs(request.POST),
             "error": "Не удалось сохранить (ошибка конвертации). Попробуйте ещё раз.",
         })
     return _req_trigger()
@@ -2259,3 +2316,324 @@ def assets_document_delete(request, service_id, doc_id):
     from .models import AssetDocument
     get_object_or_404(AssetDocument, id=doc_id, case=case).delete()
     return render(request, "procedure/_tab_assets.html", _assets_context(case))
+
+
+# ── Вложения: доп. файлы к запросу / письму корреспонденции ─────────────────
+# Одна пара вью на обе таблицы — владелец адресуется парой (target, obj_id),
+# где target ∈ {request, correspondence}. См. models.DocumentAttachment.
+
+_ATTACH_PREFIX = "procedure/attachments"
+
+
+def _attach_owner(case, target, obj_id):
+    """Владелец вложений, проверенный на принадлежность делу (иначе 404/None)."""
+    if target == "request":
+        return get_object_or_404(Request, pk=obj_id, case=case)
+    if target == "correspondence":
+        return get_object_or_404(Correspondence, pk=obj_id, service=case.service)
+    return None
+
+
+# Офисные форматы показываем через office_pdf (рендер в PDF) — inline-просмотр
+# .docx/.xls браузер не умеет, а MS Viewer до нашего S3 (Beget) не достучится.
+_OFFICE_EXT = (".doc", ".docx", ".xls", ".xlsx", ".rtf", ".odt")
+
+
+def _attachments_ctx(service, target, owner):
+    items = list(owner.attachments.select_related("stored_file", "uploaded_by__user"))
+    for a in items:
+        fn = ((a.stored_file.filename if a.stored_file_id else "") or "").lower()
+        a.is_office = fn.endswith(_OFFICE_EXT)
+    return {"service": service, "target": target, "obj": owner, "attachments": items}
+
+
+def _render_attachments(request, service, target, owner):
+    """Блок вложений + сигнал обновить таблицу под модалкой (счётчик 📎)."""
+    resp = render(request, "procedure/partials/_attachments_block.html",
+                  _attachments_ctx(service, target, owner))
+    resp["HX-Trigger"] = "reloadRequests"
+    return resp
+
+
+@never_cache
+@login_required
+@require_procedures
+def attachments_block(request, service_id, target, obj_id):
+    try:
+        service = _bfl_service(request, service_id)
+    except _NotBFL as exc:
+        return HttpResponseForbidden(str(exc))
+    case = services.ensure_case(service)
+    owner = _attach_owner(case, target, obj_id)
+    if owner is None:
+        return HttpResponseBadRequest("Неизвестный тип владельца вложений")
+    return render(request, "procedure/partials/_attachments_block.html",
+                  _attachments_ctx(service, target, owner))
+
+
+@login_required
+@require_procedures
+@require_POST
+def attachments_add(request, service_id, target, obj_id):
+    """Загрузить один или несколько файлов и привязать их к запросу/письму."""
+    from django.contrib.contenttypes.models import ContentType
+
+    from .models import DocumentAttachment
+    try:
+        service = _bfl_service(request, service_id)
+    except _NotBFL as exc:
+        return HttpResponseForbidden(str(exc))
+    case = services.ensure_case(service)
+    owner = _attach_owner(case, target, obj_id)
+    if owner is None:
+        return HttpResponseBadRequest("Неизвестный тип владельца вложений")
+    ct = ContentType.objects.get_for_model(owner.__class__)
+    employee = _actor(request)
+    for f in request.FILES.getlist("files"):
+        sf = _scan_to_storedfile(f, prefix=_ATTACH_PREFIX)
+        DocumentAttachment.objects.create(
+            content_type=ct, object_id=owner.pk, stored_file=sf,
+            name=(f.name or "")[:255], uploaded_by=employee,
+        )
+    return _render_attachments(request, service, target, owner)
+
+
+@login_required
+@require_procedures
+@require_POST
+def attachment_delete(request, service_id, target, obj_id, att_id):
+    """Отвязать вложение. Сам объект в S3 не трогаем (как и в остальных разделах)."""
+    from .models import DocumentAttachment
+    try:
+        service = _bfl_service(request, service_id)
+    except _NotBFL as exc:
+        return HttpResponseForbidden(str(exc))
+    case = services.ensure_case(service)
+    owner = _attach_owner(case, target, obj_id)
+    if owner is None:
+        return HttpResponseBadRequest("Неизвестный тип владельца вложений")
+    DocumentAttachment.objects.filter(pk=att_id, object_id=owner.pk).delete()
+    return _render_attachments(request, service, target, owner)
+
+
+# ── Карточка запроса: редактирование всех параметров ────────────────────────
+
+def _int_or_none(raw):
+    raw = (raw or "").strip()
+    if not raw:
+        return None
+    try:
+        return int(raw)
+    except ValueError:
+        return None
+
+
+@never_cache
+@login_required
+@require_procedures
+def request_card(request, service_id, req_id):
+    """Модалка редактирования запроса (клик по строке в таблице)."""
+    try:
+        service = _bfl_service(request, service_id)
+    except _NotBFL as exc:
+        return HttpResponseForbidden(str(exc))
+    case = services.ensure_case(service)
+    req = get_object_or_404(
+        Request.objects.select_related("recipient", "request_type"), pk=req_id, case=case)
+    return render(request, "procedure/_request_card_modal.html", {
+        "service": service, "req": req,
+        "request_types": RequestType.objects.filter(is_active=True).order_by("order", "name"),
+        "method_choices": Request.METHOD_CHOICES,
+        "status_choices": Request.STATUS_CHOICES,
+        **_attachments_ctx(service, "request", req),
+    })
+
+
+@login_required
+@require_procedures
+@require_POST
+def request_card_save(request, service_id, req_id):
+    """Сохранить правку запроса. Пустые поля очищают значение (это правка, не патч)."""
+    try:
+        service = _bfl_service(request, service_id)
+    except _NotBFL as exc:
+        return HttpResponseForbidden(str(exc))
+    case = services.ensure_case(service)
+    req = get_object_or_404(
+        Request.objects.select_related("recipient", "request_type"), pk=req_id, case=case)
+
+    old_type = req.request_type
+    rt = RequestType.objects.filter(pk=request.POST.get("request_type")).first()
+    req.request_type = rt
+    # Название — снапшот типа. Правим его сами только если юрист его не менял
+    # (оно совпадало с названием прежнего типа), иначе уважаем ручной текст.
+    title = (request.POST.get("title") or "").strip()
+    if rt and old_type and rt != old_type and title == (old_type.name or ""):
+        title = rt.name
+    req.title = title or (rt.name if rt else req.title)
+
+    rid = (request.POST.get("recipient_id") or "").strip()
+    req.recipient = LegalEntity.objects.filter(pk=rid).first() if rid else None
+    rec_name = (request.POST.get("recipient_name") or "").strip()
+    if not rec_name and req.recipient:
+        rec_name = req.recipient.short_name or req.recipient.name
+    req.recipient_name = rec_name[:255]
+
+    req.outgoing_number = _int_or_none(request.POST.get("outgoing_number"))
+    status = (request.POST.get("status") or "").strip()
+    if status in dict(Request.STATUS_CHOICES):
+        req.status = status
+    method = (request.POST.get("sent_method") or "").strip()
+    req.sent_method = method if method in dict(Request.METHOD_CHOICES) else ""
+    req.sent_date = _date(request.POST.get("sent_date"))
+    req.response_days = _int_or_none(request.POST.get("response_days"))
+
+    old_due = req.due_date
+    req.due_date = _date(request.POST.get("due_date"))
+    # Срок сдвинули — дать просрочке сработать заново (уведомление шлётся раз).
+    if req.due_date != old_due:
+        req.overdue_notified = False
+
+    req.response_date = _date(request.POST.get("response_date"))
+    req.response_number = (request.POST.get("response_number") or "").strip()[:120]
+    req.response_text = (request.POST.get("response_text") or "").strip()
+    req.notes = (request.POST.get("notes") or "").strip()
+    req.save()
+    return _req_trigger()
+
+
+# ── Карточка письма корреспонденции (Входящие / Исходящие) ──────────────────
+
+@never_cache
+@login_required
+@require_procedures
+def correspondence_card(request, service_id, corr_id):
+    """Модалка редактирования письма (клик по строке во «Входящих»/«Исходящих»)."""
+    try:
+        service = _bfl_service(request, service_id)
+    except _NotBFL as exc:
+        return HttpResponseForbidden(str(exc))
+    case = services.ensure_case(service)
+    co = get_object_or_404(
+        Correspondence.objects.select_related("counterparty", "stored_file", "request"),
+        pk=corr_id, service=service)
+    from apps.crm.models import LegalEntityKind
+    return render(request, "procedure/_correspondence_card_modal.html", {
+        "service": service, "co": co,
+        "kinds": LegalEntityKind.objects.order_by("name"),
+        "direction_choices": Correspondence.DIRECTION_CHOICES,
+        "delivery_choices": Correspondence.DELIVERY_CHOICES,
+        "case_requests": case.requests.select_related("recipient").order_by("outgoing_number"),
+        **_attachments_ctx(service, "correspondence", co),
+    })
+
+
+@login_required
+@require_procedures
+@require_POST
+def correspondence_card_save(request, service_id, corr_id):
+    try:
+        service = _bfl_service(request, service_id)
+    except _NotBFL as exc:
+        return HttpResponseForbidden(str(exc))
+    services.ensure_case(service)
+    co = get_object_or_404(Correspondence, pk=corr_id, service=service)
+
+    direction = (request.POST.get("direction") or "").strip()
+    if direction in dict(Correspondence.DIRECTION_CHOICES):
+        co.direction = direction
+    co.subject_type = (request.POST.get("subject_type") or "").strip()[:255]
+    rid = (request.POST.get("recipient_id") or "").strip()
+    if rid:
+        co.counterparty = LegalEntity.objects.filter(pk=rid).first() or co.counterparty
+    elif request.POST.get("clear_counterparty") in ("1", "on", "true"):
+        co.counterparty = None
+    co.outgoing_number = (request.POST.get("outgoing_number") or "").strip()[:100]
+    co.sent_at = _date(request.POST.get("sent_at"))
+    method = (request.POST.get("delivery_method") or "").strip()
+    co.delivery_method = method if method in dict(Correspondence.DELIVERY_CHOICES) else ""
+
+    co.track_response = bool(request.POST.get("track_response"))
+    co.control_date = _date(request.POST.get("control_date"))
+    co.response_received = bool(request.POST.get("response_received"))
+    co.response_date = _date(request.POST.get("response_date"))
+    co.response_number = (request.POST.get("response_number") or "").strip()[:100]
+    co.response_text = (request.POST.get("response_text") or "").strip()
+    co.comments = (request.POST.get("comments") or "").strip()
+
+    req_id = (request.POST.get("request_id") or "").strip()
+    co.request = (Request.objects.filter(pk=req_id, case__service=service).first()
+                  if req_id else None)
+
+    # Замена основного скана (доп. файлы — блок «Вложения», отдельным запросом).
+    f = request.FILES.get("scan")
+    if f:
+        co.stored_file = _scan_to_storedfile(f)
+        co.file_link = ""
+    co.save()
+    return _req_trigger()
+
+
+# ── Текст документа запроса прямо в карточке (ленивая подгрузка) ────────────
+# Отдельный блок, а не часть карточки: абзацы тянутся из S3 и парсятся
+# python-docx — делать это на каждый клик по строке таблицы недопустимо.
+
+def _text_block_ctx(service, req, *, editing=False, paras=None, error="", saved=False):
+    return {
+        "service": service, "req": req, "editing": editing,
+        "paras": paras if paras is not None else [],
+        "error": error, "saved": saved,
+    }
+
+
+@never_cache
+@login_required
+@require_procedures
+def request_text_block(request, service_id, req_id):
+    """Блок текста документа: развернуть редактор или свернуть обратно (?collapsed=1)."""
+    try:
+        service = _bfl_service(request, service_id)
+    except _NotBFL as exc:
+        return HttpResponseForbidden(str(exc))
+    case = services.ensure_case(service)
+    req = get_object_or_404(Request, pk=req_id, case=case)
+    editing = request.GET.get("collapsed") not in ("1", "true")
+    paras, error = _doc_paragraphs_safe(req) if editing else ([], "")
+    return render(request, "procedure/partials/_request_text_block.html",
+                  _text_block_ctx(service, req, editing=editing, paras=paras, error=error))
+
+
+@login_required
+@require_procedures
+@require_POST
+def request_text_save(request, service_id, req_id):
+    """Сохранить правку текста: .docx → пересборка PDF → блок с результатом.
+
+    В отличие от отдельной модалки правки, карточка остаётся открытой — поэтому
+    отдаём перерисованный блок, а таблицу под модалкой обновляем HX-Trigger'ом.
+    """
+    try:
+        service = _bfl_service(request, service_id)
+    except _NotBFL as exc:
+        return HttpResponseForbidden(str(exc))
+    case = services.ensure_case(service)
+    req = get_object_or_404(Request, pk=req_id, case=case)
+    if not req.document_docx_id:
+        return HttpResponseBadRequest("Нет документа для редактирования")
+    try:
+        _save_doc_text(req, request.POST, _actor(request))
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception("request_text_save failed")
+        return render(request, "procedure/partials/_request_text_block.html",
+                      _text_block_ctx(service, req, editing=True,
+                                      paras=_posted_paragraphs(request.POST),
+                                      error="Не удалось сохранить (ошибка конвертации). "
+                                            "Попробуйте ещё раз."))
+    req.refresh_from_db()
+    paras, error = _doc_paragraphs_safe(req)
+    resp = render(request, "procedure/partials/_request_text_block.html",
+                  _text_block_ctx(service, req, editing=True, paras=paras,
+                                  error=error, saved=True))
+    resp["HX-Trigger"] = "reloadRequests"
+    return resp

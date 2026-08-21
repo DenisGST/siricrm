@@ -15,8 +15,16 @@
   </thead>
   <tbody>
     {% for c in items %}
-    <tr>
-      <td class="text-xs">{{ c.subject_type|default:"—" }}{% if c.comments %}<div class="text-base-content/50">{{ c.comments|truncatechars:60 }}</div>{% endif %}</td>
+    {% comment %}Клик по строке → карточка письма (обработчик rowEdit в dashboard.html).{% endcomment %}
+    <tr class="cursor-pointer hover"
+        data-edit-url="{% url 'procedure:correspondence_card' service.id c.pk %}"
+        title="Открыть карточку письма">
+      <td class="text-xs">{{ c.subject_type|default:"—" }}
+        {% if c.comments %}<div class="text-base-content/50 flex items-start gap-1">
+          <span class="shrink-0" style="margin-top:1px">{% icon "message-square" size=11 %}</span>
+          <span>{{ c.comments|truncatechars:60 }}</span>
+        </div>{% endif %}
+      </td>
       <td class="text-xs">{% if c.counterparty %}{{ c.counterparty.short_name|default:c.counterparty.name }}{% elif c.request and c.request.recipient_name %}{{ c.request.recipient_name }}{% else %}—{% endif %}</td>
       <td class="text-xs">{% if kind == "incoming" %}{{ c.response_number|default:c.outgoing_number|default:"—" }}{% else %}{{ c.outgoing_number|default:"—" }}{% endif %}</td>
       <td class="text-xs whitespace-nowrap">{% if kind == "incoming" %}{{ c.response_date|date:"d.m.Y"|default:c.sent_at|date:"d.m.Y"|default:"—" }}{% else %}{{ c.sent_at|date:"d.m.Y"|default:"—" }}{% endif %}</td>
@@ -33,6 +41,8 @@
         {% elif c.file_link %}
           <a class="link" href="{{ c.file_link }}" target="_blank" rel="noopener" title="Внешняя ссылка (Google Drive)">{% icon "eye" size=13 %} GDrive ↗</a>
         {% else %}<span class="text-base-content/40">нет файла</span>{% endif %}
+        {% if c.attach_count %}<span class="badge badge-ghost badge-xs ml-1"
+          title="Дополнительных вложений: {{ c.attach_count }}">{% icon "paperclip" size=10 %} {{ c.attach_count }}</span>{% endif %}
       </td>
       <td class="text-xs whitespace-nowrap">
         {% if c.request_id %}

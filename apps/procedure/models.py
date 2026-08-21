@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import uuid
 
-from django.contrib.contenttypes.fields import GenericForeignKey
+from django.contrib.contenttypes.fields import GenericForeignKey, GenericRelation
 from django.contrib.contenttypes.models import ContentType
 from django.db import models
 
@@ -614,7 +614,13 @@ class Request(TimeStampedModel):
         "core.Employee", on_delete=models.SET_NULL, null=True, blank=True,
         related_name="+", verbose_name="Кто создал",
     )
-    notes = models.TextField("Заметки", blank=True)
+    notes = models.TextField("Комментарий", blank=True)
+
+    # Доп. файлы сверх основных слотов (документ/скан ответа) — см. DocumentAttachment.
+    attachments = GenericRelation(
+        "procedure.DocumentAttachment",
+        content_type_field="content_type", object_id_field="object_id",
+    )
 
     class Meta:
         verbose_name = "Запрос"
@@ -652,6 +658,56 @@ class Request(TimeStampedModel):
             self.status == self.STATUS_SENT
             and self.due_date and self.due_date < timezone.localdate()
         )
+
+
+# ── Дополнительные вложения (к запросу / письму корреспонденции) ────────────
+
+class DocumentAttachment(TimeStampedModel):
+    """Доп. файл, приложенный к запросу или к письму корреспонденции.
+
+    Основные документы живут в своих полях (`Request.document_pdf`/`_docx`/
+    `response_scan`, `Correspondence.stored_file`) — здесь всё остальное, чего
+    бывает много и заранее не перечислить: приложения к ответу, опись вложения,
+    конверт с отметкой, второй лист.
+
+    🛑 Generic FK — чтобы ОДНА модель (и одни вью с одним партиалом) обслуживала
+    обе таблицы: `Request` живёт в этом приложении, `Correspondence` — в `crm`.
+    Обе стороны подключают `GenericRelation` → `obj.attachments` единообразно,
+    и вложения удаляются каскадом вместе с владельцем.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    content_type = models.ForeignKey(
+        ContentType, on_delete=models.CASCADE, related_name="+",
+        verbose_name="Тип владельца",
+    )
+    object_id = models.UUIDField("ID владельца")
+    target = GenericForeignKey("content_type", "object_id")
+
+    stored_file = models.ForeignKey(
+        "files.StoredFile", on_delete=models.CASCADE,
+        related_name="+", verbose_name="Файл",
+    )
+    name = models.CharField("Название", max_length=255, blank=True)
+    uploaded_by = models.ForeignKey(
+        "core.Employee", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="+", verbose_name="Кто загрузил",
+    )
+
+    class Meta:
+        verbose_name = "Вложение"
+        verbose_name_plural = "Вложения"
+        ordering = ["created_at"]
+        indexes = [models.Index(fields=["content_type", "object_id"])]
+
+    def __str__(self):
+        return self.display_name
+
+    @property
+    def display_name(self) -> str:
+        if self.name:
+            return self.name
+        sf = self.stored_file
+        return (sf.filename if sf else "") or "Файл"
 
 
 # ── Арбитражные управляющие (справочник реквизитов ФУ) ──────────────────────

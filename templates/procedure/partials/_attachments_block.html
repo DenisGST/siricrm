@@ -1,0 +1,58 @@
+{% load icons %}
+{% comment %}Блок «Вложения» — доп. файлы запроса или письма корреспонденции.
+  Контекст: service, target (request|correspondence), obj (владелец), attachments.
+  Самодостаточен: добавление/удаление перерисовывают только этот блок
+  (hx-target="#attach-block"), поэтому правки в полях модалки не теряются.
+  🛑 Живёт ВНЕ <form> карточки (см. комментарий в модалке) — иначе htmx подмешивал
+  бы выбранные файлы в каждое «Сохранить». Отсюда hx-post прямо на инпуте.{% endcomment %}
+<div id="attach-block">
+  <div class="flex items-center gap-2 mb-1">
+    <span class="label-text text-xs font-semibold">Вложения</span>
+    <span class="badge badge-ghost badge-sm">{{ attachments|length }}</span>
+  </div>
+
+  {% if attachments %}
+  <ul class="mb-2 flex flex-col gap-1">
+    {% for a in attachments %}
+    <li class="flex items-center gap-2 text-xs">
+      <span class="text-base-content/40 shrink-0">{% icon "paperclip" size=13 %}</span>
+      {% if a.is_office %}
+        <a class="link link-primary truncate" style="max-width:26rem"
+           href="{% url 'procedure:office_pdf' service.id a.stored_file_id %}"
+           title="Просмотр «{{ a.display_name }}»"
+           onclick="if(window.procPreview){procPreview(this.href, '{{ a.display_name|escapejs }}'); return false}">{{ a.display_name }}</a>
+      {% else %}
+        <a class="link link-primary truncate" style="max-width:26rem"
+           href="{% url 'files:stored_download' a.stored_file_id %}?inline=1"
+           title="Просмотр «{{ a.display_name }}»"
+           onclick="if(window.procPreview){procPreview(this.href, '{{ a.display_name|escapejs }}'); return false}">{{ a.display_name }}</a>
+      {% endif %}
+      <a class="link text-base-content/50 shrink-0" title="Скачать"
+         href="{% url 'files:stored_download' a.stored_file_id %}?dl={{ a.display_name|urlencode }}">⬇</a>
+      <span class="text-base-content/40 ml-auto shrink-0 whitespace-nowrap">
+        {% if a.uploaded_by %}{{ a.uploaded_by.user.get_full_name|default:a.uploaded_by.user.username }} · {% endif %}{{ a.created_at|date:"d.m.Y" }}
+      </span>
+      <button type="button" class="req-act shrink-0" style="--act-hc:#dc2626" title="Удалить вложение"
+              hx-post="{% url 'procedure:attachment_delete' service.id target obj.pk a.pk %}"
+              hx-target="#attach-block" hx-swap="outerHTML"
+              hx-confirm="Удалить вложение «{{ a.display_name }}»?">{% icon "trash" size=14 %}</button>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="text-xs text-base-content/40 mb-2">Вложений нет.</p>
+  {% endif %}
+
+  {% comment %}Файлы уходят сразу по выбору — отдельной кнопки «загрузить» не нужно.
+    hx-encoding обязателен, иначе HTMX шлёт urlencoded и файлы не долетают.{% endcomment %}
+  <input type="file" name="files" multiple
+         class="block w-full text-xs border border-base-300 rounded p-1"
+         hx-post="{% url 'procedure:attachments_add' service.id target obj.pk %}"
+         hx-encoding="multipart/form-data" hx-trigger="change"
+         hx-target="#attach-block" hx-swap="outerHTML"
+         hx-indicator="#attach-busy">
+  <p class="text-xs text-base-content/40 mt-1">
+    Можно выбрать сразу несколько файлов — загрузятся при выборе.
+    <span id="attach-busy" class="htmx-indicator">загружаю…</span>
+  </p>
+</div>
