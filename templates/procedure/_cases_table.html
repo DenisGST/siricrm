@@ -75,10 +75,10 @@
         {% empty %}
         <tr>
           <td colspan="7" class="text-center py-10 text-base-content/50">
-            {% if q or kind or status or mine %}
+            {% if filters_active %}
               Ничего не найдено — измените условия поиска или фильтры.
             {% else %}
-              Дел о банкротстве пока нет.
+              Незавершённых процедур нет. Дела без введённой процедуры — фильтр «Состояние».
             {% endif %}
           </td>
         </tr>

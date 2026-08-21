@@ -15,7 +15,8 @@ from django.conf import settings
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.core.cache import cache
 from django.core.paginator import Paginator
-from django.db.models import Q
+from django.db.models import F, Q, Value
+from django.db.models.functions import NullIf
 from django.http import HttpResponse, HttpResponseBadRequest, HttpResponseForbidden
 from django.shortcuts import get_object_or_404, render
 from django.utils import timezone
@@ -41,6 +42,7 @@ from .models import (
     KIND_REALIZATION,
     KIND_RESTRUCTURING,
     PROCEDURE_KIND_CHOICES,
+    PROCEDURE_OUTCOME_CHOICES,
     SCOPE_COMMON,
     ArbitrationManager,
     BankruptcyCase,
@@ -327,21 +329,40 @@ def _overview_context(case: BankruptcyCase, expand_proc_id=None,
 #
 # Строка таблицы = процедура (реструктуризация/реализация). У дела процедур
 # может быть несколько — тогда и строк несколько. Дело, где процедура ещё не
-# введена (подготовка/подача/первое заседание), тоже показывается — одной
-# строкой с псевдо-видом KIND_NONE, иначе юрист не увидит его в реестре.
+# введена (подготовка/подача/первое заседание), тоже даёт строку — с
+# псевдо-видом KIND_NONE и прочерками вместо дат.
 #
 # Универсум строк — услуги БФЛ, видимые пользователю (`Service.visible_to`),
 # а НЕ `BankruptcyCase`: запись дела создаётся лениво (`services.ensure_case`)
 # при первом открытии карточки, и по делам заводится не сразу.
+#
+# 🛑 Фильтрация, сортировка и пагинация — ЦЕЛИКОМ на стороне БД (LIMIT/OFFSET).
+# Строка выборки = строка LEFT JOIN к процедурам, поэтому постраничная выборка
+# честная: из БД приезжает ровно страница. Раньше все ~6000 строк тянулись в
+# питон на каждый запрос.
 
 KIND_NONE = "none"                      # псевдо-вид: процедура не введена
+PROC_PATH = "bankruptcy_case__procedures"
+
 CASES_PER_PAGE_CHOICES = (25, 50, 100)
 CASES_DEFAULT_PER_PAGE = 25
-# По умолчанию — свежие введённые процедуры сверху; дела без процедуры
-# (их подавляющее большинство) уезжают вниз правилом CASES_BLANK_TESTS.
 CASES_DEFAULT_SORT = "intro"
 CASES_DEFAULT_DIR = "desc"
-_MIN_DATE = datetime.min.date()         # пустые даты в сортировке — вниз/вверх
+
+# Состояние процедуры — главный фильтр. По умолчанию показываем только те,
+# что ещё идут: процедура введена (строка есть) и исход не проставлен.
+STATE_RUNNING = "running"
+STATE_DONE = "done"
+STATE_NO_PROC = "no_proc"
+STATE_ALL = "all"
+CASES_STATE_CHOICES = [
+    (STATE_RUNNING, "Незавершённые процедуры"),
+    (STATE_DONE, "Завершённые процедуры"),
+    (STATE_NO_PROC, "Процедура не введена"),
+    (STATE_ALL, "Все строки"),
+]
+CASES_DEFAULT_STATE = STATE_RUNNING
+OUTCOME_CODES = [code for code, _ in PROCEDURE_OUTCOME_CHOICES]
 
 # Колонки плоской выборки — порядок ВАЖЕН, распаковывается кортежем ниже.
 CASES_VALUES = (
@@ -349,59 +370,70 @@ CASES_VALUES = (
     "client__last_name", "client__first_name", "client__patronymic",
     "arbitr_case__case_number", "arbitr_case__kad_url",
     "bankruptcy_case__status",
-    "bankruptcy_case__procedures__order",
-    "bankruptcy_case__procedures__kind",
-    "bankruptcy_case__procedures__intro_date",
-    "bankruptcy_case__procedures__next_hearing_date",
-    "bankruptcy_case__procedures__publication_kommersant_date",
-    "bankruptcy_case__procedures__outcome",
+    f"{PROC_PATH}__kind",
+    f"{PROC_PATH}__intro_date",
+    f"{PROC_PATH}__next_hearing_date",
+    f"{PROC_PATH}__publication_kommersant_date",
+    f"{PROC_PATH}__outcome",
 )
 CASES_KIND_LABELS = dict(PROCEDURE_KIND_CHOICES)
 CASES_STATUS_LABELS = dict(BankruptcyCase.STATUS_CHOICES)
 
-CASES_SORT_KEYS = {
-    "fio": lambda r: r["client_fio"].lower(),
-    "case_number": lambda r: (r["case_number"] or "").lower(),
-    "intro": lambda r: r["intro_date"] or _MIN_DATE,
-    "hearing": lambda r: r["hearing_date"] or _MIN_DATE,
-    "kommersant": lambda r: r["kommersant_date"] or _MIN_DATE,
-    "kind": lambda r: r["kind_label"].lower(),
-}
-
-# Что считать «пустым» для колонки (такие строки уезжают в конец списка).
-CASES_BLANK_TESTS = {
-    "case_number": lambda r: not r["case_number"],
-    "intro": lambda r: r["intro_date"] is None,
-    "hearing": lambda r: r["hearing_date"] is None,
-    "kommersant": lambda r: r["kommersant_date"] is None,
+# Столбец → выражения ORDER BY. Пустые значения всегда внизу (nulls_last),
+# иначе сортировка по редкой колонке выдаёт страницу сплошных прочерков.
+# Пустая строка — не NULL, поэтому № дела прогоняем через NULLIF.
+CASES_SORT_EXPRESSIONS = {
+    "fio": lambda: [F("client__last_name"), F("client__first_name"),
+                    F("client__patronymic")],
+    "case_number": lambda: [NullIf(F("arbitr_case__case_number"), Value(""))],
+    "intro": lambda: [F(f"{PROC_PATH}__intro_date")],
+    "hearing": lambda: [F(f"{PROC_PATH}__next_hearing_date")],
+    "kommersant": lambda: [F(f"{PROC_PATH}__publication_kommersant_date")],
+    "kind": lambda: [F(f"{PROC_PATH}__kind")],
 }
 
 
-def _cases_context(request) -> dict:
-    """Контекст сводной таблицы: фильтры + поиск + сортировка + страница.
+def _cases_order_by(sort: str, direction: str) -> list:
+    """ORDER BY для сводной таблицы + стабильный тай-брейк.
 
-    Поиск и «только мои» режем на уровне БД, вид процедуры и статус дела —
-    в питоне: у услуги без `BankruptcyCase` статуса в БД нет, а показывать её
-    как «В работе» нужно.
+    🛑 Тай-брейк обязателен: без него Postgres волен отдавать строки с равным
+    ключом (а таких много — половина колонок пустая) в разном порядке на
+    разных OFFSET, и при листании страницы дублировались бы/терялись.
     """
-    q = (request.GET.get("q") or "").strip()
-    kind = (request.GET.get("kind") or "").strip()
-    status = (request.GET.get("status") or "").strip()
-    mine = (request.GET.get("mine") or "") in ("1", "on", "true")
-    sort = request.GET.get("sort") or CASES_DEFAULT_SORT
-    if sort not in CASES_SORT_KEYS:
-        sort = CASES_DEFAULT_SORT
-    direction = request.GET.get("dir")
-    if direction not in ("asc", "desc"):
-        direction = CASES_DEFAULT_DIR
+    desc = direction == "desc"
+    order = [
+        expr.desc(nulls_last=True) if desc else expr.asc(nulls_last=True)
+        for expr in CASES_SORT_EXPRESSIONS[sort]()
+    ]
+    order += [F("id").asc(), F(f"{PROC_PATH}__order").asc(nulls_last=True)]
+    return order
 
-    qs = (
+
+def _cases_queryset(request, *, q="", state=CASES_DEFAULT_STATE, kind="",
+                    status="", mine=False, sort=CASES_DEFAULT_SORT,
+                    direction=CASES_DEFAULT_DIR):
+    """Queryset строк сводной таблицы (кортежи `CASES_VALUES`).
+
+    🛑 Все условия по пути `bankruptcy_case__procedures` собираются в ОДИН
+    `filter()`: на многозначной связи каждый отдельный `filter()` создаёт новый
+    JOIN, и «незавершённая» + «реализация» матчились бы на РАЗНЫХ процедурах
+    одного дела. Один Q → один join, тот же, из которого читает `values_list`.
+    """
+    # Видимость — подзапросом по pk, а не join'ом: `visible_to` для рядового
+    # сотрудника джойнит M2M и размножает строки, а нам размножение нужно
+    # только по процедурам (иначе пришлось бы городить distinct поверх
+    # ORDER BY-выражений).
+    visible = (
         Service.objects.visible_to(request.user)
         .filter(name__short_name="БФЛ")
+        .values("pk")
     )
+    qs = Service.objects.filter(pk__in=visible)
+
     emp = _actor(request)
     if mine and emp is not None:
-        qs = qs.filter(employees=emp)
+        qs = qs.filter(pk__in=Service.objects.filter(employees=emp).values("pk"))
+
     for word in q.split():
         qs = qs.filter(
             Q(client__last_name__icontains=word)
@@ -409,18 +441,38 @@ def _cases_context(request) -> dict:
             | Q(client__patronymic__icontains=word)
             | Q(arbitr_case__case_number__icontains=word)
         )
-    # Плоская выборка кортежами: LEFT JOIN к процедурам сам даёт строку на
-    # процедуру и одну строку с NULL'ами, если процедур нет. Модельные объекты
-    # тут не нужны, а на нескольких тысячах услуг они стоили секунды.
-    qs = qs.values_list(*CASES_VALUES).order_by(
-        "bankruptcy_case__procedures__order").distinct()
 
+    if status == BankruptcyCase.STATUS_ACTIVE:
+        # Услуга без записи дела — тоже «в работе»: `ensure_case` ленивый.
+        qs = qs.filter(Q(bankruptcy_case__status=status)
+                       | Q(bankruptcy_case__isnull=True))
+    elif status:
+        qs = qs.filter(bankruptcy_case__status=status)
+
+    proc_q = Q()
+    if state == STATE_RUNNING:
+        proc_q &= Q(**{f"{PROC_PATH}__isnull": False, f"{PROC_PATH}__outcome": ""})
+    elif state == STATE_DONE:
+        proc_q &= Q(**{f"{PROC_PATH}__outcome__in": OUTCOME_CODES})
+    elif state == STATE_NO_PROC:
+        proc_q &= Q(**{f"{PROC_PATH}__isnull": True})
+    if kind:
+        proc_q &= Q(**{f"{PROC_PATH}__kind": kind})
+    if proc_q:
+        qs = qs.filter(proc_q)
+
+    return qs.values_list(*CASES_VALUES).order_by(*_cases_order_by(sort, direction))
+
+
+def _cases_rows(tuples, offset: int) -> list:
+    """Кортежи выборки → строки шаблона (нумерация сквозная по страницам)."""
     rows = []
-    for (service_id, last_name, first_name, patronymic, case_number, kad_url,
-         case_status, _order, proc_kind, intro_date, hearing_date,
-         kommersant_date, outcome) in qs:
+    for i, (service_id, last_name, first_name, patronymic, case_number, kad_url,
+            case_status, proc_kind, intro_date, hearing_date, kommersant_date,
+            outcome) in enumerate(tuples, start=offset + 1):
         fio = " ".join(filter(None, [last_name, first_name, patronymic])).strip()
         rows.append({
+            "n": i,
             "service_id": service_id,
             "client_fio": fio or "—",
             "case_number": case_number or "",
@@ -435,18 +487,28 @@ def _cases_context(request) -> dict:
             "kommersant_date": kommersant_date,
             "outcome_label": ALL_OUTCOMES.get(outcome or "", ""),
         })
+    return rows
 
-    if kind:
-        rows = [r for r in rows if r["kind"] == kind]
-    if status:
-        rows = [r for r in rows if r["case_status"] == status]
 
-    rows.sort(key=CASES_SORT_KEYS[sort], reverse=(direction == "desc"))
-    # Пустые значения всегда внизу — иначе сортировка по редкой колонке
-    # (напр. дате публикации) выдаёт страницу сплошных прочерков.
-    is_blank = CASES_BLANK_TESTS.get(sort)
-    if is_blank is not None:
-        rows = [r for r in rows if not is_blank(r)] + [r for r in rows if is_blank(r)]
+def _cases_context(request) -> dict:
+    """Контекст сводной таблицы: фильтры + поиск + сортировка + страница."""
+    q = (request.GET.get("q") or "").strip()
+    state = (request.GET.get("state") or "").strip()
+    if state not in dict(CASES_STATE_CHOICES):
+        state = CASES_DEFAULT_STATE
+    kind = (request.GET.get("kind") or "").strip()
+    if kind not in CASES_KIND_LABELS:
+        kind = ""
+    status = (request.GET.get("status") or "").strip()
+    if status not in CASES_STATUS_LABELS:
+        status = ""
+    mine = (request.GET.get("mine") or "") in ("1", "on", "true")
+    sort = request.GET.get("sort") or CASES_DEFAULT_SORT
+    if sort not in CASES_SORT_EXPRESSIONS:
+        sort = CASES_DEFAULT_SORT
+    direction = request.GET.get("dir")
+    if direction not in ("asc", "desc"):
+        direction = CASES_DEFAULT_DIR
 
     try:
         per_page = int(request.GET.get("per_page") or CASES_DEFAULT_PER_PAGE)
@@ -455,27 +517,30 @@ def _cases_context(request) -> dict:
     if per_page not in CASES_PER_PAGE_CHOICES:
         per_page = CASES_DEFAULT_PER_PAGE
 
-    paginator = Paginator(rows, per_page)
+    qs = _cases_queryset(request, q=q, state=state, kind=kind, status=status,
+                         mine=mine, sort=sort, direction=direction)
+    paginator = Paginator(qs, per_page)          # COUNT + LIMIT/OFFSET
     page_obj = paginator.get_page(request.GET.get("page") or 1)
-    offset = (page_obj.number - 1) * per_page
-    for i, row in enumerate(page_obj.object_list, start=offset + 1):
-        row["n"] = i
 
     return {
-        "rows": page_obj.object_list,
+        "rows": _cases_rows(page_obj.object_list, (page_obj.number - 1) * per_page),
         "page_obj": page_obj,
         "paginator": paginator,
         "page_range": list(paginator.get_elided_page_range(
             page_obj.number, on_each_side=1, on_ends=1)),
         "ellipsis": Paginator.ELLIPSIS,
         "total": paginator.count,
-        "q": q, "kind": kind, "status": status, "mine": mine,
-        "has_employee": emp is not None,
+        "q": q, "state": state, "kind": kind, "status": status, "mine": mine,
+        "has_employee": _actor(request) is not None,
         "sort": sort, "direction": direction,
         "per_page": per_page,
         "per_page_choices": CASES_PER_PAGE_CHOICES,
-        "kind_choices": list(PROCEDURE_KIND_CHOICES) + [(KIND_NONE, "Процедура не введена")],
+        "state_choices": CASES_STATE_CHOICES,
+        "default_state": CASES_DEFAULT_STATE,
+        "kind_choices": PROCEDURE_KIND_CHOICES,
         "status_choices": BankruptcyCase.STATUS_CHOICES,
+        "filters_active": bool(q or kind or status or mine
+                               or state != CASES_DEFAULT_STATE),
     }
 
 

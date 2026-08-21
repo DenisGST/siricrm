@@ -28,10 +28,21 @@
     </div>
   </label>
 
+  {% comment %}Состояние — главный фильтр: по умолчанию только идущие процедуры.
+     Дела без введённой процедуры (их большинство) — отдельным пунктом.{% endcomment %}
+  <label class="form-control">
+    <span class="label label-text !text-xs !py-0 !pb-1 opacity-70">Состояние</span>
+    <select name="state" class="select select-bordered select-sm" style="min-width:13rem">
+      {% for code, label in state_choices %}
+        <option value="{{ code }}" {% if state == code %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+  </label>
+
   <label class="form-control">
     <span class="label label-text !text-xs !py-0 !pb-1 opacity-70">Тип процедуры</span>
-    <select name="kind" class="select select-bordered select-sm" style="min-width:13rem">
-      <option value="">Все процедуры</option>
+    <select name="kind" class="select select-bordered select-sm" style="min-width:12rem">
+      <option value="">Любой тип</option>
       {% for code, label in kind_choices %}
         <option value="{{ code }}" {% if kind == code %}selected{% endif %}>{{ label }}</option>
       {% endfor %}
@@ -71,6 +82,7 @@
           hx-target="#proc-cases-table" hx-swap="innerHTML"
           onclick="var f=document.getElementById('proc-filters');
                    f.querySelector('#proc-q').value='';
+                   f.querySelector('[name=state]').value='{{ default_state }}';
                    f.querySelector('[name=kind]').value='';
                    f.querySelector('[name=status]').value='';
                    var m=f.querySelector('[name=mine]'); if(m){m.checked=false;}
