@@ -14,6 +14,7 @@ from urllib.parse import quote
 from django.conf import settings
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.core.cache import cache
+from django.core.paginator import Paginator
 from django.db.models import Q
 from django.http import HttpResponse, HttpResponseBadRequest, HttpResponseForbidden
 from django.shortcuts import get_object_or_404, render
@@ -33,6 +34,7 @@ from apps.crm.phone_utils import (
 
 from . import services
 from .models import (
+    ALL_OUTCOMES,
     BASE_DATE_KEY_CHOICES,
     CLOSING_OUTCOMES,
     FIRST_HEARING_OUTCOMES,
@@ -321,15 +323,184 @@ def _overview_context(case: BankruptcyCase, expand_proc_id=None,
     }
 
 
-# ── Лендинг «Юрист БФЛ» (пункт меню) ───────────────────────────────────────
+# ── Лендинг «Юрист БФЛ»: сводная таблица процедур ──────────────────────────
+#
+# Строка таблицы = процедура (реструктуризация/реализация). У дела процедур
+# может быть несколько — тогда и строк несколько. Дело, где процедура ещё не
+# введена (подготовка/подача/первое заседание), тоже показывается — одной
+# строкой с псевдо-видом KIND_NONE, иначе юрист не увидит его в реестре.
+#
+# Универсум строк — услуги БФЛ, видимые пользователю (`Service.visible_to`),
+# а НЕ `BankruptcyCase`: запись дела создаётся лениво (`services.ensure_case`)
+# при первом открытии карточки, и по делам заводится не сразу.
+
+KIND_NONE = "none"                      # псевдо-вид: процедура не введена
+CASES_PER_PAGE_CHOICES = (25, 50, 100)
+CASES_DEFAULT_PER_PAGE = 25
+# По умолчанию — свежие введённые процедуры сверху; дела без процедуры
+# (их подавляющее большинство) уезжают вниз правилом CASES_BLANK_TESTS.
+CASES_DEFAULT_SORT = "intro"
+CASES_DEFAULT_DIR = "desc"
+_MIN_DATE = datetime.min.date()         # пустые даты в сортировке — вниз/вверх
+
+# Колонки плоской выборки — порядок ВАЖЕН, распаковывается кортежем ниже.
+CASES_VALUES = (
+    "id",
+    "client__last_name", "client__first_name", "client__patronymic",
+    "arbitr_case__case_number", "arbitr_case__kad_url",
+    "bankruptcy_case__status",
+    "bankruptcy_case__procedures__order",
+    "bankruptcy_case__procedures__kind",
+    "bankruptcy_case__procedures__intro_date",
+    "bankruptcy_case__procedures__next_hearing_date",
+    "bankruptcy_case__procedures__publication_kommersant_date",
+    "bankruptcy_case__procedures__outcome",
+)
+CASES_KIND_LABELS = dict(PROCEDURE_KIND_CHOICES)
+CASES_STATUS_LABELS = dict(BankruptcyCase.STATUS_CHOICES)
+
+CASES_SORT_KEYS = {
+    "fio": lambda r: r["client_fio"].lower(),
+    "case_number": lambda r: (r["case_number"] or "").lower(),
+    "intro": lambda r: r["intro_date"] or _MIN_DATE,
+    "hearing": lambda r: r["hearing_date"] or _MIN_DATE,
+    "kommersant": lambda r: r["kommersant_date"] or _MIN_DATE,
+    "kind": lambda r: r["kind_label"].lower(),
+}
+
+# Что считать «пустым» для колонки (такие строки уезжают в конец списка).
+CASES_BLANK_TESTS = {
+    "case_number": lambda r: not r["case_number"],
+    "intro": lambda r: r["intro_date"] is None,
+    "hearing": lambda r: r["hearing_date"] is None,
+    "kommersant": lambda r: r["kommersant_date"] is None,
+}
+
+
+def _cases_context(request) -> dict:
+    """Контекст сводной таблицы: фильтры + поиск + сортировка + страница.
+
+    Поиск и «только мои» режем на уровне БД, вид процедуры и статус дела —
+    в питоне: у услуги без `BankruptcyCase` статуса в БД нет, а показывать её
+    как «В работе» нужно.
+    """
+    q = (request.GET.get("q") or "").strip()
+    kind = (request.GET.get("kind") or "").strip()
+    status = (request.GET.get("status") or "").strip()
+    mine = (request.GET.get("mine") or "") in ("1", "on", "true")
+    sort = request.GET.get("sort") or CASES_DEFAULT_SORT
+    if sort not in CASES_SORT_KEYS:
+        sort = CASES_DEFAULT_SORT
+    direction = request.GET.get("dir")
+    if direction not in ("asc", "desc"):
+        direction = CASES_DEFAULT_DIR
+
+    qs = (
+        Service.objects.visible_to(request.user)
+        .filter(name__short_name="БФЛ")
+    )
+    emp = _actor(request)
+    if mine and emp is not None:
+        qs = qs.filter(employees=emp)
+    for word in q.split():
+        qs = qs.filter(
+            Q(client__last_name__icontains=word)
+            | Q(client__first_name__icontains=word)
+            | Q(client__patronymic__icontains=word)
+            | Q(arbitr_case__case_number__icontains=word)
+        )
+    # Плоская выборка кортежами: LEFT JOIN к процедурам сам даёт строку на
+    # процедуру и одну строку с NULL'ами, если процедур нет. Модельные объекты
+    # тут не нужны, а на нескольких тысячах услуг они стоили секунды.
+    qs = qs.values_list(*CASES_VALUES).order_by(
+        "bankruptcy_case__procedures__order").distinct()
+
+    rows = []
+    for (service_id, last_name, first_name, patronymic, case_number, kad_url,
+         case_status, _order, proc_kind, intro_date, hearing_date,
+         kommersant_date, outcome) in qs:
+        fio = " ".join(filter(None, [last_name, first_name, patronymic])).strip()
+        rows.append({
+            "service_id": service_id,
+            "client_fio": fio or "—",
+            "case_number": case_number or "",
+            "kad_url": kad_url or "",
+            "case_status": case_status or BankruptcyCase.STATUS_ACTIVE,
+            "case_status_label": CASES_STATUS_LABELS.get(
+                case_status or BankruptcyCase.STATUS_ACTIVE, ""),
+            "kind": proc_kind or KIND_NONE,
+            "kind_label": CASES_KIND_LABELS.get(proc_kind, "Процедура не введена"),
+            "intro_date": intro_date,
+            "hearing_date": hearing_date,
+            "kommersant_date": kommersant_date,
+            "outcome_label": ALL_OUTCOMES.get(outcome or "", ""),
+        })
+
+    if kind:
+        rows = [r for r in rows if r["kind"] == kind]
+    if status:
+        rows = [r for r in rows if r["case_status"] == status]
+
+    rows.sort(key=CASES_SORT_KEYS[sort], reverse=(direction == "desc"))
+    # Пустые значения всегда внизу — иначе сортировка по редкой колонке
+    # (напр. дате публикации) выдаёт страницу сплошных прочерков.
+    is_blank = CASES_BLANK_TESTS.get(sort)
+    if is_blank is not None:
+        rows = [r for r in rows if not is_blank(r)] + [r for r in rows if is_blank(r)]
+
+    try:
+        per_page = int(request.GET.get("per_page") or CASES_DEFAULT_PER_PAGE)
+    except (TypeError, ValueError):
+        per_page = CASES_DEFAULT_PER_PAGE
+    if per_page not in CASES_PER_PAGE_CHOICES:
+        per_page = CASES_DEFAULT_PER_PAGE
+
+    paginator = Paginator(rows, per_page)
+    page_obj = paginator.get_page(request.GET.get("page") or 1)
+    offset = (page_obj.number - 1) * per_page
+    for i, row in enumerate(page_obj.object_list, start=offset + 1):
+        row["n"] = i
+
+    return {
+        "rows": page_obj.object_list,
+        "page_obj": page_obj,
+        "paginator": paginator,
+        "page_range": list(paginator.get_elided_page_range(
+            page_obj.number, on_each_side=1, on_ends=1)),
+        "ellipsis": Paginator.ELLIPSIS,
+        "total": paginator.count,
+        "q": q, "kind": kind, "status": status, "mine": mine,
+        "has_employee": emp is not None,
+        "sort": sort, "direction": direction,
+        "per_page": per_page,
+        "per_page_choices": CASES_PER_PAGE_CHOICES,
+        "kind_choices": list(PROCEDURE_KIND_CHOICES) + [(KIND_NONE, "Процедура не введена")],
+        "status_choices": BankruptcyCase.STATUS_CHOICES,
+    }
+
 
 @never_cache
 @login_required
 @require_procedures
 def panel(request):
-    """Рабочее место юриста БФЛ — пустая карточка. Данные клиента подгружаются
-    выбором в главном поиске (кнопка «Дело БФЛ» в строке клиента)."""
-    return render(request, "procedure/panel.html", {})
+    """Рабочее место юриста БФЛ — сводная таблица процедур банкротства.
+    Карточка конкретного дела открывается кликом по строке."""
+    return render(request, "procedure/panel.html", _cases_context(request))
+
+
+@never_cache
+@login_required
+@require_procedures
+def cases_table(request):
+    """HTMX-партиал сводной таблицы (фильтры/поиск/сортировка/страница).
+
+    Свопится в #proc-cases-table — панель фильтров не перерисовывается, поэтому
+    фокус в поле поиска не теряется. Текущие sort/dir возвращаются в скрытые
+    поля формы OOB-свопом (`oob`), чтобы смена фильтра их не сбрасывала.
+    """
+    ctx = _cases_context(request)
+    ctx["oob"] = True
+    return render(request, "procedure/_cases_table.html", ctx)
 
 
 @never_cache
@@ -346,7 +517,9 @@ def open_client_case(request):
         .order_by("-date_dogovor", "-id")
     )
     if not svcs:
-        return render(request, "procedure/panel.html", {"no_bfl": True})
+        ctx = _cases_context(request)
+        ctx["no_bfl"] = True
+        return render(request, "procedure/panel.html", ctx)
     if len(svcs) == 1:
         return procedure_card(request, svcs[0].id)
     return render(request, "procedure/panel_pick.html",

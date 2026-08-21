@@ -1,0 +1,80 @@
+{% load icons %}
+{% comment %}
+  Панель управления сводной таблицей: поиск + фильтры + размер страницы.
+  Форма НЕ перерисовывается ответом (своп идёт в #proc-cases-table) — поэтому
+  фокус в поле поиска не теряется при live-вводе. Текущие sort/dir лежат в
+  скрытых полях #proc-sort-state и обновляются OOB-свопом из партиала таблицы.
+{% endcomment %}
+<form id="proc-filters" class="flex flex-wrap items-end gap-3"
+      hx-get="{% url 'procedure:cases_table' %}"
+      hx-target="#proc-cases-table" hx-swap="innerHTML"
+      hx-trigger="change, keyup changed delay:400ms from:#proc-q, search from:#proc-q"
+      onsubmit="return false">
+
+  <span id="proc-sort-state">
+    <input type="hidden" name="sort" value="{{ sort }}">
+    <input type="hidden" name="dir" value="{{ direction }}">
+  </span>
+
+  <label class="form-control">
+    <span class="label label-text !text-xs !py-0 !pb-1 opacity-70">Поиск — ФИО должника или № дела</span>
+    <div class="join">
+      <span class="join-item flex items-center px-2 border border-base-300 border-r-0 rounded-l-lg bg-base-200">
+        {% icon "search" size=14 %}
+      </span>
+      <input type="search" name="q" id="proc-q" value="{{ q }}" autocomplete="off"
+             placeholder="Иванов или А12-1234/2026"
+             class="input input-bordered input-sm join-item" style="min-width:18rem">
+    </div>
+  </label>
+
+  <label class="form-control">
+    <span class="label label-text !text-xs !py-0 !pb-1 opacity-70">Тип процедуры</span>
+    <select name="kind" class="select select-bordered select-sm" style="min-width:13rem">
+      <option value="">Все процедуры</option>
+      {% for code, label in kind_choices %}
+        <option value="{{ code }}" {% if kind == code %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+  </label>
+
+  <label class="form-control">
+    <span class="label label-text !text-xs !py-0 !pb-1 opacity-70">Статус дела</span>
+    <select name="status" class="select select-bordered select-sm" style="min-width:10rem">
+      <option value="">Все дела</option>
+      {% for code, label in status_choices %}
+        <option value="{{ code }}" {% if status == code %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+  </label>
+
+  <label class="form-control">
+    <span class="label label-text !text-xs !py-0 !pb-1 opacity-70">На странице</span>
+    <select name="per_page" class="select select-bordered select-sm">
+      {% for n in per_page_choices %}
+        <option value="{{ n }}" {% if per_page == n %}selected{% endif %}>{{ n }}</option>
+      {% endfor %}
+    </select>
+  </label>
+
+  {% if has_employee %}
+  <label class="label cursor-pointer gap-2 pb-1" title="Услуги, где я указан исполнителем">
+    <input type="checkbox" name="mine" value="1" class="checkbox checkbox-sm checkbox-primary"
+           {% if mine %}checked{% endif %}>
+    <span class="label-text text-xs">Только мои дела</span>
+  </label>
+  {% endif %}
+
+  <button type="button" class="btn btn-sm btn-ghost gap-1 mb-1"
+          title="Сбросить фильтры"
+          hx-get="{% url 'procedure:cases_table' %}"
+          hx-target="#proc-cases-table" hx-swap="innerHTML"
+          onclick="var f=document.getElementById('proc-filters');
+                   f.querySelector('#proc-q').value='';
+                   f.querySelector('[name=kind]').value='';
+                   f.querySelector('[name=status]').value='';
+                   var m=f.querySelector('[name=mine]'); if(m){m.checked=false;}
+                   f.querySelector('[name=per_page]').value='25';">
+    {% icon "x" size=14 %} Сбросить
+  </button>
+</form>

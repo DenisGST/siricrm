@@ -1,0 +1,129 @@
+{% comment %}
+  Сводная таблица процедур банкротства (лендинг «Юрист БФЛ»).
+  Строка = процедура; дело без введённой процедуры показывается одной строкой
+  с прочерками. Клик по строке открывает карточку дела в #content-area.
+
+  Свопится в #proc-cases-table. Панель фильтров (#proc-filters) НЕ
+  перерисовывается — актуальные sort/dir возвращаются в её скрытые поля
+  OOB-свопом (только для HTMX-ответов, флаг `oob`), иначе смена фильтра
+  сбрасывала бы сортировку.
+{% endcomment %}
+{% if oob %}<span id="proc-sort-state" hx-swap-oob="true">
+  <input type="hidden" name="sort" value="{{ sort }}">
+  <input type="hidden" name="dir" value="{{ direction }}">
+</span>{% endif %}
+
+{% comment %}Скролл-контейнер — #proc-cases-table снаружи: только так работает
+   прилипающая шапка table-pin-rows.{% endcomment %}
+<div class="card bg-base-100 shadow-sm">
+    <table class="table table-sm table-zebra table-pin-rows">
+      <thead>
+        <tr>
+          <th class="w-12">№ п/п</th>
+          {% include "procedure/_cases_th.html" with key="fio" label="ФИО должника" %}
+          {% include "procedure/_cases_th.html" with key="case_number" label="№ дела в суде" %}
+          {% include "procedure/_cases_th.html" with key="intro" label="Дата решения" %}
+          {% include "procedure/_cases_th.html" with key="hearing" label="Дата завершения" %}
+          {% include "procedure/_cases_th.html" with key="kommersant" label="Дата публикации в Коммерсант" %}
+          {% include "procedure/_cases_th.html" with key="kind" label="Тип процедуры" %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in rows %}
+        <tr class="hover cursor-pointer"
+            title="Открыть карточку дела"
+            hx-get="{% url 'procedure:card' r.service_id %}"
+            hx-target="#content-area" hx-swap="innerHTML">
+          <td class="text-base-content/50">{{ r.n }}</td>
+          <td class="font-medium whitespace-nowrap">
+            {{ r.client_fio }}
+            {% if r.case_status == "closed" %}
+              <span class="badge badge-ghost badge-sm ml-1">Дело закрыто</span>
+            {% endif %}
+          </td>
+          {% comment %}№ дела — ссылка на карточку на kad.arbitr.ru. stopPropagation:
+             иначе клик по ссылке ещё и откроет карточку дела в CRM (hx-get на строке).{% endcomment %}
+          <td class="whitespace-nowrap">
+            {% if r.case_number and r.kad_url %}
+              <a href="{{ r.kad_url }}" target="_blank" rel="noopener"
+                 class="link link-primary" title="Открыть карточку дела на kad.arbitr.ru"
+                 onclick="event.stopPropagation()">{{ r.case_number }}</a>
+            {% elif r.case_number %}
+              {{ r.case_number }}
+            {% else %}
+              <span class="text-base-content/40">—</span>
+            {% endif %}
+          </td>
+          <td class="whitespace-nowrap">
+            {% if r.intro_date %}{{ r.intro_date|date:"d.m.Y" }}{% else %}<span class="text-base-content/40">—</span>{% endif %}
+          </td>
+          <td class="whitespace-nowrap">
+            {% if r.hearing_date %}{{ r.hearing_date|date:"d.m.Y" }}{% else %}<span class="text-base-content/40">—</span>{% endif %}
+          </td>
+          <td class="whitespace-nowrap">
+            {% if r.kommersant_date %}{{ r.kommersant_date|date:"d.m.Y" }}{% else %}<span class="text-base-content/40">—</span>{% endif %}
+          </td>
+          <td class="whitespace-nowrap">
+            {% if r.kind == "none" %}
+              <span class="text-base-content/40">{{ r.kind_label }}</span>
+            {% else %}
+              <span class="badge badge-sm badge-outline">{{ r.kind_label }}</span>
+              {% if r.outcome_label %}<div class="text-xs text-base-content/50">{{ r.outcome_label }}</div>{% endif %}
+            {% endif %}
+          </td>
+        </tr>
+        {% empty %}
+        <tr>
+          <td colspan="7" class="text-center py-10 text-base-content/50">
+            {% if q or kind or status or mine %}
+              Ничего не найдено — измените условия поиска или фильтры.
+            {% else %}
+              Дел о банкротстве пока нет.
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+</div>
+
+{% comment %}Пагинация: страница передаётся hx-vals, фильтры и сортировка — из формы.{% endcomment %}
+<div class="flex items-center justify-between gap-3 flex-wrap px-1 py-2">
+  <div class="text-xs text-base-content/60">
+    Всего строк: <b>{{ total }}</b>
+    {% if paginator.num_pages > 1 %} · страница {{ page_obj.number }} из {{ paginator.num_pages }}{% endif %}
+  </div>
+
+  {% if paginator.num_pages > 1 %}
+  <div class="join">
+    {% if page_obj.has_previous %}
+      <button type="button" class="join-item btn btn-sm"
+              hx-get="{% url 'procedure:cases_table' %}" hx-include="#proc-filters"
+              hx-target="#proc-cases-table" hx-swap="innerHTML"
+              hx-vals='{"page": "{{ page_obj.previous_page_number }}"}'>«</button>
+    {% else %}
+      <button type="button" class="join-item btn btn-sm btn-disabled">«</button>
+    {% endif %}
+
+    {% for p in page_range %}
+      {% if p == ellipsis %}
+        <button type="button" class="join-item btn btn-sm btn-disabled">…</button>
+      {% else %}
+        <button type="button" class="join-item btn btn-sm {% if p == page_obj.number %}btn-active{% endif %}"
+                hx-get="{% url 'procedure:cases_table' %}" hx-include="#proc-filters"
+                hx-target="#proc-cases-table" hx-swap="innerHTML"
+                hx-vals='{"page": "{{ p }}"}'>{{ p }}</button>
+      {% endif %}
+    {% endfor %}
+
+    {% if page_obj.has_next %}
+      <button type="button" class="join-item btn btn-sm"
+              hx-get="{% url 'procedure:cases_table' %}" hx-include="#proc-filters"
+              hx-target="#proc-cases-table" hx-swap="innerHTML"
+              hx-vals='{"page": "{{ page_obj.next_page_number }}"}'>»</button>
+    {% else %}
+      <button type="button" class="join-item btn btn-sm btn-disabled">»</button>
+    {% endif %}
+  </div>
+  {% endif %}
+</div>

@@ -7,6 +7,7 @@ app_name = "procedure"
 urlpatterns = [
     # Лендинг «Юрист БФЛ» (пункт меню) + открытие дела клиента из поиска
     path("", views.panel, name="panel"),
+    path("cases/", views.cases_table, name="cases_table"),
     path("open/", views.open_client_case, name="open_client_case"),
     # Карточка дела (полноэкранный своп в #content-area)
     path("service/<uuid:service_id>/card/", views.procedure_card, name="card"),

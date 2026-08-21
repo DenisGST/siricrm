@@ -1,0 +1,13 @@
+{% comment %}
+  Заголовок-сортировка сводной таблицы. Параметры: key (ключ сортировки),
+  label (подпись), align (опц. "text-right"/"text-center").
+  Фильтры подмешиваются из формы (hx-include), sort/dir — из hx-vals
+  (у htmx hx-vals перекрывают значения включённых полей).
+{% endcomment %}
+<th class="cursor-pointer select-none whitespace-nowrap {{ align }}"
+    hx-get="{% url 'procedure:cases_table' %}"
+    hx-target="#proc-cases-table" hx-swap="innerHTML"
+    hx-include="#proc-filters"
+    hx-vals='{"sort": "{{ key }}", "dir": "{% if sort == key and direction == 'asc' %}desc{% else %}asc{% endif %}"}'>
+  {{ label }}{% if sort == key %} <span class="text-primary">{% if direction == 'asc' %}↑{% else %}↓{% endif %}</span>{% endif %}
+</th>
