@@ -232,11 +232,18 @@ requests.post(f"{base}/Init", json=p)   # → PaymentURL; тест-карта 43
 - Настройка `TBANK_ACQUIRING_API_BASE` (дефолт теперь `https://securepay.tbank.ru/v2`) +
   опц. `TBANK_ACQUIRING_SUCCESS_URL`/`TBANK_ACQUIRING_FAIL_URL`.
 
-**На стороне сайта fo-y.ru** (Joomla, не наш репозиторий) — заменить форму на
-[`docs/foy-payment-form.html`](docs/foy-payment-form.html): убрать `<script>` виджета,
-функцию `tbankPay()` и скрытые поля `terminalkey/frame/language/order`, отправлять
-форму прямо на `https://siricrm.ru/accounting/acquiring/pay/`. **Пока сайт не поправлен,
-оплата не заработает** — эндпоинт готов, но форма его не вызывает.
+**На стороне сайта fo-y.ru** (Joomla, не наш репозиторий) — форма заменена на
+[`docs/foy-payment-form.html`](docs/foy-payment-form.html) **21.08.2026**: `<script>` виджета,
+функция `tbankPay()` и скрытые поля `terminalkey/frame/language/order` убраны, форма шлёт POST
+прямо на `https://siricrm.ru/accounting/acquiring/pay/`.
+
+🛑 **Гочча SP Page Builder (Joomla):** содержимое страницы хранится в **двух** колонках
+`nq1gm_sppagebuilder` — `content` (структура, из неё рендерится фронт) и `text` (скомпилированный
+вариант). Правка через админку может не сохраниться и остаться незамеченной: редактор показывает
+новое, сайт отдаёт старое. Симптом, на который это вывели: «на десктопе платится, с телефона нет» —
+на самом деле страница была старая, а десктоп владельца просто доверял корню Минцифры
+(Яндекс.Браузер), поэтому виджет там грузился. Проверять только по факту:
+`curl -s https://fo-y.ru/index.php/oplata-uslug-tinkoff | grep -c acquiring/pay`.
 
 **Как проверять.** `curl -sS -o /dev/null -w '%{http_code} %{redirect_url}' -X POST
 https://siricrm.ru/accounting/acquiring/pay/ -d 'amount=1&name=Тест&phone=+79990000000'`
