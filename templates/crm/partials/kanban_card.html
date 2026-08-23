@@ -99,12 +99,15 @@
         <span id="ms-status-kanban-{{ client.id }}" class="inline-flex">{% include "crm/partials/telegram_by_status.html" with status=client.ms_status %}</span>
       </button>
       {% if client.display_phone %}
-      <a href="tel:{{ client.display_phone }}"
-         class="kanban-action-btn text-base-content/50"
-         title="{{ client.display_phone }}"
-         onclick="event.stopPropagation()">
+      {% comment %}Иконка в ряду действий = звонок через АТС (она наберёт
+         сотрудника, затем клиента). Сам номер текстом выше остаётся
+         ссылкой tel: — это прямой набор в софтфоне.{% endcomment %}
+      <button type="button"
+              class="kanban-action-btn text-base-content/50"
+              title="Позвонить через АТС: {{ client.display_phone }}"
+              onclick="event.stopPropagation(); crmCall({client:'{{ client.id }}'}, this)">
         {% icon "phone" size=18 %}
-      </a>
+      </button>
       {% endif %}
       <button
         type="button"

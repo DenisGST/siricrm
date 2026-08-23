@@ -1224,14 +1224,28 @@ document.addEventListener('htmx:afterRequest', (event) => {
       },
       body: body.toString(),
     })
-      .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
-      .then(function (res) {
-        if (window.showToast) {
-          showToast(res.d.message || res.d.error || 'Не удалось позвонить',
-                    res.ok ? 'success' : 'error');
-        }
+      /* 🛑 Разбираем ответ ЗАЩИЩЁННО: при 500 сервер отдаёт HTML-страницу
+         ошибки, и r.json() падает с «unexpected token» — пользователю такое
+         показывать нельзя, он из этого ничего не поймёт. */
+      .then(function (r) {
+        return r.text().then(function (t) {
+          var d = null;
+          try { d = JSON.parse(t); } catch (err) { /* не JSON — ниже подберём текст */ }
+          return { ok: r.ok, status: r.status, d: d };
+        });
       })
-      .catch(function (e) { if (window.showToast) showToast('Нет связи: ' + e.message, 'error'); })
+      .then(function (res) {
+        var msg = res.d && (res.d.message || res.d.error);
+        if (!msg) {
+          msg = res.status === 500 ? 'Ошибка на сервере — сообщите администратору'
+              : res.status === 403 ? 'Нет доступа'
+              : 'Не удалось позвонить (код ' + res.status + ')';
+        }
+        if (window.showToast) showToast(msg, res.ok ? 'success' : 'error');
+      })
+      .catch(function (e) {
+        if (window.showToast) showToast('Нет связи с сервером: ' + e.message, 'error');
+      })
       .finally(function () { if (btn) btn.disabled = false; });
   };
 

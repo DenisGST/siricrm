@@ -133,12 +133,12 @@
         {% icon "history" size=15 %}
       </button>
       {% if s.client.phone %}
-      <a href="tel:{{ s.client.phone }}"
-         class="kanban-action-btn text-base-content/50"
-         title="Позвонить: {{ s.client.phone }}"
-         onclick="event.stopPropagation()">
+      <button type="button"
+              class="kanban-action-btn text-base-content/50"
+              title="Позвонить через АТС: {{ s.client.phone }}"
+              onclick="event.stopPropagation(); crmCall({client:'{{ s.client.id }}'}, this)">
         {% icon "phone" size=15 %}
-      </a>
+      </button>
       {% endif %}
       {% if s.client.telegram_id %}
       <button type="button"

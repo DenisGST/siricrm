@@ -311,12 +311,14 @@ def place_call(request):
         client = Client.objects.filter(pk=client_id).first()
         if client is None:
             return JsonResponse({"ok": False, "error": "Клиент не найден"}, status=404)
-        # 🛑 Номер берём тот же, что и остальная CRM: ClientPhone —
-        # единственный источник, Client.phone это лишь кэш.
+        # 🛑 Номер берём тем же правилом, что и остальная CRM
+        # (`phone_utils.sync_client_phone_cache`): сперва purpose="primary",
+        # затем "additional". У ClientPhone НЕТ поля is_primary — «основной»
+        # выражен именно назначением номера.
         if not phone:
-            from apps.crm.models import ClientPhone
-            cp = (ClientPhone.objects.filter(client=client, is_active=True)
-                  .order_by("-is_primary", "id").first())
+            cp = (client.phones.filter(purpose="primary", is_active=True).first()
+                  or client.phones.filter(purpose="additional", is_active=True).first()
+                  or client.phones.filter(is_active=True).first())
             phone = cp.phone if cp else (client.phone or "")
 
     if not phone:
