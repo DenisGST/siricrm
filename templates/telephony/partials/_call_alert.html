@@ -7,9 +7,15 @@
   которые ходят на сервер за другим (событийка, новый клиент), помечены
   hx-params="none" — им содержимое формы не нужно.
 {% endcomment %}
-<div class="card card-compact bg-base-200 shadow-2xl border-l-4
+{% comment %}
+  z-index растёт вместе с порядком: карточки идут от старых к свежим, и
+  каждая следующая должна перекрывать предыдущую снизу — тогда у свёрнутых
+  видна верхняя полоска (статус, имя, время, крестик), а не низ с кнопками.
+{% endcomment %}
+<div class="card card-compact bg-base-200 shadow-2xl border-l-4 call-alert{% if is_latest %} call-alert--open{% endif %}
             {% if alert.finished and not alert.answered %}border-error{% else %}border-success{% endif %}"
-     data-call-alert="{{ alert.id }}">
+     data-call-alert="{{ alert.id }}"
+     style="position:relative;z-index:{{ z|default:1 }}">
   <div class="card-body gap-2">
 
     <div class="flex items-start justify-between gap-2">

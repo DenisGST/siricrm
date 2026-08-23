@@ -34,6 +34,28 @@
 
   <style>
     [hx-boost] { cursor: pointer; }
+
+    /* ── Стопка карточек «вам звонили» (apps.telephony) ──────────────────
+       Пропущенных за день бывает много, и в полный рост они не помещаются
+       на экран. Поэтому раскрыта только самая свежая, а прежние свёрнуты до
+       полоски с именем и временем и налезают друг на друга. Разворачиваются
+       при наведении и при вводе в поле комментария (focus-within — иначе
+       карточка схлопнулась бы прямо под курсором при переходе в textarea). */
+    .call-alert {
+      max-height: 4.25rem;
+      overflow: hidden;
+      transition: max-height .18s ease;
+      margin-top: -0.6rem;              /* перекрытие: видно, что это стопка */
+    }
+    .call-alert:first-child { margin-top: 0; }
+    .call-alert:hover,
+    .call-alert:focus-within,
+    .call-alert--open { max-height: 42rem; }
+    /* Свёрнутой карточке нижняя тень ни к чему — она рисуется поверх соседней. */
+    .call-alert:not(:hover):not(:focus-within):not(.call-alert--open) {
+      box-shadow: 0 2px 6px rgba(0,0,0,.18);
+    }
+
     .htmx-loading { opacity: 0.6; }
     .htmx-swapping { opacity: 0; transition: opacity 1s ease-out; }
     .htmx-settling { opacity: 1; transition: opacity 1s ease-in; }
@@ -1170,7 +1192,32 @@ document.addEventListener('htmx:afterRequest', (event) => {
     /* 🛑 htmx.process обязателен: карточка пришла вне обычного свопа, и без
        этого кнопки «Карточка и события» / «Убрать» останутся немыми. */
     if (window.htmx) htmx.process(incoming);
+    restackCallAlerts();
   };
+
+  /* Пересчёт стопки: слои по порядку и раскрыта только самая свежая.
+     🛑 Нужен именно на клиенте: карточка по WebSocket приходит одна, без
+     знания о соседях, — сервер не может проставить ей ни z-index, ни пометку
+     «свежая». Без пересчёта новый звонок оказался бы свёрнутым и ПОЗАДИ
+     старых. Тот же пересчёт после удаления карточки крестиком. */
+  window.restackCallAlerts = function () {
+    var box = document.getElementById('incoming-calls');
+    if (!box) return;
+    var cards = box.querySelectorAll('[data-call-alert]');
+    cards.forEach(function (card, i) {
+      card.style.position = 'relative';
+      card.style.zIndex = i + 1;
+      card.classList.add('call-alert');
+      card.classList.toggle('call-alert--open', i === cards.length - 1);
+    });
+  };
+
+  /* После любого свопа внутри стопки (пришёл список, убрали карточку,
+     сохранили заметку) слои и раскрытие надо пересчитать заново. */
+  document.body.addEventListener('htmx:afterSwap', function (e) {
+    var box = document.getElementById('incoming-calls');
+    if (box && (e.target === box || box.contains(e.target))) restackCallAlerts();
+  });
 
   /* ── Звонок по клику: АТС звонит сотруднику, потом набирает клиента ──── */
   window.crmCall = function (opts, btn) {
@@ -2988,7 +3035,10 @@ function initMsSearch() {
 <div id="incoming-calls"
      hx-get="{% url 'telephony:call_alerts' %}"
      hx-trigger="load, clientCreated from:body" hx-swap="innerHTML"
-     class="fixed z-[1000] flex flex-col-reverse gap-3 overflow-y-auto"
+     {% comment %}Обычный порядок колонки: старые сверху, свежая снизу —
+        ближе к углу, куда смотрит глаз. Отступы задаёт .call-alert через
+        отрицательный margin (перекрытие), поэтому gap здесь не нужен.{% endcomment %}
+     class="fixed z-[1000] flex flex-col overflow-y-auto"
      style="bottom:5rem;right:1.25rem;width:24rem;max-width:calc(100vw - 2.5rem);
             max-height:calc(100vh - 8rem)"></div>
 

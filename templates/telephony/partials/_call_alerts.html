@@ -4,7 +4,7 @@
   clientCreated, когда сотрудник завёл клиента прямо с карточки.
 {% endcomment %}
 {% for alert in alerts %}
-  {% include "telephony/partials/_call_alert.html" %}
+  {% include "telephony/partials/_call_alert.html" with z=forloop.counter is_latest=forloop.last %}
 {% endfor %}
 {% if alerts|length > 1 %}
   <div class="flex justify-end">
