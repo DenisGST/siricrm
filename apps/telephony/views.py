@@ -422,29 +422,36 @@ def alerts_dismiss_all(request):
 @require_POST
 @never_cache
 def alert_comment(request, alert_id):
-    """Сохранить короткий комментарий к звонку прямо с карточки.
+    """Добавить короткую заметку к звонку прямо с карточки.
 
-    Пишем в саму карточку — тогда заметка не теряется даже для незнакомого
+    🛑 Заметки НАКАПЛИВАЮТСЯ, а не перезаписывают друг друга: поле после
+    сохранения очищается (чтобы можно было дописать следующую мысль по ходу
+    разговора), и если бы новая заметка затирала прежнюю, ранее записанное
+    исчезало бы без следа прямо на глазах.
+
+    Пишем в саму карточку — тогда заметка не теряется и для незнакомого
     номера. Если клиент опознан, дублируем в его событийку: там ей и место,
-    иначе комментарий останется невидимым для остальной команды.
+    иначе она осталась бы невидимой для остальной команды.
     """
     from .models import IncomingCallAlert
 
     emp = get_employee(request.user)
     alert = get_object_or_404(IncomingCallAlert, pk=alert_id, employee=emp)
     text = (request.POST.get("comment") or "").strip()[:2000]
+    if not text:
+        return render(request, "telephony/partials/_call_alert.html", {"alert": alert})
 
-    was = alert.comment
-    alert.comment = text
+    stamp = timezone.localtime().strftime("%H:%M")
+    alert.comment = (f"{alert.comment}\n" if alert.comment else "") + f"{stamp} — {text}"
     alert.save(update_fields=["comment"])
 
-    if text and text != was and alert.client_id:
+    if alert.client_id:
         try:
             from apps.crm.client_log import record_action
             record_action(
                 alert.client, "call_client", employee=emp,
-                comment=f"Входящий звонок с +{alert.phone}: {text}" if alert.phone
-                        else f"Входящий звонок: {text}",
+                comment=(f"Входящий звонок с +{alert.phone}: {text}" if alert.phone
+                         else f"Входящий звонок: {text}"),
             )
         except Exception:
             # Событийка не должна ронять сохранение заметки.

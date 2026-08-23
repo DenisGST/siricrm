@@ -7,7 +7,7 @@
   которые ходят на сервер за другим (событийка, новый клиент), помечены
   hx-params="none" — им содержимое формы не нужно.
 {% endcomment %}
-<div class="card card-compact bg-base-100 shadow-2xl border-l-4
+<div class="card card-compact bg-base-200 shadow-2xl border-l-4
             {% if alert.finished and not alert.answered %}border-error{% else %}border-success{% endif %}"
      data-call-alert="{{ alert.id }}">
   <div class="card-body gap-2">
@@ -41,8 +41,15 @@
     <form class="flex flex-col gap-2"
           hx-post="{% url 'telephony:alert_comment' alert.id %}"
           hx-target="closest [data-call-alert]" hx-swap="outerHTML">
+      {% if alert.comment %}
+        {% comment %}🛑 Заметки показываем ОТДЕЛЬНО от поля ввода: поле после
+           сохранения очищается под следующую мысль, и если бы в нём лежал
+           прежний текст, он выглядел бы как несохранённый черновик.{% endcomment %}
+        <div class="text-xs text-base-content/70 whitespace-pre-line
+                    bg-base-100 rounded-lg px-2 py-1.5">{{ alert.comment }}</div>
+      {% endif %}
       <textarea name="comment" rows="2" placeholder="Комментарий к звонку…"
-                class="textarea textarea-bordered textarea-sm w-full">{{ alert.comment }}</textarea>
+                class="textarea textarea-bordered textarea-sm w-full bg-base-100"></textarea>
 
       <div class="flex flex-wrap items-center gap-2">
         {% if alert.phone %}
@@ -74,8 +81,6 @@
 
         {% if saved %}
           <span class="text-xs text-success ml-auto">сохранено</span>
-        {% elif alert.comment %}
-          <span class="text-xs text-base-content/40 ml-auto">есть комментарий</span>
         {% endif %}
       </div>
     </form>
