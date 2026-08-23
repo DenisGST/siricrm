@@ -1164,7 +1164,7 @@ document.addEventListener('htmx:afterRequest', (event) => {
       ? '<div class="text-xl font-bold truncate leading-tight">' + clientName + '</div>'
       : '<div class="text-base text-base-content/50">Клиент не найден в базе</div>';
     var open = clientId
-      ? '<button class="btn btn-primary btn-sm" data-open-client="' + clientId + '">Открыть карточку</button>'
+      ? '<button class="btn btn-primary btn-sm" data-open-client="' + clientId + '">Карточка и события</button>'
       : '';
 
     card.innerHTML =
@@ -1202,13 +1202,13 @@ document.addEventListener('htmx:afterRequest', (event) => {
     }
     var open = e.target.closest('[data-open-client]');
     if (open && window.htmx) {
-      /* 🛑 Адрес берём из именованного маршрута с подстановкой id, а не
-         строкой «/clients/…/chat/»: захардкоженный путь молча сломается,
-         если маршрут переименуют. Так же открывают карточку все остальные
-         места CRM ({% templatetag openblock %} url 'chat' … {% templatetag closeblock %}). */
-      var tpl = "{% url 'chat' '00000000-0000-0000-0000-000000000000' %}";
+      /* Открываем модалку событийки клиента — так же, как карточка канбана
+         и глобальный поиск: hx-target=body + beforeend.
+         🛑 Адрес берём из именованного маршрута с подстановкой id, а не
+         строкой: захардкоженный путь молча сломается при переименовании. */
+      var tpl = "{% url 'client_events_modal' '00000000-0000-0000-0000-000000000000' %}";
       htmx.ajax('GET', tpl.replace('00000000-0000-0000-0000-000000000000', open.dataset.openClient),
-                { target: '#content-area', swap: 'innerHTML' });
+                { target: 'body', swap: 'beforeend' });
       var card2 = open.closest('[data-call-key]');
       if (card2) card2.remove();
     }
