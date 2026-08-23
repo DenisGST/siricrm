@@ -1152,7 +1152,7 @@ document.addEventListener('htmx:afterRequest', (event) => {
        значения из разметки, а не очищает их (грабля из фильтров канбана),
        поэтому чистим руками. */
     form.querySelectorAll('input[type=search], input[type=date]').forEach(function (i) { i.value = ''; });
-    form.querySelectorAll('select[name=direction], select[name=employee]').forEach(function (s) { s.value = ''; });
+    form.querySelectorAll('select[name=direction], select[name=employee], select[name=outcome]').forEach(function (s) { s.value = ''; });
     form.querySelectorAll('input[type=checkbox]').forEach(function (c) { c.checked = false; });
     var pp = form.querySelector('[name=per_page]'); if (pp) pp.value = '50';
     var sort = form.querySelector('[name=sort]'); if (sort) sort.value = 'started';

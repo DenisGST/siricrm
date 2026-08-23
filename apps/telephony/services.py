@@ -178,11 +178,90 @@ def build_call_fields(row: dict) -> dict:
     }
 
 
+# 🛑 Один звонок = несколько строк CDR («ног»): обзвон 201 → 202 → голосовая
+# почта пишется тремя строками с общим uniqueid. У ПОСЛЕДНЕЙ ноги (голосовая
+# почта) disposition = ANSWERED, хотя с клиентом никто не разговаривал.
+# Поэтому итог звонка считаем по всем ногам, а не берём последнюю.
+VOICEMAIL_CONTEXT_PREFIXES = ("mess_rec", "order_ticket")
+MISSED_CONTEXT_PREFIXES = ("miss_call",)
+
+# Чем «сильнее» итог, тем он важнее при слиянии ног.
+OUTCOME_PRIORITY = {
+    Call.OUTCOME_ANSWERED: 60,
+    Call.OUTCOME_VOICEMAIL: 50,
+    Call.OUTCOME_MISSED: 40,
+    Call.OUTCOME_NO_ANSWER: 30,
+    Call.OUTCOME_BUSY: 20,
+    Call.OUTCOME_FAILED: 10,
+    "": 0,
+}
+
+
+def leg_outcome(dcontext: str, disposition: str) -> str:
+    """Итог одной ноги звонка.
+
+    🛑 Контекст диалплана проверяем ДО disposition: нога голосовой почты
+    помечена ANSWERED, и без этой проверки пропущенный звонок выглядел бы
+    обслуженным.
+    """
+    ctx = (dcontext or "").strip().lower()
+    if ctx.startswith(VOICEMAIL_CONTEXT_PREFIXES):
+        return Call.OUTCOME_VOICEMAIL
+    if ctx.startswith(MISSED_CONTEXT_PREFIXES):
+        return Call.OUTCOME_MISSED
+    disp = (disposition or "").strip().upper()
+    if disp == "ANSWERED":
+        return Call.OUTCOME_ANSWERED
+    if disp == "NO ANSWER":
+        return Call.OUTCOME_NO_ANSWER
+    if disp == "BUSY":
+        return Call.OUTCOME_BUSY
+    return Call.OUTCOME_FAILED
+
+
 def upsert_call(row: dict) -> tuple:
-    """Создать или обновить звонок по ``uniqueid``. → (Call, created)."""
+    """Создать или дополнить звонок по ``uniqueid``. → (Call, created).
+
+    Повторный приход того же ``uniqueid`` — это другая нога звонка, а не
+    дубль: сливаем, а не перезаписываем. Берём самое раннее начало, самый
+    сильный итог и данные той ноги, которая этот итог дала.
+    """
     uniqueid = (row.get("uniqueid") or "").strip()[:32]
     if not uniqueid:
         raise ValueError("uniqueid обязателен")
+
     fields = build_call_fields(row)
-    call, created = Call.objects.update_or_create(uniqueid=uniqueid, defaults=fields)
-    return call, created
+    fields["outcome"] = leg_outcome(fields["dcontext"], fields["disposition"])
+
+    existing = Call.objects.filter(uniqueid=uniqueid).first()
+    if existing is None:
+        return Call.objects.create(uniqueid=uniqueid, **fields), True
+
+    merged = dict(fields)
+    merged["started_at"] = min(existing.started_at, fields["started_at"])
+
+    new_rank = OUTCOME_PRIORITY.get(fields["outcome"], 0)
+    old_rank = OUTCOME_PRIORITY.get(existing.outcome, 0)
+    if new_rank < old_rank:
+        # Прежняя нога важнее — оставляем её характеристики звонка.
+        for key in ("outcome", "disposition", "dcontext", "billsec", "duration", "userfield"):
+            merged[key] = getattr(existing, key)
+    elif new_rank == old_rank:
+        merged["billsec"] = max(existing.billsec, fields["billsec"])
+        merged["duration"] = max(existing.duration, fields["duration"])
+
+    # Клиента, сотрудника и внешний номер, раз уже определили, не теряем:
+    # у ноги голосовой почты dst = `s`, и номера в ней нет.
+    for key in ("client", "employee"):
+        if merged.get(key) is None and getattr(existing, f"{key}_id"):
+            merged[key] = getattr(existing, key)
+    for key in ("counterparty_phone", "extension", "clid", "source_path"):
+        if not merged.get(key) and getattr(existing, key):
+            merged[key] = getattr(existing, key)
+    if existing.has_recording_on_pbx:
+        merged["has_recording_on_pbx"] = True
+
+    for key, value in merged.items():
+        setattr(existing, key, value)
+    existing.save()
+    return existing, False

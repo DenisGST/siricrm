@@ -81,18 +81,21 @@
         </select>
       </label>
 
-      <div class="flex items-center gap-4 flex-wrap" style="grid-column:span 2">
-        <label class="label cursor-pointer gap-2 py-0" title="Только звонки, у которых есть запись">
-          <input type="checkbox" name="with_recording" value="1" class="checkbox checkbox-sm checkbox-primary"
-                 {% if f.with_recording == "1" %}checked{% endif %}>
-          <span class="label-text text-xs">С записью</span>
-        </label>
-        <label class="label cursor-pointer gap-2 py-0" title="Только состоявшиеся разговоры">
-          <input type="checkbox" name="answered" value="1" class="checkbox checkbox-sm checkbox-primary"
-                 {% if f.answered == "1" %}checked{% endif %}>
-          <span class="label-text text-xs">Отвеченные</span>
-        </label>
-      </div>
+      <label class="form-control">
+        <span class="label label-text !text-xs !py-0 !pb-1 opacity-70">Итог</span>
+        <select name="outcome" class="select select-bordered select-sm w-full">
+          <option value="">Любой</option>
+          {% for code, title in outcomes %}
+            <option value="{{ code }}" {% if f.outcome == code %}selected{% endif %}>{{ title }}</option>
+          {% endfor %}
+        </select>
+      </label>
+
+      <label class="label cursor-pointer gap-2" title="Только звонки, у которых есть запись">
+        <input type="checkbox" name="with_recording" value="1" class="checkbox checkbox-sm checkbox-primary"
+               {% if f.with_recording == "1" %}checked{% endif %}>
+        <span class="label-text text-xs">С записью</span>
+      </label>
 
       <button type="button" class="btn btn-sm btn-ghost gap-1"
               title="Сбросить все фильтры"

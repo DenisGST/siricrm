@@ -24,7 +24,15 @@
   </span>
   <span class="flex items-center gap-1.5">
     <span class="badge badge-success badge-xs"></span>
-    <b>{{ stat_answered }}</b><span class="text-base-content/60">отвечено</span>
+    <b>{{ stat_answered }}</b><span class="text-base-content/60">разговоров</span>
+  </span>
+  <span class="flex items-center gap-1.5" title="Никто не ответил, клиент оставил сообщение">
+    <span class="badge badge-info badge-xs"></span>
+    <b>{{ stat_voicemail }}</b><span class="text-base-content/60">голосовых</span>
+  </span>
+  <span class="flex items-center gap-1.5" title="Клиент не дождался ответа">
+    <span class="badge badge-error badge-xs"></span>
+    <b>{{ stat_missed }}</b><span class="text-base-content/60">пропущено</span>
   </span>
   <span class="flex items-center gap-1.5">
     {% icon "mic" size=15 %}
@@ -32,7 +40,7 @@
   </span>
   <span class="flex items-center gap-1.5">
     {% icon "clock" size=15 %}
-    <b>{{ stat_talk_human }}</b><span class="text-base-content/60">разговоров</span>
+    <b>{{ stat_talk_human }}</b><span class="text-base-content/60">на линии</span>
   </span>
   {% if filters_active %}
     <span class="badge badge-outline badge-sm gap-1">{% icon "filter" size=12 %} фильтр активен</span>
@@ -50,7 +58,7 @@
         {% include "telephony/partials/_calls_th.html" with key="client" label="Клиент" %}
         {% include "telephony/partials/_calls_th.html" with key="employee" label="Сотрудник" %}
         {% include "telephony/partials/_calls_th.html" with key="billsec" label="Разговор" align="text-right" %}
-        {% include "telephony/partials/_calls_th.html" with key="disposition" label="Итог" %}
+        {% include "telephony/partials/_calls_th.html" with key="outcome" label="Итог" %}
         <th class="text-center" style="width:4.5rem">Запись</th>
       </tr>
     </thead>
@@ -106,16 +114,18 @@
           </td>
 
           <td class="whitespace-nowrap">
-            {% if c.disposition == "ANSWERED" %}
-              <span class="badge badge-success badge-sm">отвечен</span>
-            {% elif c.disposition == "NO ANSWER" %}
-              <span class="badge badge-warning badge-sm">не отвечен</span>
-            {% elif c.disposition == "BUSY" %}
+            {% if c.outcome == "answered" %}
+              <span class="badge badge-success badge-sm">разговор</span>
+            {% elif c.outcome == "voicemail" %}
+              <span class="badge badge-info badge-sm" title="Никто не ответил, клиент оставил голосовое сообщение">голосовое</span>
+            {% elif c.outcome == "missed" %}
+              <span class="badge badge-error badge-sm" title="Клиент положил трубку, не дождавшись ответа">пропущен</span>
+            {% elif c.outcome == "no_answer" %}
+              <span class="badge badge-warning badge-sm">не ответили</span>
+            {% elif c.outcome == "busy" %}
               <span class="badge badge-ghost badge-sm">занято</span>
-            {% elif c.disposition == "FAILED" %}
-              <span class="badge badge-error badge-sm">сбой</span>
             {% else %}
-              <span class="badge badge-ghost badge-sm">{{ c.disposition|lower|default:"—" }}</span>
+              <span class="badge badge-ghost badge-sm">{{ c.get_outcome_display|lower|default:"—" }}</span>
             {% endif %}
           </td>
 

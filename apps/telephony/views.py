@@ -41,7 +41,7 @@ SORT_FIELDS = {
     "client": ("client__last_name", "client__first_name", "started_at"),
     "employee": ("employee__user__last_name", "started_at"),
     "billsec": ("billsec", "started_at"),
-    "disposition": ("disposition", "started_at"),
+    "outcome": ("outcome", "started_at"),
 }
 DEFAULT_SORT = "started"
 
@@ -87,8 +87,9 @@ def _filtered_calls(request):
     if (request.GET.get("with_recording") or "") == "1":
         qs = qs.filter(recording__isnull=False)
 
-    if (request.GET.get("answered") or "") == "1":
-        qs = qs.filter(disposition="ANSWERED")
+    outcome = (request.GET.get("outcome") or "").strip()
+    if outcome in dict(Call.OUTCOME_CHOICES):
+        qs = qs.filter(outcome=outcome)
 
     date_from = _parse_date(request.GET.get("date_from"))
     if date_from:
@@ -146,14 +147,16 @@ def _context(request):
     # Сводка по ВСЕЙ выборке, а не по странице — иначе цифры вводят в заблуждение.
     # Отдельным запросом с агрегатами, без вытягивания строк в питон.
     stats = qs.aggregate(
-        answered=Count("id", filter=Q(disposition="ANSWERED")),
+        answered=Count("id", filter=Q(outcome=Call.OUTCOME_ANSWERED)),
+        voicemail=Count("id", filter=Q(outcome=Call.OUTCOME_VOICEMAIL)),
+        missed=Count("id", filter=Q(outcome__in=[Call.OUTCOME_MISSED, Call.OUTCOME_NO_ANSWER])),
         with_rec=Count("id", filter=Q(recording__isnull=False)),
         talk=Sum("billsec"),
     )
     talk = stats["talk"] or 0
 
     f = {k: request.GET.get(k, "") for k in
-         ("q", "direction", "employee", "with_recording", "answered", "date_from", "date_to", "client")}
+         ("q", "direction", "employee", "with_recording", "outcome", "date_from", "date_to", "client")}
 
     return {
         "page_obj": page_obj,
@@ -165,6 +168,9 @@ def _context(request):
         "total": paginator.count,
         "row_offset": (page_obj.number - 1) * per_page,
         "stat_answered": stats["answered"] or 0,
+        "stat_voicemail": stats["voicemail"] or 0,
+        "stat_missed": stats["missed"] or 0,
+        "outcomes": Call.OUTCOME_CHOICES,
         "stat_with_rec": stats["with_rec"] or 0,
         "stat_talk_human": _human_duration(talk),
         "sort": sort,
@@ -178,7 +184,7 @@ def _context(request):
                                      .order_by("user__last_name"),
         "filters_active": any(f[k] for k in
                               ("q", "direction", "employee", "with_recording",
-                               "answered", "date_from", "date_to", "client")),
+                               "outcome", "date_from", "date_to", "client")),
         "f": f,
         "oob": request.headers.get("HX-Request") == "true",
     }

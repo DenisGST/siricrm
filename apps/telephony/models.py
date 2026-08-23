@@ -80,6 +80,29 @@ class Call(models.Model):
         help_text="У неотвеченных звонков файл пустой (44 байта) и не переносится.",
     )
 
+    OUTCOME_ANSWERED = "answered"
+    OUTCOME_VOICEMAIL = "voicemail"
+    OUTCOME_MISSED = "missed"
+    OUTCOME_NO_ANSWER = "no_answer"
+    OUTCOME_BUSY = "busy"
+    OUTCOME_FAILED = "failed"
+    OUTCOME_CHOICES = [
+        (OUTCOME_ANSWERED, "Разговор состоялся"),
+        (OUTCOME_VOICEMAIL, "Голосовое сообщение"),
+        (OUTCOME_MISSED, "Пропущен"),
+        (OUTCOME_NO_ANSWER, "Не ответили"),
+        (OUTCOME_BUSY, "Занято"),
+        (OUTCOME_FAILED, "Не состоялся"),
+    ]
+    outcome = models.CharField(
+        "Итог звонка", max_length=12, choices=OUTCOME_CHOICES,
+        blank=True, db_index=True,
+        help_text="Сводный итог по всем «ногам» звонка. 🛑 Не то же, что "
+                  "disposition из CDR: у звонка, ушедшего на голосовую почту, "
+                  "последняя нога помечена ANSWERED, хотя с клиентом никто "
+                  "не разговаривал.",
+    )
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
