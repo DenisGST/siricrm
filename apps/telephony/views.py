@@ -26,7 +26,8 @@ from apps.core.models import Employee
 from apps.core.permissions import get_employee
 
 from .models import Call, CallListen
-from .permissions import can_access_calls, require_calls
+from .permissions import (can_access_calls, can_listen_all_calls,
+                          can_listen_call, require_calls)
 
 logger = logging.getLogger(__name__)
 
@@ -51,8 +52,18 @@ DEFAULT_SORT = "started"
 
 
 def _filtered_calls(request):
-    """Журнал с наложенными фильтрами. Всё — в SQL."""
+    """Журнал с наложенными фильтрами. Всё — в SQL.
+
+    🛑 Рядовой сотрудник видит ТОЛЬКО свои звонки (привязанные к его
+    внутреннему номеру). Ограничение стоит на queryset'е, а не в шаблоне:
+    иначе через ?page= и фильтры он вычитал бы чужую клиентскую активность,
+    даже не слушая записей.
+    """
     qs = Call.objects.select_related("client", "employee__user", "recording")
+
+    if not can_listen_all_calls(request.user):
+        emp = get_employee(request.user)
+        qs = qs.filter(employee=emp) if emp else qs.none()
 
     q = (request.GET.get("q") or "").strip()
     if q:
@@ -182,6 +193,9 @@ def _context(request):
         "per_page": per_page,
         "per_page_choices": PER_PAGE_CHOICES,
         "directions": Call.DIRECTION_CHOICES,
+        # Рядовому сотруднику показываем только его звонки — надо сказать
+        # об этом прямо, иначе неполный журнал выглядит как поломка.
+        "can_listen_all": can_listen_all_calls(request.user),
         "employees": Employee.objects.filter(user__is_active=True)
                                      .exclude(sip_extension="")
                                      .select_related("user")
@@ -242,6 +256,10 @@ def call_recording(request, call_id):
     оставаться полным: записи разговоров содержат персональные данные клиентов.
     """
     call = get_object_or_404(Call.objects.select_related("recording"), pk=call_id)
+    # 🛑 Право проверяем на КОНКРЕТНЫЙ звонок, а не только на раздел: ссылку
+    # можно позвать напрямую по id, минуя журнал.
+    if not can_listen_call(request.user, call):
+        return JsonResponse({"error": "forbidden"}, status=403)
     if not call.recording:
         return JsonResponse({"error": "no_recording"}, status=404)
 
@@ -275,16 +293,22 @@ def client_calls(request, client_id):
     """Звонки конкретного клиента — блок в карточке клиента.
 
     Виден всем, кто видит клиента: сам факт звонка (когда, кто, сколько длился)
-    нужен в работе. А вот кнопка прослушивания появляется только при
-    ``can_access_calls`` — её рисует шаблон.
+    нужен в работе. А кнопка прослушивания — только у тех звонков, которые
+    этому сотруднику разрешено слушать.
     """
-    calls = (Call.objects.filter(client_id=client_id)
-             .select_related("employee__user", "recording")
-             .order_by("-started_at")[:50])
+    calls = list(Call.objects.filter(client_id=client_id)
+                 .select_related("employee__user", "recording")
+                 .order_by("-started_at")[:50])
+    # 🛑 Право на прослушивание — у каждого звонка своё: рядовой сотрудник
+    # слушает только те, что вёл сам. Считаем здесь, а не в шаблоне, чтобы
+    # не звать проверку прав в цикле.
+    all_allowed = can_listen_all_calls(request.user)
+    emp = get_employee(request.user)
+    for call in calls:
+        call.can_listen = all_allowed or (emp is not None and call.employee_id == emp.pk)
     return render(request, "telephony/partials/_client_calls.html", {
         "calls": calls,
         "client_id": client_id,
-        "can_listen": can_access_calls(request.user),
     })
 
 

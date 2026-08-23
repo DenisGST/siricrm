@@ -11,7 +11,8 @@
     <div>
       <h2 class="text-lg font-bold">Звонки</h2>
       <p class="text-xs text-base-content/70">
-        Журнал телефонных разговоров и записи
+        {% if can_listen_all %}Журнал телефонных разговоров и записи
+        {% else %}Ваши звонки и записи разговоров{% endif %}
         {% if f.client %}· отфильтровано по клиенту{% endif %}
       </p>
     </div>

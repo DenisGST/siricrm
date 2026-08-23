@@ -9,7 +9,7 @@
     {% icon "phone" size=15 %} Звонки
     {% if calls %}<span class="badge badge-ghost badge-sm">{{ calls|length }}</span>{% endif %}
   </span>
-  {% if calls and can_listen %}
+  {% if calls %}
     <button class="btn btn-ghost btn-xs gap-1" title="Открыть журнал звонков этого клиента"
             hx-get="{% url 'telephony:panel' %}?client={{ client_id }}"
             hx-target="#content-area" hx-swap="innerHTML">
@@ -47,7 +47,7 @@
               {% endif %}
             </td>
             <td class="text-center" style="width:2.5rem">
-              {% if c.recording and can_listen %}
+              {% if c.recording and c.can_listen %}
                 <button class="btn btn-ghost btn-xs" title="Прослушать запись"
                         onclick="playCallRecording('{{ c.id }}', this)">▶</button>
               {% elif c.recording %}

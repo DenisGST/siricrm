@@ -48,6 +48,7 @@
         </select>
       </label>
 
+      {% if can_listen_all %}
       <label class="form-control" style="grid-column:span 2">
         <span class="label label-text !text-xs !py-0 !pb-1 opacity-70">Сотрудник</span>
         <select name="employee" class="select select-bordered select-sm w-full">
@@ -59,6 +60,7 @@
           {% endfor %}
         </select>
       </label>
+      {% endif %}
 
       <label class="form-control">
         <span class="label label-text !text-xs !py-0 !pb-1 opacity-70">Период с</span>
