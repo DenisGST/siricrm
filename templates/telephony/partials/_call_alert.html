@@ -1,0 +1,46 @@
+{% comment %}
+  Карточка «вам звонили». Одна и та же разметка используется дважды:
+  при живом пуше по WebSocket и при восстановлении списка на загрузке
+  страницы — поэтому она серверная, а не собирается в JS.
+{% endcomment %}
+<div class="card bg-base-100" data-call-alert="{{ alert.id }}"
+     style="border-left:5px solid {% if alert.finished and not alert.answered %}#dc2626{% else %}#16a34a{% endif %};
+            box-shadow:0 10px 30px rgba(0,0,0,.28)">
+  <div class="card-body p-4 gap-2">
+    <div class="flex items-center justify-between gap-2">
+      <span class="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide
+                   {% if alert.finished and not alert.answered %}text-error{% else %}text-success{% endif %}">
+        <span style="font-size:1.15rem">📞</span>
+        <span>{% if alert.finished and not alert.answered %}Пропущенный звонок{% else %}Входящий звонок{% endif %}</span>
+      </span>
+      <span class="text-xs text-base-content/50">{{ alert.started_at|date:"H:i" }}</span>
+    </div>
+
+    {% if alert.client %}
+      <div class="text-xl font-bold truncate leading-tight">
+        {{ alert.client.first_name }} {{ alert.client.last_name }}
+      </div>
+    {% else %}
+      <div class="text-base text-base-content/50">Клиент не найден в базе</div>
+    {% endif %}
+
+    <div class="text-lg font-mono text-base-content/80">
+      {% if alert.phone %}+{{ alert.phone }}{% else %}номер скрыт{% endif %}
+    </div>
+
+    <div class="flex gap-2 mt-2">
+      {% if alert.client %}
+        <button class="btn btn-primary btn-sm"
+                hx-get="{% url 'client_events_modal' alert.client.id %}"
+                hx-target="body" hx-swap="beforeend">
+          Карточка и события
+        </button>
+      {% endif %}
+      <button class="btn btn-ghost btn-sm"
+              hx-post="{% url 'telephony:alert_dismiss' alert.id %}"
+              hx-target="closest [data-call-alert]" hx-swap="outerHTML">
+        Убрать
+      </button>
+    </div>
+  </div>
+</div>

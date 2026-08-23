@@ -162,3 +162,51 @@ class CallListen(models.Model):
 
     def __str__(self):
         return f"{self.employee} → {self.call_id} ({self.listened_at:%d.%m.%Y %H:%M})"
+
+
+class IncomingCallAlert(models.Model):
+    """Карточка «вам звонили» — висит, пока сотрудник её не уберёт.
+
+    🛑 Живёт в базе, а не только в DOM: смысл карточки в том, что человек
+    отошёл и не взял трубку. Пока это была только разметка на странице,
+    любое обновление (F5) стирало напоминание — ровно в тот момент, когда
+    оно нужнее всего. Теперь карточки восстанавливаются при загрузке.
+
+    Показываем только сегодняшние: к концу рабочего дня список сам
+    обнуляется, отдельная чистка не нужна.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    employee = models.ForeignKey(
+        "core.Employee", on_delete=models.CASCADE,
+        related_name="call_alerts", verbose_name="Кому звонили",
+    )
+    channel_key = models.CharField(
+        "Ключ ноги звонка", max_length=64, db_index=True,
+        help_text="DestUniqueid:внутренний — по нему приходит обновление "
+                  "статуса, когда звонок завершился.",
+    )
+    phone = models.CharField("Номер звонящего", max_length=32, blank=True)
+    client = models.ForeignKey(
+        "crm.Client", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="call_alerts", verbose_name="Клиент",
+    )
+    started_at = models.DateTimeField("Позвонили", auto_now_add=True, db_index=True)
+    answered = models.BooleanField(
+        "Трубку взяли", default=False,
+        help_text="Проставляется по DialEnd: ANSWER — взяли, иначе пропущен.",
+    )
+    finished = models.BooleanField("Звонок завершён", default=False)
+    dismissed_at = models.DateTimeField("Убрана сотрудником", null=True, blank=True)
+
+    class Meta:
+        verbose_name = "Карточка входящего звонка"
+        verbose_name_plural = "Карточки входящих звонков"
+        ordering = ["-started_at"]
+        constraints = [
+            models.UniqueConstraint(fields=["employee", "channel_key"],
+                                    name="uniq_alert_per_leg"),
+        ]
+
+    def __str__(self):
+        return f"{self.phone} → {self.employee} ({self.started_at:%d.%m %H:%M})"

@@ -16,7 +16,7 @@ from urllib.parse import quote
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
 from django.db.models import Count, Q, Sum
-from django.http import JsonResponse
+from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views.decorators.cache import never_cache
@@ -345,3 +345,55 @@ def _log_outgoing_attempt(client, employee, phone):
     except Exception:
         # Событийка не должна ронять звонок.
         logger.debug("не удалось записать действие о звонке", exc_info=True)
+
+
+# ── Карточки «вам звонили» ────────────────────────────────────────────────
+def _today_alerts(employee):
+    """Сегодняшние неубранные карточки сотрудника.
+
+    🛑 Ограничение «за сегодня» и есть «до конца рабочего дня»: с наступлением
+    нового дня список сам обнуляется, отдельная чистка по расписанию не нужна.
+    """
+    from .models import IncomingCallAlert
+    if employee is None:
+        return IncomingCallAlert.objects.none()
+    today = timezone.localdate()
+    return (IncomingCallAlert.objects
+            .filter(employee=employee, dismissed_at__isnull=True, started_at__date=today)
+            .select_related("client")
+            .order_by("started_at"))
+
+
+@login_required
+@never_cache
+def call_alerts(request):
+    """Стек карточек — подгружается при открытии страницы.
+
+    Без этого напоминание жило бы только в разметке и умирало при любом
+    обновлении браузера — ровно тогда, когда оно нужнее всего.
+    """
+    alerts = list(_today_alerts(get_employee(request.user)))
+    return render(request, "telephony/partials/_call_alerts.html", {"alerts": alerts})
+
+
+@login_required
+@require_POST
+@never_cache
+def alert_dismiss(request, alert_id):
+    from .models import IncomingCallAlert
+    emp = get_employee(request.user)
+    (IncomingCallAlert.objects
+     .filter(pk=alert_id, employee=emp, dismissed_at__isnull=True)
+     .update(dismissed_at=timezone.now()))
+    return HttpResponse("")          # карточка заменяется пустотой (hx-swap=outerHTML)
+
+
+@login_required
+@require_POST
+@never_cache
+def alerts_dismiss_all(request):
+    from .models import IncomingCallAlert
+    emp = get_employee(request.user)
+    ids = list(_today_alerts(emp).values_list("pk", flat=True))
+    IncomingCallAlert.objects.filter(pk__in=ids).update(dismissed_at=timezone.now())
+    return render(request, "telephony/partials/_call_alerts.html", {"alerts": []})

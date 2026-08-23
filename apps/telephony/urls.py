@@ -11,6 +11,9 @@ urlpatterns = [
     path("<uuid:call_id>/recording/", views.call_recording, name="call_recording"),
     path("client/<uuid:client_id>/calls/", views.client_calls, name="client_calls"),
     path("call/", views.place_call, name="place_call"),
+    path("alerts/", views.call_alerts, name="call_alerts"),
+    path("alerts/<uuid:alert_id>/dismiss/", views.alert_dismiss, name="alert_dismiss"),
+    path("alerts/dismiss-all/", views.alerts_dismiss_all, name="alerts_dismiss_all"),
 
     # HTTP-приём с АТС (Bearer-токен PBX_AGENT_TOKEN)
     path("agent/ping/", agent.agent_ping, name="agent_ping"),

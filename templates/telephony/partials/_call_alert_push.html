@@ -1,0 +1,8 @@
+{% comment %}
+  Обёртка для пуша по WebSocket: маркер, по которому JS в dashboard.html
+  находит карточку и кладёт её в стек #incoming-calls (или заменяет уже
+  висящую с тем же id, когда обновился статус звонка).
+{% endcomment %}
+<div data-call-alert-push="{{ alert.id }}" style="display:none">
+  {% include "telephony/partials/_call_alert.html" %}
+</div>

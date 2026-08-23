@@ -19,7 +19,7 @@ from django.conf import settings
 from django.core.management.base import BaseCommand
 
 from apps.telephony.ami import AmiClient, AmiError
-from apps.telephony.notifications import push_call_ended, push_incoming_call
+from apps.telephony.notifications import finish_incoming_call, register_incoming_call
 from apps.telephony.services import is_extension, normalize_counterparty, resolve_client
 
 logger = logging.getLogger(__name__)
@@ -116,7 +116,7 @@ class Command(BaseCommand):
 
         phone = normalize_counterparty(caller)
         client = resolve_client(phone) if phone else None
-        push_incoming_call(
+        register_incoming_call(
             employee,
             channel_key=self._key(p),
             phone=phone or caller,
@@ -126,12 +126,24 @@ class Command(BaseCommand):
                   f"клиент: {client or 'не найден'} — всплывашка отправлена")
 
     def _on_dial_end(self, p: dict):
+        """Звонок завершился — отмечаем итог, но карточку НЕ убираем.
+
+        🛑 Она должна висеть, пока сотрудник сам её не уберёт: человек мог
+        отойти, и вернувшись должен увидеть, что ему звонили. Меняется только
+        вид — неотвеченный становится красным «Пропущенный звонок».
+        """
         extension = self._dest_extension(p)
         if not extension:
             return
         employee = self._employee_for(extension)
-        if employee is not None:
-            push_call_ended(employee, channel_key=self._key(p))
+        if employee is None:
+            return
+        status = (p.get("DialStatus") or "").strip().upper()
+        alert = finish_incoming_call(employee, channel_key=self._key(p),
+                                     answered=(status == "ANSWER"))
+        if alert is not None:
+            self._say(f"DialEnd вн.{extension}: {status or '—'} → "
+                      f"{'принят' if alert.answered else 'ПРОПУЩЕН'}")
 
     @staticmethod
     def _dest_extension(p: dict) -> str:

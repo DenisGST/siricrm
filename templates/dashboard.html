@@ -1144,75 +1144,33 @@ document.addEventListener('htmx:afterRequest', (event) => {
     if (dlg) dlg.close();
   };
 
-  /* ── Входящий звонок: карточка звонящего (apps.telephony) ───────────── */
-  window.showIncomingCall = function (key, phone, clientId, clientName) {
-    var box = document.getElementById('incoming-calls');
-    if (!box || box.querySelector('[data-call-key="' + CSS.escape(key) + '"]')) return;
-
-    var card = document.createElement('div');
-    card.className = 'card bg-base-100';
-    /* 🛑 shadow-2xl в собранном tailwind.css отсутствует — тень инлайном,
-       пересобирать общий ассет ради одной карточки не стоит. */
-    card.style.cssText = 'border-left:5px solid #16a34a;' +
-                         'box-shadow:0 10px 30px rgba(0,0,0,.28);';
-    card.setAttribute('data-call-key', key);
-    var pretty = phone && phone.length === 11
-      ? '+' + phone[0] + ' (' + phone.slice(1, 4) + ') ' + phone.slice(4, 7) + '-' + phone.slice(7, 9) + '-' + phone.slice(9)
-      : (phone || 'номер скрыт');
-
-    var who = clientName
-      ? '<div class="text-xl font-bold truncate leading-tight">' + clientName + '</div>'
-      : '<div class="text-base text-base-content/50">Клиент не найден в базе</div>';
-    var open = clientId
-      ? '<button class="btn btn-primary btn-sm" data-open-client="' + clientId + '">Карточка и события</button>'
-      : '';
-
-    card.innerHTML =
-      '<div class="card-body p-4 gap-2">' +
-        '<div class="flex items-center gap-2 text-success text-sm font-semibold uppercase tracking-wide">' +
-          '<span style="font-size:1.15rem">\uD83D\uDCDE</span><span>Входящий звонок</span>' +
-        '</div>' +
-        who +
-        '<div class="text-lg font-mono text-base-content/80">' + pretty + '</div>' +
-        '<div class="flex gap-2 mt-2">' + open +
-          '<button class="btn btn-ghost btn-sm" data-close-call>Скрыть</button>' +
-        '</div>' +
-      '</div>';
-
-    box.appendChild(card);
-    if (typeof playToastSound === 'function') playToastSound();
-    /* Страховка: если DialEnd не придёт (обрыв связи с АТС), карточка не
-       должна висеть вечно. */
-    setTimeout(function () { window.hideIncomingCall(key); }, 90000);
-  };
-
-  window.hideIncomingCall = function (key) {
+  /* ── Карточки «вам звонили» (apps.telephony) ─────────────────────────
+     Разметку рисует сервер — один и тот же шаблон и для живого пуша, и для
+     восстановления списка при загрузке страницы. JS только кладёт карточку
+     в стек или заменяет уже висящую, когда обновился статус звонка.
+     🛑 Карточки НЕ убираются ни по таймеру, ни по завершении звонка: смысл
+     в том, что человек мог отойти и должен увидеть, что ему звонили.
+     Убирает только сотрудник кнопкой, и это сохраняется на сервере. */
+  window.applyCallAlert = function (html) {
     var box = document.getElementById('incoming-calls');
     if (!box) return;
-    var card = box.querySelector('[data-call-key="' + CSS.escape(key) + '"]');
-    if (card) card.remove();
-  };
+    var tmp = document.createElement('div');
+    tmp.innerHTML = html;
+    var incoming = tmp.querySelector('[data-call-alert]');
+    if (!incoming) return;
 
-  document.addEventListener('click', function (e) {
-    var close = e.target.closest('[data-close-call]');
-    if (close) {
-      var card = close.closest('[data-call-key]');
-      if (card) card.remove();
-      return;
+    var id = incoming.getAttribute('data-call-alert');
+    var existing = box.querySelector('[data-call-alert="' + CSS.escape(id) + '"]');
+    if (existing) {
+      existing.replaceWith(incoming);          /* обновился статус звонка */
+    } else {
+      box.appendChild(incoming);
+      if (typeof playToastSound === 'function') playToastSound();
     }
-    var open = e.target.closest('[data-open-client]');
-    if (open && window.htmx) {
-      /* Открываем модалку событийки клиента — так же, как карточка канбана
-         и глобальный поиск: hx-target=body + beforeend.
-         🛑 Адрес берём из именованного маршрута с подстановкой id, а не
-         строкой: захардкоженный путь молча сломается при переименовании. */
-      var tpl = "{% url 'client_events_modal' '00000000-0000-0000-0000-000000000000' %}";
-      htmx.ajax('GET', tpl.replace('00000000-0000-0000-0000-000000000000', open.dataset.openClient),
-                { target: 'body', swap: 'beforeend' });
-      var card2 = open.closest('[data-call-key]');
-      if (card2) card2.remove();
-    }
-  });
+    /* 🛑 htmx.process обязателен: карточка пришла вне обычного свопа, и без
+       этого кнопки «Карточка и события» / «Убрать» останутся немыми. */
+    if (window.htmx) htmx.process(incoming);
+  };
 
   /* ── Звонок по клику: АТС звонит сотруднику, потом набирает клиента ──── */
   window.crmCall = function (opts, btn) {
@@ -1536,21 +1494,9 @@ document.addEventListener('htmx:afterRequest', (event) => {
       }
     }
 
-    // Входящий звонок — карточка звонящего (apps.telephony)
-    if (raw.includes('data-incoming-call=')) {
-      var tmp = document.createElement('div');
-      tmp.innerHTML = raw;
-      var m = tmp.querySelector('[data-incoming-call]');
-      if (m) {
-        showIncomingCall(m.dataset.incomingCall, m.dataset.phone,
-                         m.dataset.clientId, m.dataset.clientName);
-      }
-    }
-    if (raw.includes('data-incoming-call-end=')) {
-      var tmp2 = document.createElement('div');
-      tmp2.innerHTML = raw;
-      var m2 = tmp2.querySelector('[data-incoming-call-end]');
-      if (m2) hideIncomingCall(m2.dataset.incomingCallEnd);
+    // Карточка «вам звонили» (apps.telephony) — приходит готовой разметкой
+    if (raw.includes('data-call-alert-push=')) {
+      applyCallAlert(raw);
     }
 
     if (raw.includes('data-chat-message="1"')) {
@@ -3039,9 +2985,12 @@ function initMsSearch() {
   поэтому стек звонков поднят на 5rem — иначе карточка и тост наезжают друг на
   друга. column-reverse: свежий звонок оказывается ближе к углу, туда смотрит глаз.
 {% endcomment %}
-<div id="incoming-calls" style="position:fixed;bottom:5rem;right:1.25rem;z-index:1000;
+<div id="incoming-calls"
+     hx-get="{% url 'telephony:call_alerts' %}" hx-trigger="load" hx-swap="innerHTML"
+     style="position:fixed;bottom:5rem;right:1.25rem;z-index:1000;
      display:flex;flex-direction:column-reverse;gap:.6rem;
-     width:26rem;max-width:calc(100vw - 2.5rem)"></div>
+     width:26rem;max-width:calc(100vw - 2.5rem);
+     max-height:calc(100vh - 8rem);overflow-y:auto"></div>
 
 <dialog id="call-player-modal" class="modal">
   <div class="modal-box max-w-lg">
