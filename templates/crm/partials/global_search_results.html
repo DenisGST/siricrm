@@ -1,4 +1,4 @@
-{% load icons %}
+{% load icons %}{% load permissions_tags %}
 {% if empty and q|length >= 2 %}
   <div class="global-search-empty">Ничего не найдено</div>
 {% elif clients or legal_entities or messages or files %}
@@ -61,6 +61,14 @@
                   hx-target="#content-area" hx-swap="innerHTML"
                   onclick="closeGlobalSearch()">
             {% icon "femida" size=15 %}
+          </button>
+          {% endif %}
+          {% if user|can_access_calls %}
+          <button type="button" class="gs-act" title="Звонки и записи разговоров" style="--gs-hc:#0ea5e9"
+                  hx-get="{% url 'telephony:panel' %}?client={{ c.id }}"
+                  hx-target="#content-area" hx-swap="innerHTML"
+                  onclick="closeGlobalSearch()">
+            {% icon "phone" size=15 %}
           </button>
           {% endif %}
           {% if c.phone %}

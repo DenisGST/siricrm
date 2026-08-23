@@ -1,0 +1,28 @@
+# Конфигурация агента АТС → SiriCRM.  Класть в /etc/pbx-agent.conf, права 600.
+# 🛑 Здесь только узкий токен приёма звонков. Ключей S3 и доступов к CRM-базе
+# на этой машине быть не должно.
+[agent]
+# Адрес CRM и токен — ПАРОЙ. Рассинхрон даёт 401.
+#   прод: https://siricrm.ru   + PBX_AGENT_TOKEN из .env.prod
+#   dev:  https://crmsiri.ru   + PBX_AGENT_TOKEN из .env.dev
+crm_url = https://crmsiri.ru
+token   = ЗАМЕНИТЬ
+
+# База Asterisk (локальная, слушает только 127.0.0.1)
+db_host     = 127.0.0.1
+db_user     = asterisk_user
+db_password = ЗАМЕНИТЬ
+db_name     = asterisk
+
+records_root = /records
+state_db     = /var/lib/pbx-agent/state.db
+
+# 24 кбит/с моно — примерно пятикратное сжатие при хорошей разборчивости речи.
+# 16 даёт восьмикратное, но разговор заметно грубеет.
+bitrate = 24
+
+# Сколько дней держать исходные wav после подтверждённого переноса.
+retention_days = 30
+
+batch   = 200
+timeout = 120

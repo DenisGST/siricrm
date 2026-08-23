@@ -40,3 +40,9 @@ def can_access_procedures(user):
 def can_access_reports(user):
     from apps.reports.permissions import can_access_reports as _check
     return _check(user)
+
+
+@register.filter
+def can_access_calls(user):
+    from apps.telephony.permissions import can_access_calls as _check
+    return _check(user)

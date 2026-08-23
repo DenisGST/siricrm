@@ -755,6 +755,23 @@ def chat(request, client_id):
     )
 
 
+def _resolve_open_section(raw: str) -> str:
+    """URL раздела для автооткрытия из ?open=… — только из меню.
+
+    🛑 Значение уходит прямо в hx-get, поэтому произвольные адреса принимать
+    нельзя: иначе через ссылку можно заставить чужой браузер дёрнуть любой
+    внутренний эндпоинт. Сверяем со списком пунктов меню.
+    """
+    raw = (raw or "").strip()
+    # Только относительный путь: «//зло.рф» браузер трактует как чужой хост.
+    if not raw.startswith("/") or raw.startswith("//"):
+        return ""
+    path = raw.split("?", 1)[0]
+    from apps.core.models import MenuItem
+    known = set(MenuItem.objects.filter(is_active=True).values_list("url", flat=True))
+    return raw if path in known else ""
+
+
 @login_required
 def dashboard(request):
     from apps.crm.bot_status import get_bot_status
@@ -765,6 +782,7 @@ def dashboard(request):
         request,
         "dashboard.html",
         {
+            "open_section": _resolve_open_section(request.GET.get("open")),
             "telegram_user": telegram_user,
             "telegram_bot_username": getattr(
                 settings, "TELEGRAM_BOT_USERNAME", ""

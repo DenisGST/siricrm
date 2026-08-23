@@ -1,0 +1,185 @@
+{% load icons %}
+{% comment %}
+  Журнал звонков: сводка по выборке + таблица + пагинация.
+  Свопится в #calls-table. Панель фильтров (#calls-filters) НЕ
+  перерисовывается — актуальные sort/dir возвращаются в её скрытые поля
+  OOB-свопом (только для HTMX-ответов, флаг `oob`).
+
+  🛑 Кнопка прослушивания НЕ ссылается на S3 напрямую: дёргает
+  telephony:call_recording, который выдаёт временную ссылку И пишет
+  прослушивание в журнал. Прямую ссылку сюда не подставлять.
+{% endcomment %}
+{% if oob %}<span id="calls-sort-state" hx-swap-oob="true" style="display:none">
+  <input type="hidden" name="sort" value="{{ sort }}">
+  <input type="hidden" name="dir" value="{{ direction_sort }}">
+  <input type="hidden" name="client" value="{{ f.client }}">
+</span>{% endif %}
+
+{% comment %}Сводка считается по ВСЕЙ выборке, а не по странице — иначе
+   цифры вводят в заблуждение при листании.{% endcomment %}
+<div class="flex flex-wrap items-center gap-x-6 gap-y-2 px-1 pb-2 text-sm">
+  <span class="flex items-center gap-1.5">
+    {% icon "phone" size=15 %}
+    <b>{{ total }}</b><span class="text-base-content/60">звонков</span>
+  </span>
+  <span class="flex items-center gap-1.5">
+    <span class="badge badge-success badge-xs"></span>
+    <b>{{ stat_answered }}</b><span class="text-base-content/60">отвечено</span>
+  </span>
+  <span class="flex items-center gap-1.5">
+    {% icon "mic" size=15 %}
+    <b>{{ stat_with_rec }}</b><span class="text-base-content/60">с записью</span>
+  </span>
+  <span class="flex items-center gap-1.5">
+    {% icon "clock" size=15 %}
+    <b>{{ stat_talk_human }}</b><span class="text-base-content/60">разговоров</span>
+  </span>
+  {% if filters_active %}
+    <span class="badge badge-outline badge-sm gap-1">{% icon "filter" size=12 %} фильтр активен</span>
+  {% endif %}
+</div>
+
+<div class="card bg-base-100 shadow-sm">
+  <table class="table table-sm table-zebra table-pin-rows">
+    <thead>
+      <tr>
+        <th style="width:3rem">№</th>
+        {% include "telephony/partials/_calls_th.html" with key="started" label="Когда" %}
+        {% include "telephony/partials/_calls_th.html" with key="direction" label="Тип" align="text-center" %}
+        {% include "telephony/partials/_calls_th.html" with key="phone" label="Абонент" %}
+        {% include "telephony/partials/_calls_th.html" with key="client" label="Клиент" %}
+        {% include "telephony/partials/_calls_th.html" with key="employee" label="Сотрудник" %}
+        {% include "telephony/partials/_calls_th.html" with key="billsec" label="Разговор" align="text-right" %}
+        {% include "telephony/partials/_calls_th.html" with key="disposition" label="Итог" %}
+        <th class="text-center" style="width:4.5rem">Запись</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for c in calls %}
+        <tr class="hover">
+          <td class="text-base-content/40">{{ forloop.counter|add:row_offset }}</td>
+
+          <td class="whitespace-nowrap">
+            {{ c.started_at|date:"d.m.Y" }}
+            <span class="text-base-content/50">{{ c.started_at|date:"H:i" }}</span>
+          </td>
+
+          <td class="text-center" title="{{ c.get_direction_display }}">
+            {% if c.direction == "incoming" %}
+              <span class="text-success text-base" title="Входящий">↙</span>
+            {% elif c.direction == "outgoing" %}
+              <span class="text-info text-base" title="Исходящий">↗</span>
+            {% else %}
+              <span class="text-base-content/40 text-base" title="Внутренний">↔</span>
+            {% endif %}
+          </td>
+
+          <td class="whitespace-nowrap font-mono text-xs">
+            {% if c.counterparty_phone %}
+              <a href="tel:+{{ c.counterparty_phone }}" class="link link-hover"
+                 title="Позвонить">+{{ c.counterparty_phone }}</a>
+            {% else %}
+              <span class="text-base-content/40">{{ c.src }} → {{ c.dst }}</span>
+            {% endif %}
+          </td>
+
+          <td class="max-w-xs truncate">
+            {% if c.client %}
+              <a class="link link-hover" href="#" title="Открыть карточку клиента"
+                 hx-get="{% url 'chat' c.client.id %}" hx-target="#content-area" hx-swap="innerHTML">
+                {{ c.client.first_name }} {{ c.client.last_name }}
+              </a>
+            {% else %}<span class="text-base-content/30">—</span>{% endif %}
+          </td>
+
+          <td class="whitespace-nowrap">
+            {% if c.employee %}
+              {{ c.employee.user.get_full_name|default:c.employee.user.username }}
+              <span class="text-base-content/40 text-xs">· {{ c.extension }}</span>
+            {% elif c.extension %}
+              <span class="text-base-content/40">вн. {{ c.extension }}</span>
+            {% else %}<span class="text-base-content/30">—</span>{% endif %}
+          </td>
+
+          <td class="text-right whitespace-nowrap">
+            {% if c.billsec %}{{ c.billsec_human }}{% else %}<span class="text-base-content/30">—</span>{% endif %}
+          </td>
+
+          <td class="whitespace-nowrap">
+            {% if c.disposition == "ANSWERED" %}
+              <span class="badge badge-success badge-sm">отвечен</span>
+            {% elif c.disposition == "NO ANSWER" %}
+              <span class="badge badge-warning badge-sm">не отвечен</span>
+            {% elif c.disposition == "BUSY" %}
+              <span class="badge badge-ghost badge-sm">занято</span>
+            {% elif c.disposition == "FAILED" %}
+              <span class="badge badge-error badge-sm">сбой</span>
+            {% else %}
+              <span class="badge badge-ghost badge-sm">{{ c.disposition|lower|default:"—" }}</span>
+            {% endif %}
+          </td>
+
+          <td class="text-center">
+            {% if c.recording %}
+              <button class="btn btn-ghost btn-xs" title="Прослушать запись"
+                      onclick="playCallRecording('{{ c.id }}', this)">▶</button>
+            {% else %}<span class="text-base-content/20">—</span>{% endif %}
+          </td>
+        </tr>
+      {% empty %}
+        <tr>
+          <td colspan="9" class="text-center py-10 text-base-content/50">
+            {% if filters_active %}
+              Ничего не найдено — измените условия поиска или фильтры.
+            {% else %}
+              Звонков пока нет. Журнал наполняется агентом на АТС.
+            {% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% comment %}Пагинация: страница — в hx-vals, фильтры и сортировка — из формы.{% endcomment %}
+<div class="flex items-center justify-between gap-3 flex-wrap px-1 py-2">
+  <div class="text-xs text-base-content/60">
+    {% if total %}
+      Показаны {{ page_obj.start_index }}–{{ page_obj.end_index }} из <b>{{ total }}</b>
+      {% if paginator.num_pages > 1 %} · страница {{ page_obj.number }} из {{ paginator.num_pages }}{% endif %}
+    {% endif %}
+  </div>
+
+  {% if paginator.num_pages > 1 %}
+  <div class="join">
+    {% if page_obj.has_previous %}
+      <button type="button" class="join-item btn btn-sm"
+              hx-get="{% url 'telephony:call_list' %}" hx-include="#calls-filters"
+              hx-target="#calls-table" hx-swap="innerHTML"
+              hx-vals='{"page": "{{ page_obj.previous_page_number }}"}'>«</button>
+    {% else %}
+      <button type="button" class="join-item btn btn-sm btn-disabled">«</button>
+    {% endif %}
+
+    {% for p in page_range %}
+      {% if p == ellipsis %}
+        <button type="button" class="join-item btn btn-sm btn-disabled">…</button>
+      {% else %}
+        <button type="button" class="join-item btn btn-sm {% if p == page_obj.number %}btn-active{% endif %}"
+                hx-get="{% url 'telephony:call_list' %}" hx-include="#calls-filters"
+                hx-target="#calls-table" hx-swap="innerHTML"
+                hx-vals='{"page": "{{ p }}"}'>{{ p }}</button>
+      {% endif %}
+    {% endfor %}
+
+    {% if page_obj.has_next %}
+      <button type="button" class="join-item btn btn-sm"
+              hx-get="{% url 'telephony:call_list' %}" hx-include="#calls-filters"
+              hx-target="#calls-table" hx-swap="innerHTML"
+              hx-vals='{"page": "{{ page_obj.next_page_number }}"}'>»</button>
+    {% else %}
+      <button type="button" class="join-item btn btn-sm btn-disabled">»</button>
+    {% endif %}
+  </div>
+  {% endif %}
+</div>

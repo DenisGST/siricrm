@@ -601,9 +601,23 @@
       </div>
 
       <!-- Основная зона контента -->
+      {% comment %}
+        ?open=/telephony/ — открыть раздел сразу при загрузке страницы.
+        Нужно для прямых заходов и обновления (F5): сами разделы отдают
+        голый партиал без стилей и htmx, поэтому по своему адресу они
+        редиректят сюда. Значение проверено по списку пунктов меню
+        (см. _resolve_open_section) — в hx-get произвольный адрес не попадёт.
+      {% endcomment %}
+      {% if open_section %}
+      <div id="content-area"
+           hx-get="{{ open_section }}" hx-trigger="load" hx-swap="innerHTML">
+        <div class="p-6 text-base-content/50">Загрузка раздела…</div>
+      </div>
+      {% else %}
       <div id="content-area">
         {% include "crm/kanban.html" %}
       </div>
+      {% endif %}
 
       {% endblock %}
     </main>
@@ -1094,6 +1108,57 @@ document.addEventListener('htmx:afterRequest', (event) => {
     document.body.appendChild(dlg);
   };
   window.procPreviewOffice = function (url, name) { window.procPreview(url, name || 'Просмотр документа'); };
+
+  /* ── Прослушивание записей разговоров (apps.telephony) ────────────────
+     🛑 Определяем ЗДЕСЬ, а не в партиале раздела «Звонки»: инлайн-скрипт
+     внутри innerHTML-свопа HTMX может не выполниться, и onclick упадёт.
+     Та же история, что с procPreview.
+     Ссылку на файл берём у сервера каждый раз: она живёт 10 минут, и
+     именно этот запрос пишет прослушивание в журнал. Прямых ссылок на S3
+     в разметке нет и быть не должно. */
+  window.playCallRecording = function (callId, btn) {
+    var dlg = document.getElementById('call-player-modal');
+    var audio = document.getElementById('call-player-audio');
+    if (!dlg || !audio) return;
+    if (btn) { btn.disabled = true; btn.dataset.prev = btn.innerHTML; btn.innerHTML = '…'; }
+
+    fetch('/telephony/' + callId + '/recording/', { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+      .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+      .then(function (data) {
+        audio.src = data.url;
+        dlg.showModal();          /* 🛑 showModal(), иначе окно уедет под чат */
+        return audio.play();
+      })
+      .catch(function (e) {
+        if (window.showToast) showToast('Не удалось открыть запись: ' + e.message, 'error');
+      })
+      .finally(function () {
+        if (btn) { btn.disabled = false; if (btn.dataset.prev) btn.innerHTML = btn.dataset.prev; }
+      });
+  };
+
+  window.closeCallPlayer = function () {
+    var dlg = document.getElementById('call-player-modal');
+    var audio = document.getElementById('call-player-audio');
+    if (audio) { audio.pause(); audio.removeAttribute('src'); audio.load(); }
+    if (dlg) dlg.close();
+  };
+
+  window.resetCallFilters = function () {
+    var form = document.getElementById('calls-filters');
+    if (!form) return;
+    /* 🛑 Только чистим поля. Запрос отправит собственный hx-get кнопки —
+       иначе на один клик уходят два запроса. И 🛑 form.reset() возвращает
+       значения из разметки, а не очищает их (грабля из фильтров канбана),
+       поэтому чистим руками. */
+    form.querySelectorAll('input[type=search], input[type=date]').forEach(function (i) { i.value = ''; });
+    form.querySelectorAll('select[name=direction], select[name=employee]').forEach(function (s) { s.value = ''; });
+    form.querySelectorAll('input[type=checkbox]').forEach(function (c) { c.checked = false; });
+    var pp = form.querySelector('[name=per_page]'); if (pp) pp.value = '50';
+    var sort = form.querySelector('[name=sort]'); if (sort) sort.value = 'started';
+    var dir = form.querySelector('[name=dir]'); if (dir) dir.value = 'desc';
+    var cl = form.querySelector('[name=client]'); if (cl) cl.value = '';
+  };
 </script>
 
 
@@ -2825,6 +2890,29 @@ function initMsSearch() {
   /* Бейдж непривязанных сканов — скрыт, когда счётчик пуст (0). */
   #scan-badge:empty { display: none; }
 </style>
+
+{% comment %}
+  Плеер записи разговора (apps.telephony). Живёт здесь, а не в партиале
+  раздела, чтобы работать и из карточки клиента, и из журнала звонков.
+  🛑 <dialog>+showModal(): иначе окно рисуется ПОД чат-панелью.
+  src проставляется скриптом из временной ссылки и очищается при закрытии —
+  ссылка живёт 10 минут и не должна оставаться висеть в DOM.
+{% endcomment %}
+<dialog id="call-player-modal" class="modal">
+  <div class="modal-box max-w-lg">
+    <h3 class="font-bold text-base mb-3 flex items-center gap-2">
+      {% icon "phone" size=18 %} Запись разговора
+    </h3>
+    <audio id="call-player-audio" controls preload="none" class="w-full"></audio>
+    <p class="text-xs text-base-content/50 mt-3">
+      Факт прослушивания фиксируется в журнале.
+    </p>
+    <div class="modal-action">
+      <button class="btn btn-sm" onclick="closeCallPlayer()">Закрыть</button>
+    </div>
+  </div>
+  <form method="dialog" class="modal-backdrop"><button onclick="closeCallPlayer()">close</button></form>
+</dialog>
 
 <dialog id="idle-warning">
   <div style="background:white;border-radius:12px;padding:24px 28px;max-width:420px;box-shadow:0 8px 24px rgba(0,0,0,0.18);font-family:inherit;">

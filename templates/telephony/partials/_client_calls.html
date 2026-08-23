@@ -1,0 +1,64 @@
+{% load icons %}
+{% comment %}
+  Звонки клиента — компактный блок для его карточки.
+  Факт звонка (когда, кто, сколько длился) видят все, кто видит клиента:
+  это рабочая информация. Кнопка прослушивания — только при can_listen.
+{% endcomment %}
+<div class="flex items-center justify-between gap-2 mb-2">
+  <span class="text-sm font-semibold flex items-center gap-1.5">
+    {% icon "phone" size=15 %} Звонки
+    {% if calls %}<span class="badge badge-ghost badge-sm">{{ calls|length }}</span>{% endif %}
+  </span>
+  {% if calls and can_listen %}
+    <button class="btn btn-ghost btn-xs gap-1" title="Открыть журнал звонков этого клиента"
+            hx-get="{% url 'telephony:panel' %}?client={{ client_id }}"
+            hx-target="#content-area" hx-swap="innerHTML">
+      все звонки →
+    </button>
+  {% endif %}
+</div>
+
+{% if calls %}
+  <div class="card bg-base-100 shadow-sm">
+    <table class="table table-xs table-zebra">
+      <tbody>
+        {% for c in calls %}
+          <tr class="hover">
+            <td class="whitespace-nowrap">{{ c.started_at|date:"d.m.y" }}
+              <span class="text-base-content/50">{{ c.started_at|date:"H:i" }}</span>
+            </td>
+            <td class="text-center" title="{{ c.get_direction_display }}">
+              {% if c.direction == "incoming" %}<span class="text-success">↙</span>
+              {% elif c.direction == "outgoing" %}<span class="text-info">↗</span>
+              {% else %}<span class="text-base-content/40">↔</span>{% endif %}
+            </td>
+            <td class="whitespace-nowrap max-w-xs truncate">
+              {% if c.employee %}{{ c.employee.user.get_full_name|default:c.employee.user.username }}
+              {% elif c.extension %}<span class="text-base-content/40">вн. {{ c.extension }}</span>
+              {% else %}<span class="text-base-content/30">—</span>{% endif %}
+            </td>
+            <td class="text-right whitespace-nowrap">
+              {% if c.billsec %}{{ c.billsec_human }}
+              {% else %}<span class="text-base-content/30">—</span>{% endif %}
+            </td>
+            <td class="whitespace-nowrap">
+              {% if c.disposition != "ANSWERED" %}
+                <span class="badge badge-warning badge-xs">не отвечен</span>
+              {% endif %}
+            </td>
+            <td class="text-center" style="width:2.5rem">
+              {% if c.recording and can_listen %}
+                <button class="btn btn-ghost btn-xs" title="Прослушать запись"
+                        onclick="playCallRecording('{{ c.id }}', this)">▶</button>
+              {% elif c.recording %}
+                <span class="text-base-content/30" title="Нет права на прослушивание записей">🔒</span>
+              {% else %}<span class="text-base-content/20">—</span>{% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% else %}
+  <div class="text-sm text-base-content/50 py-2">Звонков нет</div>
+{% endif %}

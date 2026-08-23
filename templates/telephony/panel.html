@@ -1,0 +1,32 @@
+{% load icons %}
+{% comment %}
+  Раздел «Звонки» — журнал разговоров и прослушивание записей.
+  Грузится в #content-area (use_htmx-пункт меню), chrome как у «Юриста БФЛ».
+  Панель фильтров статична, таблица свопится в #calls-table.
+{% endcomment %}
+<div class="flex flex-col h-full gap-3" id="calls-panel">
+
+  <div class="flex items-center gap-2">
+    {% icon "phone" size=24 %}
+    <div>
+      <h2 class="text-lg font-bold">Звонки</h2>
+      <p class="text-xs text-base-content/70">
+        Журнал телефонных разговоров и записи
+        {% if f.client %}· отфильтровано по клиенту{% endif %}
+      </p>
+    </div>
+    {% if f.client %}
+      <button class="btn btn-ghost btn-xs gap-1 ml-2" title="Показать все звонки"
+              hx-get="{% url 'telephony:panel' %}"
+              hx-target="#content-area" hx-swap="innerHTML">
+        {% icon "x" size=13 %} снять фильтр по клиенту
+      </button>
+    {% endif %}
+  </div>
+
+  {% include "telephony/partials/_calls_filters.html" %}
+
+  <div class="flex-1 min-h-0 overflow-auto" id="calls-table">
+    {% include "telephony/partials/_call_list.html" %}
+  </div>
+</div>

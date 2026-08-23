@@ -270,6 +270,19 @@ class Employee(models.Model):
                   "(admin/head_dep/managing_partner), но которым нужен общий обзор "
                   "(например, arbitration-АУ, помогающий с общей загрузкой).",
     )
+    # --- Телефония (apps.telephony) ---
+    sip_extension = models.CharField(
+        "Внутренний номер АТС", max_length=8, blank=True, default="", db_index=True,
+        help_text="Трёхзначный номер сотрудника на Asterisk (201, 301, 502…). "
+                  "По нему звонки привязываются к сотруднику, работает звонок "
+                  "по клику и всплывашка при входящем.",
+    )
+    can_listen_calls = models.BooleanField(
+        "Доступ к записям разговоров", default=False,
+        help_text="Право слушать записи телефонных разговоров в разделе «Звонки». "
+                  "Каждое прослушивание протоколируется.",
+    )
+
     bubble_id = models.CharField(
         "Bubble ID", max_length=64, blank=True, null=True, unique=True,
         help_text="ID записи User в исходной CRM на bubble.io",

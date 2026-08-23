@@ -1,0 +1,13 @@
+[Unit]
+Description=Перенос звонков и записей с Asterisk в SiriCRM
+After=network-online.target mariadb.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/pbx_agent.py --once
+User=root
+# Конвертация не должна мешать разговорам: телефония важнее переноса.
+Nice=10
+IOSchedulingClass=idle
+CPUQuota=50%
