@@ -1202,7 +1202,12 @@ document.addEventListener('htmx:afterRequest', (event) => {
     }
     var open = e.target.closest('[data-open-client]');
     if (open && window.htmx) {
-      htmx.ajax('GET', '/clients/' + open.dataset.openClient + '/chat/',
+      /* 🛑 Адрес берём из именованного маршрута с подстановкой id, а не
+         строкой «/clients/…/chat/»: захардкоженный путь молча сломается,
+         если маршрут переименуют. Так же открывают карточку все остальные
+         места CRM ({% templatetag openblock %} url 'chat' … {% templatetag closeblock %}). */
+      var tpl = "{% url 'chat' '00000000-0000-0000-0000-000000000000' %}";
+      htmx.ajax('GET', tpl.replace('00000000-0000-0000-0000-000000000000', open.dataset.openClient),
                 { target: '#content-area', swap: 'innerHTML' });
       var card2 = open.closest('[data-call-key]');
       if (card2) card2.remove();
