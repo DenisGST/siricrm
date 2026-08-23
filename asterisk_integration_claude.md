@@ -248,6 +248,56 @@ scan-агента; рассинхрон даёт 401. Смена токена �
 HTMX может не выполниться (та же грабля, что с `procPreview`). Плеер — `<dialog>`
 + `showModal()`, иначе окно уезжает под чат-панель.
 
+## Туннель прод↔АТС и AMI (для звонка по клику и всплывашки)
+
+🛑 **AMI передаёт логин, пароль и все события ОТКРЫТЫМ ТЕКСТОМ.** Выставлять его
+в интернет нельзя ни с какими ACL. Поэтому между прод-сервером CRM и АТС поднят
+отдельный WireGuard-туннель, и AMI слушает **только** его адрес.
+
+| | прод SiriCRM | АТС |
+| --- | --- | --- |
+| Интерфейс | `wgpbx` | `wgpbx` |
+| Адрес | `10.77.0.1/30` | `10.77.0.2/30` |
+| Роль | слушает `51830/udp` | подключается сама |
+| Конфиг | `/etc/wireguard/wgpbx.conf` | `/etc/wireguard/wgpbx.conf` |
+| Автозапуск | `wg-quick@wgpbx` | `wg-quick@wgpbx` |
+
+🛑 **Подключается АТС, а не к ней**: она за NAT, входящих на неё нет. Отсюда
+`PersistentKeepalive = 25` на её стороне — держит NAT-трансляцию открытой.
+
+🛑 **`AllowedIPs` — строго `/32`**, дефолтный маршрут не трогается. На проде уже
+живут `awg1` (основной, Telegram/Anthropic) и `claude0` (резерв) со своим
+policy-routing в таблице 200 — новый туннель их не касается. Проверено после
+подъёма: оба активны, `awg-failover` работает, правил policy-routing по-прежнему 8.
+
+**AMI** (`/etc/asterisk/manager.conf`, права `600`):
+- `bindaddr = 10.77.0.2` — только туннель, публичный интерфейс не слушается;
+- пользователь `crm` с `deny=0.0.0.0/0` + `permit=10.77.0.1/32`;
+- `read = system,call,agent,user,cdr,dialplan` (события для всплывашки),
+  `write = originate,call,reporting` (звонок по клику);
+- на АТС в iptables добавлено `-i wgpbx -p tcp --dport 5038 -s 10.77.0.1 ACCEPT`
+  **перед** правилом REJECT + `iptables-save` (см. раздел про два фильтра).
+
+🛑 **Порядок запуска**: AMI биндится на адрес туннеля, поэтому без `wgpbx` его
+bind не удастся. Добавлен drop-in `/etc/systemd/system/asterisk.service.d/10-wgpbx.conf`
+с `After=/Wants=wg-quick@wgpbx.service`.
+
+🛑 **Менять `manager.conf` — через `asterisk -rx "module reload manager"`**, а не
+рестартом Asterisk: рестарт рвёт активные разговоры.
+
+Реквизиты для CRM лежат в `.env.prod`: `PBX_AMI_HOST/PORT/USERNAME/SECRET`
+и `PBX_AGENT_TOKEN`. 🛑 После деплоя нужен `up -d --force-recreate`, иначе
+контейнеры не перечитают env (`deploy` делает только `restart`).
+
+**Проверка канала:**
+```bash
+# на проде
+wg show wgpbx | grep handshake
+ping -c2 10.77.0.2
+# вход в AMI
+printf 'Action: Login\r\nUsername: crm\r\nSecret: <из .env.prod>\r\n\r\n' | nc 10.77.0.2 5038
+```
+
 ## Безопасность
 
 Аудит и укрепление — 23.08.2026. Бэкап до работ:
