@@ -1150,28 +1150,32 @@ document.addEventListener('htmx:afterRequest', (event) => {
     if (!box || box.querySelector('[data-call-key="' + CSS.escape(key) + '"]')) return;
 
     var card = document.createElement('div');
-    card.className = 'card bg-base-100 shadow-lg border border-success';
+    card.className = 'card bg-base-100';
+    /* 🛑 shadow-2xl в собранном tailwind.css отсутствует — тень инлайном,
+       пересобирать общий ассет ради одной карточки не стоит. */
+    card.style.cssText = 'border-left:5px solid #16a34a;' +
+                         'box-shadow:0 10px 30px rgba(0,0,0,.28);';
     card.setAttribute('data-call-key', key);
     var pretty = phone && phone.length === 11
       ? '+' + phone[0] + ' (' + phone.slice(1, 4) + ') ' + phone.slice(4, 7) + '-' + phone.slice(7, 9) + '-' + phone.slice(9)
       : (phone || 'номер скрыт');
 
     var who = clientName
-      ? '<div class="font-semibold truncate">' + clientName + '</div>'
-      : '<div class="text-base-content/50 text-sm">Клиент не найден в базе</div>';
+      ? '<div class="text-xl font-bold truncate leading-tight">' + clientName + '</div>'
+      : '<div class="text-base text-base-content/50">Клиент не найден в базе</div>';
     var open = clientId
-      ? '<button class="btn btn-primary btn-xs" data-open-client="' + clientId + '">Открыть карточку</button>'
+      ? '<button class="btn btn-primary btn-sm" data-open-client="' + clientId + '">Открыть карточку</button>'
       : '';
 
     card.innerHTML =
-      '<div class="card-body p-3 gap-1">' +
-        '<div class="flex items-center gap-2 text-success text-xs font-semibold">' +
-          '<span>\uD83D\uDCDE Входящий звонок</span>' +
+      '<div class="card-body p-4 gap-2">' +
+        '<div class="flex items-center gap-2 text-success text-sm font-semibold uppercase tracking-wide">' +
+          '<span style="font-size:1.15rem">\uD83D\uDCDE</span><span>Входящий звонок</span>' +
         '</div>' +
         who +
-        '<div class="text-sm text-base-content/70">' + pretty + '</div>' +
-        '<div class="flex gap-2 mt-1">' + open +
-          '<button class="btn btn-ghost btn-xs" data-close-call>Скрыть</button>' +
+        '<div class="text-lg font-mono text-base-content/80">' + pretty + '</div>' +
+        '<div class="flex gap-2 mt-2">' + open +
+          '<button class="btn btn-ghost btn-sm" data-close-call>Скрыть</button>' +
         '</div>' +
       '</div>';
 
@@ -3025,8 +3029,14 @@ function initMsSearch() {
   углу — поверх любого раздела, независимо от того, что сейчас в #content-area.
   Наполняется из JS по WS-событию data-incoming-call.
 {% endcomment %}
-<div id="incoming-calls" style="position:fixed;top:4.5rem;right:1rem;z-index:900;
-     display:flex;flex-direction:column;gap:.5rem;max-width:22rem"></div>
+{% comment %}
+  🛑 Правый нижний угол уже занят тостами (#toast-container, bottom-4 right-4),
+  поэтому стек звонков поднят на 5rem — иначе карточка и тост наезжают друг на
+  друга. column-reverse: свежий звонок оказывается ближе к углу, туда смотрит глаз.
+{% endcomment %}
+<div id="incoming-calls" style="position:fixed;bottom:5rem;right:1.25rem;z-index:1000;
+     display:flex;flex-direction:column-reverse;gap:.6rem;
+     width:26rem;max-width:calc(100vw - 2.5rem)"></div>
 
 <dialog id="call-player-modal" class="modal">
   <div class="modal-box max-w-lg">
