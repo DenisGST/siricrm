@@ -373,7 +373,26 @@ def call_alerts(request):
     обновлении браузера — ровно тогда, когда оно нужнее всего.
     """
     alerts = list(_today_alerts(get_employee(request.user)))
+    _relink_unknown(alerts)
     return render(request, "telephony/partials/_call_alerts.html", {"alerts": alerts})
+
+
+def _relink_unknown(alerts):
+    """Дозаполнить клиента у карточек, где его не было.
+
+    Стек перезагружается по событию ``clientCreated``: сотрудник заводит
+    клиента прямо с карточки незнакомого номера, и она должна тут же
+    превратиться в обычную — с именем и кнопкой событийки. Иначе он бы
+    смотрел на «Клиент не найден в базе» сразу после того, как его создал.
+    """
+    from .services import resolve_client
+    for alert in alerts:
+        if alert.client_id or not alert.phone:
+            continue
+        client = resolve_client(alert.phone)
+        if client is not None:
+            alert.client = client
+            alert.save(update_fields=["client"])
 
 
 @login_required

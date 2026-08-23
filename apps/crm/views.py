@@ -1071,7 +1071,14 @@ def client_create(request):
         # Ошибки валидации — перерендерим модалку
         return render(request, "crm/partials/client_create_modal.html", {"form": form})
 
-    form = ClientForm()
+    # Предзаполнение номера: модалку открывают в том числе с карточки
+    # входящего звонка, где номер уже известен — заставлять перенабирать его
+    # руками значит провоцировать опечатку и дубль клиента.
+    initial = {}
+    raw_phone = (request.GET.get("phone") or "").strip()
+    if raw_phone:
+        initial["phone"] = format_phone(raw_phone)
+    form = ClientForm(initial=initial or None)
     return render(request, "crm/partials/client_create_modal.html", {"form": form})
 
 
@@ -1504,7 +1511,7 @@ def client_edit(request, client_id):
 
 
 from .models import ClientPhone  # noqa: E402
-from .phone_utils import add_client_phone, normalize_phone, sync_client_phone_cache, find_client_by_phone  # noqa: E402
+from .phone_utils import add_client_phone, format_phone, normalize_phone, sync_client_phone_cache, find_client_by_phone  # noqa: E402
 
 
 def _render_phones_block(request, client):

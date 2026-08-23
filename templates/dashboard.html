@@ -2986,7 +2986,8 @@ function initMsSearch() {
   друга. column-reverse: свежий звонок оказывается ближе к углу, туда смотрит глаз.
 {% endcomment %}
 <div id="incoming-calls"
-     hx-get="{% url 'telephony:call_alerts' %}" hx-trigger="load" hx-swap="innerHTML"
+     hx-get="{% url 'telephony:call_alerts' %}"
+     hx-trigger="load, clientCreated from:body" hx-swap="innerHTML"
      style="position:fixed;bottom:5rem;right:1.25rem;z-index:1000;
      display:flex;flex-direction:column-reverse;gap:.6rem;
      width:26rem;max-width:calc(100vw - 2.5rem);

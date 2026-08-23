@@ -64,6 +64,15 @@
                 hx-target="body" hx-swap="beforeend">
           Карточка и события
         </button>
+      {% elif alert.phone %}
+        {% comment %}Незнакомый номер — заводим клиента той же модалкой, что и
+           кнопка в шапке. Номер передаём в ?phone=, иначе его пришлось бы
+           перенабирать руками: лишний повод для опечатки и дубля.{% endcomment %}
+        <button type="button" class="btn btn-primary btn-sm"
+                hx-get="{% url 'client_create' %}?phone={{ alert.phone|urlencode }}"
+                hx-target="body" hx-swap="beforeend">
+          + Новый клиент
+        </button>
       {% endif %}
       <button type="button" class="btn btn-ghost btn-sm"
               hx-post="{% url 'telephony:alert_dismiss' alert.id %}"
