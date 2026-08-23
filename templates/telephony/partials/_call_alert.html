@@ -2,11 +2,16 @@
   Карточка «вам звонили». Одна и та же разметка используется дважды:
   при живом пуше по WebSocket и при восстановлении списка на загрузке
   страницы — поэтому она серверная, а не собирается в JS.
+
+  🛑 Форма комментария лежит ВНУТРИ карточки и свопит карточку целиком
+  (hx-target=closest [data-call-alert]) — иначе после сохранения пропали бы
+  кнопки, а введённый текст потерялся бы.
 {% endcomment %}
 <div class="card bg-base-100" data-call-alert="{{ alert.id }}"
      style="border-left:5px solid {% if alert.finished and not alert.answered %}#dc2626{% else %}#16a34a{% endif %};
             box-shadow:0 10px 30px rgba(0,0,0,.28)">
   <div class="card-body p-4 gap-2">
+
     <div class="flex items-center justify-between gap-2">
       <span class="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide
                    {% if alert.finished and not alert.answered %}text-error{% else %}text-success{% endif %}">
@@ -28,15 +33,39 @@
       {% if alert.phone %}+{{ alert.phone }}{% else %}номер скрыт{% endif %}
     </div>
 
-    <div class="flex gap-2 mt-2">
+    {# ── Комментарий к звонку ─────────────────────────────────────────── #}
+    <form class="flex flex-col gap-1 mt-1"
+          hx-post="{% url 'telephony:alert_comment' alert.id %}"
+          hx-target="closest [data-call-alert]" hx-swap="outerHTML">
+      <textarea name="comment" rows="2" placeholder="Комментарий к звонку…"
+                class="textarea textarea-bordered textarea-sm w-full"
+                style="resize:vertical">{{ alert.comment }}</textarea>
+      <div class="flex items-center gap-2">
+        <button type="submit" class="btn btn-sm">Сохранить</button>
+        {% if saved %}
+          <span class="text-xs text-success">сохранено{% if alert.client %} и записано в событийку{% endif %}</span>
+        {% elif alert.comment %}
+          <span class="text-xs text-base-content/50">комментарий сохранён</span>
+        {% endif %}
+      </div>
+    </form>
+
+    <div class="flex flex-wrap gap-2 mt-1">
+      {% if alert.phone %}
+        <button type="button" class="btn btn-success btn-sm"
+                title="АТС наберёт вас, затем этот номер"
+                onclick="crmCall({phone:'{{ alert.phone }}'{% if alert.client %}, client:'{{ alert.client.id }}'{% endif %}}, this)">
+          Перезвонить
+        </button>
+      {% endif %}
       {% if alert.client %}
-        <button class="btn btn-primary btn-sm"
+        <button type="button" class="btn btn-primary btn-sm"
                 hx-get="{% url 'client_events_modal' alert.client.id %}"
                 hx-target="body" hx-swap="beforeend">
           Карточка и события
         </button>
       {% endif %}
-      <button class="btn btn-ghost btn-sm"
+      <button type="button" class="btn btn-ghost btn-sm"
               hx-post="{% url 'telephony:alert_dismiss' alert.id %}"
               hx-target="closest [data-call-alert]" hx-swap="outerHTML">
         Убрать

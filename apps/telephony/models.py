@@ -197,6 +197,11 @@ class IncomingCallAlert(models.Model):
         help_text="Проставляется по DialEnd: ANSWER — взяли, иначе пропущен.",
     )
     finished = models.BooleanField("Звонок завершён", default=False)
+    comment = models.TextField(
+        "Комментарий к звонку", blank=True, default="",
+        help_text="Короткая заметка прямо с карточки. Если клиент опознан, "
+                  "она же уходит в его событийку.",
+    )
     dismissed_at = models.DateTimeField("Убрана сотрудником", null=True, blank=True)
 
     class Meta:

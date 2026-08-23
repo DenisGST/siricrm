@@ -397,3 +397,39 @@ def alerts_dismiss_all(request):
     ids = list(_today_alerts(emp).values_list("pk", flat=True))
     IncomingCallAlert.objects.filter(pk__in=ids).update(dismissed_at=timezone.now())
     return render(request, "telephony/partials/_call_alerts.html", {"alerts": []})
+
+
+@login_required
+@require_POST
+@never_cache
+def alert_comment(request, alert_id):
+    """Сохранить короткий комментарий к звонку прямо с карточки.
+
+    Пишем в саму карточку — тогда заметка не теряется даже для незнакомого
+    номера. Если клиент опознан, дублируем в его событийку: там ей и место,
+    иначе комментарий останется невидимым для остальной команды.
+    """
+    from .models import IncomingCallAlert
+
+    emp = get_employee(request.user)
+    alert = get_object_or_404(IncomingCallAlert, pk=alert_id, employee=emp)
+    text = (request.POST.get("comment") or "").strip()[:2000]
+
+    was = alert.comment
+    alert.comment = text
+    alert.save(update_fields=["comment"])
+
+    if text and text != was and alert.client_id:
+        try:
+            from apps.crm.client_log import record_action
+            record_action(
+                alert.client, "call_client", employee=emp,
+                comment=f"Входящий звонок с +{alert.phone}: {text}" if alert.phone
+                        else f"Входящий звонок: {text}",
+            )
+        except Exception:
+            # Событийка не должна ронять сохранение заметки.
+            logger.debug("не удалось записать комментарий в событийку", exc_info=True)
+
+    return render(request, "telephony/partials/_call_alert.html",
+                  {"alert": alert, "saved": True})

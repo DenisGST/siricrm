@@ -13,6 +13,7 @@ urlpatterns = [
     path("call/", views.place_call, name="place_call"),
     path("alerts/", views.call_alerts, name="call_alerts"),
     path("alerts/<uuid:alert_id>/dismiss/", views.alert_dismiss, name="alert_dismiss"),
+    path("alerts/<uuid:alert_id>/comment/", views.alert_comment, name="alert_comment"),
     path("alerts/dismiss-all/", views.alerts_dismiss_all, name="alerts_dismiss_all"),
 
     # HTTP-приём с АТС (Bearer-токен PBX_AGENT_TOKEN)
