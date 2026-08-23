@@ -23,6 +23,7 @@
 """
 import argparse
 import configparser
+import fcntl
 import logging
 import os
 import sqlite3
@@ -366,6 +367,19 @@ def main():
         format="%(asctime)s %(levelname)s %(message)s",
     )
     cfg = load_config(args.config)
+
+    # 🛑 Один экземпляр за раз: перенос истории идёт часами, а systemd-таймер
+    # дёргает агента каждые 5 минут. Два процесса поделили бы одну очередь и
+    # залили часть записей дважды.
+    lock_path = os.path.join(os.path.dirname(cfg["state_db"]), "pbx-agent.lock")
+    os.makedirs(os.path.dirname(lock_path), exist_ok=True)
+    lock_fh = open(lock_path, "w")
+    try:
+        fcntl.flock(lock_fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        log.info("агент уже работает — этот запуск пропускаем")
+        return
+
     conn = open_state(cfg["state_db"])
     crm = Crm(cfg)
 
