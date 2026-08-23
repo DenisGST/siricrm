@@ -37,6 +37,7 @@ class AmiClient:
         self.timeout = timeout
         self.sock = None
         self._buf = ""
+        self._packet = {}   # недособранный пакет между вызовами
         self._action_id = 0
 
     # ── соединение ────────────────────────────────────────────────────────
@@ -100,12 +101,19 @@ class AmiClient:
         return action_id
 
     def read_packet(self) -> dict:
-        """Один пакет (ответ или событие) как словарь. Пустая строка — конец."""
-        packet = {}
+        """Один пакет (ответ или событие) как словарь. Пустая строка — конец.
+
+        🛑 Недособранный пакет хранится в ``self._packet``, а не в локальной
+        переменной: при таймауте чтения исключение уходит наверх, и если бы
+        накопленные строки жили локально, они бы потерялись — следующий вызов
+        начал бы собирать пакет с середины и вернул обрывок без поля Event.
+        Именно так тихо терялись события о звонках.
+        """
         while True:
             line = self._read_line()
             if line == "":
-                if packet:
+                if self._packet:
+                    packet, self._packet = self._packet, {}
                     return packet
                 continue          # подряд идущие пустые строки пропускаем
             if ": " in line:
@@ -114,7 +122,7 @@ class AmiClient:
                 key, value = line[:-1], ""
             else:
                 continue          # мусорные строки (например, «--END COMMAND--»)
-            packet[key] = value
+            self._packet[key] = value
 
     def action(self, action: str, **fields) -> dict:
         """Отправить действие и дождаться ответа именно на него."""

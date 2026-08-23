@@ -84,17 +84,34 @@ class Command(BaseCommand):
         elif event == "DialEnd":
             self._on_dial_end(packet)
 
+    def _say(self, text: str):
+        """🛑 Пишем в stdout контейнера, а не через logging: в проекте нет
+        корневого логгера (настроены только django/celery/userbot/maxbot),
+        поэтому logger.info из apps.* не виден нигде — пустой лог вводил
+        в заблуждение при разборе «почему нет всплывашки»."""
+        self.stdout.write(text)
+        self.stdout.flush()
+
     def _on_dial_begin(self, p: dict):
+        dest = p.get("DestChannel") or ""
         extension = self._dest_extension(p)
+        caller = (p.get("CallerIDNum") or p.get("ConnectedLineNum") or "").strip()
+
         if not extension:
+            self._say(f"DialBegin: не внутренний номер (DestChannel={dest!r}) — пропуск")
             return
-        caller = (p.get("CallerIDNum") or "").strip()
         # Внутренние звонки коллег всплывашкой не сопровождаем — это шум.
-        if not caller or is_extension(caller):
+        if not caller:
+            self._say(f"DialBegin → вн.{extension}: нет CallerIDNum — пропуск")
+            return
+        if is_extension(caller):
+            self._say(f"DialBegin → вн.{extension}: звонит коллега {caller} — пропуск")
             return
 
         employee = self._employee_for(extension)
         if employee is None:
+            self._say(f"DialBegin {caller} → вн.{extension}: "
+                      f"нет сотрудника с таким sip_extension — пропуск")
             return
 
         phone = normalize_counterparty(caller)
@@ -105,8 +122,8 @@ class Command(BaseCommand):
             phone=phone or caller,
             client=client,
         )
-        logger.info("входящий %s → вн.%s (%s)", caller, extension,
-                    client or "клиент не найден")
+        self._say(f"ВХОДЯЩИЙ {caller} → вн.{extension} ({employee}), "
+                  f"клиент: {client or 'не найден'} — всплывашка отправлена")
 
     def _on_dial_end(self, p: dict):
         extension = self._dest_extension(p)
