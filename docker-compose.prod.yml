@@ -242,6 +242,34 @@ services:
         max-size: "20m"
         max-file: "5"
 
+  # Слушатель событий АТС: всплывашка сотруднику при входящем звонке.
+  # Долгоживущее соединение с AMI — как userbot с Telethon.
+  # 🛑 restart: on-failure, а не unless-stopped: без PBX_AMI_HOST команда
+  # штатно выходит с кодом 0 (на dev телефонии нет), и unless-stopped крутил
+  # бы контейнер в бесконечном перезапуске.
+  pbx-listener:
+    build: .
+    init: true
+    command: python manage.py pbx_ami_listen
+    volumes:
+      - .:/app
+    env_file:
+      - ${ENV_FILE:-.env.prod}
+    environment:
+      DJANGO_ENV: prod
+    dns: *default-dns
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: on-failure
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "5"
+
   backup:
     build: .
     command: >

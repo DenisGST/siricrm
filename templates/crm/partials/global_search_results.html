@@ -72,9 +72,11 @@
           </button>
           {% endif %}
           {% if c.phone %}
-          <a class="gs-act" href="tel:{{ c.phone }}" title="Позвонить: {{ c.phone }}" style="--gs-hc:#14b8a6">
+          <button type="button" class="gs-act" style="--gs-hc:#14b8a6"
+                  title="Позвонить через АТС: она наберёт вас, затем клиента"
+                  onclick="crmCall({client:'{{ c.id }}'}, this); closeGlobalSearch();">
             {% icon "phone" size=15 %}
-          </a>
+          </button>
           {% endif %}
         </span>
         {% endif %}

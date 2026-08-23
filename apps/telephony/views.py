@@ -9,6 +9,7 @@
 на S3 в шаблонах нет: иначе прослушивание не попадёт в журнал.
 """
 import datetime
+import logging
 import re
 from urllib.parse import quote
 
@@ -19,12 +20,15 @@ from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views.decorators.cache import never_cache
+from django.views.decorators.http import require_POST
 
 from apps.core.models import Employee
 from apps.core.permissions import get_employee
 
 from .models import Call, CallListen
 from .permissions import can_access_calls, require_calls
+
+logger = logging.getLogger(__name__)
 
 PER_PAGE_CHOICES = (25, 50, 100)
 DEFAULT_PER_PAGE = 50
@@ -282,3 +286,60 @@ def client_calls(request, client_id):
         "client_id": client_id,
         "can_listen": can_access_calls(request.user),
     })
+
+
+@login_required
+@require_POST
+@never_cache
+def place_call(request):
+    """Звонок по клику. Принимает ``client`` (uuid) или ``phone``.
+
+    🛑 Права отдельного не заводим: звонить может любой сотрудник, у которого
+    есть внутренний номер (`Employee.sip_extension`) — это его собственный
+    рабочий телефон, а не доступ к чужим данным. Прослушивание записей —
+    другое дело, там своё право.
+    """
+    from .services import place_call as _place
+
+    emp = get_employee(request.user)
+    phone = (request.POST.get("phone") or "").strip()
+    client_id = (request.POST.get("client") or "").strip()
+
+    client = None
+    if client_id:
+        from apps.crm.models import Client
+        client = Client.objects.filter(pk=client_id).first()
+        if client is None:
+            return JsonResponse({"ok": False, "error": "Клиент не найден"}, status=404)
+        # 🛑 Номер берём тот же, что и остальная CRM: ClientPhone —
+        # единственный источник, Client.phone это лишь кэш.
+        if not phone:
+            from apps.crm.models import ClientPhone
+            cp = (ClientPhone.objects.filter(client=client, is_active=True)
+                  .order_by("-is_primary", "id").first())
+            phone = cp.phone if cp else (client.phone or "")
+
+    if not phone:
+        return JsonResponse({"ok": False, "error": "У клиента нет телефона"}, status=400)
+
+    ok, message = _place(emp, phone)
+    if ok and client is not None:
+        _log_outgoing_attempt(client, emp, phone)
+    return JsonResponse({"ok": ok, "message" if ok else "error": message},
+                        status=200 if ok else 502)
+
+
+def _log_outgoing_attempt(client, employee, phone):
+    """Отметка в событийке клиента: кто и когда инициировал звонок.
+
+    Сам факт разговора приедет позже с АТС (агент перенесёт CDR), а эта запись
+    фиксирует именно действие сотрудника — иначе непонятно, кто звонил, если
+    клиент не поднял трубку.
+    """
+    try:
+        from apps.crm.client_log import record_action
+        record_action(client, "call_client", employee=employee,
+                      comment=f"Исходящий звонок на {phone}")
+    except Exception:
+        # Событийка не должна ронять звонок.
+        logger.debug("не удалось записать действие о звонке", exc_info=True)

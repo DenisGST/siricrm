@@ -6,6 +6,7 @@
 и могут добавиться новые, а «трёхзначный внутренний против длинного внешнего» —
 свойство самой нумерации и не поедет.
 """
+import logging
 import re
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -15,6 +16,8 @@ from django.utils import timezone
 from apps.crm.phone_utils import find_client_by_phone, normalize_phone
 
 from .models import Call
+
+logger = logging.getLogger(__name__)
 
 # АТС живёт по московскому времени, в CDR лежит наивная локальная дата.
 PBX_TZ = ZoneInfo("Europe/Moscow")
@@ -265,3 +268,62 @@ def upsert_call(row: dict) -> tuple:
         setattr(existing, key, value)
     existing.save()
     return existing, False
+
+
+def to_dial_format(phone: str) -> str:
+    """Номер в том виде, в каком его набирают с трубки на этой АТС.
+
+    🛑 Именно `8XXXXXXXXXX`: в CDR все реальные исходящие записаны так, то есть
+    этот формат проверен их диалпланом. Нормализованный `7…` тоже дошёл бы
+    (в контексте `gsms` есть правило `_79XXXXXXXXX`), но полагаться на форму,
+    которой никто не пользуется, незачем.
+    """
+    digits = re.sub(r"\D", "", phone or "")
+    if len(digits) == 11 and digits[0] in "78":
+        return "8" + digits[1:]
+    if len(digits) == 10:
+        return "8" + digits
+    return digits
+
+
+def place_call(employee, phone: str):
+    """Звонок по клику: поднимаем трубку сотрудника, затем АТС набирает клиента.
+
+    → (ok, сообщение). Исключения наружу не пускаем: кнопка в интерфейсе
+    должна показать понятную причину, а не 500.
+    """
+    from django.conf import settings
+
+    from .ami import AmiClient, AmiError
+
+    if not employee or not employee.sip_extension:
+        return False, "У вас не указан внутренний номер АТС — обратитесь к администратору"
+
+    number = to_dial_format(phone)
+    if len(number) < 6:
+        return False, "Некорректный номер"
+
+    client = AmiClient()
+    if not client.is_configured():
+        return False, "Телефония не настроена на этом сервере"
+
+    caller = f'"{employee.user.get_full_name() or employee.sip_extension}" <{employee.sip_extension}>'
+    try:
+        with client as ami:
+            resp = ami.originate(
+                extension=employee.sip_extension,
+                number=number,
+                context=getattr(settings, "PBX_DIAL_CONTEXT", "lcsm"),
+                caller_id=caller,
+            )
+    except AmiError as exc:
+        logger.warning("звонок по клику не удался (%s → %s): %s",
+                       employee.sip_extension, number, exc)
+        return False, f"АТС недоступна: {exc}"
+    except OSError as exc:
+        logger.warning("нет связи с АТС: %s", exc)
+        return False, "Нет связи с АТС"
+
+    if (resp.get("Response") or "").lower() != "success":
+        return False, resp.get("Message") or "АТС отклонила вызов"
+    return True, "Поднимите трубку — АТС набирает номер"

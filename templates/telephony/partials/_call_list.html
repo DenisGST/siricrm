@@ -59,6 +59,7 @@
         {% include "telephony/partials/_calls_th.html" with key="employee" label="Сотрудник" %}
         {% include "telephony/partials/_calls_th.html" with key="billsec" label="Разговор" align="text-right" %}
         {% include "telephony/partials/_calls_th.html" with key="outcome" label="Итог" %}
+        <th class="text-center" style="width:3.5rem">Звонок</th>
         <th class="text-center" style="width:4.5rem">Запись</th>
       </tr>
     </thead>
@@ -130,6 +131,13 @@
           </td>
 
           <td class="text-center">
+            {% if c.counterparty_phone %}
+              <button class="btn btn-ghost btn-xs" title="Позвонить: АТС наберёт вас, затем клиента"
+                      onclick="crmCall({phone:'{{ c.counterparty_phone }}'{% if c.client %}, client:'{{ c.client.id }}'{% endif %}}, this)">📞</button>
+            {% endif %}
+          </td>
+
+          <td class="text-center">
             {% if c.recording %}
               <button class="btn btn-ghost btn-xs" title="Прослушать запись"
                       onclick="playCallRecording('{{ c.id }}', this)">▶</button>
@@ -138,7 +146,7 @@
         </tr>
       {% empty %}
         <tr>
-          <td colspan="9" class="text-center py-10 text-base-content/50">
+          <td colspan="10" class="text-center py-10 text-base-content/50">
             {% if filters_active %}
               Ничего не найдено — измените условия поиска или фильтры.
             {% else %}

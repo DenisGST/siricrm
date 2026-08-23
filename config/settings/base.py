@@ -257,6 +257,17 @@ CELERY_TASK_ROUTES = {
     "arbitr.*": {"queue": "arbitr"},
 }
 
+# --- Телефония: Asterisk AMI (apps.telephony) ---
+# 🛑 AMI передаёт пароль и события открытым текстом, поэтому доступен ТОЛЬКО
+# через WireGuard-туннель прод↔АТС (10.77.0.1 ↔ 10.77.0.2). Пустой host =
+# интеграция выключена: звонок по клику и всплывашка просто не показываются.
+PBX_AMI_HOST = config("PBX_AMI_HOST", default="")
+PBX_AMI_PORT = config("PBX_AMI_PORT", default=5038, cast=int)
+PBX_AMI_USERNAME = config("PBX_AMI_USERNAME", default="")
+PBX_AMI_SECRET = config("PBX_AMI_SECRET", default="")
+# Контекст диалплана, из которого сотрудники звонят наружу.
+PBX_DIAL_CONTEXT = config("PBX_DIAL_CONTEXT", default="lcsm")
+
 # --- ЕФРСБ (Федресурс) read-API (apps.efrsb) ---
 # Секреты только из env. Пустые креды → клиент не настроен (no-op).
 EFRSB_ENABLED = config("EFRSB_ENABLED", default=False, cast=bool)
