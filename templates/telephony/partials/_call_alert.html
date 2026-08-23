@@ -1,84 +1,83 @@
 {% comment %}
-  Карточка «вам звонили». Одна и та же разметка используется дважды:
-  при живом пуше по WebSocket и при восстановлении списка на загрузке
-  страницы — поэтому она серверная, а не собирается в JS.
+  Карточка «вам звонили». Один шаблон на два пути: живой пуш по WebSocket и
+  восстановление стека при загрузке страницы — поэтому разметка серверная.
 
-  🛑 Форма комментария лежит ВНУТРИ карточки и свопит карточку целиком
-  (hx-target=closest [data-call-alert]) — иначе после сохранения пропали бы
-  кнопки, а введённый текст потерялся бы.
+  🛑 Крестик и форма комментария разделены: крестик шлёт POST и лежит ВНЕ
+  формы, иначе htmx подмешал бы в него значения полей. Кнопки внутри ряда,
+  которые ходят на сервер за другим (событийка, новый клиент), помечены
+  hx-params="none" — им содержимое формы не нужно.
 {% endcomment %}
-<div class="card bg-base-100" data-call-alert="{{ alert.id }}"
-     style="border-left:5px solid {% if alert.finished and not alert.answered %}#dc2626{% else %}#16a34a{% endif %};
-            box-shadow:0 10px 30px rgba(0,0,0,.28)">
-  <div class="card-body p-4 gap-2">
+<div class="card card-compact bg-base-100 shadow-2xl border-l-4
+            {% if alert.finished and not alert.answered %}border-error{% else %}border-success{% endif %}"
+     data-call-alert="{{ alert.id }}">
+  <div class="card-body gap-2">
 
-    <div class="flex items-center justify-between gap-2">
-      <span class="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide
-                   {% if alert.finished and not alert.answered %}text-error{% else %}text-success{% endif %}">
-        <span style="font-size:1.15rem">📞</span>
-        <span>{% if alert.finished and not alert.answered %}Пропущенный звонок{% else %}Входящий звонок{% endif %}</span>
-      </span>
-      <span class="text-xs text-base-content/50">{{ alert.started_at|date:"H:i" }}</span>
+    <div class="flex items-start justify-between gap-2">
+      {% if alert.finished and not alert.answered %}
+        <span class="badge badge-error badge-outline gap-1">Пропущенный</span>
+      {% else %}
+        <span class="badge badge-success badge-outline gap-1">Входящий звонок</span>
+      {% endif %}
+      <div class="flex items-center gap-1">
+        <span class="text-xs text-base-content/50">{{ alert.started_at|date:"H:i" }}</span>
+        <button type="button" class="btn btn-ghost btn-xs btn-circle" title="Убрать карточку"
+                hx-post="{% url 'telephony:alert_dismiss' alert.id %}"
+                hx-target="closest [data-call-alert]" hx-swap="outerHTML">✕</button>
+      </div>
     </div>
 
     {% if alert.client %}
-      <div class="text-xl font-bold truncate leading-tight">
+      <div class="text-lg font-semibold truncate leading-tight">
         {{ alert.client.first_name }} {{ alert.client.last_name }}
       </div>
     {% else %}
-      <div class="text-base text-base-content/50">Клиент не найден в базе</div>
+      <div class="text-sm text-base-content/50">Клиент не найден в базе</div>
     {% endif %}
 
-    <div class="text-lg font-mono text-base-content/80">
+    <div class="font-mono text-base text-base-content/80">
       {% if alert.phone %}+{{ alert.phone }}{% else %}номер скрыт{% endif %}
     </div>
 
-    {# ── Комментарий к звонку ─────────────────────────────────────────── #}
-    <form class="flex flex-col gap-1 mt-1"
+    <form class="flex flex-col gap-2"
           hx-post="{% url 'telephony:alert_comment' alert.id %}"
           hx-target="closest [data-call-alert]" hx-swap="outerHTML">
       <textarea name="comment" rows="2" placeholder="Комментарий к звонку…"
-                class="textarea textarea-bordered textarea-sm w-full"
-                style="resize:vertical">{{ alert.comment }}</textarea>
-      <div class="flex items-center gap-2">
-        <button type="submit" class="btn btn-sm">Сохранить</button>
+                class="textarea textarea-bordered textarea-sm w-full">{{ alert.comment }}</textarea>
+
+      <div class="flex flex-wrap items-center gap-2">
+        {% if alert.phone %}
+          <button type="button" class="btn btn-sm btn-outline btn-success gap-1"
+                  title="АТС наберёт вас, затем этот номер"
+                  onclick="crmCall({phone:'{{ alert.phone }}'{% if alert.client %}, client:'{{ alert.client.id }}'{% endif %}}, this)">
+            Перезвонить
+          </button>
+        {% endif %}
+
+        <button type="submit" class="btn btn-sm btn-primary">Сохранить</button>
+
+        {% if alert.client %}
+          <button type="button" class="btn btn-sm btn-ghost" hx-params="none"
+                  hx-get="{% url 'client_events_modal' alert.client.id %}"
+                  hx-target="body" hx-swap="beforeend">
+            Событийка
+          </button>
+        {% elif alert.phone %}
+          {% comment %}Незнакомый номер — заводим клиента той же модалкой, что и
+             кнопка в шапке, но с номером в ?phone=: перенабирать его руками —
+             повод для опечатки и дубля.{% endcomment %}
+          <button type="button" class="btn btn-sm btn-ghost" hx-params="none"
+                  hx-get="{% url 'client_create' %}?phone={{ alert.phone|urlencode }}"
+                  hx-target="body" hx-swap="beforeend">
+            + Новый клиент
+          </button>
+        {% endif %}
+
         {% if saved %}
-          <span class="text-xs text-success">сохранено{% if alert.client %} и записано в событийку{% endif %}</span>
+          <span class="text-xs text-success ml-auto">сохранено</span>
         {% elif alert.comment %}
-          <span class="text-xs text-base-content/50">комментарий сохранён</span>
+          <span class="text-xs text-base-content/40 ml-auto">есть комментарий</span>
         {% endif %}
       </div>
     </form>
-
-    <div class="flex flex-wrap gap-2 mt-1">
-      {% if alert.phone %}
-        <button type="button" class="btn btn-success btn-sm"
-                title="АТС наберёт вас, затем этот номер"
-                onclick="crmCall({phone:'{{ alert.phone }}'{% if alert.client %}, client:'{{ alert.client.id }}'{% endif %}}, this)">
-          Перезвонить
-        </button>
-      {% endif %}
-      {% if alert.client %}
-        <button type="button" class="btn btn-primary btn-sm"
-                hx-get="{% url 'client_events_modal' alert.client.id %}"
-                hx-target="body" hx-swap="beforeend">
-          Карточка и события
-        </button>
-      {% elif alert.phone %}
-        {% comment %}Незнакомый номер — заводим клиента той же модалкой, что и
-           кнопка в шапке. Номер передаём в ?phone=, иначе его пришлось бы
-           перенабирать руками: лишний повод для опечатки и дубля.{% endcomment %}
-        <button type="button" class="btn btn-primary btn-sm"
-                hx-get="{% url 'client_create' %}?phone={{ alert.phone|urlencode }}"
-                hx-target="body" hx-swap="beforeend">
-          + Новый клиент
-        </button>
-      {% endif %}
-      <button type="button" class="btn btn-ghost btn-sm"
-              hx-post="{% url 'telephony:alert_dismiss' alert.id %}"
-              hx-target="closest [data-call-alert]" hx-swap="outerHTML">
-        Убрать
-      </button>
-    </div>
   </div>
 </div>

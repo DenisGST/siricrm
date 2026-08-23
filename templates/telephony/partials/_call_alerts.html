@@ -1,12 +1,13 @@
 {% comment %}
   Стек карточек «вам звонили» за сегодня. Грузится при открытии страницы —
-  чтобы напоминание переживало обновление браузера.
+  чтобы напоминание переживало обновление браузера — и обновляется по
+  clientCreated, когда сотрудник завёл клиента прямо с карточки.
 {% endcomment %}
 {% for alert in alerts %}
   {% include "telephony/partials/_call_alert.html" %}
 {% endfor %}
 {% if alerts|length > 1 %}
-  <div class="text-right" data-call-alerts-clear>
+  <div class="flex justify-end">
     <button class="btn btn-ghost btn-xs"
             hx-post="{% url 'telephony:alerts_dismiss_all' %}"
             hx-target="#incoming-calls" hx-swap="innerHTML">
