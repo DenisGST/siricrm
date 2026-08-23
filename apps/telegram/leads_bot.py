@@ -1,16 +1,32 @@
 """Telegram-бот для приёма заявок с лендингов через Bot API.
 
-Бот @Sirius_system_bot добавлен админом в канал, куда лендинги шлют
-заявки в фиксированном формате (см. _parse_lead). Telegram POST'ит
-update'ы на наш webhook → парсим → создаём Client + Service + ставим
-лид в «Мой канбан» сотрудникам с галкой accept_telegram_leads.
+Бот добавлен админом в канал, куда лендинги шлют заявки. Мы читаем канал
+(polling getUpdates, см. tasks.py — webhook у нас не работает из-за
+split-tunnel VPN) → парсим → создаём Client + Service + ставим лид в
+«Мой канбан» сотрудникам с галкой accept_telegram_leads.
 
-Если получателей с галкой нет — fallback на конкретного РОПа
-(Власов Евгений, см. _fallback_employees).
+Если получателей с галкой нет — fallback на конкретного РОПа (Власов Евгений).
+
+🛑 Форматов сообщений ДВА, парсер понимает оба (`_parse_lead` разводит):
+
+1. Канальный (текущий, сайты про-долги.рф / небанкрот.рф) — строки
+   «Ключ: значение», номер заявки в поле «ID», ФИО клиента нет вовсе:
+
+       🌐 Сайт: https://xn----ftbcrnpcej.xn--p1ai/
+       🔴 Новая заявка · Кредиты и долги
+       Источник: Обратный звонок после первого экрана
+       Лендинг: Кредиты и долги
+       Телефон: +79090751580
+       ...
+       ID: 5
+
+2. FlexBe (исторический) — «Новая заявка №N ... со страницы X», блок
+   «Данные формы:» с ответами пользователя, есть «Имя:».
 """
 import json
 import logging
 import re
+from urllib.parse import urlsplit
 
 from decouple import config
 from django.db import transaction
@@ -36,6 +52,12 @@ _FORM_RE = re.compile(r"Название формы:\s*([^\n]+)")
 _NUMBER_RE = re.compile(r"Новая заявка №\s*(\d+)")
 _PAGE_RE = re.compile(r"со страницы\s+(\S+)")
 _LINK_RE = re.compile(r"Просмотр заявки\s*\((https?://[^)\s]+)")
+
+# Канальный формат: «🔴 Новая заявка · Кредиты и долги» — категория после
+# разделителя (точка-разделитель, буллет или тире).
+_CHANNEL_HEADER_RE = re.compile(r"Новая\s+заявка\s*[·•—–-]\s*([^\n]+)")
+# Технический шум, который не показываем в карточке лида.
+_SKIP_ANSWER_KEYS = {"телефон", "id", "сайт", "устройство"}
 
 
 # ─── парсинг ───────────────────────────────────────────────
@@ -79,11 +101,66 @@ def _extract_answers(text: str) -> list[tuple[str, str]]:
     return pairs
 
 
-def _parse_lead(text: str) -> dict | None:
-    """Превратить текст сообщения с лендинга в dict полей. None если формат
-    не похож на заявку."""
-    if not text or "Новая заявка" not in text:
-        return None
+def _key_values(text: str) -> list[tuple[str, str]]:
+    """Строки вида «Ключ: значение» → пары в порядке появления.
+    Ведущие эмодзи/пробелы снимаются, HTML-теги из значения вырезаются."""
+    pairs: list[tuple[str, str]] = []
+    for line in text.splitlines():
+        line = re.sub(r"^\W+", "", line.strip())
+        if not line or ":" not in line:
+            continue
+        k, _, v = line.partition(":")
+        k = k.strip()
+        v = re.sub(r"<[^>]+>", "", v).strip()
+        # Длинный «ключ» — это не поле, а предложение с двоеточием внутри.
+        if not k or not v or len(k) > 40:
+            continue
+        pairs.append((k, v))
+    return pairs
+
+
+def _idna_to_unicode(host: str) -> str:
+    """xn----ftbcrnpcej.xn--p1ai → про-долги.рф (для читаемого источника лида)."""
+    try:
+        return ".".join(
+            part.encode("ascii").decode("idna") if part.startswith("xn--") else part
+            for part in host.split(".")
+        )
+    except (UnicodeError, ValueError):
+        return host
+
+
+def _parse_lead_channel(text: str, pairs: list[tuple[str, str]]) -> dict:
+    """Канальный формат: «Сайт/Источник/Лендинг/Телефон/…/ID».
+    ФИО клиента в нём нет — карточка заводится безымянной, по телефону."""
+    kv = {k.lower(): v for k, v in pairs}
+
+    site_url = kv.get("сайт", "")
+    host = urlsplit(site_url).netloc or site_url.strip("/ ")
+    site = _idna_to_unicode(host)
+
+    m = _CHANNEL_HEADER_RE.search(text)
+    category = m.group(1).strip() if m else ""
+
+    # В карточку лида кладём всё, кроме уже разобранного и тех. шума (UA, IP-мусор).
+    answers = [(k, v) for k, v in pairs if k.lower() not in _SKIP_ANSWER_KEYS]
+    if site:
+        answers.insert(0, ("Сайт", site))
+
+    return {
+        "number": kv.get("id", ""),
+        "form": category or kv.get("лендинг", ""),
+        "page": site or kv.get("лендинг", ""),
+        "name": "",
+        "phone": _normalize_phone(kv.get("телефон", "")),
+        "link": site_url,
+        "answers": answers,
+        "raw": text,
+    }
+
+
+def _parse_lead_flexbe(text: str) -> dict:
+    """Исторический формат FlexBe: «Новая заявка №N … со страницы X»."""
     name = _NAME_RE.search(text)
     phone_raw = _PHONE_RE.search(text)
     number = _NUMBER_RE.search(text)
@@ -101,6 +178,18 @@ def _parse_lead(text: str) -> dict | None:
         "answers": _extract_answers(text),
         "raw": text,
     }
+
+
+def _parse_lead(text: str) -> dict | None:
+    """Текст сообщения из канала → dict полей лида. None, если это не заявка."""
+    if not text or "Новая заявка" not in text:
+        return None
+    pairs = _key_values(text)
+    keys = {k.lower() for k, _ in pairs}
+    # Канальный формат узнаём по полям, которых у FlexBe нет.
+    if keys & {"сайт", "лендинг"}:
+        return _parse_lead_channel(text, pairs)
+    return _parse_lead_flexbe(text)
 
 
 # «Лиды из Telegram», fallback на Власова — теперь в apps.crm.lead_routing.
@@ -131,22 +220,35 @@ def create_lead_from_parsed(data: dict) -> Client:
     # Ответы из формы — пишутся в событие clientEvent (там их и смотрит юрист).
     answers_text = "\n".join(f"• {q}: {a}" for q, a in answers)
 
+    # Описание источника собираем из непустых частей: в канальном формате
+    # бывает и без номера заявки, и без категории — «заявка № · форма «»» уродство.
+    parts = [f"Лендинг «{page}»" if page else "Лендинг"]
+    if number:
+        parts.append(f"заявка №{number}")
+    if form:
+        parts.append(f"форма «{form}»")
+    source_label = " · ".join(parts)
+
     notes_block = [
-        f"Заявка с лендинга №{number} · форма «{form}»",
-        f"Страница: {page}" if page else "",
-        f"FlexBe: {link}" if link else "",
+        source_label,
+        f"Ссылка: {link}" if link else "",
     ]
     if answers_text:
-        notes_block += ["", "Ответы из формы:", answers_text]
+        notes_block += ["", "Данные заявки:", answers_text]
+    if not phone:
+        # 🛑 Без телефона лид не найти и не дедуплицировать — сохраняем
+        # исходное сообщение целиком, чтобы менеджер разобрал руками.
+        notes_block += ["", "⚠ Телефон не распознан. Исходное сообщение:",
+                        (data.get("raw") or "")[:2000]]
     notes_text = "\n".join(x for x in notes_block if x)
 
     # Дедуп по телефону: если клиент уже есть — только событие.
     existing = find_client_by_phone(phone) if phone else None
     if existing is not None:
         from apps.crm.lead_routing import _system_bot_employee
-        desc = f"Повторный лид с лендинга (заявка №{number}, форма «{form}»)"
+        desc = f"Повторный лид · {source_label}"
         if answers_text:
-            desc += "\n\nОтветы из формы:\n" + answers_text
+            desc += "\n\nДанные заявки:\n" + answers_text
         from apps.crm import client_log
         client_log.record_event(
             existing, "lead_received",
@@ -170,12 +272,9 @@ def create_lead_from_parsed(data: dict) -> Client:
         add_client_phone(client, phone, "whatsapp")
     logger.info("lead %s: создан клиент %s (%s)", number, client.id, name)
 
-    source_label = f"Лендинг «{page}» · заявка №{number} · форма «{form}»"
-    desc = (
-        f"Новый лид с лендинга «{page}» (заявка №{number}, форма «{form}»)."
-    )
+    desc = f"Новый лид · {source_label}"
     if answers_text:
-        desc += "\n\nОтветы из формы:\n" + answers_text
+        desc += "\n\nДанные заявки:\n" + answers_text
     route_new_lead(client, source_label=source_label, event_description=desc)
     return client
 
