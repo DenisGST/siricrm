@@ -22,7 +22,8 @@ state_db     = /var/lib/pbx-agent/state.db
 bitrate = 24
 
 # Сколько дней держать исходные wav после подтверждённого переноса.
-retention_days = 30
+# 10 дней — страховка на случай сбоя конвейера; записи уже в S3.
+retention_days = 10
 
 batch   = 200
 timeout = 120
