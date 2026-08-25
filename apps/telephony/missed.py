@@ -233,6 +233,15 @@ def recipients(missed: MissedCall):
     ids: set = set()
     group = missed.group
     if group is not None:
+        # 🛑 Владельцы номеров ГРУППЫ — всегда, независимо от отдела. Это те,
+        # у кого звонок и звонил на столе: обзвон 201&202 идёт именно к ним.
+        # Без этого фича молчала бы на сервере, где у групп не проставлен
+        # отдел, — а проставить его сразу после выкатки некому.
+        extensions = group.extension_list
+        if extensions:
+            ids |= set(Employee.objects.filter(
+                sip_extension__in=extensions, is_active=True,
+            ).values_list("pk", flat=True))
         if group.notify_department and group.department_id:
             ids |= set(Employee.objects.filter(
                 department_id=group.department_id, is_active=True,
