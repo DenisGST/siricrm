@@ -1,0 +1,111 @@
+{% load icons %}
+{% comment %}
+  Реестр пропущенных: сводка по выборке + таблица + пагинация.
+  Свопится в #missed-table. Панель фильтров (#missed-filters) НЕ
+  перерисовывается — актуальные sort/dir возвращаются в её скрытые поля
+  OOB-свопом (только для HTMX-ответов, флаг `oob`).
+{% endcomment %}
+{% if oob %}<span id="missed-sort-state" hx-swap-oob="true" style="display:none">
+  <input type="hidden" name="sort" value="{{ sort }}">
+  <input type="hidden" name="dir" value="{{ direction_sort }}">
+  <input type="hidden" name="tab" value="missed">
+</span>{% endif %}
+
+<div class="flex flex-wrap items-center gap-x-6 gap-y-2 px-1 pb-2 text-sm">
+  <span class="flex items-center gap-1.5">
+    {% icon "phone" size=15 %}
+    <b>{{ total }}</b><span class="text-base-content/60">обращений</span>
+  </span>
+  <span class="flex items-center gap-1.5" title="Ещё никто не взялся">
+    <span class="badge badge-error badge-xs"></span>
+    <b>{{ stat_new }}</b><span class="text-base-content/60">новых</span>
+  </span>
+  <span class="flex items-center gap-1.5">
+    <span class="badge badge-warning badge-xs"></span>
+    <b>{{ stat_in_work }}</b><span class="text-base-content/60">в работе</span>
+  </span>
+  <span class="flex items-center gap-1.5" title="Клиент оставил голосовое сообщение">
+    {% icon "mic" size=15 %}
+    <b>{{ stat_voicemail }}</b><span class="text-base-content/60">голосовых</span>
+  </span>
+  <span class="flex items-center gap-1.5" title="Номер нашёлся в базе клиентов">
+    {% icon "user-check" size=15 %}
+    <b>{{ stat_known }}</b><span class="text-base-content/60">наших клиентов</span>
+  </span>
+</div>
+
+<div class="card bg-base-100 shadow-sm">
+  <table class="table table-sm table-zebra table-pin-rows">
+    <thead>
+      <tr>
+        {% include "telephony/partials/_missed_th.html" with key="occurred" label="Когда" %}
+        {% include "telephony/partials/_missed_th.html" with key="kind" label="Тип" align="text-center" %}
+        {% include "telephony/partials/_missed_th.html" with key="phone" label="Номер" %}
+        {% include "telephony/partials/_missed_th.html" with key="client" label="Клиент" %}
+        {% include "telephony/partials/_missed_th.html" with key="group" label="Куда звонили" %}
+        {% include "telephony/partials/_missed_th.html" with key="status" label="Статус" %}
+        <th style="min-width:12rem">Заметки</th>
+        <th class="text-center" style="width:5rem">Связь</th>
+        <th class="text-center" style="width:7rem">Обработка</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in missed_rows %}
+        {% include "telephony/partials/_missed_row.html" with row=row %}
+      {% empty %}
+        <tr>
+          <td colspan="9" class="text-center py-10 text-base-content/50">
+            {% if f.state == "open" %}
+              Непринятых обращений нет — все звонки отработаны.
+            {% else %}
+              Ничего не найдено — измените условия поиска или фильтры.
+            {% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% comment %}Пагинация: страница — в hx-vals, фильтры и сортировка — из формы.{% endcomment %}
+<div class="flex items-center justify-between gap-3 flex-wrap px-1 py-2">
+  <div class="text-xs text-base-content/60">
+    {% if total %}
+      Показаны {{ page_obj.start_index }}–{{ page_obj.end_index }} из <b>{{ total }}</b>
+      {% if paginator.num_pages > 1 %} · страница {{ page_obj.number }} из {{ paginator.num_pages }}{% endif %}
+    {% endif %}
+  </div>
+
+  {% if paginator.num_pages > 1 %}
+  <div class="join">
+    {% if page_obj.has_previous %}
+      <button type="button" class="join-item btn btn-sm"
+              hx-get="{% url 'telephony:missed_list' %}" hx-include="#missed-filters"
+              hx-target="#missed-table" hx-swap="innerHTML"
+              hx-vals='{"page": "{{ page_obj.previous_page_number }}"}'>«</button>
+    {% else %}
+      <button type="button" class="join-item btn btn-sm btn-disabled">«</button>
+    {% endif %}
+
+    {% for p in page_range %}
+      {% if p == ellipsis %}
+        <button type="button" class="join-item btn btn-sm btn-disabled">…</button>
+      {% else %}
+        <button type="button" class="join-item btn btn-sm {% if p == page_obj.number %}btn-active{% endif %}"
+                hx-get="{% url 'telephony:missed_list' %}" hx-include="#missed-filters"
+                hx-target="#missed-table" hx-swap="innerHTML"
+                hx-vals='{"page": "{{ p }}"}'>{{ p }}</button>
+      {% endif %}
+    {% endfor %}
+
+    {% if page_obj.has_next %}
+      <button type="button" class="join-item btn btn-sm"
+              hx-get="{% url 'telephony:missed_list' %}" hx-include="#missed-filters"
+              hx-target="#missed-table" hx-swap="innerHTML"
+              hx-vals='{"page": "{{ page_obj.next_page_number }}"}'>»</button>
+    {% else %}
+      <button type="button" class="join-item btn btn-sm btn-disabled">»</button>
+    {% endif %}
+  </div>
+  {% endif %}
+</div>

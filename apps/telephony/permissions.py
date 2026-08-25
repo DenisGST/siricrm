@@ -58,3 +58,56 @@ def require_calls(view_func):
         return view_func(request, *args, **kwargs)
 
     return _wrapped
+
+
+def can_handle_all_missed(user) -> bool:
+    """Видит ВЕСЬ реестр пропущенных, а не только свои направления.
+
+    То же множество, что и у чужих записей разговоров: руководство, суперюзер
+    и точечный флаг ``can_listen_calls`` (контроль качества).
+    """
+    return can_listen_all_calls(user)
+
+
+def visible_missed(user):
+    """Реестр пропущенных, отфильтрованный по правам. → queryset.
+
+    🛑 Фильтр стоит на queryset'е, а не в шаблоне — как и в журнале звонков:
+    иначе через ?page= рядовой сотрудник вычитал бы номера и ФИО клиентов
+    чужих направлений.
+
+    Рядовой видит обращения тех групп, к которым относится: его отдел, его
+    подписка, его внутренний номер. Плюс — свои же взятые в работу, даже если
+    состав группы с тех пор поменялся.
+    """
+    from django.db.models import Q
+
+    from .models import MissedCall
+
+    qs = MissedCall.objects.select_related("group", "client", "assignee__user",
+                                           "recording", "call")
+    if can_handle_all_missed(user):
+        return qs
+    emp = get_employee(user)
+    if emp is None:
+        return qs.none()
+
+    cond = Q(assignee=emp)
+    if emp.department_id:
+        cond |= Q(group__department_id=emp.department_id, group__notify_department=True)
+    cond |= Q(group__subscribers=emp)
+    if emp.sip_extension:
+        cond |= Q(extension=emp.sip_extension)
+    # 🛑 distinct обязателен: подписчики — M2M, join размножает строки.
+    return qs.filter(cond).distinct()
+
+
+def can_listen_voicemail(user, missed) -> bool:
+    """Голосовое сообщение слушает тот, кто видит само обращение.
+
+    Отдельного права нет намеренно: сообщение и есть суть обращения — без
+    него запись в реестре бесполезна, отработать её нельзя.
+    """
+    if missed is None:
+        return False
+    return visible_missed(user).filter(pk=missed.pk).exists()

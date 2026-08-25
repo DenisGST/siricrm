@@ -35,15 +35,22 @@ def _send(employee, html: str):
         logger.debug("не удалось отправить карточку звонка", exc_info=True)
 
 
-def register_incoming_call(employee, *, channel_key: str, phone: str, client=None):
+def register_incoming_call(employee, *, channel_key: str, phone: str, client=None,
+                           missed: bool = False):
     """Записать входящий и показать карточку. → IncomingCallAlert.
 
     Идемпотентно по паре «сотрудник + нога звонка»: повторный DialBegin
     (перезвон в том же канале) не плодит карточки.
+
+    missed=True — карточка сразу рисуется как пропущенный. Так её ставит
+    реестр пропущенных (``missed._push_cards``): звонок на группу мог вообще
+    не дойти до конкретной трубки (оборвался в голосовом меню), и события
+    DialBegin по нему не было — а показать обращение всё равно надо.
     """
     alert, created = IncomingCallAlert.objects.get_or_create(
         employee=employee, channel_key=channel_key,
-        defaults={"phone": phone or "", "client": client},
+        defaults={"phone": phone or "", "client": client,
+                  "finished": missed, "answered": False},
     )
     if not created:
         return alert

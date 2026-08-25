@@ -1263,6 +1263,46 @@ document.addEventListener('htmx:afterRequest', (event) => {
       .finally(function () { if (btn) btn.disabled = false; });
   };
 
+  /* ── Голосовые сообщения из реестра пропущенных (apps.telephony) ─────
+     Тот же плеер и то же правило, что у записей разговоров: ссылку выдаёт
+     сервер на 10 минут и одновременно пишет прослушивание в журнал. */
+  window.playVoicemail = function (missedId, btn) {
+    var dlg = document.getElementById('call-player-modal');
+    var audio = document.getElementById('call-player-audio');
+    if (!dlg || !audio) return;
+    if (btn) { btn.disabled = true; btn.dataset.prev = btn.innerHTML; btn.innerHTML = '…'; }
+
+    fetch('/telephony/missed/' + missedId + '/voicemail/',
+          { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+      .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+      .then(function (data) {
+        audio.src = data.url;
+        dlg.showModal();
+        return audio.play();
+      })
+      .catch(function (e) {
+        if (window.showToast) showToast('Не удалось открыть сообщение: ' + e.message, 'error');
+      })
+      .finally(function () {
+        if (btn) { btn.disabled = false; if (btn.dataset.prev) btn.innerHTML = btn.dataset.prev; }
+      });
+  };
+
+  window.resetMissedFilters = function () {
+    var form = document.getElementById('missed-filters');
+    if (!form) return;
+    /* 🛑 Как и в журнале: только чистим поля (запрос отправит hx-get самой
+       кнопки), и чистим руками — form.reset() вернул бы значения из разметки. */
+    form.querySelectorAll('input[type=search], input[type=date]').forEach(function (i) { i.value = ''; });
+    form.querySelectorAll('select[name=kind], select[name=group]').forEach(function (s) { s.value = ''; });
+    /* 🛑 «Состояние» возвращаем к «требуют ответа», а НЕ к пустому: реестр —
+       рабочая очередь, и сброс фильтров не должен вываливать весь архив. */
+    var st = form.querySelector('[name=state]'); if (st) st.value = 'open';
+    var pp = form.querySelector('[name=per_page]'); if (pp) pp.value = '50';
+    var sort = form.querySelector('[name=sort]'); if (sort) sort.value = 'occurred';
+    var dir = form.querySelector('[name=dir]'); if (dir) dir.value = 'desc';
+  };
+
   window.resetCallFilters = function () {
     var form = document.getElementById('calls-filters');
     if (!form) return;

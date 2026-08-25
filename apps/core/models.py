@@ -214,6 +214,17 @@ class Employee(models.Model):
     # можно включить оба — придёт в оба, ни одного — не придёт никуда.
     notify_court_events_telegram = models.BooleanField(
         "Уведомлять в Telegram о судебных событиях", default=False)
+    # Пропущенные входящие (apps.telephony). По умолчанию ВКЛЮЧЕНО, в отличие
+    # от судебных событий: пропущенный звонок — это упущенный клиент, и
+    # уведомление получают все сотрудники группы, на которую шёл звонок.
+    # Канал выбирается сам: придёт туда, где у сотрудника привязан chat_id
+    # (Telegram и/или MAX). Флаг — способ отписаться тому, кому это шум.
+    notify_missed_calls = models.BooleanField(
+        "Уведомлять о пропущенных звонках", default=True,
+        help_text="Личные сообщения в Telegram и MAX о пропущенных входящих "
+                  "той группы, к которой относится сотрудник. Реестр "
+                  "«Пропущенные» в разделе «Звонки» флаг не затрагивает.",
+    )
     is_active = models.BooleanField("Активен", default=True)
     is_online = models.BooleanField(default=False, verbose_name='Онлайн')
     is_owner = models.BooleanField(

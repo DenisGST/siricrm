@@ -238,7 +238,9 @@ def upsert_call(row: dict) -> tuple:
 
     existing = Call.objects.filter(uniqueid=uniqueid).first()
     if existing is None:
-        return Call.objects.create(uniqueid=uniqueid, **fields), True
+        call = Call.objects.create(uniqueid=uniqueid, **fields)
+        _sync_missed_register(call)
+        return call, True
 
     merged = dict(fields)
     merged["started_at"] = min(existing.started_at, fields["started_at"])
@@ -267,6 +269,7 @@ def upsert_call(row: dict) -> tuple:
     for key, value in merged.items():
         setattr(existing, key, value)
     existing.save()
+    _sync_missed_register(existing)
     return existing, False
 
 
@@ -327,3 +330,37 @@ def place_call(employee, phone: str):
     if (resp.get("Response") or "").lower() != "success":
         return False, resp.get("Message") or "АТС отклонила вызов"
     return True, "Поднимите трубку — АТС набирает номер"
+
+
+# Насколько старым может быть звонок из CDR, чтобы завести по нему запись в
+# реестре пропущенных. 🛑 Без порога первый же `--backfill` агента (13 тысяч
+# исторических звонков) насыпал бы в реестр тысячи «новых» обращений
+# двухлетней давности, и работать с ним стало бы невозможно.
+MISSED_REGISTER_MAX_AGE_HOURS = 48
+
+
+def _sync_missed_register(call) -> None:
+    """CDR-страховка реестра пропущенных.
+
+    Разговор состоялся → закрываем открытые обращения по этому номеру
+    (перезвонили — долг снят). Не состоялся → заводим запись, если её ещё
+    не создал диалплан.
+
+    🛑 Реестр не должен ронять приём звонков с АТС: любая ошибка глотается.
+    """
+    from django.utils import timezone as _tz
+
+    try:
+        if (_tz.now() - call.started_at).total_seconds() > MISSED_REGISTER_MAX_AGE_HOURS * 3600:
+            return
+        from . import missed as missed_mod
+
+        if call.outcome == Call.OUTCOME_ANSWERED:
+            if call.counterparty_phone:
+                missed_mod.close_open_for_phone(call.counterparty_phone, by_call=call)
+            return
+        if call.direction == Call.DIRECTION_IN:
+            missed_mod.ensure_from_call(call)
+    except Exception:  # noqa: BLE001
+        logger.exception("реестр пропущенных: не удалось обработать звонок %s",
+                         getattr(call, "uniqueid", "?"))

@@ -1,0 +1,99 @@
+{% load icons %}
+{% comment %}
+  Панель фильтров реестра пропущенных.
+  🛑 Форма НЕ перерисовывается ответом (своп идёт в #missed-table) — иначе
+  теряется фокус в поле поиска при live-вводе. Актуальные sort/dir лежат в
+  скрытых полях #missed-sort-state и возвращаются OOB-свопом из партиала
+  таблицы, иначе смена фильтра сбрасывала бы сортировку.
+
+  Раскладка — инлайновый grid с auto-fit: классов grid-cols-* в собранном
+  tailwind.css нет, а пересобирать общий ассет ради одной страницы не стоит.
+{% endcomment %}
+<div class="card bg-base-100 shadow-sm">
+  <div class="card-body p-3 gap-3">
+
+    <form id="missed-filters"
+          hx-get="{% url 'telephony:missed_list' %}"
+          hx-target="#missed-table" hx-swap="innerHTML"
+          hx-trigger="change, keyup changed delay:400ms from:#missed-q, search from:#missed-q"
+          onsubmit="return false"
+          style="display:grid;grid-template-columns:repeat(auto-fit,minmax(11rem,1fr));gap:.75rem;align-items:end">
+
+      <span id="missed-sort-state" style="display:none">
+        <input type="hidden" name="sort" value="{{ sort }}">
+        <input type="hidden" name="dir" value="{{ direction_sort }}">
+        <input type="hidden" name="tab" value="missed">
+      </span>
+
+      <label class="form-control" style="grid-column:span 2">
+        <span class="label label-text !text-xs !py-0 !pb-1 opacity-70">Поиск — номер или ФИО клиента</span>
+        <div class="join w-full">
+          <span class="join-item flex items-center px-2 border border-base-300 border-r-0 rounded-l-lg bg-base-200">
+            {% icon "search" size=14 %}
+          </span>
+          <input type="search" name="q" id="missed-q" value="{{ f.q }}" autocomplete="off"
+                 placeholder="79105550101 или Иванов"
+                 class="input input-bordered input-sm join-item w-full">
+        </div>
+      </label>
+
+      <label class="form-control">
+        <span class="label label-text !text-xs !py-0 !pb-1 opacity-70">Состояние</span>
+        <select name="state" class="select select-bordered select-sm w-full">
+          {% for code, title in states %}
+            <option value="{{ code }}" {% if f.state == code %}selected{% endif %}>{{ title }}</option>
+          {% endfor %}
+        </select>
+      </label>
+
+      <label class="form-control">
+        <span class="label label-text !text-xs !py-0 !pb-1 opacity-70">Тип обращения</span>
+        <select name="kind" class="select select-bordered select-sm w-full">
+          <option value="">Любой</option>
+          {% for code, title in kinds %}
+            <option value="{{ code }}" {% if f.kind == code %}selected{% endif %}>{{ title }}</option>
+          {% endfor %}
+        </select>
+      </label>
+
+      <label class="form-control">
+        <span class="label label-text !text-xs !py-0 !pb-1 opacity-70">Куда звонили</span>
+        <select name="group" class="select select-bordered select-sm w-full">
+          <option value="">Все направления</option>
+          {% for g in groups %}
+            <option value="{{ g.id }}" {% if f.group == g.id|stringformat:"s" %}selected{% endif %}>{{ g.name }}</option>
+          {% endfor %}
+        </select>
+      </label>
+
+      <label class="form-control">
+        <span class="label label-text !text-xs !py-0 !pb-1 opacity-70">Период с</span>
+        <input type="date" name="date_from" value="{{ f.date_from }}"
+               class="input input-bordered input-sm w-full">
+      </label>
+
+      <label class="form-control">
+        <span class="label label-text !text-xs !py-0 !pb-1 opacity-70">по</span>
+        <input type="date" name="date_to" value="{{ f.date_to }}"
+               class="input input-bordered input-sm w-full">
+      </label>
+
+      <label class="form-control">
+        <span class="label label-text !text-xs !py-0 !pb-1 opacity-70">На странице</span>
+        <select name="per_page" class="select select-bordered select-sm w-full">
+          {% for n in per_page_choices %}
+            <option value="{{ n }}" {% if per_page == n %}selected{% endif %}>{{ n }}</option>
+          {% endfor %}
+        </select>
+      </label>
+
+      <button type="button" class="btn btn-sm btn-ghost gap-1"
+              title="Сбросить все фильтры"
+              hx-get="{% url 'telephony:missed_list' %}"
+              hx-target="#missed-table" hx-swap="innerHTML"
+              onclick="resetMissedFilters()">
+        {% icon "x" size=14 %} Сбросить
+      </button>
+    </form>
+  </div>
+</div>

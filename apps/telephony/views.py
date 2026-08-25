@@ -224,18 +224,47 @@ def _human_duration(seconds: int) -> str:
 @require_calls
 @never_cache
 def panel(request):
-    """Раздел «Звонки».
+    """Раздел «Звонки»: две вкладки — журнал разговоров и реестр пропущенных.
 
     🛑 При НЕ-HTMX заходе (прямая ссылка, F5, возврат после логина) редиректим
     на дашборд с ?open=: панель — это партиал для #content-area, сама по себе
     она отдаётся без вёрстки и без htmx, и выглядит как сломанная страница,
     где ничего не работает. Тот же приём, что в devops.action_poll.
+
+    🛑 Реестр пропущенных — вкладка ЗДЕСЬ, а не отдельный раздел: дашборд
+    принимает в ?open= только адреса пунктов меню, и ссылка из уведомления
+    на собственный URL реестра просто не открылась бы.
     """
     if "HX-Request" not in request.headers:
         params = request.GET.urlencode()
         target = "/telephony/" + (f"?{params}" if params else "")
         return redirect(f"/?open={quote(target, safe='')}")
-    return render(request, "telephony/panel.html", _context(request))
+
+    tab = "missed" if (request.GET.get("tab") or "") == "missed" else "log"
+    if tab == "missed":
+        from .views_missed import missed_context
+        ctx = missed_context(request)
+    else:
+        ctx = _context(request)
+    ctx["tab"] = tab
+    ctx["missed_open_count"] = _missed_open_count(request)
+    return render(request, "telephony/panel.html", ctx)
+
+
+def _missed_open_count(request) -> int:
+    """Сколько обращений ждут ответа — счётчик на вкладке.
+
+    Считаем по тем же правам, что и сам реестр: у рядового в бейдже должно
+    стоять число ЕГО направлений, иначе цифра не сходится с таблицей.
+    """
+    from .models import MissedCall
+    from .permissions import visible_missed
+    try:
+        return visible_missed(request.user).filter(
+            status__in=MissedCall.OPEN_STATUSES).count()
+    except Exception:  # noqa: BLE001 — счётчик не должен ронять раздел
+        logger.debug("не удалось посчитать пропущенные", exc_info=True)
+        return 0
 
 
 @login_required

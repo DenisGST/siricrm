@@ -147,6 +147,15 @@ class CallListen(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     call = models.ForeignKey(
         Call, on_delete=models.CASCADE, related_name="listens", verbose_name="Звонок",
+        null=True, blank=True,
+    )
+    # Голосовое сообщение слушают из реестра пропущенных, и звонка в журнале
+    # у него может не быть вовсе (обращение приехало по хуку диалплана раньше,
+    # чем выгрузка CDR). Протоколировать прослушивание нужно всё равно:
+    # в сообщении звучит клиент.
+    missed_call = models.ForeignKey(
+        "MissedCall", on_delete=models.CASCADE, related_name="listens",
+        null=True, blank=True, verbose_name="Пропущенный звонок",
     )
     employee = models.ForeignKey(
         "core.Employee", on_delete=models.SET_NULL, null=True,
@@ -161,7 +170,8 @@ class CallListen(models.Model):
         ordering = ["-listened_at"]
 
     def __str__(self):
-        return f"{self.employee} → {self.call_id} ({self.listened_at:%d.%m.%Y %H:%M})"
+        target = self.call_id or self.missed_call_id
+        return f"{self.employee} → {target} ({self.listened_at:%d.%m.%Y %H:%M})"
 
 
 class IncomingCallAlert(models.Model):
@@ -215,3 +225,209 @@ class IncomingCallAlert(models.Model):
 
     def __str__(self):
         return f"{self.phone} → {self.employee} ({self.started_at:%d.%m %H:%M})"
+
+
+class CallGroup(models.Model):
+    """Направление входящего звонка: колл-центр, отдел сбора документов, юротдел.
+
+    Справочник, а не хардкод: состав групп на АТС меняется (номера переходят
+    от человека к человеку, отделы переименовываются), и правит его
+    руководитель в CRM, а не программист в диалплане.
+
+    🛑 Группа определяется ДВУМЯ способами, и оба нужны:
+    - ``code`` — приходит из диалплана (``miss_call_cc`` → ``cc``), это точный
+      сигнал: АТС сама знает, куда вела ветка обзвона;
+    - ``extensions`` — резервный путь для звонков, пришедших из CDR без хука
+      (сотрудник набрал внутренний напрямую, звонок брошен в IVR).
+    """
+
+    code = models.CharField(
+        "Код", max_length=16, unique=True,
+        help_text="Тот же код, что диалплан передаёт скриптом уведомления: "
+                  "cc (колл-центр), osd (сбор документов), yuro (юротдел).",
+    )
+    name = models.CharField("Название", max_length=120)
+    extensions = models.CharField(
+        "Внутренние номера", max_length=120, blank=True, default="",
+        help_text="Через запятую: 201,202. По ним группа определяется у "
+                  "звонков, пришедших без сигнала от диалплана.",
+    )
+    department = models.ForeignKey(
+        "core.Department", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="call_groups", verbose_name="Отдел",
+    )
+    notify_department = models.BooleanField(
+        "Уведомлять весь отдел", default=True,
+        help_text="Слать пропущенные всем активным сотрудникам отдела.",
+    )
+    notify_management = models.BooleanField(
+        "Уведомлять руководство", default=False,
+        help_text="Дополнительно слать руководителям (admin / head_dep / "
+                  "managing_partner).",
+    )
+    subscribers = models.ManyToManyField(
+        "core.Employee", blank=True, related_name="call_groups",
+        verbose_name="Дополнительные подписчики",
+        help_text="Кому слать сверх отдела — например, РОПу из другого отдела.",
+    )
+    is_active = models.BooleanField("Активна", default=True)
+
+    class Meta:
+        verbose_name = "Группа входящих звонков"
+        verbose_name_plural = "Группы входящих звонков"
+        ordering = ["name"]
+
+    def __str__(self):
+        return self.name
+
+    @property
+    def extension_list(self) -> list:
+        return [e.strip() for e in (self.extensions or "").split(",") if e.strip()]
+
+
+class MissedCall(models.Model):
+    """Пропущенный входящий — обращение, на которое никто не ответил.
+
+    Заменяет письма с АТС (``sc_send_missed.sh`` / ``sc_send_ticket_*.sh``):
+    почта с АТС не уходит с тех пор, как mail.ru отрезал SMTP на их тарифе,
+    и все обращения терялись молча.
+
+    🛑 Ключ идемпотентности — ``linkedid`` (склейка ног одного звонка), потому
+    что запись создают ДВА независимых источника:
+    1) диалплан по горячим следам (мгновенное уведомление),
+    2) выгрузка CDR агентом раз в 5 минут (страховка, если АТС не достучалась
+       до CRM, и единственный путь для звонков, брошенных в IVR).
+    Оба знают linkedid, поэтому второй источник дополняет запись, а не двоит её.
+    """
+
+    KIND_MISSED = "missed"
+    KIND_VOICEMAIL = "voicemail"
+    KIND_IVR = "ivr"
+    KIND_CHOICES = [
+        (KIND_MISSED, "Никто не ответил"),
+        (KIND_VOICEMAIL, "Голосовое сообщение"),
+        (KIND_IVR, "Бросил трубку в меню"),
+    ]
+
+    STATUS_NEW = "new"
+    STATUS_IN_WORK = "in_work"
+    STATUS_DONE = "done"
+    STATUS_AUTO_DONE = "auto_done"
+    STATUS_IGNORED = "ignored"
+    STATUS_CHOICES = [
+        (STATUS_NEW, "Новый"),
+        (STATUS_IN_WORK, "В работе"),
+        (STATUS_DONE, "Отработан"),
+        (STATUS_AUTO_DONE, "Связались (автоматически)"),
+        (STATUS_IGNORED, "Не требует ответа"),
+    ]
+    OPEN_STATUSES = (STATUS_NEW, STATUS_IN_WORK)
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
+    linkedid = models.CharField(
+        "Linkedid", max_length=32, unique=True,
+        help_text="Ключ звонка целиком (все его ноги) — по нему запись "
+                  "дополняется вторым источником, а не дублируется.",
+    )
+    uniqueid = models.CharField("Uniqueid", max_length=32, blank=True)
+    call = models.ForeignKey(
+        Call, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="missed_records", verbose_name="Звонок в журнале",
+    )
+
+    occurred_at = models.DateTimeField("Когда звонили", db_index=True)
+    kind = models.CharField(
+        "Тип", max_length=10, choices=KIND_CHOICES, default=KIND_MISSED, db_index=True)
+    group = models.ForeignKey(
+        CallGroup, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="missed_calls", verbose_name="Куда звонили",
+    )
+    extension = models.CharField("Внутренний номер", max_length=8, blank=True, default="")
+
+    phone = models.CharField(
+        "Номер звонившего", max_length=32, blank=True, db_index=True,
+        help_text="Нормализованный вид — по нему ищется клиент.",
+    )
+    raw_phone = models.CharField(
+        "Номер как пришёл с АТС", max_length=40, blank=True, default="")
+    client = models.ForeignKey(
+        "crm.Client", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="missed_calls", verbose_name="Клиент",
+    )
+
+    recording = models.ForeignKey(
+        "files.StoredFile", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="voicemails", verbose_name="Голосовое сообщение (mp3)",
+    )
+    voicemail_seconds = models.IntegerField("Длительность сообщения, с", default=0)
+    voicemail_file = models.CharField(
+        "Файл на АТС", max_length=255, blank=True, default="",
+        help_text="Имя wav в /var/spool/asterisk/monitor — по нему агент "
+                  "дошлёт запись после того, как MixMonitor её закроет.",
+    )
+
+    status = models.CharField(
+        "Статус", max_length=10, choices=STATUS_CHOICES,
+        default=STATUS_NEW, db_index=True)
+    assignee = models.ForeignKey(
+        "core.Employee", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="missed_calls", verbose_name="Кто отрабатывает",
+    )
+    handled_at = models.DateTimeField("Отработан", null=True, blank=True)
+    handled_by = models.ForeignKey(
+        "core.Employee", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="missed_calls_handled", verbose_name="Кто закрыл",
+    )
+    closed_by_call = models.ForeignKey(
+        Call, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="closes_missed", verbose_name="Разговор, закрывший обращение",
+    )
+    comment = models.TextField(
+        "Заметки", blank=True, default="",
+        help_text="Накапливаются построчно (HH:MM — текст), как на карточке звонка.",
+    )
+
+    notified_at = models.DateTimeField(
+        "Уведомления разосланы", null=True, blank=True,
+        help_text="🛑 Метка защищает от повторной рассылки: запись трогают оба "
+                  "источника, а уведомление должно уйти один раз.",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Пропущенный звонок"
+        verbose_name_plural = "Пропущенные звонки"
+        ordering = ["-occurred_at"]
+        indexes = [
+            models.Index(fields=["status", "-occurred_at"]),
+            models.Index(fields=["phone", "-occurred_at"]),
+        ]
+
+    def __str__(self):
+        return f"{self.phone or self.raw_phone} → {self.group or '—'} ({self.occurred_at:%d.%m %H:%M})"
+
+    @property
+    def is_open(self) -> bool:
+        return self.status in self.OPEN_STATUSES
+
+    @property
+    def waiting_minutes(self) -> int:
+        """Сколько минут обращение висит без ответа — для подсветки в реестре."""
+        from django.utils import timezone as _tz
+        end = self.handled_at if not self.is_open and self.handled_at else _tz.now()
+        return max(0, int((end - self.occurred_at).total_seconds() // 60))
+
+    @property
+    def waiting_human(self) -> str:
+        """«3 ч 12 мин» — «192 мин» в таблице читается плохо, а сутки ожидания
+        по обращению клиента должны бросаться в глаза."""
+        minutes = self.waiting_minutes
+        if minutes < 60:
+            return f"{minutes} мин"
+        hours, minutes = divmod(minutes, 60)
+        if hours < 24:
+            return f"{hours} ч {minutes} мин"
+        days, hours = divmod(hours, 24)
+        return f"{days} дн {hours} ч"

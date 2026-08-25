@@ -24,6 +24,7 @@
 import argparse
 import configparser
 import fcntl
+import json
 import logging
 import os
 import sqlite3
@@ -73,6 +74,9 @@ def load_config(path):
         "state_db": c.get("state_db", fallback="/var/lib/pbx-agent/state.db"),
         "bitrate": c.getint("bitrate", fallback=24),
         "retention_days": c.getint("retention_days", fallback=30),
+        "voicemail_root": c.get("voicemail_root",
+                                fallback="/var/spool/asterisk/monitor"),
+        "events_spool": c.get("events_spool", fallback="/var/spool/pbx-agent/events"),
         "batch": c.getint("batch", fallback=200),
         "timeout": c.getint("timeout", fallback=120),
     }
@@ -89,6 +93,17 @@ def open_state(path):
         meta_sent   INTEGER DEFAULT 0,
         file_sent   INTEGER DEFAULT 0,
         wav_path    TEXT,
+        wav_deleted INTEGER DEFAULT 0,
+        attempts    INTEGER DEFAULT 0,
+        last_error  TEXT,
+        updated_at  TEXT
+    )""")
+    # Голосовые лежат отдельно от разговоров (/var/spool/asterisk/monitor) и
+    # к строке CDR не привязаны — у них свой учёт, ключ = имя файла, по нему
+    # же CRM находит обращение в реестре пропущенных.
+    conn.execute("""CREATE TABLE IF NOT EXISTS voicemails(
+        filename    TEXT PRIMARY KEY,
+        sent        INTEGER DEFAULT 0,
         wav_deleted INTEGER DEFAULT 0,
         attempts    INTEGER DEFAULT 0,
         last_error  TEXT,
@@ -129,6 +144,32 @@ class Crm:
     def send_calls(self, rows):
         r = self.s.post(f"{self.base}/telephony/agent/calls/",
                         json={"calls": rows}, timeout=self.timeout)
+        r.raise_for_status()
+        return r.json()
+
+    def send_missed_event(self, payload):
+        """Событие «пропущенный / голосовое» из спула диалплана.
+
+        Диалплан шлёт его сам и сразу (см. sc_notify_crm.sh) — здесь мы лишь
+        дошлём то, что не ушло, пока CRM была недоступна.
+        """
+        r = self.s.post(f"{self.base}/telephony/agent/missed/",
+                        json=payload, timeout=self.timeout)
+        if r.status_code == 400:
+            return None          # кривое событие: повторять бессмысленно
+        r.raise_for_status()
+        return r.json()
+
+    def send_voicemail(self, filename, mp3_path):
+        with open(mp3_path, "rb") as fh:
+            r = self.s.post(
+                f"{self.base}/telephony/agent/voicemail/",
+                data={"voicemail_file": filename},
+                files={"file": (filename.rsplit(".", 1)[0] + ".mp3", fh, "audio/mpeg")},
+                timeout=self.timeout,
+            )
+        if r.status_code == 404:
+            return None          # обращение ещё не завели — попробуем позже
         r.raise_for_status()
         return r.json()
 
@@ -349,6 +390,176 @@ def cleanup(cfg, conn, dry_run=False):
 
 
 # --------------------------------------------------------------------------
+# шаг 4: досылка событий о пропущенных, не ушедших с АТС сразу
+# --------------------------------------------------------------------------
+def flush_events(cfg, crm):
+    """Спул ``sc_notify_crm.sh``: события, которые не приняла CRM.
+
+    🛑 Сам скрипт диалплана шлёт событие немедленно — ради того всё и делается
+    (уведомление должно прийти, пока человек ещё может перезвонить). Спул —
+    только страховка на случай, когда CRM была недоступна: тогда обращение
+    доедет с этим проходом, максимум пятью минутами позже.
+    """
+    spool = cfg["events_spool"]
+    if not os.path.isdir(spool):
+        return 0
+
+    sent = failed = 0
+    for name in sorted(os.listdir(spool)):
+        if not name.endswith(".json"):
+            continue
+        path = os.path.join(spool, name)
+        try:
+            with open(path, encoding="utf-8") as fh:
+                payload = json.load(fh)
+        except (OSError, ValueError) as exc:
+            log.warning("событие %s не читается (%s) — убираю", name, exc)
+            _drop_event(path)
+            continue
+        try:
+            resp = crm.send_missed_event(payload)
+        except Exception as exc:
+            log.warning("событие %s не ушло: %s", name, exc)
+            failed += 1
+            continue
+        if resp is None:
+            log.warning("событие %s отвергнуто CRM — убираю", name)
+        _drop_event(path)
+        sent += 1
+
+    # Совсем старое не копим: обращение месячной давности уведомлением уже не
+    # спасти, а спул рос бы бесконечно.
+    horizon = time.time() - 7 * 86400
+    for name in os.listdir(spool):
+        path = os.path.join(spool, name)
+        try:
+            if os.path.getmtime(path) < horizon:
+                _drop_event(path)
+        except OSError:
+            pass
+
+    if sent or failed:
+        log.info("события о пропущенных: отправлено %d, ошибок %d", sent, failed)
+    return sent
+
+
+def _drop_event(path):
+    try:
+        os.unlink(path)
+    except OSError:
+        pass
+
+
+# --------------------------------------------------------------------------
+# шаг 5: голосовые сообщения
+# --------------------------------------------------------------------------
+def sync_voicemails(cfg, conn, crm, limit=None):
+    """Голосовые из /var/spool/asterisk/monitor → CRM (mp3).
+
+    До сих пор эти файлы жили ТОЛЬКО здесь и во вложениях писем, которые не
+    уходят. Слушать их было негде: веб-прослушка на АТС закрыта.
+
+    🛑 Файл берём не раньше, чем через минуту после последней записи:
+    MixMonitor дописывает его до конца сообщения, и ранняя отправка дала бы
+    обрезок. 🛑 Пустышки (44 байта — трубку положили на приветствии) не шлём.
+    """
+    root = cfg["voicemail_root"]
+    if not os.path.isdir(root):
+        return 0
+
+    known = {row[0] for row in conn.execute(
+        "SELECT filename FROM voicemails WHERE sent=1 OR attempts>=?", (MAX_ATTEMPTS,))}
+
+    sent = failed = 0
+    for name in sorted(os.listdir(root)):
+        if not name.lower().endswith(".wav") or name in known:
+            continue
+        if limit and sent >= limit:
+            break
+        path = os.path.join(root, name)
+        try:
+            st = os.stat(path)
+        except OSError:
+            continue
+        if st.st_size < MIN_WAV_BYTES:
+            _mark_vm(conn, name, sent=1, error="пустое сообщение")
+            continue
+        if time.time() - st.st_mtime < MIN_AGE_SECONDS:
+            continue
+
+        mp3_path = None
+        try:
+            mp3_path = convert_to_mp3(path, cfg["bitrate"])
+            resp = crm.send_voicemail(name, mp3_path)
+            if resp is None:
+                # Обращения ещё нет: событие диалплана могло не дойти, его
+                # дошлёт flush_events — вернёмся к файлу следующим проходом.
+                _mark_vm(conn, name, error="обращение в CRM не найдено", bump_attempt=True)
+                continue
+            _mark_vm(conn, name, sent=1, error="")
+            sent += 1
+        except Exception as exc:
+            log.warning("голосовое %s не ушло: %s", name, exc)
+            _mark_vm(conn, name, error=str(exc)[:300], bump_attempt=True)
+            failed += 1
+        finally:
+            if mp3_path and os.path.exists(mp3_path):
+                os.unlink(mp3_path)
+
+    if sent or failed:
+        log.info("голосовые: отправлено %d, ошибок %d", sent, failed)
+    return sent
+
+
+def _mark_vm(conn, filename, sent=None, error=None, bump_attempt=False):
+    conn.execute(
+        """INSERT INTO voicemails(filename, sent, attempts, last_error, updated_at)
+           VALUES(?, ?, ?, ?, ?)
+           ON CONFLICT(filename) DO UPDATE SET
+             sent=COALESCE(?, voicemails.sent),
+             attempts=voicemails.attempts + ?,
+             last_error=?, updated_at=excluded.updated_at""",
+        (filename, sent or 0, 1 if bump_attempt else 0, error or "",
+         datetime.now().isoformat(timespec="seconds"),
+         sent, 1 if bump_attempt else 0, error or ""),
+    )
+    conn.commit()
+
+
+def cleanup_voicemails(cfg, conn, dry_run=False):
+    """Ретенция голосовых — та же логика, что у записей разговоров."""
+    root = cfg["voicemail_root"]
+    horizon = time.time() - cfg["retention_days"] * 86400
+    rows = conn.execute(
+        """SELECT filename FROM voicemails
+           WHERE sent=1 AND wav_deleted=0 AND (last_error IS NULL OR last_error='')"""
+    ).fetchall()
+
+    removed = 0
+    for (filename,) in rows:
+        path = os.path.join(root, filename)
+        try:
+            st = os.stat(path)
+        except OSError:
+            conn.execute("UPDATE voicemails SET wav_deleted=1 WHERE filename=?", (filename,))
+            continue
+        if st.st_mtime > horizon:
+            continue
+        if not dry_run:
+            try:
+                os.unlink(path)
+            except OSError as exc:
+                log.warning("не удалось удалить %s: %s", path, exc)
+                continue
+            conn.execute("UPDATE voicemails SET wav_deleted=1 WHERE filename=?", (filename,))
+        removed += 1
+    conn.commit()
+    if removed:
+        log.info("%s %d голосовых", "нашлось к удалению:" if dry_run else "удалено:", removed)
+    return removed
+
+
+# --------------------------------------------------------------------------
 def main():
     ap = argparse.ArgumentParser(description="Перенос звонков и записей с Asterisk в SiriCRM")
     ap.add_argument("--config", default=DEFAULT_CONFIG)
@@ -397,6 +608,7 @@ def main():
     try:
         if args.cleanup_dry_run:
             cleanup(cfg, conn, dry_run=True)
+            cleanup_voicemails(cfg, conn, dry_run=True)
             return
         if args.backfill:
             log.info("перенос истории: поехали")
@@ -408,11 +620,16 @@ def main():
                 time.sleep(1)  # не выжираем CPU АТС целиком
             log.info("перенос истории завершён")
         else:
+            # Досылку событий делаем ПЕРВОЙ: обращение должно появиться в
+            # реестре раньше, чем к нему поедет голосовое сообщение.
+            flush_events(cfg, crm)
             sync_meta(cfg, conn, crm, db, limit=args.limit)
             if not args.no_recordings:
                 sync_recordings(cfg, conn, crm, limit=args.limit)
+                sync_voicemails(cfg, conn, crm, limit=args.limit)
         if not args.no_cleanup:
             cleanup(cfg, conn)
+            cleanup_voicemails(cfg, conn)
     finally:
         db.close()
         conn.close()

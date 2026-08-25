@@ -1,0 +1,133 @@
+{% load icons %}
+{% comment %}
+  Одна строка реестра пропущенных. Свопится целиком (hx-swap=outerHTML) —
+  после «беру» / «отработан» / заметки меняется и статус, и набор кнопок,
+  поэтому подменять кусок строки бессмысленно.
+
+  🛑 Голосовое НЕ ссылается на S3 напрямую: кнопка дёргает
+  telephony:missed_voicemail, который выдаёт временную ссылку И пишет
+  прослушивание в журнал (в сообщении звучит клиент).
+{% endcomment %}
+<tr class="hover {% if row.status == 'new' %}bg-error/5{% endif %}" id="missed-row-{{ row.id }}">
+
+  <td class="whitespace-nowrap">
+    {{ row.occurred_at|date:"d.m.Y" }}
+    <span class="text-base-content/50">{{ row.occurred_at|date:"H:i" }}</span>
+    {% if row.is_open %}
+      <div class="text-xs {% if row.waiting_minutes > 60 %}text-error{% else %}text-base-content/40{% endif %}"
+           title="Сколько обращение ждёт ответа">
+        ждёт {{ row.waiting_human }}
+      </div>
+    {% endif %}
+  </td>
+
+  <td class="text-center whitespace-nowrap">
+    {% if row.kind == "voicemail" %}
+      <span class="badge badge-info badge-sm" title="Клиент оставил голосовое сообщение">голосовое</span>
+    {% elif row.kind == "ivr" %}
+      <span class="badge badge-ghost badge-sm" title="Положил трубку в голосовом меню">меню</span>
+    {% else %}
+      <span class="badge badge-error badge-sm" title="Никто не ответил">пропущен</span>
+    {% endif %}
+  </td>
+
+  <td class="whitespace-nowrap font-mono text-xs">
+    {% if row.phone %}+{{ row.phone }}{% else %}<span class="text-base-content/40">{{ row.raw_phone|default:"—" }}</span>{% endif %}
+  </td>
+
+  <td class="max-w-xs truncate">
+    {% if row.client %}
+      <a class="link link-hover" href="#" title="Открыть карточку клиента"
+         hx-get="{% url 'chat' row.client.id %}" hx-target="#content-area" hx-swap="innerHTML">
+        {{ row.client.last_name }} {{ row.client.first_name }}
+      </a>
+    {% else %}
+      <button class="btn btn-ghost btn-xs gap-1 text-base-content/50"
+              title="Номера нет в базе — завести клиента с этим телефоном"
+              hx-get="{% url 'client_create' %}?phone={{ row.phone|default:row.raw_phone|urlencode }}"
+              hx-target="body" hx-swap="beforeend">
+        {% icon "user-plus" size=13 %} новый
+      </button>
+    {% endif %}
+  </td>
+
+  <td class="whitespace-nowrap text-xs">
+    {% if row.group %}{{ row.group.name }}{% else %}<span class="text-base-content/30">—</span>{% endif %}
+    {% if row.extension %}<span class="text-base-content/40"> · вн. {{ row.extension }}</span>{% endif %}
+  </td>
+
+  <td class="whitespace-nowrap">
+    {% if row.status == "new" %}
+      <span class="badge badge-error badge-sm">новый</span>
+    {% elif row.status == "in_work" %}
+      <span class="badge badge-warning badge-sm">в работе</span>
+    {% elif row.status == "done" %}
+      <span class="badge badge-success badge-sm">отработан</span>
+    {% elif row.status == "auto_done" %}
+      <span class="badge badge-success badge-sm badge-outline"
+            title="Закрыт автоматически: с номером состоялся разговор">связались</span>
+    {% else %}
+      <span class="badge badge-ghost badge-sm">без ответа не нужен</span>
+    {% endif %}
+    {% if row.assignee %}
+      <div class="text-xs text-base-content/50">{{ row.assignee.user.get_full_name|default:row.assignee.user.username }}</div>
+    {% endif %}
+  </td>
+
+  <td class="text-xs" style="min-width:12rem">
+    {% if row.comment %}
+      <div class="text-base-content/70 whitespace-pre-line">{{ row.comment }}</div>
+    {% endif %}
+    <details class="mt-1">
+      <summary class="cursor-pointer text-base-content/40 select-none">
+        {% if saved %}<span class="text-success">сохранено</span> · {% endif %}+ заметка
+      </summary>
+      {% comment %}
+        🛑 Заметки НАКАПЛИВАЮТСЯ: поле после сохранения пустое, чтобы дописать
+        следующую попытку дозвона, а прежние остаются выше.
+      {% endcomment %}
+      <form class="join w-full mt-1"
+            hx-post="{% url 'telephony:missed_comment' row.id %}"
+            hx-target="closest tr" hx-swap="outerHTML">
+        {% csrf_token %}
+        <input type="text" name="comment" maxlength="2000" autocomplete="off"
+               placeholder="не дозвонился, перезвоню в 15:00"
+               class="input input-bordered input-xs join-item w-full">
+        <button class="btn btn-xs join-item" type="submit">OK</button>
+      </form>
+    </details>
+  </td>
+
+  <td class="text-center whitespace-nowrap">
+    {% if row.phone %}
+      <button class="btn btn-ghost btn-xs" title="Перезвонить: АТС наберёт вас, затем клиента"
+              onclick="crmCall({phone:'{{ row.phone }}'{% if row.client %}, client:'{{ row.client.id }}'{% endif %}}, this)">📞</button>
+    {% endif %}
+    {% if row.recording_id %}
+      <button class="btn btn-ghost btn-xs" title="Прослушать голосовое сообщение"
+              onclick="playVoicemail('{{ row.id }}', this)">▶</button>
+    {% endif %}
+  </td>
+
+  <td class="text-center whitespace-nowrap">
+    {% if row.is_open %}
+      {% if row.status == "new" %}
+        <button class="btn btn-ghost btn-xs" title="Взять в работу — чтобы коллеги не звонили тому же человеку"
+                hx-post="{% url 'telephony:missed_take' row.id %}"
+                hx-target="closest tr" hx-swap="outerHTML">беру</button>
+      {% endif %}
+      <button class="btn btn-ghost btn-xs text-success" title="Связались — обращение отработано"
+              hx-post="{% url 'telephony:missed_close' row.id %}"
+              hx-vals='{"status": "done"}'
+              hx-target="closest tr" hx-swap="outerHTML">{% icon "check" size=14 %}</button>
+      <button class="btn btn-ghost btn-xs text-base-content/40" title="Не требует ответа (робот, ошиблись номером)"
+              hx-post="{% url 'telephony:missed_close' row.id %}"
+              hx-vals='{"status": "ignored"}'
+              hx-target="closest tr" hx-swap="outerHTML">{% icon "ban" size=14 %}</button>
+    {% else %}
+      <button class="btn btn-ghost btn-xs text-base-content/40" title="Вернуть в работу"
+              hx-post="{% url 'telephony:missed_reopen' row.id %}"
+              hx-target="closest tr" hx-swap="outerHTML">{% icon "repeat" size=14 %}</button>
+    {% endif %}
+  </td>
+</tr>

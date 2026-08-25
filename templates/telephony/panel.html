@@ -1,8 +1,11 @@
 {% load icons %}
 {% comment %}
-  Раздел «Звонки» — журнал разговоров и прослушивание записей.
+  Раздел «Звонки»: две вкладки — журнал разговоров и реестр пропущенных.
   Грузится в #content-area (use_htmx-пункт меню), chrome как у «Юриста БФЛ».
-  Панель фильтров статична, таблица свопится в #calls-table.
+
+  🛑 Вкладки перезагружают ВЕСЬ раздел (hx-target=#content-area), а не только
+  таблицу: у вкладок разные панели фильтров, и подменять одну таблицу мало.
+  Внутри вкладки таблица свопится в #calls-table / #missed-table как обычно.
 {% endcomment %}
 <div class="flex flex-col h-full gap-3" id="calls-panel">
 
@@ -11,7 +14,9 @@
     <div>
       <h2 class="text-lg font-bold">Звонки</h2>
       <p class="text-xs text-base-content/70">
-        {% if can_listen_all %}Журнал телефонных разговоров и записи
+        {% if tab == "missed" %}
+          Обращения, на которые никто не ответил
+        {% elif can_listen_all %}Журнал телефонных разговоров и записи
         {% else %}Ваши звонки и записи разговоров{% endif %}
         {% if f.client %}· отфильтровано по клиенту{% endif %}
       </p>
@@ -25,9 +30,31 @@
     {% endif %}
   </div>
 
-  {% include "telephony/partials/_calls_filters.html" %}
-
-  <div class="flex-1 min-h-0 overflow-auto" id="calls-table">
-    {% include "telephony/partials/_call_list.html" %}
+  <div role="tablist" class="tabs tabs-boxed self-start">
+    <a role="tab" class="tab {% if tab != 'missed' %}tab-active{% endif %} gap-1.5"
+       hx-get="{% url 'telephony:panel' %}"
+       hx-target="#content-area" hx-swap="innerHTML">
+      {% icon "list-filter" size=14 %} Журнал
+    </a>
+    <a role="tab" class="tab {% if tab == 'missed' %}tab-active{% endif %} gap-1.5"
+       hx-get="{% url 'telephony:panel' %}?tab=missed"
+       hx-target="#content-area" hx-swap="innerHTML">
+      {% icon "phone" size=14 %} Пропущенные
+      {% if missed_open_count %}
+        <span class="badge badge-error badge-sm">{{ missed_open_count }}</span>
+      {% endif %}
+    </a>
   </div>
+
+  {% if tab == "missed" %}
+    {% include "telephony/partials/_missed_filters.html" %}
+    <div class="flex-1 min-h-0 overflow-auto" id="missed-table">
+      {% include "telephony/partials/_missed_list.html" %}
+    </div>
+  {% else %}
+    {% include "telephony/partials/_calls_filters.html" %}
+    <div class="flex-1 min-h-0 overflow-auto" id="calls-table">
+      {% include "telephony/partials/_call_list.html" %}
+    </div>
+  {% endif %}
 </div>

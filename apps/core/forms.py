@@ -380,7 +380,7 @@ class ProfileForm(forms.ModelForm):
     class Meta:
         model = Employee
         fields = ["patronymic", "phone_mobile", "notify_court_events_max",
-                  "notify_court_events_telegram"]
+                  "notify_court_events_telegram", "notify_missed_calls"]
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
