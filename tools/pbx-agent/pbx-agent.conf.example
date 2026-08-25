@@ -15,6 +15,12 @@ db_password = ЗАМЕНИТЬ
 db_name     = asterisk
 
 records_root = /records
+# Голосовые сообщения (MixMonitor из mess_rec_*/order_ticket).
+voicemail_root = /var/spool/asterisk/monitor
+# 🛑 Голосовые старше этого возраста не переносим: обращения в реестре CRM
+# заводятся только по свежим звонкам, и старому файлу не к чему прикрепиться —
+# агент впустую пережимал бы в mp3 сотни архивных сообщений на каждом проходе.
+voicemail_max_age_days = 2
 state_db     = /var/lib/pbx-agent/state.db
 
 # 24 кбит/с моно — примерно пятикратное сжатие при хорошей разборчивости речи.

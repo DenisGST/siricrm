@@ -76,6 +76,7 @@ def load_config(path):
         "retention_days": c.getint("retention_days", fallback=30),
         "voicemail_root": c.get("voicemail_root",
                                 fallback="/var/spool/asterisk/monitor"),
+        "voicemail_max_age_days": c.getint("voicemail_max_age_days", fallback=2),
         "events_spool": c.get("events_spool", fallback="/var/spool/pbx-agent/events"),
         "batch": c.getint("batch", fallback=200),
         "timeout": c.getint("timeout", fallback=120),
@@ -470,6 +471,15 @@ def sync_voicemails(cfg, conn, crm, limit=None):
     known = {row[0] for row in conn.execute(
         "SELECT filename FROM voicemails WHERE sent=1 OR attempts>=?", (MAX_ATTEMPTS,))}
 
+    # 🛑 Историю не тянем. В каталоге лежат сообщения за месяцы (330 файлов на
+    # 25.08.2026, с апреля), а обращения в реестре CRM заводятся только по
+    # свежим звонкам — у старых файлов там просто нет к чему прикрепиться.
+    # Без этого порога агент на каждом проходе пережимал в mp3 и слал впустую
+    # сотни файлов, получая 404: 654 попытки и минуты CPU АТС за один вечер,
+    # и так до исчерпания MAX_ATTEMPTS. Разовый перенос архива — отдельная
+    # задача (и решать её надо со стороны CRM, а не досылкой файлов).
+    horizon = time.time() - max(0, cfg["voicemail_max_age_days"]) * 86400
+
     sent = failed = 0
     for name in sorted(os.listdir(root)):
         if not name.lower().endswith(".wav") or name in known:
@@ -480,6 +490,9 @@ def sync_voicemails(cfg, conn, crm, limit=None):
         try:
             st = os.stat(path)
         except OSError:
+            continue
+        if st.st_mtime < horizon:
+            _mark_vm(conn, name, sent=1, error="старше горизонта переноса")
             continue
         if st.st_size < MIN_WAV_BYTES:
             _mark_vm(conn, name, sent=1, error="пустое сообщение")
@@ -530,6 +543,10 @@ def cleanup_voicemails(cfg, conn, dry_run=False):
     """Ретенция голосовых — та же логика, что у записей разговоров."""
     root = cfg["voicemail_root"]
     horizon = time.time() - cfg["retention_days"] * 86400
+    # 🛑 Удаляем только реально переданное. Помеченное «старше горизонта» или
+    # «пустое сообщение» тоже несёт sent=1 (чтобы не долбиться в него каждый
+    # проход), но в CRM его нет — удалить такой файл значило бы уничтожить
+    # единственную копию сообщения клиента.
     rows = conn.execute(
         """SELECT filename FROM voicemails
            WHERE sent=1 AND wav_deleted=0 AND (last_error IS NULL OR last_error='')"""
