@@ -78,7 +78,7 @@ class EmployeeFullEditForm(forms.ModelForm):
         fields = [
             "department", "role", "dashboard_config",
             "has_messenger_access", "accept_telegram_leads", "can_handle_scans", "scanner_name", "is_owner",
-            "can_edit_finance", "can_view_all_clients",
+            "can_edit_finance", "can_view_all_clients", "can_access_callcenter",
             "patronymic",
             "phone_mobile", "phone_internal",
             "services_allowed",

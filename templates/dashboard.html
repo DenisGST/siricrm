@@ -1586,6 +1586,17 @@ document.addEventListener('htmx:afterRequest', (event) => {
       applyCallAlert(raw);
     }
 
+    // Модалка «Результат звонка» (apps.callcenter) — по WS приходит только
+    // маркер с id, саму модалку тянем запросом: собирать её в процессе
+    // слушателя АТС нельзя (нет ни request, ни csrf).
+    if (raw.includes('data-call-result-push=')) {
+      var m = raw.match(/data-call-result-push="([^"]+)"/);
+      if (m && !document.getElementById('cc-result-modal')) {
+        htmx.ajax('GET', '/callcenter/call/' + m[1] + '/result/',
+                  { target: 'body', swap: 'beforeend' });
+      }
+    }
+
     if (raw.includes('data-chat-message="1"')) {
       playIncomingChatSound();
       setTimeout(() => {

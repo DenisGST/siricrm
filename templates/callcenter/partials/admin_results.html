@@ -1,0 +1,64 @@
+<div id="callcenter-results"
+     hx-trigger="reloadCallcenterResults from:body"
+     hx-get="{% url 'callcenter:admin_results' %}"
+     hx-swap="outerHTML">
+
+  <div class="flex justify-between items-center mb-3">
+    <div>
+      <h3 class="font-semibold">Результаты звонков</h3>
+      <p class="text-xs text-base-content/60">
+        Из чего оператор выбирает в модалке, всплывающей после разговора.
+      </p>
+    </div>
+    <button class="btn btn-primary btn-sm"
+            hx-get="{% url 'callcenter:admin_result_add' %}"
+            hx-target="body" hx-swap="beforeend">
+      + Добавить результат
+    </button>
+  </div>
+
+  <div class="overflow-x-auto">
+    <table class="table table-sm table-zebra">
+      <thead>
+        <tr>
+          <th>Порядок</th><th>Название</th><th>Подсказка</th>
+          <th>Предлагать действие</th><th>Звонков</th><th>Статус</th><th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in results %}
+        <tr>
+          <td class="text-xs">{{ r.order }}</td>
+          <td>
+            <span class="inline-flex items-center gap-1 font-medium">
+              <span class="cc-col-dot" style="--cc-accent: oklch(var({{ r.color_var }}));"></span>
+              {{ r.name }}
+            </span>
+          </td>
+          <td class="text-xs">{{ r.hint|default:"—" }}</td>
+          <td class="text-xs">{% if r.suggest_next_action %}да{% else %}—{% endif %}</td>
+          <td class="text-xs">{{ r.outcomes.count }}</td>
+          <td>
+            {% if r.is_active %}<span class="badge badge-success badge-xs">Вкл</span>
+            {% else %}<span class="badge badge-ghost badge-xs">Выкл</span>{% endif %}
+          </td>
+          <td class="text-right whitespace-nowrap">
+            <button class="btn btn-xs btn-outline"
+                    hx-get="{% url 'callcenter:admin_result_edit' r.pk %}"
+                    hx-target="body" hx-swap="beforeend">Изменить</button>
+            <button class="btn btn-xs btn-error btn-outline"
+                    hx-post="{% url 'callcenter:admin_result_delete' r.pk %}"
+                    hx-confirm="Удалить результат «{{ r.name }}»?"
+                    hx-target="#cc-res-error" hx-swap="innerHTML">Удалить</button>
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="7" class="text-center text-base-content/60">
+          Список пуст — оператору будет нечего выбрать
+        </td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div id="cc-res-error" class="mt-2"></div>
+</div>

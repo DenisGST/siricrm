@@ -1,0 +1,29 @@
+{% comment %}Содержимое одной колонки доски: карточки + «показать ещё» +
+OOB-обновление счётчика в шапке колонки (счётчик живёт вне этого контейнера).{% endcomment %}
+{% for card in cards %}
+  {% include "callcenter/partials/_card.html" with card=card client=card.client now=now %}
+{% empty %}
+  {% if offset == 0 %}
+    <div class="cc-empty-col">Пусто</div>
+  {% endif %}
+{% endfor %}
+
+{% if has_more %}
+{% comment %}intersect с root самой колонки — она скроллится внутри себя,
+от viewport'а документа reveal не сработает. Клик — запасной способ.{% endcomment %}
+<button type="button" class="cc-more"
+        hx-get="{% url 'callcenter:column' column.id %}?offset={{ next_offset }}"
+        hx-target="this" hx-swap="outerHTML"
+        hx-trigger="intersect root:#cc-col-{{ column.id }} threshold:0.1, click"
+        hx-disabled-elt="this"
+        hx-include="#cc-filter-form">
+  Показать ещё {{ page_size }} <span style="opacity:.6">(осталось {{ remaining }})</span>
+</button>
+{% endif %}
+
+{% if offset == 0 %}
+<span id="cc-count-{{ column.id }}" hx-swap-oob="true"
+      data-limit="{{ column.wip_limit }}"
+      class="cc-col-count{% if over_limit %} cc-col-count-over{% endif %}"
+      {% if column.wip_limit %}title="Лимит колонки: {{ column.wip_limit }}"{% endif %}>{{ count }}{% if column.wip_limit %}<span class="cc-col-limit">/{{ column.wip_limit }}</span>{% endif %}</span>
+{% endif %}

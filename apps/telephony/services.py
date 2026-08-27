@@ -240,6 +240,8 @@ def upsert_call(row: dict) -> tuple:
     if existing is None:
         call = Call.objects.create(uniqueid=uniqueid, **fields)
         _sync_missed_register(call)
+        _sync_callcenter_board(call)
+        _sync_callcenter_result(call)
         return call, True
 
     merged = dict(fields)
@@ -337,6 +339,54 @@ def place_call(employee, phone: str):
 # исторических звонков) насыпал бы в реестр тысячи «новых» обращений
 # двухлетней давности, и работать с ним стало бы невозможно.
 MISSED_REGISTER_MAX_AGE_HOURS = 48
+
+
+def _sync_callcenter_board(call) -> None:
+    """Доска колл-центра: входящий с неизвестного номера → карточка.
+
+    Это СТРАХОВОЧНЫЙ путь. Основной — слушатель AMI: он ставит карточку, пока
+    телефон ещё звонит. Но до трубки доходит не всякий звонок (оборвался в
+    голосовом меню — ``DialBegin`` не было вовсе), а CDR приходит на любой,
+    поэтому дублируем здесь. Обе точки идемпотентны: карточка у клиента одна.
+
+    🛑 Ошибки глотаем — доска не должна ронять приём звонков с АТС.
+    """
+    try:
+        if call.direction != Call.DIRECTION_IN or call.client_id or not call.counterparty_phone:
+            return
+        from apps.callcenter.intake import handle_unknown_incoming_call
+
+        # Сырой CallerID («"Иван" <89001234567>») — разбирает его intake:
+        # здешний parse_clid понимает только внутренние трёхзначные номера.
+        client = handle_unknown_incoming_call(
+            call.counterparty_phone, clid_name=call.clid, started_at=call.started_at,
+        )
+        if client is not None:
+            # Раз клиент теперь есть — привязываем к нему сам звонок, иначе
+            # в журнале и в истории клиента разговор остался бы «ничьим».
+            Call.objects.filter(pk=call.pk, client__isnull=True).update(client=client)
+            call.client = client
+    except Exception:  # noqa: BLE001
+        logger.exception("колл-центр: не удалось обработать звонок %s",
+                         getattr(call, "uniqueid", "?"))
+
+
+def _sync_callcenter_result(call) -> None:
+    """Спросить у оператора результат звонка (страховка к слушателю AMI).
+
+    Слушатель ловит не всё: контейнер могли перезапустить, связь с АТС
+    могла оборваться. CDR приходит на каждый звонок, поэтому дублируем.
+    Идемпотентно по ключу «uniqueid + внутренний номер».
+
+    🛑 Ошибки глотаем — приём звонков с АТС важнее модалки.
+    """
+    try:
+        from apps.callcenter.calls import link_call
+
+        link_call(call)
+    except Exception:  # noqa: BLE001
+        logger.exception("колл-центр: результат звонка %s не запрошен",
+                         getattr(call, "uniqueid", "?"))
 
 
 def _sync_missed_register(call) -> None:

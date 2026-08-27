@@ -1,0 +1,134 @@
+{% load icons %}
+<div id="callcenter-columns"
+     hx-trigger="reloadCallcenterColumns from:body"
+     hx-get="{% url 'callcenter:admin_columns' %}"
+     hx-swap="outerHTML">
+
+  <div class="flex justify-between items-center mb-3">
+    <div>
+      <h3 class="font-semibold">Колонки доски колл-центра</h3>
+      <p class="text-xs text-base-content/60">
+        Название, порядок, цвет и лимит колонок рабочего места оператора (раздел «Колл-центр»).
+      </p>
+    </div>
+    <button class="btn btn-primary btn-sm"
+            hx-get="{% url 'callcenter:admin_column_add' %}"
+            hx-target="body" hx-swap="beforeend">
+      + Добавить колонку
+    </button>
+  </div>
+
+  {% if columns and not catch_calls %}
+    <div class="alert alert-warning text-sm mb-3">
+      Входящие звонки с неизвестных номеров сейчас <b>не попадают на доску</b> —
+      ни одна колонка их не ловит. Отметьте приёмник в настройках нужной колонки.
+    </div>
+  {% endif %}
+  {% if columns and not catch_leads %}
+    <div class="alert alert-warning text-sm mb-3">
+      Лиды из Telegram-канала сейчас <b>не попадают на доску</b> —
+      ни одна колонка их не ловит.
+    </div>
+  {% endif %}
+  {% if not has_default and columns %}
+    <div class="alert alert-warning text-sm mb-3">
+      Не выбрана колонка по умолчанию — добавленные на доску клиенты попадут в первую активную.
+    </div>
+  {% endif %}
+
+  {% comment %}Предпросмотр: админ видит доску ровно в том порядке и цветах,
+  в каком её увидит оператор — без перехода в раздел.{% endcomment %}
+  {% if columns %}
+  <div class="cc-preview">
+    {% for col in columns %}
+      {% if col.is_active %}
+      <div class="cc-preview-col" style="--cc-accent: oklch(var({{ col.color_var }}));">
+        <span class="cc-col-dot"></span>
+        <span class="cc-preview-name">{{ col.name }}</span>
+        {% if col.catch_unknown_calls %}<span class="cc-catch" title="Ловит входящие звонки с неизвестных номеров">☎</span>{% endif %}
+        {% if col.catch_telegram_leads %}<span class="cc-catch" title="Ловит лиды из Telegram-канала">✈</span>{% endif %}
+        <span class="cc-preview-count">{{ col.cards_count }}</span>
+      </div>
+      {% endif %}
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <div class="overflow-x-auto">
+    <table class="table table-sm table-zebra">
+      <thead>
+        <tr>
+          <th style="width:5rem;">Порядок</th>
+          <th>Название</th>
+          <th>Цвет</th>
+          <th>Автонаполнение</th>
+          <th>Лимит</th>
+          <th>Карточек</th>
+          <th>Статус</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for col in columns %}
+        <tr>
+          <td>
+            <span class="inline-flex items-center gap-1">
+              <button class="btn btn-xs btn-ghost px-1" title="Левее"
+                      hx-post="{% url 'callcenter:admin_column_move' col.pk 'up' %}">{% icon "chevron-left" size=13 %}</button>
+              <button class="btn btn-xs btn-ghost px-1" title="Правее"
+                      hx-post="{% url 'callcenter:admin_column_move' col.pk 'down' %}">{% icon "chevron-right" size=13 %}</button>
+            </span>
+          </td>
+          <td>
+            <span class="font-medium">{{ col.name }}</span>
+            {% if col.is_default %}<span class="badge badge-primary badge-xs ml-1">по умолчанию</span>{% endif %}
+            {% if col.description %}<div class="text-xs text-base-content/60">{{ col.description }}</div>{% endif %}
+          </td>
+          <td>
+            <span class="inline-flex items-center gap-1 text-xs">
+              <span class="cc-col-dot" style="--cc-accent: oklch(var({{ col.color_var }}));"></span>
+              {{ col.get_color_display }}
+            </span>
+          </td>
+          <td class="text-xs">
+            {% if col.catch_unknown_calls %}<div>☎ звонки с неизвестных</div>{% endif %}
+            {% if col.catch_telegram_leads %}<div>✈ лиды Telegram</div>{% endif %}
+            {% if not col.catch_unknown_calls and not col.catch_telegram_leads %}—{% endif %}
+          </td>
+          <td class="text-xs">{% if col.wip_limit %}{{ col.wip_limit }}{% else %}—{% endif %}</td>
+          <td class="text-xs">{{ col.cards_count }}</td>
+          <td>
+            {% if col.is_active %}
+              <span class="badge badge-success badge-xs">Вкл</span>
+            {% else %}
+              <span class="badge badge-ghost badge-xs">Выкл</span>
+            {% endif %}
+          </td>
+          <td class="text-right whitespace-nowrap">
+            <button class="btn btn-xs btn-outline"
+                    hx-get="{% url 'callcenter:admin_column_edit' col.pk %}"
+                    hx-target="body" hx-swap="beforeend">
+              Изменить
+            </button>
+            {% comment %}Ошибку удаления (в колонке есть карточки) показываем
+            на месте — вью отдаёт 409 с текстом, htmx его не свапает по
+            умолчанию, поэтому целимся в баннер.{% endcomment %}
+            <button class="btn btn-xs btn-error btn-outline"
+                    hx-post="{% url 'callcenter:admin_column_delete' col.pk %}"
+                    hx-confirm="Удалить колонку «{{ col.name }}»?"
+                    hx-target="#cc-col-error" hx-swap="innerHTML">
+              Удалить
+            </button>
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="8" class="text-center text-base-content/60">
+          Колонок нет — доска оператора пока пустая
+        </td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div id="cc-col-error" class="mt-2"></div>
+</div>

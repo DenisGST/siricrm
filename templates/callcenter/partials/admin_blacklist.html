@@ -1,0 +1,88 @@
+{% load icons %}
+<div id="callcenter-blacklist"
+     hx-trigger="reloadCallcenterBlacklist from:body"
+     hx-get="{% url 'callcenter:admin_blacklist' %}"
+     hx-swap="outerHTML">
+
+  <div class="flex justify-between items-start mb-3 gap-3 flex-wrap">
+    <div>
+      <h3 class="font-semibold">Чёрный список номеров</h3>
+      <p class="text-xs text-base-content/60">
+        Звонок с такого номера не заводит клиента и не создаёт карточку на доске.
+        В журнале звонков и в реестре пропущенных он остаётся — это факт, его не прячем.
+        Активных записей: <b>{{ total }}</b>.
+      </p>
+    </div>
+    <label class="input input-bordered input-sm flex items-center gap-2" style="max-width:16rem;">
+      {% icon "search" size=14 %}
+      <input type="search" name="q" value="{{ q }}" placeholder="номер или причина" class="grow"
+             hx-get="{% url 'callcenter:admin_blacklist' %}"
+             hx-trigger="keyup changed delay:350ms, search"
+             hx-target="#callcenter-blacklist" hx-swap="outerHTML">
+    </label>
+  </div>
+
+  {% comment %}Добавление — форма в одну строку: номер в любом виде,
+  нормализует его intake.block_phone.{% endcomment %}
+  <form class="flex items-end gap-2 flex-wrap mb-3"
+        hx-post="{% url 'callcenter:blacklist_add' %}"
+        hx-target="#cc-bl-error" hx-swap="innerHTML"
+        hx-on::after-request="if(event.detail.successful) this.reset()">
+    {% csrf_token %}
+    <label class="block">
+      <span class="label-text text-xs">Номер</span>
+      <input type="text" name="phone" required placeholder="89001234567"
+             class="input input-bordered input-sm w-48">
+    </label>
+    <label class="block grow" style="min-width:14rem;">
+      <span class="label-text text-xs">Причина</span>
+      <input type="text" name="comment" placeholder="робот-обзвон, реклама…"
+             class="input input-bordered input-sm w-full">
+    </label>
+    <button type="submit" class="btn btn-primary btn-sm">Заблокировать</button>
+  </form>
+  <div id="cc-bl-error" class="mb-2"></div>
+
+  <div class="overflow-x-auto">
+    <table class="table table-sm table-zebra">
+      <thead>
+        <tr>
+          <th>Номер</th>
+          <th>Причина</th>
+          <th>Кто добавил</th>
+          <th>Срабатываний</th>
+          <th>Последний звонок</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for e in entries %}
+        <tr {% if not e.is_active %}class="opacity-50"{% endif %}>
+          <td class="font-medium whitespace-nowrap">{{ e.display_phone }}</td>
+          <td class="text-xs">{{ e.comment|default:"—" }}</td>
+          <td class="text-xs">
+            {% if e.added_by %}{{ e.added_by.user.last_name }} {{ e.added_by.user.first_name }}
+            {% else %}—{% endif %}
+          </td>
+          <td class="text-xs">{{ e.hits }}</td>
+          <td class="text-xs whitespace-nowrap">
+            {% if e.last_seen_at %}{{ e.last_seen_at|date:"d.m.Y H:i" }}{% else %}—{% endif %}
+          </td>
+          <td class="text-right">
+            <button class="btn btn-xs btn-outline"
+                    hx-post="{% url 'callcenter:blacklist_delete' e.pk %}"
+                    hx-confirm="Убрать {{ e.display_phone }} из чёрного списка? Звонки с него снова начнут попадать на доску."
+                    hx-swap="none">
+              Разблокировать
+            </button>
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="6" class="text-center text-base-content/60">
+          {% if q %}По «{{ q }}» ничего нет{% else %}Список пуст{% endif %}
+        </td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>

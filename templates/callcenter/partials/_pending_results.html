@@ -1,0 +1,13 @@
+{% comment %}Счётчик звонков без результата в шапке доски. Пусто — блок
+не занимает места; есть долг — кнопка открывает последний звонок.{% endcomment %}
+<span id="cc-pending" hx-get="{% url 'callcenter:call_result_pending' %}"
+      hx-trigger="callcenterPendingChanged from:body" hx-swap="outerHTML">
+  {% if count and latest %}
+    <button type="button" class="cc-pending-btn"
+            hx-get="{% url 'callcenter:call_result_modal' latest.id %}"
+            hx-target="body" hx-swap="beforeend"
+            title="Звонки, по которым не записан результат">
+      Без результата: {{ count }}
+    </button>
+  {% endif %}
+</span>

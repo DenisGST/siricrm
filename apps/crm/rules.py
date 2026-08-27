@@ -13,7 +13,8 @@
   Employee.is_owner, сотрудник отдела с Department.sees_all_clients=True.
   Остальные — клиента, где они в ``Client.employees`` ИЛИ в
   ``Service.employees`` его услуг ИЛИ у его услуги ``common_status.department``
-  совпадает с их отделом.
+  совпадает с их отделом ИЛИ клиент стоит на доске колл-центра, а у
+  сотрудника есть ``Employee.can_access_callcenter``.
 * **Услуга** — admin/head_dep/superuser — все; остальные — назначенные
   (``Service.employees``) или тип услуги в ``services_allowed``.
 
@@ -105,6 +106,24 @@ def is_responsible_for_service(user, service):
 
 
 @rules.predicate
+def is_callcenter_board_client(user, client):
+    """Клиент стоит на доске колл-центра, а пользователь — её оператор.
+
+    🛑 Согласовано с ``Client.objects.visible_to``. Правило узкое: клиент,
+    заведённый по звонку с неизвестного номера, не имеет ни ответственного,
+    ни услуг, и без этого оператор не смог бы открыть даже ту карточку,
+    которую сам обрабатывает. Услуг правило не открывает — ``view_service``
+    не меняем.
+    """
+    emp = get_employee(user)
+    if not emp or not client or not getattr(emp, "can_access_callcenter", False):
+        return False
+    from apps.callcenter.models import CallCenterCard
+
+    return CallCenterCard.objects.filter(client=client).exists()
+
+
+@rules.predicate
 def is_allowed_service_type(user, service):
     """У сотрудника тип услуги доступен (Employee.services_allowed)."""
     emp = get_employee(user)
@@ -123,6 +142,7 @@ view_client = (
     | is_responsible_for_client           # Client.employees
     | is_responsible_for_client_service   # Service.employees услуг клиента
     | is_in_client_service_step_dept      # Service.common_status.department == моему отделу
+    | is_callcenter_board_client          # клиент на доске колл-центра, а он оператор
 )
 edit_client = view_client          # кто видит, тот и редактирует
 delete_client = is_admin_p          # удаление только admin/superuser

@@ -274,6 +274,12 @@ class Employee(models.Model):
                   "Точечный флаг — обычно даётся бухгалтерии; можно выдать "
                   "руководству (managing_partner) без изменения роли.",
     )
+    can_access_callcenter = models.BooleanField(
+        "Рабочее место колл-центра", default=False,
+        help_text="Доступ к доске колл-центра (раздел «Колл-центр»). "
+                  "Гейт точечным флагом, а не ролью: роль operator — "
+                  "значение по умолчанию у всех, кому её не меняли.",
+    )
     can_view_all_clients = models.BooleanField(
         "Видит всех клиентов", default=False,
         help_text="Точечный доступ ко всей клиентской базе без смены роли. "

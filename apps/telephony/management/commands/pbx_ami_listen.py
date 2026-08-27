@@ -19,6 +19,8 @@ from django.conf import settings
 from django.core.management.base import BaseCommand
 
 from apps.telephony.ami import AmiClient, AmiError
+from apps.callcenter.calls import open_prompt
+from apps.callcenter.intake import handle_unknown_incoming_call
 from apps.telephony.notifications import finish_incoming_call, register_incoming_call
 from apps.telephony.services import is_extension, normalize_counterparty, resolve_client
 
@@ -116,6 +118,21 @@ class Command(BaseCommand):
 
         phone = normalize_counterparty(caller)
         client = resolve_client(phone) if phone else None
+        if client is None and phone:
+            # Номера нет в базе — заводим неидентифицированного клиента и
+            # ставим его карточку на доску колл-центра, пока телефон ещё
+            # звонит. Источник выключен (нет колонки-приёмника) — вернётся
+            # None, и всё остаётся как было.
+            # 🛑 …or resolve_client: при параллельном обзвоне (201 и 202
+            # звонят разом) клиента заводит ПЕРВАЯ нога, а остальным intake
+            # честно отвечает «не моё дело» — без повторного поиска у них
+            # всплывашка осталась бы без клиента.
+            client = handle_unknown_incoming_call(
+                phone, clid_name=(p.get("CallerIDName") or "")
+            ) or resolve_client(phone)
+            if client is not None:
+                self._say(f"неизвестный номер {phone} → заведён клиент "
+                          f"{client.pk} и карточка на доске колл-центра")
         register_incoming_call(
             employee,
             channel_key=self._key(p),
@@ -126,28 +143,74 @@ class Command(BaseCommand):
                   f"клиент: {client or 'не найден'} — всплывашка отправлена")
 
     def _on_dial_end(self, p: dict):
-        """Звонок завершился — отмечаем итог, но карточку НЕ убираем.
+        """Звонок завершился — отмечаем итог и спрашиваем результат.
 
-        🛑 Она должна висеть, пока сотрудник сам её не уберёт: человек мог
-        отойти, и вернувшись должен увидеть, что ему звонили. Меняется только
-        вид — неотвеченный становится красным «Пропущенный звонок».
+        🛑 Карточку «вам звонили» НЕ убираем: она должна висеть, пока
+        сотрудник сам её не уберёт — человек мог отойти и, вернувшись, должен
+        увидеть, что ему звонили. Меняется только вид — неотвеченный
+        становится красным «Пропущенный звонок».
+
+        Два случая. ВХОДЯЩИЙ — внутренний номер в DestChannel (кому звонили).
+        ИСХОДЯЩИЙ — внутренний номер в Channel (кто звонит), а назначение
+        внешнее; на такие события всплывашка не рисуется, но результат
+        разговора нужен так же, как по входящему.
         """
+        status = (p.get("DialStatus") or "").strip().upper()
+        answered = status == "ANSWER"
+
         extension = self._dest_extension(p)
-        if not extension:
+        if extension:
+            employee = self._employee_for(extension)
+            if employee is None:
+                return
+            alert = finish_incoming_call(employee, channel_key=self._key(p),
+                                         answered=answered)
+            if alert is not None:
+                self._say(f"DialEnd вн.{extension}: {status or '—'} → "
+                          f"{'принят' if alert.answered else 'ПРОПУЩЕН'}")
+            self._ask_result(employee, p, direction="in", answered=answered,
+                             raw_phone=p.get("CallerIDNum") or "",
+                             key=self._key(p))
             return
-        employee = self._employee_for(extension)
+
+        # Исходящий: внутренний номер — источник звонка.
+        src_ext = self._src_extension(p)
+        if not src_ext:
+            return
+        employee = self._employee_for(src_ext)
         if employee is None:
             return
-        status = (p.get("DialStatus") or "").strip().upper()
-        alert = finish_incoming_call(employee, channel_key=self._key(p),
-                                     answered=(status == "ANSWER"))
-        if alert is not None:
-            self._say(f"DialEnd вн.{extension}: {status or '—'} → "
-                      f"{'принят' if alert.answered else 'ПРОПУЩЕН'}")
+        # Кому звонили: у исходящей ноги это назначение набора.
+        raw = (p.get("DialString") or p.get("ConnectedLineNum")
+               or p.get("DestCallerIDNum") or "")
+        if is_extension(raw):
+            return          # звонок коллеге — не работа с клиентом
+        self._ask_result(employee, p, direction="out", answered=answered,
+                         raw_phone=raw,
+                         key=(p.get("Uniqueid") or "") + ":" + src_ext)
+
+    def _ask_result(self, employee, p: dict, *, direction: str, answered: bool,
+                    raw_phone: str, key: str):
+        """Показать оператору модалку «Результат звонка»."""
+        phone = normalize_counterparty(raw_phone)
+        outcome = open_prompt(
+            employee, channel_key=key, direction=direction,
+            phone=phone or raw_phone, client=resolve_client(phone) if phone else None,
+            answered=answered,
+        )
+        if outcome is not None:
+            self._say(f"результат звонка ({direction}) запрошен у {employee}: "
+                      f"{phone or raw_phone or '—'}")
 
     @staticmethod
     def _dest_extension(p: dict) -> str:
         m = CHANNEL_EXT_RE.match(p.get("DestChannel") or "")
+        return m.group(1) if m else ""
+
+    @staticmethod
+    def _src_extension(p: dict) -> str:
+        """Внутренний номер ЗВОНЯЩЕГО — по нему опознаём исходящий звонок."""
+        m = CHANNEL_EXT_RE.match(p.get("Channel") or "")
         return m.group(1) if m else ""
 
     @staticmethod

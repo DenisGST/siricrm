@@ -256,6 +256,10 @@ def create_lead_from_parsed(data: dict) -> Client:
             comment=desc,
         )
         logger.info("lead %s: дубль по телефону, клиент %s", number, existing.id)
+        # Повторная заявка — тоже работа для оператора: ставим на доску.
+        # Если карточка уже есть, ничего не меняется (idempotent).
+        from apps.callcenter.intake import handle_telegram_lead
+        handle_telegram_lead(existing, source_label=source_label, repeat=True)
         return existing
 
     client = Client.objects.create(
@@ -276,6 +280,8 @@ def create_lead_from_parsed(data: dict) -> Client:
     if answers_text:
         desc += "\n\nДанные заявки:\n" + answers_text
     route_new_lead(client, source_label=source_label, event_description=desc)
+    from apps.callcenter.intake import handle_telegram_lead
+    handle_telegram_lead(client, source_label=source_label)
     return client
 
 

@@ -17,6 +17,11 @@
        onclick="setAdminTab(this)">
       Дашборды
     </a>
+    <a class="tab {% if active_tab == 'callcenter' %}tab-active{% endif %}"
+       hx-get="{% url 'callcenter:admin_panel' %}" hx-target="#admin-content" hx-swap="innerHTML"
+       onclick="setAdminTab(this)">
+      Колл-центр
+    </a>
     <a class="tab {% if active_tab == 'menu' %}tab-active{% endif %}"
        hx-get="{% url 'core:admin_menu_items' %}" hx-target="#admin-content" hx-swap="innerHTML"
        onclick="setAdminTab(this)">

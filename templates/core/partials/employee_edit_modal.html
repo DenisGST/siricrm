@@ -138,6 +138,13 @@ can_edit_finance) не уходили в POST.{% endcomment %}
                  class="toggle toggle-info toggle-sm">
           <span class="label-text text-xs">Видит всех клиентов</span>
         </label>
+        <label class="cursor-pointer flex items-center gap-2"
+               title="Доступ к рабочему месту оператора колл-центра — доске с настраиваемыми колонками.">
+          <input type="checkbox" id="emp-callcenter" name="can_access_callcenter"
+                 {% if form.can_access_callcenter.value %}checked{% endif %}
+                 class="toggle toggle-info toggle-sm">
+          <span class="label-text text-xs">Рабочее место колл-центра</span>
+        </label>
         <label class="cursor-pointer flex items-center gap-2">
           <input type="checkbox" id="emp-dismissed" name="is_dismissed"
                  {% if form.is_dismissed.value %}checked{% endif %}

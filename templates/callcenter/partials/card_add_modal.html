@@ -1,0 +1,36 @@
+{% load icons %}
+{% comment %}🛑 Модалка открывается через .showModal() (top-layer) — иначе
+на доске она рисуется ПОД колонками, как было с модалкой шаблонов чата.{% endcomment %}
+<dialog id="cc-add-modal" class="modal modal-middle">
+  <div class="modal-box w-full max-w-xl">
+    <h3 class="font-bold text-lg mb-1">Клиент на доску</h3>
+    <p class="text-xs text-base-content/60 mb-3">
+      {% if default_column %}
+        Карточка встанет в колонку «{{ default_column.name }}».
+      {% else %}
+        <span class="text-error">Колонка по умолчанию не выбрана — карточка попадёт в первую активную.</span>
+      {% endif %}
+    </p>
+
+    <label class="input input-bordered input-sm flex items-center gap-2">
+      {% icon "search" size=14 %}
+      <input type="search" name="q" placeholder="ФИО или телефон, от 2 символов"
+             class="grow" autocomplete="off" autofocus
+             hx-get="{% url 'callcenter:card_add_search' %}"
+             hx-trigger="keyup changed delay:350ms, search"
+             hx-target="#cc-add-results" hx-swap="innerHTML">
+    </label>
+
+    <div id="cc-add-results" class="mt-3" style="max-height:22rem;overflow-y:auto;">
+      <p class="text-sm text-base-content/50 py-6 text-center">Начните вводить имя или номер</p>
+    </div>
+
+    <div class="modal-action">
+      <button type="button" class="btn btn-sm" onclick="this.closest('dialog').remove()">Закрыть</button>
+    </div>
+  </div>
+  <form method="dialog" class="modal-backdrop">
+    <button onclick="this.closest('dialog').remove()">close</button>
+  </form>
+</dialog>
+<script>document.getElementById('cc-add-modal')?.showModal();</script>

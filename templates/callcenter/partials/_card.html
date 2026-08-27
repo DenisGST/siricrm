@@ -1,0 +1,121 @@
+{% load icons crm_tags %}
+{% comment %}Карточка клиента на доске колл-центра. Состав полей — черновой
+(наполнение уточняем отдельно): ФИО, телефон, ответственный, сколько висит
+в колонке и ряд быстрых действий оператора.{% endcomment %}
+<article id="cc-card-{{ card.id }}" class="cc-card kanban-card" draggable="true"
+         data-card-id="{{ card.id }}" data-client-id="{{ client.id }}"
+         ondragstart="ccDragStart(event)" ondragend="ccDragEnd(event)"
+         hx-get="{% url 'client_events_modal' client.id %}"
+         hx-target="body" hx-swap="beforeend"
+         title="Открыть событийку клиента">
+
+  <div class="cc-card-top">
+    <h4 class="cc-card-name">
+      {{ client.last_name }} {{ client.first_name }} {{ client.patronymic }}
+    </h4>
+    {% comment %}Два разных значка: серый — ответственный за клиента в CRM,
+    цветной — оператор, взявший карточку в работу на этой доске.{% endcomment %}
+    {% if client.primary_employee %}
+      <span class="cc-card-emp" title="Ответственный за клиента: {{ client.primary_employee.user.last_name }} {{ client.primary_employee.user.first_name }}">
+        {{ client.primary_employee.user.last_name|slice:":1" }}{{ client.primary_employee.user.first_name|slice:":1" }}
+      </span>
+    {% endif %}
+    {% if card.operator %}
+      <button type="button" class="cc-card-op"
+              title="В работе у: {{ card.operator.user.last_name }} {{ card.operator.user.first_name }}. Нажмите, чтобы вернуть в общий пул."
+              hx-post="{% url 'callcenter:card_release' card.id %}"
+              hx-target="#cc-card-{{ card.id }}" hx-swap="outerHTML"
+              onclick="event.stopPropagation()"
+              hx-on:click="event.stopPropagation()">
+        {{ card.operator.user.last_name|slice:":1" }}{{ card.operator.user.first_name|slice:":1" }}
+      </button>
+    {% else %}
+      <button type="button" class="cc-card-take" title="Взять в работу"
+              hx-post="{% url 'callcenter:card_take' card.id %}"
+              hx-target="#cc-card-{{ card.id }}" hx-swap="outerHTML"
+              onclick="event.stopPropagation()"
+              hx-on:click="event.stopPropagation()">
+        взять
+      </button>
+    {% endif %}
+  </div>
+
+  {% if client.display_phone %}
+    <a class="cc-card-phone" href="tel:{{ client.display_phone }}"
+       onclick="event.stopPropagation()" title="Набрать в софтфоне">
+      {% icon "phone" size=12 %} {{ client.display_phone }}
+    </a>
+  {% else %}
+    <span class="cc-card-phone cc-card-phone-empty">{% icon "phone" size=12 %} номера нет</span>
+  {% endif %}
+
+  {% if card.has_action %}
+    {% comment %}Клик по строке открывает ту же модалку — оператору не надо
+    целиться в маленькую иконку.{% endcomment %}
+    <button type="button" class="cc-action-line cc-action-{{ card.action_state }}"
+            hx-get="{% url 'callcenter:card_action_modal' card.id %}"
+            hx-target="body" hx-swap="beforeend"
+            onclick="event.stopPropagation()"
+            hx-on:click="event.stopPropagation()"
+            title="{% if card.next_action_at %}Запланировано на {{ card.next_action_at|date:'d.m.Y H:i' }}{% else %}Срок не задан{% endif %}{% if card.next_action_by %} · {{ card.next_action_by.user.last_name }}{% endif %}">
+      {% icon "bell" size=11 %}
+      <span class="cc-action-text">{{ card.next_action|default:"Действие" }}</span>
+      {% if card.next_action_label %}<span class="cc-action-when">{{ card.next_action_label }}</span>{% endif %}
+    </button>
+  {% endif %}
+
+  <div class="cc-card-foot">
+    <span class="cc-card-age" title="В колонке с {{ card.moved_at|date:'d.m.Y H:i' }}">
+      {% if card.source == 'call' %}<span class="cc-card-src" title="Попал на доску: входящий звонок с неизвестного номера">☎</span>
+      {% elif card.source == 'tg_lead' %}<span class="cc-card-src" title="Попал на доску: лид из Telegram-канала">✈</span>{% endif %}
+      {% icon "clock" size=11 %} {{ card.moved_at|timesince:now }}
+    </span>
+
+    <span class="cc-card-acts">
+      {% if client.display_phone %}
+      <button type="button" class="cc-act" title="Позвонить через АТС"
+              onclick="event.stopPropagation(); crmCall({client:'{{ client.id }}'}, this)">
+        {% icon "phone" size=15 %}
+      </button>
+      {% endif %}
+      <button type="button" class="cc-act{% if card.has_action %} cc-act-on{% endif %}"
+              title="{% if card.has_action %}Изменить следующее действие{% else %}Запланировать следующее действие{% endif %}"
+              hx-get="{% url 'callcenter:card_action_modal' card.id %}"
+              hx-target="body" hx-swap="beforeend"
+              onclick="event.stopPropagation()"
+              hx-on:click="event.stopPropagation()">
+        {% icon "bell" size=15 %}
+      </button>
+      <button type="button" class="cc-act" title="Чат с клиентом"
+              onclick="event.stopPropagation(); openTelegramChatModalForClient('{{ client.id }}')">
+        {% icon "message-circle" size=15 %}
+      </button>
+      <button type="button" class="cc-act" title="Карточка клиента"
+              hx-get="{% url 'client_edit' client.id %}"
+              hx-target="body" hx-swap="beforeend"
+              onclick="event.stopPropagation()"
+              hx-on:click="event.stopPropagation()"
+              hx-on::after-request="document.getElementById('client-edit-modal')?.showModal()">
+        {% icon "pencil" size=15 %}
+      </button>
+      {% comment %}«Спам» отличается от «снять с доски» тем, что заносит
+      номера клиента в чёрный список — больше он на доску не вернётся.{% endcomment %}
+      <button type="button" class="cc-act cc-act-danger" title="Спам: номер в чёрный список"
+              hx-post="{% url 'callcenter:card_spam' card.id %}"
+              hx-swap="none"
+              hx-confirm="Пометить {{ client.display_phone|default:'этот номер' }} как спам? Номера клиента попадут в чёрный список, карточка уйдёт с доски, а автозаведённый звонком клиент без услуг и переписки получит статус «На удаление»."
+              onclick="event.stopPropagation()"
+              hx-on:click="event.stopPropagation()">
+        {% icon "ban" size=15 %}
+      </button>
+      <button type="button" class="cc-act cc-act-danger" title="Снять с доски"
+              hx-post="{% url 'callcenter:card_remove' card.id %}"
+              hx-swap="none"
+              hx-confirm="Снять {{ client.last_name }} {{ client.first_name }} с доски колл-центра? Клиент и его данные останутся на месте."
+              onclick="event.stopPropagation()"
+              hx-on:click="event.stopPropagation()">
+        {% icon "x" size=15 %}
+      </button>
+    </span>
+  </div>
+</article>

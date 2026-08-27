@@ -4,6 +4,7 @@ from apps.accounting.permissions import can_access_accounting
 from apps.procedure.permissions import can_access_procedures
 from apps.reports.permissions import can_access_reports
 from apps.telephony.permissions import can_access_calls
+from apps.callcenter.permissions import can_access_callcenter
 
 
 def sidebar_menu(request):
@@ -39,6 +40,7 @@ def sidebar_menu(request):
     show_procedures = can_access_procedures(user)
     show_reports = can_access_reports(user)
     show_calls = can_access_calls(user)
+    show_callcenter = can_access_callcenter(user)
     for item in items.order_by("section", "order"):
         if item.url.startswith("/scans/") and not show_scans:
             continue
@@ -47,6 +49,8 @@ def sidebar_menu(request):
         if item.url == "/procedure/" and not show_procedures:
             continue
         if item.url.startswith("/telephony/") and not show_calls:
+            continue
+        if item.url.startswith("/callcenter/") and not show_callcenter:
             continue
         if item.url.startswith("/reports/") and not show_reports:
             continue

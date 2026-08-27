@@ -59,6 +59,7 @@ INSTALLED_APPS = [
     "apps.reports",
     "apps.wiki",
     "apps.telephony",
+    "apps.callcenter",
 
     # django-rules: object-level permissions (apps/<app>/rules.py авто-импортируются)
     "rules.apps.AutodiscoverRulesConfig",

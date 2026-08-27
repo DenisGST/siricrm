@@ -1,0 +1,222 @@
+{% load icons %}
+{% comment %}
+Доска колл-центра. Колонки — из справочника CallCenterColumn (Панель
+управления → «Колл-центр»), поэтому вёрстка не знает ни их числа, ни имён:
+полоса колонок скроллится по горизонтали, ширина колонки фиксирована.
+Содержимое каждой колонки подгружается отдельным запросом (hx-get) —
+как в главном канбане.
+{% endcomment %}
+
+<div class="cc-board">
+
+  <!-- ── Шапка: заголовок, фильтры, действия ─────────────────────────── -->
+  <div class="cc-toolbar">
+    <div class="cc-toolbar-title">
+      <span class="cc-toolbar-icon">{% icon "phone" size=18 %}</span>
+      <div>
+        <h2 class="cc-title">Колл-центр</h2>
+        <p class="cc-subtitle">
+          {% if owner_emp %}
+            Канбан сотрудника: <b>{{ owner_emp.user.last_name }} {{ owner_emp.user.first_name }}</b>
+          {% elif owner == 'mine' %}Мои карточки
+          {% elif owner == 'free' %}Свободные карточки — общий пул
+          {% else %}Рабочее место оператора · карточек на доске: {{ total_cards }}{% endif %}
+        </p>
+      </div>
+    </div>
+
+    <form id="cc-filter-form" class="cc-filters" onsubmit="return false;">
+      {% comment %}«Чей канбан»: свои / общий пул / все, а руководителю — ещё
+      и любой оператор (как ?viewed_employee= в «Моём канбане»). Один селектор
+      вместо двух: оператору не надо гадать, какой из них сейчас главный.{% endcomment %}
+      <select name="owner" id="cc-flt-owner" class="cc-select" onchange="ccRefresh()"
+              title="Чей канбан показывать">
+        <option value="all" {% if owner == 'all' or not owner %}selected{% endif %}>Все карточки</option>
+        <option value="mine" {% if owner == 'mine' %}selected{% endif %}>Мои</option>
+        <option value="free" {% if owner == 'free' %}selected{% endif %}>Свободные</option>
+        {% if can_view_others %}
+          <optgroup label="Канбан сотрудника">
+            {% for e in operators_all %}
+              <option value="{{ e.id }}" {% if owner == e.id|stringformat:'s' %}selected{% endif %}>
+                {{ e.user.last_name }} {{ e.user.first_name }}
+              </option>
+            {% endfor %}
+          </optgroup>
+        {% endif %}
+      </select>
+
+      {% comment %}Поле только хранит значение фильтра — колонки забирают его
+      через hx-include="#cc-filter-form". Свой hx-get тут не нужен и вреден:
+      он бы перерисовывал доску целиком на каждое нажатие.{% endcomment %}
+      <label class="cc-search">
+        <span class="cc-search-icon">{% icon "search" size=14 %}</span>
+        <input type="search" name="q" id="cc-flt-q" value="{{ filter_q }}"
+               placeholder="ФИО или телефон"
+               oninput="ccScheduleRefresh()" onsearch="ccRefresh()">
+      </label>
+
+      <select name="employee" id="cc-flt-employee" class="cc-select"
+              onchange="ccRefresh()">
+        <option value="">— закреплён за —</option>
+        <option value="__none__" {% if filter_employee == '__none__' %}selected{% endif %}>— Не назначен</option>
+        {% for e in employees_all %}
+          <option value="{{ e.id }}" {% if filter_employee == e.id|stringformat:'s' %}selected{% endif %}>
+            {{ e.user.last_name }} {{ e.user.first_name }}
+          </option>
+        {% endfor %}
+      </select>
+
+      {% include "callcenter/partials/_pending_results.html" %}
+
+      <button type="button" class="cc-btn-ghost" title="Обновить доску" onclick="ccRefresh()">
+        {% icon "refresh-ccw" size=15 %}
+      </button>
+
+      {% if columns %}
+      <button type="button" class="cc-btn-primary"
+              hx-get="{% url 'callcenter:card_add_modal' %}"
+              hx-target="body" hx-swap="beforeend">
+        + Клиент на доску
+      </button>
+      {% endif %}
+    </form>
+  </div>
+
+  <!-- ── Полоса колонок ──────────────────────────────────────────────── -->
+  {% if columns %}
+  <div class="cc-strip" id="cc-strip">
+    {% for col in columns %}
+    <section class="cc-col" data-column-id="{{ col.id }}" data-container="cc-col-{{ col.id }}"
+             style="--cc-accent: oklch(var({{ col.color_var }}));">
+      <header class="cc-col-head">
+        <span class="cc-col-dot"></span>
+        <h3 class="cc-col-name" title="{{ col.name }}">{{ col.name }}</h3>
+        {% if col.catch_unknown_calls %}<span class="cc-catch" title="Сюда автоматически попадают входящие звонки с неизвестных номеров">☎</span>{% endif %}
+        {% if col.catch_telegram_leads %}<span class="cc-catch" title="Сюда автоматически попадают лиды из Telegram-канала">✈</span>{% endif %}
+        <span id="cc-count-{{ col.id }}" class="cc-col-count">—</span>
+      </header>
+      {% if col.description %}
+        <p class="cc-col-hint">{{ col.description }}</p>
+      {% endif %}
+
+      <div id="cc-col-{{ col.id }}" class="cc-col-body kanban-col-body"
+           hx-get="{% url 'callcenter:column' col.id %}"
+           hx-trigger="load, callcenterRefresh from:body"
+           hx-include="#cc-filter-form"
+           hx-target="this"
+           hx-swap="innerHTML">
+      </div>
+    </section>
+    {% endfor %}
+  </div>
+
+  {% else %}
+  <!-- Колонок нет — доска бессмысленна, ведём админа в настройку -->
+  <div class="cc-empty-board">
+    <div class="cc-empty-icon">{% icon "layout-grid" size=28 %}</div>
+    <h3>Колонки доски не настроены</h3>
+    <p>Состав и порядок колонок задаёт администратор:<br>
+       <b>Панель управления → вкладка «Колл-центр»</b>.</p>
+  </div>
+  {% endif %}
+
+</div>
+
+<script>
+(function() {
+  // ── Обновление доски: один общий триггер на все колонки ──────────────
+  var _ccTimer = null;
+  window.ccRefresh = function() {
+    document.body.dispatchEvent(new CustomEvent('callcenterRefresh'));
+  };
+  window.ccScheduleRefresh = function() {
+    clearTimeout(_ccTimer);
+    _ccTimer = setTimeout(window.ccRefresh, 400);
+  };
+
+  // ── Drag & drop карточек между колонками ─────────────────────────────
+  var _card = null, _fromCol = null;
+
+  window.ccDragStart = function(e) {
+    _card    = e.currentTarget;
+    _fromCol = _card.closest('[data-column-id]');
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', _card.dataset.cardId || '');
+    setTimeout(function() { _card && _card.classList.add('kanban-dragging'); }, 0);
+  };
+
+  window.ccDragEnd = function() {
+    if (_card) _card.classList.remove('kanban-dragging');
+    document.querySelectorAll('.kanban-drop-over').forEach(function(el) {
+      el.classList.remove('kanban-drop-over');
+    });
+    _card = null; _fromCol = null;
+  };
+
+  var strip = document.getElementById('cc-strip');
+  if (!strip) return;
+
+  strip.addEventListener('dragover', function(e) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    var col = e.target.closest('[data-column-id]');
+    if (!col || col === _fromCol) return;
+    document.querySelectorAll('.kanban-drop-over').forEach(function(el) {
+      if (el !== col) el.classList.remove('kanban-drop-over');
+    });
+    col.classList.add('kanban-drop-over');
+  });
+
+  strip.addEventListener('dragleave', function(e) {
+    var col = e.target.closest('[data-column-id]');
+    if (col && !col.contains(e.relatedTarget)) col.classList.remove('kanban-drop-over');
+  });
+
+  strip.addEventListener('drop', function(e) {
+    e.preventDefault();
+    document.querySelectorAll('.kanban-drop-over').forEach(function(el) {
+      el.classList.remove('kanban-drop-over');
+    });
+    if (!_card) return;
+
+    var col = e.target.closest('[data-column-id]');
+    if (!col) return;
+    var newCol = col.dataset.columnId;
+    var oldCol = _fromCol ? _fromCol.dataset.columnId : null;
+    if (!newCol || newCol === oldCol) return;
+
+    // Оптимистично переносим карточку в DOM — ответ сервера ничего не рисует.
+    var toBody   = document.getElementById(col.dataset.container);
+    var fromBody = _fromCol ? document.getElementById(_fromCol.dataset.container) : null;
+    if (toBody) {
+      var ph = toBody.querySelector('.cc-empty-col');
+      if (ph) ph.remove();
+      toBody.insertBefore(_card, toBody.firstChild);
+    }
+    if (fromBody && fromBody.querySelectorAll('.cc-card').length === 0) {
+      fromBody.innerHTML = '<div class="cc-empty-col">Пусто</div>';
+    }
+    _ccCount(oldCol, -1);
+    _ccCount(newCol, +1);
+
+    var csrf = (document.cookie.match(/csrftoken=([^;]+)/) || [])[1] || '';
+    fetch('{% url "callcenter:card_move" %}', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/x-www-form-urlencoded', 'X-CSRFToken': csrf},
+      body: 'card=' + encodeURIComponent(_card.dataset.cardId) + '&column=' + encodeURIComponent(newCol)
+            + '&owner=' + encodeURIComponent((document.getElementById('cc-flt-owner') || {}).value || ''),
+    }).then(function(r) { if (!r.ok) window.ccRefresh(); })
+      .catch(function() { window.ccRefresh(); });
+  });
+
+  function _ccCount(colId, delta) {
+    if (!colId) return;
+    var el = document.getElementById('cc-count-' + colId);
+    if (!el) return;
+    var n = Math.max(0, (parseInt(el.textContent) || 0) + delta);
+    el.textContent = n;
+    var limit = parseInt(el.dataset.limit || '0');
+    el.classList.toggle('cc-col-count-over', !!limit && n > limit);
+  }
+})();
+</script>

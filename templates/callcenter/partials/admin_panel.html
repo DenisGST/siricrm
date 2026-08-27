@@ -1,0 +1,30 @@
+{% comment %}Вкладка «Колл-центр» Панели управления: под-вкладки. Содержимое
+каждой грузится отдельным запросом в #cc-admin-pane.{% endcomment %}
+<div class="tabs tabs-boxed mb-3" style="display:inline-flex;">
+  <a class="tab tab-active" id="cc-subtab-columns"
+     hx-get="{% url 'callcenter:admin_columns' %}"
+     hx-target="#cc-admin-pane" hx-swap="innerHTML"
+     onclick="ccAdminSubtab(this)">Колонки</a>
+  <a class="tab" id="cc-subtab-results"
+     hx-get="{% url 'callcenter:admin_results' %}"
+     hx-target="#cc-admin-pane" hx-swap="innerHTML"
+     onclick="ccAdminSubtab(this)">Результаты звонков</a>
+  <a class="tab" id="cc-subtab-blacklist"
+     hx-get="{% url 'callcenter:admin_blacklist' %}"
+     hx-target="#cc-admin-pane" hx-swap="innerHTML"
+     onclick="ccAdminSubtab(this)">Чёрный список</a>
+</div>
+
+<div id="cc-admin-pane"
+     hx-get="{% url 'callcenter:admin_columns' %}"
+     hx-trigger="load"
+     hx-swap="innerHTML"></div>
+
+<script>
+function ccAdminSubtab(el) {
+  el.closest('.tabs').querySelectorAll('.tab').forEach(function(t) {
+    t.classList.remove('tab-active');
+  });
+  el.classList.add('tab-active');
+}
+</script>

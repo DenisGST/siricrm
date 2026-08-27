@@ -1,0 +1,23 @@
+{% load icons %}
+{% for c in clients %}
+  <div class="cc-add-row">
+    <div style="min-width:0;">
+      <div class="cc-add-name">{{ c.last_name }} {{ c.first_name }} {{ c.patronymic }}</div>
+      <div class="cc-add-phone">{% if c.display_phone %}{{ c.display_phone }}{% else %}номера нет{% endif %}</div>
+    </div>
+    {% if c.id in on_board %}
+      <span class="badge badge-ghost badge-sm">уже на доске</span>
+    {% else %}
+      <button type="button" class="btn btn-primary btn-xs"
+              hx-post="{% url 'callcenter:card_add' c.id %}"
+              hx-swap="none"
+              hx-on::after-request="this.outerHTML = '<span class=&quot;badge badge-success badge-sm&quot;>добавлен</span>'">
+        Добавить
+      </button>
+    {% endif %}
+  </div>
+{% empty %}
+  <p class="text-sm text-base-content/50 py-6 text-center">
+    {% if q|length >= 2 %}Никого не нашли по «{{ q }}»{% else %}Начните вводить имя или номер{% endif %}
+  </p>
+{% endfor %}

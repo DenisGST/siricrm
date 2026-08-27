@@ -29,7 +29,16 @@ class ClientQuerySet(models.QuerySet):
           * они в `Service.employees` (исполнитель услуги клиента), ИЛИ
           * у клиента есть `Service.common_status.department == их отдел`
             (на текущем этапе обслуживания отвечает их отдел; см.
-            `ServiceCommonStatus.department`).
+            `ServiceCommonStatus.department`), ИЛИ
+          * клиент стоит на доске колл-центра, а у сотрудника есть
+            `Employee.can_access_callcenter`.
+
+        🛑 Последнее правило узкое и нужное: клиент, заведённый по звонку с
+        неизвестного номера, не имеет ни ответственного, ни услуг — без него
+        доска колл-центра у рядового оператора была бы ПУСТОЙ. Доступ даётся
+        не ко всей базе, а ровно к тем клиентам, что лежат на общей доске.
+        Услуг это правило НЕ открывает, поэтому `Service.objects.visible_to`
+        не трогаем.
         """
         if is_admin(user):
             return self
@@ -45,13 +54,16 @@ class ClientQuerySet(models.QuerySet):
         # Точечный флаг Employee.can_view_all_clients — доступ ко всем без смены роли.
         if getattr(emp, "can_view_all_clients", False):
             return self
-        return self.filter(
+        cond = (
             models.Q(employees=emp)
             | models.Q(services__employees=emp)
             | models.Q(
                 services__common_status__department_id=emp.department_id
             )
-        ).distinct()
+        )
+        if getattr(emp, "can_access_callcenter", False):
+            cond |= models.Q(callcenter_card__isnull=False)
+        return self.filter(cond).distinct()
 
 
 class ServiceQuerySet(models.QuerySet):

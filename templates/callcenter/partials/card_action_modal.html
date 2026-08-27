@@ -1,0 +1,87 @@
+{% load icons %}
+{% comment %}🛑 Модалка через .showModal() — иначе рисуется ПОД колонками доски.
+Сохранение перерисовывает ТОЛЬКО свою карточку (hx-target на неё), доска
+не перезагружается и не дёргает скролл.{% endcomment %}
+<dialog id="cc-action-modal" class="modal modal-middle">
+  <div class="modal-box w-full max-w-lg">
+    <h3 class="font-bold text-lg mb-1">Следующее действие</h3>
+    <p class="text-xs text-base-content/60 mb-3">
+      {{ card.client.last_name }} {{ card.client.first_name }}
+      {% if card.client.display_phone %}· {{ card.client.display_phone }}{% endif %}
+    </p>
+
+    <form hx-post="{% url 'callcenter:card_action_save' card.id %}"
+          hx-target="#cc-card-{{ card.id }}" hx-swap="outerHTML"
+          hx-on::after-request="if(event.detail.successful) this.closest('dialog').remove()"
+          class="space-y-3">
+      {% csrf_token %}
+
+      <div>
+        <label class="label"><span class="label-text">Что сделать</span></label>
+        <input type="text" name="next_action" id="cc-action-text" maxlength="255"
+               value="{{ card.next_action }}" autofocus
+               placeholder="Позвонить"
+               class="input input-bordered input-sm w-full">
+        <div class="flex flex-wrap gap-1 mt-1.5">
+          {% for s in suggestions %}
+            <button type="button" class="cc-chip"
+                    onclick="document.getElementById('cc-action-text').value = '{{ s }}'">{{ s }}</button>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div>
+        <label class="label"><span class="label-text">Когда</span></label>
+        {% comment %}🛑 value для datetime-local — строго «Y-m-d\TH:i» и в
+        локальном времени. Русская локаль Django отдала бы «28 июля 2026 г.»,
+        поле показало бы пусто, и сохранение затёрло бы срок — та же грабля,
+        что была с датами рождения в карточке клиента.{% endcomment %}
+        <input type="datetime-local" name="next_action_at" id="cc-action-at"
+               value="{{ card.next_action_at|date:'Y-m-d\TH:i' }}"
+               class="input input-bordered input-sm w-full">
+        <div class="flex flex-wrap gap-1 mt-1.5">
+          {% for key, label, minutes in presets %}
+            <button type="button" class="cc-chip"
+                    onclick="ccActionPreset('{{ key }}', {{ minutes|default:0 }})">{{ label }}</button>
+          {% endfor %}
+        </div>
+      </div>
+
+      {% if error %}
+        <div class="alert alert-error text-sm">{{ error }}</div>
+      {% endif %}
+
+      <div class="modal-action">
+        {% if card.has_action %}
+          <button type="submit" class="btn btn-sm btn-outline mr-auto"
+                  name="clear" value="1"
+                  title="Убрать запланированное действие">Снять</button>
+        {% endif %}
+        <button type="submit" class="btn btn-primary btn-sm">Сохранить</button>
+        <button type="button" class="btn btn-sm" onclick="this.closest('dialog').remove()">Отмена</button>
+      </div>
+    </form>
+  </div>
+  <form method="dialog" class="modal-backdrop">
+    <button onclick="this.closest('dialog').remove()">close</button>
+  </form>
+</dialog>
+
+<script>
+// Пресеты заполняют поле, а не шлют запрос: оператор видит ровно тот момент,
+// который сохранится, и может его подправить.
+function ccActionPreset(key, minutes) {
+  var d = new Date();
+  if (key === 'tomorrow') {
+    d.setDate(d.getDate() + 1);
+    d.setHours(10, 0, 0, 0);
+  } else {
+    d.setMinutes(d.getMinutes() + minutes, 0, 0);
+  }
+  var pad = function(n) { return String(n).padStart(2, '0'); };
+  document.getElementById('cc-action-at').value =
+    d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) +
+    'T' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+}
+document.getElementById('cc-action-modal')?.showModal();
+</script>
