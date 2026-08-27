@@ -37,6 +37,27 @@ FLEXBE_MSG = """Новая заявка № 1234 со страницы сири�
 Сумма долга: 800 000
 Просмотр заявки (https://flexbe.ru/leads/1234)"""
 
+# Квиз sirius-bfl.ru — самый насыщенный вариант канального формата
+# (образец из боевого канала 27.08.2026): есть «Имя» и ответы квиза.
+QUIZ_MSG = """🌐 Сайт: https://sirius-bfl.ru/
+🔴 Новая заявка · Стоимость
+Источник: Квиз
+Лендинг: Стоимость банкротства
+Имя: Патимат
+Телефон: +79884216224
+Регион: Дагестан
+Сумма долга: До 300 000 ₽
+Кредиторов: 3–5
+Исполнительные производства: Нет
+Имущество и залоги: Нет имущества
+Ипотека: Нет
+Источники дохода: Пенсия
+Связаться: Написать в Telegram
+IP: 85.26.176.221
+Устройство: Mozilla/5.0 (Linux; arm_64; Android 13; SM-A325F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.7871.156 YaApp_Android/26.80.1 Mobile Safari/537.36
+Время: 27.08.2026 12:30
+ID: 20"""
+
 
 class ParseChannelLeadTests(SimpleTestCase):
     def test_основные_поля(self):
@@ -70,6 +91,31 @@ class ParseChannelLeadTests(SimpleTestCase):
     def test_не_заявка(self):
         self.assertIsNone(_parse_lead("Привет, как дела?"))
         self.assertIsNone(_parse_lead(""))
+
+
+class ParseQuizLeadTests(SimpleTestCase):
+    """Квиз: появилось «Имя» и произвольный набор ответов."""
+
+    def test_имя_и_телефон(self):
+        d = _parse_lead(QUIZ_MSG)
+        self.assertEqual(d["name"], "Патимат")
+        self.assertEqual(d["phone"], "79884216224")
+        self.assertEqual(d["number"], "20")
+        self.assertEqual(d["form"], "Стоимость")
+        self.assertEqual(d["page"], "sirius-bfl.ru")
+
+    def test_ответы_квиза_доезжают_целиком(self):
+        answers = dict(_parse_lead(QUIZ_MSG)["answers"])
+        self.assertEqual(answers["Регион"], "Дагестан")
+        self.assertEqual(answers["Сумма долга"], "До 300 000 ₽")
+        self.assertEqual(answers["Кредиторов"], "3–5")
+        self.assertEqual(answers["Исполнительные производства"], "Нет")
+        self.assertEqual(answers["Имущество и залоги"], "Нет имущества")
+        self.assertEqual(answers["Источники дохода"], "Пенсия")
+        self.assertEqual(answers["Связаться"], "Написать в Telegram")
+        # «Имя» ушло в ФИО клиента, дублировать его в ответах незачем.
+        self.assertNotIn("Имя", answers)
+        self.assertNotIn("Устройство", answers)
 
 
 class ParseFlexbeLeadTests(SimpleTestCase):
