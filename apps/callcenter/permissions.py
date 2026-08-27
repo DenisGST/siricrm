@@ -17,6 +17,20 @@ from django.http import HttpResponseForbidden
 from apps.core.permissions import get_employee, is_management
 
 
+def is_callcenter_operator(user) -> bool:
+    """Оператор колл-центра в узком смысле — по явному флагу.
+
+    🛑 Отличается от ``can_access_callcenter``: та пускает на доску ещё и
+    руководство (для обзора чужих канбанов). Узкая проверка нужна там, где
+    речь о РАБОТЕ оператора, а не о просмотре, — прежде всего для модалки
+    результата звонка, всплывающей после каждого разговора.
+    """
+    if not user or not user.is_authenticated:
+        return False
+    emp = get_employee(user)
+    return bool(emp and emp.can_access_callcenter)
+
+
 def can_access_callcenter(user) -> bool:
     """Может открыть доску колл-центра."""
     if not user or not user.is_authenticated:

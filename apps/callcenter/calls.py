@@ -31,11 +31,15 @@ MAX_PROMPT_AGE_MINUTES = 60
 
 
 def _wants_prompt(employee) -> bool:
-    """Спрашивать ли у этого сотрудника результат звонка."""
-    from .permissions import can_access_callcenter
+    """Спрашивать ли у этого сотрудника результат звонка.
 
-    user = getattr(employee, "user", None)
-    return bool(user and can_access_callcenter(user))
+    🛑 Строго по флагу ``Employee.can_access_callcenter``, а НЕ через
+    ``can_access_callcenter(user)``: та функция пускает на доску ещё и всё
+    руководство (admin / head_dep / managing_partner) — им нужен обзор
+    чужих канбанов, но всплывающая после каждого разговора модалка была бы
+    помехой. Результат спрашиваем только у тех, кому флаг выдан явно.
+    """
+    return bool(employee and getattr(employee, "can_access_callcenter", False))
 
 
 def _push(employee, outcome) -> None:
