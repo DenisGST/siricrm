@@ -42,7 +42,8 @@
 
 ```python
 from django_celery_beat.models import PeriodicTask
-PeriodicTask.objects.filter(name='poll-telegram-leads').update(enabled=False)
+# 🛑 только через .save() — .update() не шлёт post_save, и beat не заметит правку
+t = PeriodicTask.objects.get(name='poll-telegram-leads'); t.enabled = False; t.save()
 ```
 django-celery-beat хранит расписание в БД, beat подхватит за пару секунд.
 
