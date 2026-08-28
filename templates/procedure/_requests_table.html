@@ -73,6 +73,8 @@
             {% if r.document_pdf_id %}<a class="link link-primary" href="{% url 'files:stored_download' r.document_pdf_id %}?inline=1" onclick="procPreview(this.href, 'Запрос № {{ r.outgoing_number|default:'' }}'); return false">PDF</a>{% endif %}
             {% if r.document_docx_id %}{% if r.document_pdf_id %} · {% endif %}<a class="link" href="{% url 'files:stored_download' r.document_docx_id %}?dl={{ r.document_docx_name|urlencode }}" title="Скачать «{{ r.document_docx_name }}»">docx ⬇</a>{% endif %}
           {% else %}<span class="text-base-content/40">нет</span>{% endif %}
+          {% if r.pdf_is_stale %}<span class="badge badge-warning badge-xs ml-1"
+            title="Документ правили в редакторе после последней сборки PDF — откройте карточку и нажмите «Пересобрать PDF»">PDF устарел</span>{% endif %}
           {% if r.attach_count %}<span class="badge badge-ghost badge-xs ml-1"
             title="Дополнительных вложений: {{ r.attach_count }}">{% icon "paperclip" size=10 %} {{ r.attach_count }}</span>{% endif %}
         </td>

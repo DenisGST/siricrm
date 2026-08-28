@@ -6,6 +6,7 @@ from django.views.static import serve
 from django.conf import settings
 
 from apps.core.health import health_check
+from apps.procedure import wopi
 
 from apps.crm.api import (
     ClientViewSet,
@@ -66,6 +67,11 @@ urlpatterns = [
     path("scans/", include("apps.scans.urls", namespace="scans")),
     path("notifications/", include("apps.notifications.urls", namespace="notifications")),
     path("procedure/", include("apps.procedure.urls", namespace="procedure")),
+    # WOPI-хост онлайн-редактора .docx. 🛑 Без завершающего слэша — так их
+    # формирует Collabora; авторизация — по подписанному access_token, а не по
+    # сессии (запросы приходят из соседнего контейнера). См. apps/procedure/wopi.py.
+    path("wopi/files/<uuid:req_id>", wopi.check_file_info, name="wopi_check_file_info"),
+    path("wopi/files/<uuid:req_id>/contents", wopi.file_contents, name="wopi_file_contents"),
     path("efrsb/", include("apps.efrsb.urls", namespace="efrsb")),
     path("kommersant/", include("apps.kommersant.urls", namespace="kommersant")),
     path("reports/", include("apps.reports.urls", namespace="reports")),

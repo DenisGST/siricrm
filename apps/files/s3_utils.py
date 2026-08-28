@@ -79,6 +79,30 @@ def upload_file_to_s3(
         raise
 
 
+def upload_file_to_s3_key(
+    file_bytes: bytes,
+    *,
+    bucket: str,
+    key: str,
+    content_type: str = None,
+) -> tuple[str, str]:
+    """Перезаписать КОНКРЕТНЫЙ объект в S3 (в отличие от upload_file_to_s3,
+    который всегда создаёт новый ключ).
+
+    Нужен онлайн-редактору: Collabora автосохраняет документ часто, и класть
+    каждое сохранение новым объектом значило бы засорять бакет и папку клиента
+    в файл-менеджере десятками копий одного письма.
+    """
+    try:
+        extra_args = {"ContentType": content_type} if content_type else None
+        s3_client.upload_fileobj(io.BytesIO(file_bytes), bucket, key, ExtraArgs=extra_args)
+        logger.info(f"✅ Overwrote S3 object: {key} ({len(file_bytes)} bytes)")
+        return bucket, key
+    except ClientError as e:
+        logger.exception(f"❌ S3 overwrite error for {key}: {e}")
+        raise
+
+
 def download_file_from_s3(bucket: str, key: str) -> bytes:
     """
     Скачивает файл из S3 и возвращает его как bytes.

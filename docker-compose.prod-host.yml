@@ -133,6 +133,32 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  # ── Онлайн-редактор .docx (Collabora Online / CODE) ────────────────────────
+  # 🛑 На проде nginx СИСТЕМНЫЙ (не в стеке) — порт публикуем на localhost, а
+  # проксирование путей /browser, /hosting, /cool добавляется в конфиг хоста
+  # (готовый блок — nginx/collabora-host.conf.example).
+  # 🛑 Контейнер стартует вместе со стеком, но кнопка в UI появится только после
+  # COLLABORA_ENABLED=true в .env.prod + up -d --force-recreate web.
+  collabora:
+    image: collabora/code:latest
+    ports:
+      - "127.0.0.1:9980:9980"
+    environment:
+      # Список разрешённых WOPI-хостов — куда Collabora ходит за файлом.
+      # Без него режим alias_groups = "first" (пускает первого постучавшегося).
+      aliasgroup1: http://web:8000
+      extra_params: --o:ssl.enable=false --o:ssl.termination=true --o:logging.level=warning --o:user_interface.mode=compact
+      DONT_GEN_SSL_CERT: "true"
+    cap_add:
+      - MKNOD
+    dns: *default-dns
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
   flower:
     build: .
     command: celery -A config flower --port=5555 --persistent=True --db=/app/flower_data/flower.db

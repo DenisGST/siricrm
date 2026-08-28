@@ -7,10 +7,36 @@
   Разворот — hx-get на request_text_block, сохранение — hx-post на себя же
   (карточка при этом остаётся открытой, в отличие от отдельной модалки правки,
   которая по-прежнему висит на иконке ✎ в строке таблицы).{% endcomment %}
-<div id="req-text-block" class="border-t border-base-300 pt-3">
-  <div class="flex items-center gap-2 mb-1">
+<div id="req-text-block" class="border-t border-base-300 pt-3"
+     data-refresh-url="{% url 'procedure:request_text_block' service.id req.pk %}?collapsed=1">
+  <div class="flex items-center gap-2 mb-1 flex-wrap">
     <span class="label-text text-xs font-semibold">Текст документа</span>
-    {% if saved %}<span class="badge badge-success badge-sm">сохранено, PDF пересобран</span>{% endif %}
+    {% if saved %}<span class="badge badge-success badge-sm">текст сохранён, PDF пересобран</span>{% endif %}
+    {% if pdf_rebuilt %}<span class="badge badge-success badge-sm">PDF пересобран</span>{% endif %}
+
+    {% comment %}PDF собирается ТОЛЬКО по кнопке: правка в онлайн-редакторе меняет
+      один .docx, а гонять LibreOffice на каждое автосохранение Collabora — это
+      секунды CPU впустую. Пока не пересобрали — честно пишем, что PDF отстал.{% endcomment %}
+    {% if req.document_docx_id %}
+      <span class="ml-auto flex items-center gap-2">
+        {% if req.pdf_is_stale %}
+          <span class="badge badge-warning badge-sm" title="Документ правили после последней сборки PDF">
+            PDF устарел
+          </span>
+        {% elif req.pdf_built_at %}
+          <span class="text-xs text-base-content/50">PDF собран {{ req.pdf_built_at|date:"d.m.Y H:i" }}</span>
+        {% endif %}
+        <button type="button"
+                class="btn btn-sm {% if req.pdf_is_stale %}btn-warning{% else %}btn-outline{% endif %}"
+                hx-post="{% url 'procedure:request_pdf_rebuild' service.id req.pk %}"
+                hx-target="#req-text-block" hx-swap="outerHTML"
+                hx-indicator="#req-pdf-busy"
+                title="Собрать PDF заново из текущего .docx">
+          {% icon "refresh-ccw" size=14 %} Пересобрать PDF
+        </button>
+        <span id="req-pdf-busy" class="htmx-indicator text-xs text-base-content/60">собираю PDF…</span>
+      </span>
+    {% endif %}
   </div>
 
   {% if not req.document_docx_id %}
@@ -20,17 +46,35 @@
     </p>
 
   {% elif not editing %}
-    <p class="text-xs text-base-content/50 mb-2">
-      Правка по абзацам: форматирование (шрифты, отступы) и подпись с печатью сохраняются,
-      PDF пересобирается после сохранения.
+    {% if error %}<div class="alert alert-error text-sm mb-2">{{ error }}</div>{% endif %}
+    <div class="flex flex-wrap items-center gap-2">
+      {% if collabora %}
+      {% comment %}Полноценный редактор (Collabora Online): правка как в Word,
+        прямо в браузере. Сохранение возвращается к нам по WOPI, PDF
+        пересобирается фоновой задачей.{% endcomment %}
+      <button type="button" class="btn btn-primary btn-sm"
+              onclick="reqOpenDocEditor('{% url 'procedure:request_editor' service.id req.pk %}', 'Запрос № {{ req.outgoing_number|default:'' }} — {{ req.title|escapejs }}')">
+        {% icon "file-text" size=14 %} Открыть в редакторе
+      </button>
+      {% endif %}
+      <button type="button" class="btn btn-outline btn-sm"
+              hx-get="{% url 'procedure:request_text_block' service.id req.pk %}"
+              hx-target="#req-text-block" hx-swap="outerHTML"
+              hx-indicator="#req-text-load">
+        {% icon "pencil" size=14 %} {% if collabora %}Быстрая правка по абзацам{% else %}Редактировать текст{% endif %}
+        <span id="req-text-load" class="htmx-indicator">загружаю…</span>
+      </button>
+    </div>
+    <p class="text-xs text-base-content/50 mt-2">
+      {% if collabora %}
+        Редактор — полноценная правка документа с оформлением, таблицами и колонтитулами;
+        быстрая правка меняет только текст готовых абзацев.
+        После правки в редакторе нажмите «Пересобрать PDF» — сам он не пересобирается.
+      {% else %}
+        Правка по абзацам: форматирование (шрифты, отступы) и подпись с печатью сохраняются,
+        PDF пересобирается после сохранения.
+      {% endif %}
     </p>
-    <button type="button" class="btn btn-outline btn-sm"
-            hx-get="{% url 'procedure:request_text_block' service.id req.pk %}"
-            hx-target="#req-text-block" hx-swap="outerHTML"
-            hx-indicator="#req-text-load">
-      {% icon "pencil" size=14 %} Редактировать текст
-      <span id="req-text-load" class="htmx-indicator">загружаю…</span>
-    </button>
 
   {% else %}
     {% if error %}<div class="alert alert-error text-sm mb-2">{{ error }}</div>{% endif %}
@@ -79,4 +123,43 @@
       t.style.height = ''; t.style.height = t.scrollHeight + 'px';
     });
   })();
+
+  // ── Онлайн-редактор документа (Collabora Online) в модалке ──────────────
+  // 🛑 Функция объявлена ЗДЕСЬ, а не в dashboard.html: оболочка грузится один
+  // раз при входе в CRM, и у всех, кто держит вкладку открытой со вчера, новой
+  // глобальной функции просто нет — кнопка молча ничего не делает. Партиал же
+  // приезжает свежим на каждый клик, поэтому обработчик всегда актуален.
+  window.reqOpenDocEditor = function (url, name) {
+    var dlg = document.createElement('dialog');
+    dlg.className = 'modal modal-open'; dlg.style.zIndex = '1300';
+    var box = document.createElement('div');
+    box.className = 'modal-box p-0 flex flex-col';
+    box.style.cssText = 'max-width:98vw;width:98vw;height:95vh';
+    var bar = document.createElement('div');
+    bar.className = 'flex items-center gap-2 px-3 py-2 border-b border-base-300';
+    var title = document.createElement('span');
+    title.className = 'text-sm font-semibold truncate';
+    title.textContent = name || 'Редактор документа';
+    var close = document.createElement('button');
+    close.type = 'button'; close.className = 'btn btn-sm btn-ghost btn-circle ml-auto';
+    close.textContent = '✕';
+    var frame = document.createElement('iframe');
+    frame.src = url;
+    frame.style.cssText = 'flex:1;width:100%;border:0';
+    frame.setAttribute('allow', 'clipboard-read; clipboard-write');
+    close.addEventListener('click', function () {
+      dlg.remove();
+      if (!window.htmx) return;
+      // Пока правили, .docx изменился — обновляем таблицу под карточкой и сам
+      // блок документа, иначе не видно появившегося «PDF устарел».
+      window.htmx.trigger(document.body, 'reloadRequests');
+      var blk = document.getElementById('req-text-block');
+      var ref = blk && blk.getAttribute('data-refresh-url');
+      if (ref) window.htmx.ajax('GET', ref, { target: '#req-text-block', swap: 'outerHTML' });
+    });
+    bar.appendChild(title); bar.appendChild(close);
+    box.appendChild(bar); box.appendChild(frame);
+    dlg.appendChild(box);
+    document.body.appendChild(dlg);
+  };
 </script>

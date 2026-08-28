@@ -1,0 +1,29 @@
+{% comment %}Страница-обёртка онлайн-редактора: её грузит iframe в карточке запроса.
+
+Самоотправляющаяся форма — так требует WOPI: access_token передаётся именно
+POST-ом, чтобы не светиться в адресной строке, логах nginx и истории браузера.
+Ответ Collabora заменяет эту страницу внутри того же iframe.{% endcomment %}<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Редактор документа</title>
+  <style>
+    html, body { margin: 0; height: 100%; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+    .msg { padding: 24px; color: #b91c1c; font-size: 14px; line-height: 1.5; }
+    .wait { padding: 24px; color: #64748b; font-size: 14px; }
+  </style>
+</head>
+<body>
+{% if error %}
+  <div class="msg">{{ error }}</div>
+{% else %}
+  <div class="wait">Открываю документ…</div>
+  <form id="cool-form" method="post" action="{{ action }}" target="_self">
+    <input type="hidden" name="access_token" value="{{ access_token }}">
+    <input type="hidden" name="access_token_ttl" value="{{ ttl_ms }}">
+  </form>
+  <script>document.getElementById('cool-form').submit();</script>
+{% endif %}
+</body>
+</html>

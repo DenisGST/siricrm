@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import views
+from . import views, wopi
 
 app_name = "procedure"
 
@@ -41,6 +41,8 @@ urlpatterns = [
     # Карточка запроса — правка всех параметров (клик по строке таблицы)
     path("service/<uuid:service_id>/requests/<uuid:req_id>/card/", views.request_card, name="request_card"),
     path("service/<uuid:service_id>/requests/<uuid:req_id>/card/save/", views.request_card_save, name="request_card_save"),
+    path("service/<uuid:service_id>/requests/<uuid:req_id>/editor/", wopi.editor_frame, name="request_editor"),
+    path("service/<uuid:service_id>/requests/<uuid:req_id>/card/pdf-rebuild/", views.request_pdf_rebuild, name="request_pdf_rebuild"),
     path("service/<uuid:service_id>/requests/<uuid:req_id>/card/text/", views.request_text_block, name="request_text_block"),
     path("service/<uuid:service_id>/requests/<uuid:req_id>/card/text/save/", views.request_text_save, name="request_text_save"),
     path("service/<uuid:service_id>/requests/<uuid:req_id>/sent/", views.request_sent_form, name="request_sent_form"),

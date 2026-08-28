@@ -2683,6 +2683,9 @@ def request_card(request, service_id, req_id):
         "request_types": RequestType.objects.filter(is_active=True).order_by("order", "name"),
         "method_choices": Request.METHOD_CHOICES,
         "status_choices": Request.STATUS_CHOICES,
+        # Блок текста включается в карточку через {% include %} и берёт ЕЁ контекст,
+        # поэтому флаг редактора нужен и здесь, не только в _text_block_ctx.
+        "collabora": settings.COLLABORA_ENABLED,
         **_attachments_ctx(service, "request", req),
     })
 
@@ -2816,11 +2819,14 @@ def correspondence_card_save(request, service_id, corr_id):
 # Отдельный блок, а не часть карточки: абзацы тянутся из S3 и парсятся
 # python-docx — делать это на каждый клик по строке таблицы недопустимо.
 
-def _text_block_ctx(service, req, *, editing=False, paras=None, error="", saved=False):
+def _text_block_ctx(service, req, *, editing=False, paras=None, error="",
+                    saved=False, pdf_rebuilt=False):
     return {
         "service": service, "req": req, "editing": editing,
         "paras": paras if paras is not None else [],
-        "error": error, "saved": saved,
+        "error": error, "saved": saved, "pdf_rebuilt": pdf_rebuilt,
+        # Кнопки полноценного редактора нет, пока на сервере не поднят Collabora.
+        "collabora": settings.COLLABORA_ENABLED,
     }
 
 
@@ -2839,6 +2845,43 @@ def request_text_block(request, service_id, req_id):
     paras, error = _doc_paragraphs_safe(req) if editing else ([], "")
     return render(request, "procedure/partials/_request_text_block.html",
                   _text_block_ctx(service, req, editing=editing, paras=paras, error=error))
+
+
+@login_required
+@require_procedures
+@require_POST
+def request_pdf_rebuild(request, service_id, req_id):
+    """Пересобрать PDF из текущего .docx — по кнопке, а не автоматом.
+
+    🛑 Синхронно, как и формирование документа: LibreOffice отрабатывает
+    секунды, а юристу нужен результат сразу — иначе пришлось бы городить
+    поллинг статуса ради одной кнопки.
+    """
+    try:
+        service = _bfl_service(request, service_id)
+    except _NotBFL as exc:
+        return HttpResponseForbidden(str(exc))
+    case = services.ensure_case(service)
+    req = get_object_or_404(
+        Request.objects.select_related("document_docx", "document_pdf"),
+        pk=req_id, case=case)
+    from .request_documents import RequestDocError, rebuild_pdf_from_docx
+    error, rebuilt = "", False
+    try:
+        rebuild_pdf_from_docx(req)
+        rebuilt = True
+    except RequestDocError as exc:
+        error = str(exc)
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception("request_pdf_rebuild failed")
+        error = ("Не удалось пересобрать PDF (ошибка конвертации). "
+                 "Подробности — в логах web.")
+    resp = render(request, "procedure/partials/_request_text_block.html",
+                  _text_block_ctx(service, req, error=error, pdf_rebuilt=rebuilt))
+    if rebuilt:
+        resp["HX-Trigger"] = "reloadRequests"
+    return resp
 
 
 @login_required

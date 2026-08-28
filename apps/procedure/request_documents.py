@@ -428,9 +428,47 @@ def save_edited_document(req, new_docx_bytes: bytes, *, employee=None):
     req.document_pdf = pdf_sf
     req.pages_count = pdf_page_count(pdf_bytes) or None
     req.generated_at = timezone.now()
+    req.pdf_built_at = req.generated_at
     req.save(update_fields=[
-        "document_docx", "document_pdf", "pages_count", "generated_at", "updated_at",
+        "document_docx", "document_pdf", "pages_count", "generated_at",
+        "pdf_built_at", "updated_at",
     ])
+    return req
+
+
+def rebuild_pdf_from_docx(req):
+    """Пересобрать PDF из текущего .docx запроса (кнопка «Пересобрать PDF»).
+
+    Нужна после правки в онлайн-редакторе: Collabora меняет только .docx, а
+    когда собирать PDF — решает юрист. Автоматически на каждое автосохранение
+    гонять LibreOffice бессмысленно (секунды CPU на каждое нажатие).
+
+    🛑 Перезаписываем ТОТ ЖЕ объект в S3, а не заводим новый StoredFile: иначе
+    в папке «Запросы» файл-менеджера копилась бы куча версий одного письма, а
+    ссылки на PDF в открытых вкладках протухали бы.
+    """
+    from apps.files.s3_utils import upload_file_to_s3_key
+
+    if not req.document_docx_id:
+        raise RequestDocError("Нет .docx — из чего собирать PDF.")
+    docx_sf = req.document_docx
+    docx_bytes = download_file_from_s3(docx_sf.bucket, docx_sf.key)
+    pdf_bytes = docx_to_pdf(docx_bytes)
+
+    pdf_sf = req.document_pdf
+    if pdf_sf is not None:
+        upload_file_to_s3_key(pdf_bytes, bucket=pdf_sf.bucket, key=pdf_sf.key,
+                              content_type="application/pdf")
+        pdf_sf.size = len(pdf_bytes)
+        pdf_sf.save(update_fields=["size"])
+    else:
+        # PDF-двойника не было (документ подгружали одним .docx) — заводим.
+        base = request_document_basename(req)
+        req.document_pdf = _store(pdf_bytes, filename=f"{base}.pdf",
+                                  content_type="application/pdf")
+    req.pages_count = pdf_page_count(pdf_bytes) or None
+    req.pdf_built_at = timezone.now()
+    req.save(update_fields=["document_pdf", "pages_count", "pdf_built_at", "updated_at"])
     return req
 
 
@@ -549,7 +587,17 @@ def generate_request_document(req, *, with_signature=False, marriage_cert="", em
         req.outgoing_number = mx + 1
 
     ctx = build_request_context(req, marriage_cert=marriage_cert)
-    template_bytes = download_file_from_s3(tpl.stored_file.bucket, tpl.stored_file.key)
+    try:
+        template_bytes = download_file_from_s3(tpl.stored_file.bucket, tpl.stored_file.key)
+    except Exception as exc:
+        # Типичный случай на dev: шаблон залит в прод-бакет, у dev-ключа туда нет
+        # прав. Раньше это выглядело как «внутренняя ошибка» и требовало логов.
+        log.exception("Шаблон %s недоступен в S3", tpl.pk)
+        raise RequestDocError(
+            f"Файл шаблона «{tpl.name}» недоступен в хранилище "
+            f"(бакет {tpl.stored_file.bucket}). Перезалейте шаблон в справочнике "
+            f"«Типы запросов» или выполните `manage.py load_request_templates --force`."
+        ) from exc
     docx_bytes = render_docx(template_bytes, ctx)
     if with_signature:
         proc = _am_procedure(req.case)
@@ -571,9 +619,10 @@ def generate_request_document(req, *, with_signature=False, marriage_cert="", em
     req.pages_count = pdf_page_count(pdf_bytes) or None
     req.with_signature = bool(with_signature)
     req.generated_at = timezone.now()
+    req.pdf_built_at = req.generated_at  # собраны вместе — PDF актуален
     req.save(update_fields=[
         "outgoing_number", "document_pdf", "document_docx", "pages_count",
-        "with_signature", "generated_at", "updated_at",
+        "with_signature", "generated_at", "pdf_built_at", "updated_at",
     ])
     try:
         from apps.crm.models import ActionType

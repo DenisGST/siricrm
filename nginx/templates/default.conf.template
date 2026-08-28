@@ -80,6 +80,45 @@ server {
         proxy_send_timeout 3600s;
     }
 
+    # ── Collabora Online: онлайн-правка .docx ───────────────────────────
+    # 🛑 Пути фиксированы самой Collabora — поэтому редактор живёт на основном
+    # домене и не требует ни поддомена, ни отдельного сертификата.
+    # Проксируем на контейнер как есть; Host передаём наш, чтобы discovery
+    # отдавал ссылки на публичный домен, а не на имя контейнера.
+    location ^~ /browser {
+        proxy_pass http://collabora_online;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+    location ^~ /hosting/discovery {
+        proxy_pass http://collabora_online;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+    location ^~ /hosting/capabilities {
+        proxy_pass http://collabora_online;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+    # WebSocket документа — держится всё время правки, отсюда длинные таймауты.
+    location ~ ^/cool/(.*)/ws$ {
+        proxy_pass http://collabora_online;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 36000s;
+        proxy_send_timeout 36000s;
+    }
+    # Загрузка/выгрузка вложений, превью, шрифты редактора.
+    location ~ ^/(c|l)ool {
+        proxy_pass http://collabora_online;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+    # ────────────────────────────────────────────────────────────────────
+
     location = /health/ {
         proxy_pass http://siricrm_app;
         include /etc/nginx/proxy_params.conf;

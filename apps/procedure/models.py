@@ -596,6 +596,12 @@ class Request(TimeStampedModel):
     outgoing_number = models.PositiveIntegerField("Исходящий №", null=True, blank=True)
     with_signature = models.BooleanField("С подписью и печатью", default=False)
     generated_at = models.DateTimeField("Сформирован", null=True, blank=True)
+    pdf_built_at = models.DateTimeField(
+        "PDF собран", null=True, blank=True,
+        help_text="Когда PDF последний раз собирали из .docx. Отстаёт от "
+                  "«Сформирован», если документ правили в онлайн-редакторе, "
+                  "а PDF ещё не пересобирали.",
+    )
     document_pdf = models.ForeignKey(
         "files.StoredFile", on_delete=models.SET_NULL, null=True, blank=True,
         related_name="+", verbose_name="Документ (PDF)",
@@ -650,6 +656,17 @@ class Request(TimeStampedModel):
     def document_pdf_name(self) -> str:
         from .request_documents import request_document_basename
         return request_document_basename(self) + ".pdf"
+
+    @property
+    def pdf_is_stale(self) -> bool:
+        """PDF не соответствует текущему .docx — надо пересобрать кнопкой.
+
+        Правка в онлайн-редакторе меняет только .docx: Collabora автосохраняет
+        часто, и гонять LibreOffice на каждое сохранение бессмысленно.
+        """
+        if not (self.document_docx_id and self.generated_at):
+            return False
+        return (self.pdf_built_at is None) or (self.pdf_built_at < self.generated_at)
 
     @property
     def is_overdue(self) -> bool:

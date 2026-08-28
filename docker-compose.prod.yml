@@ -156,6 +156,35 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  # ── Онлайн-редактор .docx (Collabora Online / CODE) ────────────────────────
+  # Правка документов запросов прямо в браузере, без скачивания-загрузки.
+  # 🛑 Наружу НЕ публикуется: ходим через свой nginx по путям /browser, /hosting,
+  # /cool — поэтому не нужен ни поддомен, ни отдельный сертификат.
+  # 🛑 Движок тот же LibreOffice, которым мы печатаем PDF → что видит юрист при
+  # правке, то и уходит в PDF.
+  collabora:
+    image: collabora/code:latest
+    expose:
+      - "9980"
+    environment:
+      # 🛑 aliasgroup — это список разрешённых WOPI-ХОСТОВ (куда Collabora ходит
+      # за файлом), а НЕ домен браузера. У нас это web в той же docker-сети.
+      # Без него режим alias_groups = "first": пускает кого угодно, кто постучался
+      # первым, — то есть редактор становится открытым релеем к чужим документам.
+      aliasgroup1: http://web:8000
+      # ssl.termination — TLS снимает наш nginx, внутри контейнера обычный http.
+      extra_params: --o:ssl.enable=false --o:ssl.termination=true --o:logging.level=warning --o:user_interface.mode=compact
+      DONT_GEN_SSL_CERT: "true"
+    cap_add:
+      - MKNOD
+    dns: *default-dns
+    restart: always
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
   nginx:
     image: nginx:1.27-alpine
     ports:

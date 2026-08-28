@@ -19,10 +19,16 @@ ALLOWED_HOSTS = config("ALLOWED_HOSTS").split(",")
 # Оба IP хардкодим — dev и prod используют общий prod.py (DJANGO_ENV=prod), лишний
 # IP в whitelist на другом сервере безвреден (он туда никогда не придёт).
 ALLOWED_HOSTS += ["45.90.35.187", "5.35.94.218"]
+# Онлайн-редактор ходит за файлом на web по имени сервиса внутри docker-сети —
+# в Host будет «web:8000», иначе DisallowedHost на каждый запрос Collabora.
+ALLOWED_HOSTS += ["web"]
 CSRF_TRUSTED_ORIGINS = config("CSRF_TRUSTED_ORIGINS").split(",")
 
 # --- HTTPS / Cookies ---
 SECURE_SSL_REDIRECT = True
+# 🛑 WOPI-вызовы Collabora идут внутри docker-сети обычным http — без этого
+# исключения они получали бы 301 на https и редактор не открыл бы документ.
+SECURE_REDIRECT_EXEMPT = [r"^wopi/"]
 SECURE_HSTS_SECONDS = 31536000  # 1 год
 SECURE_HSTS_INCLUDE_SUBDOMAINS = True
 SECURE_HSTS_PRELOAD = True
@@ -31,6 +37,11 @@ CSRF_COOKIE_SECURE = True
 SECURE_CONTENT_TYPE_NOSNIFF = True
 SECURE_REFERRER_POLICY = "strict-origin-when-cross-origin"
 X_FRAME_OPTIONS = "DENY"
+
+# Публичный origin редактора: тот же домен, что и у CRM (Collabora живёт на
+# путях /browser, /hosting, /cool основного сервера nginx).
+if not COLLABORA_PUBLIC_URL:  # noqa: F405
+    COLLABORA_PUBLIC_URL = f"https://{ALLOWED_HOSTS[0]}"
 
 # --- Sentry ---
 SENTRY_DSN = config("SENTRY_DSN", default="")

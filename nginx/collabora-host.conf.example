@@ -1,0 +1,52 @@
+# =============================================================================
+# Collabora Online на ПРОДЕ — блок для СИСТЕМНОГО nginx (не для стека).
+#
+# На проде nginx живёт на хосте, а не в docker-compose, поэтому эти location'ы
+# нужно вставить в существующий server-блок siricrm.ru (внутрь `server { ... }`,
+# до общего `location / { ... }`), затем `nginx -t && systemctl reload nginx`.
+#
+# Контейнер collabora публикует порт только на localhost (127.0.0.1:9980) —
+# наружу он не смотрит, попасть в него можно исключительно через эти пути.
+#
+# 🛑 Поддомен и отдельный сертификат НЕ нужны: пути /browser, /hosting, /cool
+# фиксированы самой Collabora, поэтому редактор живёт на основном домене.
+# =============================================================================
+
+# Статика редактора (JS, шрифты, иконки).
+location ^~ /browser {
+    proxy_pass http://127.0.0.1:9980;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+
+# WOPI discovery — по нему CRM узнаёт адрес редактора для .docx.
+location ^~ /hosting/discovery {
+    proxy_pass http://127.0.0.1:9980;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+
+location ^~ /hosting/capabilities {
+    proxy_pass http://127.0.0.1:9980;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+
+# WebSocket документа — держится всё время правки, отсюда длинные таймауты.
+location ~ ^/cool/(.*)/ws$ {
+    proxy_pass http://127.0.0.1:9980;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_read_timeout 36000s;
+    proxy_send_timeout 36000s;
+}
+
+# Загрузка/выгрузка вложений, превью, служебные запросы редактора.
+location ~ ^/(c|l)ool {
+    proxy_pass http://127.0.0.1:9980;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}

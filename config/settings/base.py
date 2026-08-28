@@ -354,6 +354,21 @@ MONITOR_BOT_ALLOWED_CHAT_IDS = config("MONITOR_BOT_ALLOWED_CHAT_IDS", default=""
 # Headless по умолчанию. Для локальной отладки парсера выставить ARBITR_HEADLESS=false.
 ARBITR_HEADLESS = config("ARBITR_HEADLESS", default="true").lower() != "false"
 
+# --- Онлайн-редактор .docx (Collabora Online, apps.procedure.wopi) ---
+# COLLABORA_ENABLED — выключатель кнопки «Открыть в редакторе»: пока контейнер
+#   collabora не поднят на сервере, кнопки быть не должно.
+# COLLABORA_INTERNAL_URL — адрес контейнера внутри docker-сети (discovery).
+# COLLABORA_PUBLIC_URL — origin, с которого браузер грузит редактор; наш же
+#   домен, редактор проксируется путями /browser, /hosting, /cool.
+# WOPI_INTERNAL_URL — адрес, по которому Collabora ходит за файлом К НАМ.
+#   🛑 Именно внутреннее имя сервиса, а не публичный домен: разворот трафика
+#   через внешний IP (hairpin NAT) работает не везде.
+COLLABORA_ENABLED = config("COLLABORA_ENABLED", default=False, cast=bool)
+COLLABORA_INTERNAL_URL = config("COLLABORA_INTERNAL_URL", default="http://collabora:9980")
+# Пусто → prod.py подставит первый домен из ALLOWED_HOSTS (он там и задаётся).
+COLLABORA_PUBLIC_URL = config("COLLABORA_PUBLIC_URL", default="")
+WOPI_INTERNAL_URL = config("WOPI_INTERNAL_URL", default="http://web:8000")
+
 # --- Auth redirects ---
 LOGIN_URL = "/accounts/login/"
 LOGIN_REDIRECT_URL = "/dashboard/"
