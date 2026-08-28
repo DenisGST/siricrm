@@ -171,6 +171,22 @@ TG-лидов на проде 0. Личку (коды привязки) лови
 
 **Файлы:** [apps/procedure/pochta_export.py](apps/procedure/pochta_export.py).
 
+## 🟡 Collabora Online — включить на проде + проверить в браузере
+
+**Сделано (28.08, в коде, на dev работает):** онлайн-правка .docx по WOPI
+([apps/procedure/wopi.py](apps/procedure/wopi.py)), контейнер `collabora` в обоих
+compose, блок для системного nginx — [nginx/collabora-host.conf.example](nginx/collabora-host.conf.example),
+пересборка PDF по кнопке (`pdf_is_stale` + бейдж «PDF устарел»).
+
+**Осталось:**
+1. 🔴 **Проверить в браузере на dev** — единственный непроверенный участок: Collabora
+   возвращает нам `access_token` из POST-формы, headless это воспроизвести не удалось.
+   Диагностика при сбое: `docker logs siricrm-collabora-1 | grep -i "CheckFileInfo\|unauthorized"`.
+2. Включить на проде — 4 шага (pull+up образа, блок в системный nginx, `COLLABORA_ENABLED=true`,
+   `up -d --force-recreate web`), подробно в [CLAUDE.md](CLAUDE.md) в разделе про редактор.
+3. 🟢 Проверить лимиты бесплатной редакции CODE (порядка 10 документов / 20 подключений
+   одновременно) на актуальной версии — для отдела юристов должно хватать, но цифру не сверяли.
+
 ## 🟡 Отправка запросов по email + контроль ответов по времени
 
 `sent_method` есть, реальной отправки нет (SMTP не настроен). Контроль просрочки уже работает
