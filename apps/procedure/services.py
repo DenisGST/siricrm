@@ -388,9 +388,17 @@ def create_creditor_notices(case, request_type, *, employee=None) -> list:
 
 @transaction.atomic
 def create_requests_for_type(case, request_type, *, recipient=None, employee=None) -> list:
-    """Создать запрос(ы) по типу: обычный тип → один, «кредиторы» → письмо каждому."""
+    """Создать запрос(ы) по типу.
+
+    Обычный тип → один запрос. «Кредиторы» → по письму на каждого кредитора из
+    анкеты БФЛ, НО только если адресат не выбран явно: кредитор может всплыть
+    уже в ходе процедуры (заявился в реестр требований, нашёлся в ответе
+    госоргана) — тогда юрист выбирает его из реестра юрлиц руками, и письмо
+    создаётся одно, ему.
+    """
     from .recipient_resolver import RequestTypeLookup
-    if request_type.recipient_lookup == RequestTypeLookup.CREDITORS:
+    if (request_type.recipient_lookup == RequestTypeLookup.CREDITORS
+            and recipient is None):
         return create_creditor_notices(case, request_type, employee=employee)
     return [create_request(case, request_type, recipient=recipient, employee=employee)]
 
