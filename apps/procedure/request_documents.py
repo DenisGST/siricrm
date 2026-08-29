@@ -142,7 +142,12 @@ def build_request_context(req, *, marriage_cert="", gen_date=None) -> dict:
         # Запрос (исходящее)
         "Исх.№": str(req.outgoing_number) if req.outgoing_number else "",
         "Исх.дата": _fmt(gen_date),
-        "Адресат": (rec.name if rec else (req.recipient_name or "")),
+        # 🛑 Короткое наименование, а не полное: из ЕГРЮЛ приходит
+        # «"АКЦИОНЕРНЫЙ КОММЕРЧЕСКИЙ БАНК "ДЕРЖАВА" ПУБЛИЧНОЕ АКЦИОНЕРНОЕ
+        # ОБЩЕСТВО"» — адресный блок разъезжался на полстраницы и письмо
+        # уползало на второй лист. `short_name` заполнен у всех 17 тыс. юрлиц
+        # видов, используемых в запросах.
+        "Адресат": ((rec.short_name or rec.name) if rec else (req.recipient_name or "")),
         "Адрес": rec_addr,
         # Супруг
         "данные на супруга": _spouse_data(client.spouse),
