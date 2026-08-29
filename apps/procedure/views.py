@@ -1491,6 +1491,19 @@ def request_resolve(request, service_id):
 @require_procedures
 @require_POST
 def request_add(request, service_id):
+    """Создать запрос и СРАЗУ сформировать документ, если данных хватает.
+
+    Раньше это были два шага: «➕ Запрос» заводил карточку, дальше юрист жал
+    «Сформировать документ по шаблону». Теперь после создания сразу гоняется
+    предпроверка данных шаблона:
+      • всё заполнено → документы формируются в Celery, в ответ уходит модалка
+        с прогрессом (LibreOffice отрабатывает секунды, и без индикатора это
+        выглядело как зависший интерфейс);
+      • чего-то не хватает → показываем ту же модалку предпроверки, что и
+        раньше, с подсветкой пробелов. Запросы при этом уже созданы.
+    """
+    from .request_documents import check_request_data
+    from .tasks import JOB_TTL, generate_request_doc, job_meta_key
     try:
         service = _bfl_service(request, service_id)
     except _NotBFL as exc:
@@ -1501,14 +1514,50 @@ def request_add(request, service_id):
     rid = (request.POST.get("recipient_id") or "").strip()
     if rid:
         recipient = LegalEntity.objects.filter(pk=rid).first()
+    employee = _actor(request)
     # Тип «уведомление кредиторам» разворачивается в письмо на каждого кредитора.
-    services.create_requests_for_type(
-        case, rt, recipient=recipient, employee=_actor(request))
+    created = services.create_requests_for_type(
+        case, rt, recipient=recipient, employee=employee)
     # Запомнить ручной выбор адресата для (вид + регион/район) → переиспользуется.
     if recipient and (request.POST.get("remember") in ("1", "on", "true")):
-        services.save_recipient_rule(
-            rt, service.client, service, recipient, employee=_actor(request))
-    return _req_trigger()
+        services.save_recipient_rule(rt, service.client, service, recipient, employee=employee)
+
+    # Формировать нечего: у типа нет шаблона (напр. Росреестр — через СМЭВ).
+    if not created or not rt.template_id:
+        return _req_trigger()
+
+    gaps = None
+    for req in created:
+        ok, groups = check_request_data(req)
+        if not ok:
+            gaps = (req, groups)
+            break
+    if gaps is not None:
+        req, groups = gaps
+        resp = render(request, "procedure/_request_generate_modal.html", {
+            "service": service, "req": req,
+            "check_all_ok": False, "check_groups": groups,
+        })
+        resp["HX-Trigger"] = "reloadRequests"  # карточки уже созданы
+        return resp
+
+    with_signature = request.POST.get("with_signature") in ("1", "on", "true")
+    job_id = uuid.uuid4().hex
+    cache.set(job_meta_key(job_id), {
+        "service_id": str(service.id),
+        "items": [{"id": str(r.pk), "title": r.title, "number": r.outgoing_number,
+                   "recipient": r.recipient_display} for r in created],
+    }, JOB_TTL)
+    for r in created:
+        generate_request_doc.delay(
+            job_id, str(r.pk),
+            employee_id=(str(employee.pk) if employee else None),
+            with_signature=with_signature,
+        )
+    resp = render(request, "procedure/_request_progress_modal.html",
+                  _progress_context(service, job_id))
+    resp["HX-Trigger"] = "reloadRequests"
+    return resp
 
 
 def _main_package():

@@ -36,8 +36,14 @@
       <div class="p-3 flex flex-col gap-3">
         {% comment %} Создание: один запрос / пакет {% endcomment %}
         <div class="flex flex-row flex-wrap gap-6 items-end">
+          {% comment %}Ответ вью — модалка: либо прогресс формирования, либо
+            предпроверка с пробелами в данных. Поэтому beforeend на body, а не
+            hx-swap="none" (при 204 ничего не вставится — это случай «у типа нет
+            шаблона», там просто обновится таблица).{% endcomment %}
           <form class="flex flex-wrap items-end gap-2"
-                hx-post="{% url 'procedure:request_add' service.id %}" hx-swap="none"
+                hx-post="{% url 'procedure:request_add' service.id %}"
+                hx-target="body" hx-swap="beforeend"
+                hx-indicator="#req-add-busy" hx-disabled-elt="#req-add-btn"
                 data-resolve-url="{% url 'procedure:request_resolve' service.id %}">
             {% csrf_token %}
             <label class="form-control min-w-0">
@@ -63,7 +69,15 @@
               </div>
               <input type="hidden" name="recipient_id" id="recip-id-{{ service.id }}">
             </div>
-            <button type="submit" class="btn btn-primary btn-sm">➕ Запрос</button>
+            <button type="submit" id="req-add-btn" class="btn btn-primary btn-sm">➕ Запрос</button>
+            <label class="label cursor-pointer gap-1 py-0"
+                   title="Вставить подпись и печать финуправляющего в документ">
+              <input type="checkbox" name="with_signature" value="1" class="checkbox checkbox-xs">
+              <span class="label-text text-xs">с подписью ФУ</span>
+            </label>
+            <span id="req-add-busy" class="htmx-indicator text-xs text-base-content/60">
+              <span class="loading loading-spinner loading-xs"></span> создаю и проверяю данные…
+            </span>
             <label class="label cursor-pointer gap-1 py-0" data-remember-wrap style="display:none">
               <input type="checkbox" name="remember" class="checkbox checkbox-xs" checked>
               <span class="label-text text-xs">запомнить адресата для региона</span>

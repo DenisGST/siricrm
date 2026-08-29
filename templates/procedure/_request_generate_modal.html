@@ -37,8 +37,11 @@
       <div class="alert alert-success text-xs mb-2 py-2">Все данные шаблона заполнены.</div>
     {% endif %}
 
+    {% comment %}🛑 Здесь формирование синхронное (LibreOffice, несколько секунд):
+      без индикатора и блокировки кнопки интерфейс выглядит зависшим.{% endcomment %}
     <form hx-post="{% url 'procedure:request_generate' service.id req.pk %}"
-          hx-target="#req-gen-modal" hx-swap="outerHTML" class="space-y-3">
+          hx-target="#req-gen-modal" hx-swap="outerHTML" class="space-y-3"
+          hx-indicator="#req-gen-busy" hx-disabled-elt="#req-gen-submit">
       {% csrf_token %}
       <label class="label cursor-pointer justify-start gap-2 rounded p-2" style="background:var(--ms-bg-soft,#f8fafc)">
         <input type="checkbox" name="with_signature" class="checkbox checkbox-sm">
@@ -50,10 +53,14 @@
                placeholder="серия, номер, дата, кем выдано">
       </div>
       <div class="modal-action">
-        <button type="submit" class="btn btn-sm {% if check_all_ok %}btn-primary{% else %}btn-warning{% endif %}"
+        <button type="submit" id="req-gen-submit"
+                class="btn btn-sm {% if check_all_ok %}btn-primary{% else %}btn-warning{% endif %}"
                 {% if not req.request_type.template_id %}disabled{% endif %}>
           {% if check_all_ok %}Сформировать{% else %}Всё равно продолжить{% endif %}
         </button>
+        <span id="req-gen-busy" class="htmx-indicator text-xs text-base-content/60">
+          <span class="loading loading-spinner loading-xs"></span> формирую документ…
+        </span>
         <button type="button" class="btn btn-sm" onclick="this.closest('dialog').remove()">Отмена</button>
       </div>
     </form>
