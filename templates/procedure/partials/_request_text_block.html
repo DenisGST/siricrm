@@ -123,43 +123,5 @@
       t.style.height = ''; t.style.height = t.scrollHeight + 'px';
     });
   })();
-
-  // ── Онлайн-редактор документа (Collabora Online) в модалке ──────────────
-  // 🛑 Функция объявлена ЗДЕСЬ, а не в dashboard.html: оболочка грузится один
-  // раз при входе в CRM, и у всех, кто держит вкладку открытой со вчера, новой
-  // глобальной функции просто нет — кнопка молча ничего не делает. Партиал же
-  // приезжает свежим на каждый клик, поэтому обработчик всегда актуален.
-  window.reqOpenDocEditor = function (url, name) {
-    var dlg = document.createElement('dialog');
-    dlg.className = 'modal modal-open'; dlg.style.zIndex = '1300';
-    var box = document.createElement('div');
-    box.className = 'modal-box p-0 flex flex-col';
-    box.style.cssText = 'max-width:98vw;width:98vw;height:95vh';
-    var bar = document.createElement('div');
-    bar.className = 'flex items-center gap-2 px-3 py-2 border-b border-base-300';
-    var title = document.createElement('span');
-    title.className = 'text-sm font-semibold truncate';
-    title.textContent = name || 'Редактор документа';
-    var close = document.createElement('button');
-    close.type = 'button'; close.className = 'btn btn-sm btn-ghost btn-circle ml-auto';
-    close.textContent = '✕';
-    var frame = document.createElement('iframe');
-    frame.src = url;
-    frame.style.cssText = 'flex:1;width:100%;border:0';
-    frame.setAttribute('allow', 'clipboard-read; clipboard-write');
-    close.addEventListener('click', function () {
-      dlg.remove();
-      if (!window.htmx) return;
-      // Пока правили, .docx изменился — обновляем таблицу под карточкой и сам
-      // блок документа, иначе не видно появившегося «PDF устарел».
-      window.htmx.trigger(document.body, 'reloadRequests');
-      var blk = document.getElementById('req-text-block');
-      var ref = blk && blk.getAttribute('data-refresh-url');
-      if (ref) window.htmx.ajax('GET', ref, { target: '#req-text-block', swap: 'outerHTML' });
-    });
-    bar.appendChild(title); bar.appendChild(close);
-    box.appendChild(bar); box.appendChild(frame);
-    dlg.appendChild(box);
-    document.body.appendChild(dlg);
-  };
 </script>
+{% include "procedure/partials/_doc_editor_js.html" %}

@@ -1,4 +1,5 @@
 {% load icons %}
+{% include "procedure/partials/_doc_editor_js.html" %}
 {% comment %}Таблица запросов дела (Запросы/Ответы вкладки «Корреспонденция»).
   Отдельный партиал — перезагружается сам по поиску/сортировке (reqReload),
   не трогая остальную вкладку. Порядок колонок: № · Создан · Тип запроса ·
@@ -69,9 +70,27 @@
         </td>
         <td class="text-sm">{{ r.recipient_display }}</td>
         <td class="text-sm whitespace-nowrap align-middle">
+          {% comment %}Иконки-действия по документу: просмотр PDF, скачивание .docx,
+            правка в онлайн-редакторе. Те же цвета при наведении, что у действий справа.{% endcomment %}
           {% if r.document_pdf_id or r.document_docx_id %}
-            {% if r.document_pdf_id %}<a class="link link-primary" href="{% url 'files:stored_download' r.document_pdf_id %}?inline=1" onclick="procPreview(this.href, 'Запрос № {{ r.outgoing_number|default:'' }}'); return false">PDF</a>{% endif %}
-            {% if r.document_docx_id %}{% if r.document_pdf_id %} · {% endif %}<a class="link" href="{% url 'files:stored_download' r.document_docx_id %}?dl={{ r.document_docx_name|urlencode }}" title="Скачать «{{ r.document_docx_name }}»">docx ⬇</a>{% endif %}
+            <span class="inline-flex flex-nowrap gap-1 align-middle">
+            {% if r.document_pdf_id %}
+              <a class="req-act" style="--act-hc:#dc2626"
+                 href="{% url 'files:stored_download' r.document_pdf_id %}?inline=1"
+                 title="Просмотр запроса"
+                 onclick="procPreview(this.href, 'Запрос № {{ r.outgoing_number|default:'' }}'); return false">{% icon "file-pdf" size=17 %}</a>
+            {% endif %}
+            {% if r.document_docx_id %}
+              <a class="req-act" style="--act-hc:#2563eb"
+                 href="{% url 'files:stored_download' r.document_docx_id %}?dl={{ r.document_docx_name|urlencode }}"
+                 title="Скачать «{{ r.document_docx_name }}»">{% icon "file-word" size=17 %}</a>
+              {% if collabora %}
+              <button type="button" class="req-act" style="--act-hc:#d97706"
+                      title="Редактировать запрос"
+                      onclick="reqOpenDocEditor('{% url 'procedure:request_editor' service.id r.pk %}', 'Запрос № {{ r.outgoing_number|default:'' }} — {{ r.title|escapejs }}')">{% icon "edit" size=16 %}</button>
+              {% endif %}
+            {% endif %}
+            </span>
           {% else %}<span class="text-base-content/40">нет</span>{% endif %}
           {% if r.pdf_is_stale %}<span class="badge badge-warning badge-xs ml-1"
             title="Документ правили в редакторе после последней сборки PDF — откройте карточку и нажмите «Пересобрать PDF»">PDF устарел</span>{% endif %}

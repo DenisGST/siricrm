@@ -1263,6 +1263,8 @@ def _requests_context(case, req_q="", req_sort="created", req_dir="desc") -> dic
         "req_q": req_q,
         "req_sort": req_sort,
         "req_dir": req_dir,
+        # Кнопки редактора в таблице нет, пока на сервере не поднят Collabora.
+        "collabora": settings.COLLABORA_ENABLED,
     }
 
 
