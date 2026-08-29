@@ -1039,17 +1039,6 @@ def session_idle_check(request):
 
     now_ts = timezone.now().timestamp()
 
-    # Heartbeat присутствия для виджета «Активных сотрудников». idle-check
-    # пингуется из каждой открытой вкладки дашборда раз в 15с — это надёжный
-    # сигнал «сотрудник в системе» (в отличие от флага Employee.is_online,
-    # который застревает True после рестарта сервера / закрытия вкладки).
-    # Маркер в Redis с TTL 150с сам истекает, когда вкладок не осталось →
-    # счётчик не завышает. Запрос Employee троттлим раз в 60с на юзера.
-    if cache.add(f"online_seen_throttle:{request.user.id}", 1, 60):
-        _emp = Employee.objects.filter(user=request.user).only("id").first()
-        if _emp:
-            cache.set(f"online_emp:{_emp.id}", now_ts, 150)
-
     # Клиент сообщает о реальной активности (клики/скролл/ввод/движение мыши,
     # в т.ч. в модалках и в чате по WebSocket) флагом ?a=1. idle-check сидит в
     # IDLE_IGNORE_PREFIXES — middleware сам last_activity не трогает, поэтому
@@ -1062,6 +1051,25 @@ def session_idle_check(request):
     else:
         last = request.session.get("last_activity")
         idle_sec = (now_ts - float(last)) if last else 0
+
+    # Heartbeat присутствия для виджета «Активных сотрудников». idle-check
+    # пингуется из каждой открытой вкладки дашборда раз в 15с — это надёжный
+    # сигнал «сотрудник в системе» (в отличие от флага Employee.is_online,
+    # который застревает True после рестарта сервера / закрытия вкладки).
+    # Маркер в Redis с TTL 150с сам истекает, когда вкладок не осталось.
+    # 🛑 Ставим ТОЛЬКО пока сессия не простаивает (idle < timeout): забытая
+    # открытая вкладка пингует бесконечно — Chrome в фоне режет интервал до
+    # 1/мин, но пинги идут — и держала бы человека «в системе» сутками. Ровно
+    # так и было: сотрудник ушёл, а виджет показывал его онлайн всю ночь.
+    # Считать по idle, а не по `a=1`: тот, кто читает документ не трогая мышь,
+    # должен оставаться в счётчике — он уйдёт из него вместе с locked-overlay.
+    # Запрос Employee троттлим раз в 60с на юзера (short-circuit: у простаивающей
+    # сессии троттл не расходуем).
+    if idle_sec < timeout and cache.add(f"online_seen_throttle:{request.user.id}", 1, 60):
+        _emp = Employee.objects.filter(user=request.user).only("id").first()
+        if _emp:
+            cache.set(f"online_emp:{_emp.id}", now_ts, 150)
+
     return JsonResponse({
         "authenticated": True,
         "idle_seconds": int(idle_sec),
