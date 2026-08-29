@@ -620,8 +620,9 @@ def _attach(client, stored, employee):
 def generate_request_document(req, *, with_signature=False, marriage_cert="", employee=None):
     """Сформировать документ запроса. Возвращает req (с document_pdf/docx).
 
-    🛑 Наложение подписи/печати (PNG) — TODO, когда заданы signature_file/stamp_file
-    у АУ; сейчас `with_signature` только сохраняется.
+    `with_signature` вставляет PNG подписи с печатью из `ArbitrationManager`
+    (см. `_apply_signature`). 🛑 В самом шаблоне картинки быть не должно, иначе
+    она попадёт в документ независимо от галочки.
     """
     rtype = req.request_type
     tpl = rtype.template if rtype else None
