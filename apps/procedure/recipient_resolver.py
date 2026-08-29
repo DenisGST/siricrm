@@ -142,6 +142,16 @@ def resolve_recipient(request_type, client, service=None):
     if office_prefix:
         locality = ""
 
+    # Регион дела, а не прописки должника: письмо в УФНС идёт в управление по
+    # субъекту, где рассматривается банкротство. Субъект определяем по префиксу
+    # номера дела («А12-…» → Волгоградская) — тем же способом, что и ЕФРСБ.
+    if lookup == RequestTypeLookup.CASE_REGION:
+        from apps.efrsb.generator import _court_region
+        arb = getattr(service, "arbitr_case", None) if service is not None else None
+        region = _court_region(service, arb) or region
+        locality = ""
+        lookup = RequestTypeLookup.REGION
+
     def out(recipient, candidates, reason):
         return {
             "recipient": recipient, "candidates": candidates,
@@ -221,5 +231,6 @@ class RequestTypeLookup:
     REGION = "region"
     FNS = "fns_by_address"
     MANUAL = "manual"
+    CASE_REGION = "case_region"
     DEBTOR = "debtor"
     CREDITORS = "creditors"

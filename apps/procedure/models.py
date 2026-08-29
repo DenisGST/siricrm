@@ -408,6 +408,9 @@ class RequestType(TimeStampedModel):
     LOOKUP_REGION = "region"        # подбор по виду ЮЛ + региону (+ район гибридом)
     LOOKUP_FNS = "fns_by_address"   # ФНС по коду ИФНС из адреса клиента
     LOOKUP_MANUAL = "manual"        # только ручной выбор (Банк и пр.)
+    # Регион берём НЕ по прописке должника, а по суду, где ведётся дело
+    # (УФНС: письмо идёт в управление по субъекту рассмотрения банкротства).
+    LOOKUP_CASE_REGION = "case_region"
     # Адресат — не госорган: сам должник или его кредиторы (уведомления ФУ).
     LOOKUP_DEBTOR = "debtor"        # адресат = должник (клиент) — ФИО+адрес из карточки
     LOOKUP_CREDITORS = "creditors"  # адресат = кредиторы: по письму НА КАЖДОГО из анкеты
@@ -416,6 +419,7 @@ class RequestType(TimeStampedModel):
         (LOOKUP_REGION, "По виду и региону клиента"),
         (LOOKUP_FNS, "ФНС по адресу клиента"),
         (LOOKUP_MANUAL, "Только вручную"),
+        (LOOKUP_CASE_REGION, "По региону дела (суда)"),
         (LOOKUP_DEBTOR, "Должник (сам клиент)"),
         (LOOKUP_CREDITORS, "Кредиторы (письмо каждому)"),
     ]

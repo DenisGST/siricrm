@@ -1343,6 +1343,7 @@ def _resolve_hint(reason: str, n: int) -> str:
         "remembered": "Адресат из запомненного правила для региона/района.",
         "region_unique": "Единственный орган вида в регионе клиента.",
         "region_office": "Подобрано областное управление (адресат уровня региона).",
+        "case_region": "Регион определён по номеру дела (суду), а не по прописке должника.",
         "district_unique": "Подобран по району/городу клиента.",
         "district_many": f"В районе клиента подходит {n} — уточните выбор из списка.",
         "region_many": f"В регионе {n} органов — выберите из списка (фильтр по типу уже задан).",
@@ -1481,7 +1482,8 @@ def request_resolve(request, service_id):
         # региону (МРЭО/ЗАГС/суд/ДМИ/ГИМС…). Банк (manual) и ФНС (по адресу) —
         # не региональные, для них запоминание правила бессмысленно.
         "can_remember": (bool(rt.recipient_kind_id)
-                         and rt.recipient_lookup == RequestType.LOOKUP_REGION),
+                         and rt.recipient_lookup in (RequestType.LOOKUP_REGION,
+                                                     RequestType.LOOKUP_CASE_REGION)),
     })
 
 
@@ -1569,7 +1571,7 @@ def request_package_modal(request, service_id):
             # Позиции, где адресата выбирает юрист (для перекраски чека на лету).
             "needs_recipient": lookup in (
                 RequestType.LOOKUP_REGION, RequestType.LOOKUP_FNS,
-                RequestType.LOOKUP_MANUAL),
+                RequestType.LOOKUP_MANUAL, RequestType.LOOKUP_CASE_REGION),
             # Готовность без учёта адресата — чтобы после выбора в модалке
             # перекрасить чек в зелёный, не перезагружая всю таблицу.
             "data_ok": not [i for i in issues if not i.startswith("не выбран адресат")],
