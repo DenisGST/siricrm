@@ -1695,6 +1695,20 @@ def request_package_add(request, service_id):
     for rt, rec in to_remember:
         services.save_recipient_rule(rt, service.client, service, rec, employee=employee)
 
+    # Кредиторы «сверх анкеты»: выбранные в модалке руками (чипы). Нужны, когда
+    # кредитор всплыл уже в ходе процедуры и в анкете его нет.
+    extra_ids = [x for x in request.POST.getlist("extra_creditor_id") if x.strip()]
+    crt = next((t for t in pkg.types.filter(is_active=True)
+                if t.recipient_lookup == RequestType.LOOKUP_CREDITORS
+                and str(t.pk) in type_ids), None)
+    if extra_ids and crt is not None:
+        already = {str(r.recipient_id) for r in created if r.recipient_id}
+        for le in LegalEntity.objects.filter(pk__in=extra_ids):
+            if str(le.pk) in already:
+                continue  # такой кредитор уже пришёл из анкеты
+            created.append(services.create_request(
+                case, crt, recipient=le, employee=employee))
+
     if not created:
         return _req_trigger()
 

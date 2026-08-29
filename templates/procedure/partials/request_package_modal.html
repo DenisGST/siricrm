@@ -86,10 +86,23 @@ case_ok/case_gaps (предпроверка общих сведений), ready_
               <td>
                 {% if row.lookup == 'none' %}
                   <span class="text-xs text-base-content/50">адресат не требуется (СМЭВ)</span>
-                {% elif row.lookup == 'debtor' or row.lookup == 'creditors' %}
-                  <span class="text-xs text-base-content/70">
-                    {% if row.lookup == 'debtor' %}должник: {% endif %}{{ row.note }}
-                  </span>
+                {% elif row.lookup == 'debtor' %}
+                  <span class="text-xs text-base-content/70">должник: {{ row.note }}</span>
+                {% elif row.lookup == 'creditors' %}
+                  {% comment %}Кредиторы берутся из анкеты, но часть всплывает уже в
+                    ходе процедуры — их добавляем вручную из реестра. Каждый выбор
+                    превращается в чип со скрытым extra_creditor_id (см. pkgRecipChanged).{% endcomment %}
+                  <div class="text-xs text-base-content/70">{{ row.note }}</div>
+                  <div class="input input-bordered input-sm recip-box mt-1" data-extra-creditor
+                       onclick="openRecipientPicker(this)"
+                       data-picker-url="{% url 'procedure:recipient_picker' service.id %}"
+                       data-type="{{ row.type.pk }}"
+                       title="Добавить кредитора, которого нет в анкете">
+                    <span data-recip-name class="truncate text-base-content/40">＋ добавить кредитора из реестра</span>
+                    <span data-recip-addr class="truncate text-xs text-base-content/50"></span>
+                    <input type="hidden" data-recip-id>
+                  </div>
+                  <div data-extra-list class="flex flex-wrap gap-1 mt-1"></div>
                 {% else %}
                   {% comment %}Клик → большая модалка выбора госоргана (поиск+фильтры).{% endcomment %}
                   <div class="input input-bordered input-sm recip-box"
@@ -163,7 +176,42 @@ case_ok/case_gaps (предпроверка общих сведений), ready_
   };
 
   // Ручная смена адресата (клик в большой модалке) → «запомнить» + перекраска.
+  // Выбрали кредитора «сверх анкеты» — превращаем выбор в чип и освобождаем
+  // бокс под следующего. Значение уезжает как extra_creditor_id (их может быть
+  // несколько), сам бокс имени не имеет и в POST не попадает.
+  function pkgAddExtraCreditor(box) {
+    var idEl = box.querySelector('[data-recip-id]');
+    var id = idEl && idEl.value;
+    var nameEl = box.querySelector('[data-recip-name]');
+    var name = nameEl ? nameEl.textContent.trim() : '';
+    var list = box.parentNode.querySelector('[data-extra-list]');
+    function reset() {
+      if (idEl) idEl.value = '';
+      if (nameEl) { nameEl.textContent = '＋ добавить кредитора из реестра'; nameEl.classList.add('text-base-content/40'); }
+      var a = box.querySelector('[data-recip-addr]'); if (a) a.textContent = '';
+    }
+    if (!id || !list) { reset(); return; }
+    if (list.querySelector('input[value="' + id + '"]')) { reset(); return; }  // уже добавлен
+    var chip = document.createElement('span');
+    chip.className = 'badge badge-outline gap-1 text-xs';
+    var label = document.createElement('span');
+    label.textContent = name;
+    var hidden = document.createElement('input');
+    hidden.type = 'hidden'; hidden.name = 'extra_creditor_id'; hidden.value = id;
+    var del = document.createElement('button');
+    del.type = 'button'; del.textContent = '✕'; del.className = 'ml-1';
+    del.title = 'Убрать';
+    del.addEventListener('click', function () { chip.remove(); });
+    chip.appendChild(label); chip.appendChild(hidden); chip.appendChild(del);
+    list.appendChild(chip);
+    reset();
+  }
+
   window.pkgRecipChanged = function (el) {
+    if (el && el.hasAttribute && el.hasAttribute('data-extra-creditor')) {
+      pkgAddExtraCreditor(el);
+      return;
+    }
     var row = el.closest('[data-pkg-row]'); if (!row) return;
     var wrap = row.querySelector('[data-remember-wrap]');
     if (wrap) {
