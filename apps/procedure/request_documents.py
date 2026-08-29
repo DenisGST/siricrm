@@ -54,6 +54,48 @@ def _debtor_address(client):
     return (addr.postal_code or ""), (addr.result or addr.source or "")
 
 
+# Ведущий почтовый индекс в строке адреса и приставка в названии суда.
+_LEADING_INDEX_RE = re.compile(r"^\s*(\d{6})\s*,?\s*")
+_COURT_PREFIX_RE = re.compile(r"^\s*(?:Арбитражный\s+суд|Арбитражного\s+суда|АС)\s+", re.IGNORECASE)
+
+
+def _split_leading_index(idx: str, full: str) -> tuple[str, str]:
+    """(индекс, адрес БЕЗ ведущего индекса) для шаблонов запросов.
+
+    🛑 В шаблонах адрес печатается как «{индекс}, {адрес регистрации}», а DaData
+    кладёт индекс ещё и в начало самого адреса — выходило «403342, 403342,
+    Волгоградская обл, …». Режем именно здесь, а не в `_debtor_address`: её
+    использует ещё и `apps.efrsb`, где `{адрес регистрации}` печатается один и
+    индекс в нём нужен.
+    """
+    m = _LEADING_INDEX_RE.match(full or "")
+    if not m:
+        return idx, (full or "").strip()
+    # Индекс не теряем: если в карточке его нет, берём из самой строки адреса.
+    return (idx or m.group(1)), full[m.end():].strip()
+
+
+def _court_short(service, arb) -> str:
+    """Название суда БЕЗ слов «Арбитражный суд» — в шаблонах они уже напечатаны.
+
+    🛑 Шаблоны говорят «Арбитражный суд {арбитражный суд}», а kad пишет в
+    `court_name` «АС Волгоградской области» → получалось «Арбитражный суд АС
+    Волгоградской области». Какой это суд, решаем тем же способом, что и ЕФРСБ
+    (по префиксу номера дела «А12-…» → официальное название региона), иначе на
+    делах, ушедших в апелляцию, в письмо попадала бы текущая инстанция вместе
+    с фамилией судьи.
+    """
+    from apps.efrsb.generator import _court  # единый источник «какой это суд»
+    try:
+        name, _addr = _court(service, arb)
+    except Exception:  # noqa: BLE001 — документ важнее красивого названия
+        log.exception("Не удалось определить суд, берём название из kad")
+        name = ""
+    if not name:
+        name = ((arb.court_name if arb is not None else "") or "").split("/")[0]
+    return _COURT_PREFIX_RE.sub("", name).strip()
+
+
 def _am_procedure(case):
     """Процедура, чей ФУ берём для реквизитов (актуальная с назначенным АУ)."""
     return (case.procedures.exclude(arbitr_manager=None).order_by("-order").first()
@@ -69,6 +111,7 @@ def build_request_context(req, *, marriage_cert="", gen_date=None) -> dict:
     rec = req.recipient
     arb = getattr(case.service, "arbitr_case", None)
     idx, addr_reg = _debtor_address(client)
+    idx, addr_short = _split_leading_index(idx, addr_reg)
     gen_date = gen_date or timezone.localdate()
     rec_addr = ""
     if rec:
@@ -83,7 +126,7 @@ def build_request_context(req, *, marriage_cert="", gen_date=None) -> dict:
         "Отчество": client.patronymic or "",
         "дата рождения": _fmt(client.birth_date), "место рождения": client.birth_place or "",
         "СНИЛС": client.snils or "", "ИНН": client.inn or "",
-        "индекс": idx, "адрес регистрации": addr_reg,
+        "индекс": idx, "адрес регистрации": addr_short,
         # Финуправляющий (АУ)
         "ФИО Финансовый управляющий": am.full_fio if am else "",
         "ФамилияИО АУ": am.short_fio if am else "",
@@ -92,7 +135,7 @@ def build_request_context(req, *, marriage_cert="", gen_date=None) -> dict:
         "Телефон арбитражного": am.phone if am else "", "email арбитражного": am.email if am else "",
         "Реквизиты СРО": am.sro_display if am else "",
         # Дело / суд
-        "арбитражный суд": (arb.court_name if arb else ""),
+        "арбитражный суд": _court_short(case.service, arb),
         "номер дела": (arb.case_number if arb else ""),
         "дата решения": _fmt(proc.intro_date) if proc else "",
         "срок процедуры": (str(proc.term_months) if proc and proc.term_months else ""),
