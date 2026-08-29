@@ -790,9 +790,32 @@ class ArbitrationManager(TimeStampedModel):
 
     @property
     def sro_display(self) -> str:
-        if self.sro_id and self.sro:
-            return self.sro.name
-        return self.sro_text or ""
+        """Реквизиты СРО для подстановки в документы.
+
+        🛑 Приоритет — ручной `sro_text`, а НЕ запись реестра. Причин две:
+        реестр `LegalEntity` покрывает не все СРО, а у тех, что есть, название
+        приходит из ЕГРЮЛ капсом и в именительном падеже, без адреса — в письме
+        выходило «член АССОЦИАЦИЯ АРБИТРАЖНЫХ УПРАВЛЯЮЩИХ "СОЛИДАРНОСТЬ"» без
+        реквизитов. АУ один раз вписывает готовую формулировку в карточке.
+        Фолбэк из реестра собираем полностью (название + ИНН + ОГРН + адрес),
+        чтобы голое название не всплыло снова.
+        """
+        text = (self.sro_text or "").strip()
+        if text:
+            return text
+        sro = self.sro if self.sro_id else None
+        if sro is None:
+            return ""
+        meta = []
+        if sro.inn:
+            meta.append(f"ИНН: {sro.inn}")
+        if sro.ogrn:
+            meta.append(f"ОГРН: {sro.ogrn}")
+        addr = (sro.legal_address or "").strip()
+        if addr:
+            meta.append(f"адрес: {addr}")
+        name = (sro.name or sro.short_name or "").strip()
+        return f"{name} ({', '.join(meta)})" if meta else name
 
 
 # ── Активы должника (вкладка «Активы») ──────────────────────────────────────

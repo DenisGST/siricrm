@@ -94,28 +94,12 @@ def _court(service, arb) -> tuple[str, str]:
 def _sro_full(am) -> str:
     """«Ассоциации … "СОЛИДАРНОСТЬ" (ИНН: …, ОГРН: …, адрес: …)».
 
-    🛑 Приоритет — ручной `ArbitrationManager.sro_text`: из ЕГРЮЛ название приходит
-    КАПСОМ и в именительном падеже («АССОЦИАЦИЯ …»), а в сообщении нужна нормальная
-    формулировка в родительном («член Ассоциации …»). Автосклонять произвольные
-    названия нельзя — АУ один раз вписывает готовый текст в реквизиты СРО.
+    Логика одна на все документы и живёт в модели — см.
+    `ArbitrationManager.sro_display`: приоритет у ручного `sro_text`, потому что
+    из ЕГРЮЛ название приходит КАПСОМ, в именительном падеже и без адреса, а в
+    сообщении нужна формулировка в родительном («член Ассоциации …»).
     """
-    if am is None:
-        return ""
-    if (am.sro_text or "").strip():
-        return am.sro_text.strip()
-    sro = am.sro if am.sro_id else None
-    if sro is None:
-        return ""
-    meta = []
-    if sro.inn:
-        meta.append(f"ИНН: {sro.inn}")
-    if sro.ogrn:
-        meta.append(f"ОГРН: {sro.ogrn}")
-    addr = (sro.legal_address or "").strip()
-    if addr:
-        meta.append(f"адрес: {addr}")
-    name = (sro.name or sro.short_name or "").strip()
-    return f"{name} ({', '.join(meta)})" if meta else name
+    return am.sro_display if am is not None else ""
 
 
 def _fu_approved(am) -> str:
