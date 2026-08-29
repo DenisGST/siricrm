@@ -436,6 +436,13 @@ class RequestType(TimeStampedModel):
         "Способ определения адресата", max_length=16,
         choices=LOOKUP_CHOICES, default=LOOKUP_MANUAL,
     )
+    region_office_prefix = models.CharField(
+        "Областное управление: начало названия", max_length=60, blank=True,
+        help_text="Заполнено → адресат берётся на уровне РЕГИОНА, а не района: "
+                  "среди органов вида ищется тот, чьё название начинается с этой "
+                  "строки (напр. «УГИБДД»). Пусто → обычный подбор, с сужением "
+                  "по району/городу клиента.",
+    )
     response_days = models.PositiveSmallIntegerField(
         "Срок ответа, дней", default=30,
         help_text="Через сколько дней ждём ответ (для контроля срока).",

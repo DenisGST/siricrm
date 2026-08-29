@@ -429,7 +429,10 @@ def save_recipient_rule(request_type, client, service, recipient, *, employee=No
     region = client_region(client, service)
     if not region:
         return None
-    district = locality_key(client)
+    # Для типов уровня региона правило пишем на весь регион (district=""),
+    # иначе выбор запомнился бы только для района конкретного клиента.
+    district = ("" if (getattr(request_type, "region_office_prefix", "") or "").strip()
+                else locality_key(client))
     obj, _created = RecipientRule.objects.update_or_create(
         kind=kind, region=region, district=district,
         defaults={"recipient": recipient, "created_by": employee},

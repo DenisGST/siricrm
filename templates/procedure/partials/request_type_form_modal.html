@@ -48,6 +48,15 @@
           </select>
         </div>
         <div>
+          <label class="label py-1"><span class="label-text">Областное управление: начало названия</span></label>
+          <input type="text" name="region_office_prefix"
+                 value="{{ form.region_office_prefix.value|default:'' }}"
+                 class="input input-bordered input-sm w-full" placeholder="напр. УГИБДД">
+          <span class="label-text-alt text-base-content/50">
+            Заполнено — адресат берётся по региону, а не по району клиента.
+          </span>
+        </div>
+        <div>
           <label class="label py-1"><span class="label-text">Вид госоргана (для подбора)</span></label>
           <select name="recipient_kind" class="select select-bordered select-sm w-full">
             <option value="">— не задан —</option>

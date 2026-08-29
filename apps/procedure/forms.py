@@ -30,7 +30,8 @@ class RequestTypeForm(forms.ModelForm):
     class Meta:
         model = RequestType
         fields = ["code", "name", "recipient_kind", "recipient_lookup",
-                  "response_days", "template", "order", "is_active", "is_draft"]
+                  "region_office_prefix", "response_days", "template",
+                  "order", "is_active", "is_draft"]
 
 
 class RequestPackageForm(forms.ModelForm):

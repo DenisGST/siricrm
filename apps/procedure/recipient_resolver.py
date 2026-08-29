@@ -136,6 +136,11 @@ def resolve_recipient(request_type, client, service=None):
     kind = getattr(request_type, "recipient_kind", None)
     region = client_region(client, service)
     locality = client_locality(client)
+    # Тип, адресуемый на уровень РЕГИОНА (ГИБДД: писать надо в областное УГИБДД,
+    # а не в райотдел по месту жительства). Тогда район не сужаем вовсе.
+    office_prefix = (getattr(request_type, "region_office_prefix", "") or "").strip()
+    if office_prefix:
+        locality = ""
 
     def out(recipient, candidates, reason):
         return {
@@ -182,6 +187,19 @@ def resolve_recipient(request_type, client, service=None):
           .filter(kind=kind, region=region, is_active=True)
           .select_related("region").order_by("name"))
     cands = list(qs[:60])
+
+    # Областное управление — по началу названия (данные типа, не хардкод).
+    # 🛑 Не нашли по префиксу — отдаём общий список на ручной выбор, а НЕ
+    # сужаем по району: для такого типа районный орган заведомо не тот адресат.
+    if office_prefix:
+        pref = office_prefix.upper()
+        matches = [c for c in cands
+                   if (c.name or "").upper().startswith(pref)
+                   or (c.short_name or "").upper().startswith(pref)]
+        if len(matches) == 1:
+            return out(matches[0], matches, "region_office")
+        return out(None, matches or cands, "region_many")
+
     if len(cands) == 1:
         return out(cands[0], cands, "region_unique")
 
