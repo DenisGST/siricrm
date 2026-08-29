@@ -29,6 +29,12 @@
         <div class="text-xs text-base-content/50">Нет данных для проверки.</div>
       {% endfor %}
     </div>
+    {% if created_count and created_count > 1 %}
+      <div class="alert alert-info text-xs mb-2 py-2">
+        Создано писем: {{ created_count }} (по одному на каждого кредитора). Ниже — первое из них;
+        остальные ждут в таблице. Данные общие, поэтому заполнить их достаточно один раз.
+      </div>
+    {% endif %}
     {% if not check_all_ok %}
       <div class="alert alert-warning text-xs mb-2 py-2">
         Не все данные заполнены (красным). Можно продолжить — в документе на их месте будут пустые места.

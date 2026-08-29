@@ -1524,8 +1524,17 @@ def request_add(request, service_id):
     if recipient and (request.POST.get("remember") in ("1", "on", "true")):
         services.save_recipient_rule(rt, service.client, service, recipient, employee=employee)
 
+    # 🛑 Ни одной записи: так бывает у типа «уведомление кредиторам», когда в
+    # анкете БФЛ кредиторов нет. Раньше вью молча отдавала 204 — юрист жал
+    # «➕ Запрос», и не появлялось ни карточки, ни объяснения.
+    if not created:
+        reason = ("no_creditors"
+                  if rt.recipient_lookup == RequestType.LOOKUP_CREDITORS else "")
+        return render(request, "procedure/_request_none_modal.html",
+                      {"service": service, "rt": rt, "reason": reason})
+
     # Формировать нечего: у типа нет шаблона (напр. Росреестр — через СМЭВ).
-    if not created or not rt.template_id:
+    if not rt.template_id:
         return _req_trigger()
 
     gaps = None
@@ -1539,6 +1548,9 @@ def request_add(request, service_id):
         resp = render(request, "procedure/_request_generate_modal.html", {
             "service": service, "req": req,
             "check_all_ok": False, "check_groups": groups,
+            # Кредиторские уведомления создаются пачкой — показываем первое,
+            # чтобы юрист не гадал, куда делись остальные.
+            "created_count": len(created),
         })
         resp["HX-Trigger"] = "reloadRequests"  # карточки уже созданы
         return resp
