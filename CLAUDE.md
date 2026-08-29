@@ -439,6 +439,8 @@ Helper `apps.core.permissions.can_view_all_clients(user)` + шаблонный �
 - 📎 **Подгрузка готового** (`request_upload`, модалка `_request_upload_doc_modal.html`): `.pdf` → `document_pdf`; `.docx` → `document_docx` + авто-PDF (`docx_to_pdf`) в `document_pdf`.
 - ✎ **Онлайн-правка** (`request_edit_save`): текст по абзацам (`extract_editable_paragraphs`/`apply_paragraph_edits`, форматирование/подпись сохраняются) → пересборка PDF.
 
+🛑 **Подпись и печать ФУ — только через `_apply_signature`, в шаблоне их быть не должно.** Чекбокс «С подписью и печатью ФУ» управляет вставкой PNG из `ArbitrationManager.signature_file`; если картинка вшита в сам .docx-шаблон, она попадает в документ всегда, и галочка ни на что не влияет (а с галочкой подписей становится две). Ровно так и было в «Запрос в МРЭО.docx» — печать Каныгиной С.И. лежала отдельным абзацем над строкой подписи (29.08.2026 вычищена: шаблон похудел с 1.4 МБ до 9 КБ, все 27 плейсхолдеров на месте). При заведении нового шаблона проверять: `unzip -l шаблон.docx | grep word/media/` должно быть пусто. 🛑 У договора БФЛ (`kind=contract_bfl`) 2 картинки вшиты намеренно — это реквизиты Исполнителя, не ФУ, там чекбокса нет.
+
 **🛑 Связь с файлами клиента**: документ запроса (PDF **и** docx) ВСЕГДА подшивается в файл-менеджер клиента в папку **«Запросы»** (slug `requests`; `_attach`/`_store`, S3 prefix `procedure/requests`) + событийка `record_action('request_document_created', stored_file=pdf)`. Ссылки PDF/docx и в реестре запроса (`document_pdf`/`document_docx`).
 
 **Ответ на запрос — 3 точки входа** (все ставят `response_scan` + `status='answered'` + `response_date`):
