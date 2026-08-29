@@ -837,6 +837,17 @@ def apply_files(rec: BubbleRecord) -> str:
     project_bid = v("projectBFL")
     if project_bid:
         service = Service.objects.filter(bubble_id=project_bid).first()
+        if service is None:
+            # Fallback через BubbleRecord(ProjectBFL).target_id — как у
+            # Kreditors/Events/Сorrespondence. Нужен, когда в Bubble завели
+            # дубль карточки проекта и мы привязали его к уже существующей
+            # услуге вручную, не создавая вторую Service. Без fallback файл
+            # молча оседал бы в S3, не попадая в файловый менеджер клиента.
+            pf = BubbleRecord.objects.filter(
+                entity="ProjectBFL", bubble_id=project_bid, status="imported",
+            ).first()
+            if pf and pf.target_id:
+                service = Service.objects.filter(pk=pf.target_id).first()
     if service is not None:
         # Раскладываем по дереву папок согласно полю directory Bubble.
         folder = _bubble_folder_path(service.client, clean_str(v("directory")))

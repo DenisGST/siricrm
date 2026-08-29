@@ -549,3 +549,63 @@ Message.objects.filter(id=mid).update(file=stored, file_name=stored.filename)
 В docstring модели: «UI добавим отдельно — пока работа только через админку». **UI ещё нет.** Сделать список запросов по услуге (с подсветкой просроченных по `control_date`), форму создания, форму ввода ответа, виджет «на контроле» в дашборде юриста. Это завершит миграцию юрист-отдела с Bubble на Siri.
 
 Bubble-маппинг (TypeCorrespondence — справочник 25 типов запросов: Росреестр, ИФНС, МРЭО, ПФР, банки, приставы, ходатайства, исковые, договоры). Эти типы импортируются в `subject_type` как строки. Если нужен **справочник в Siri** для UI-выбора — пока его нет, есть только distinct'ы по subject_type существующих записей.
+
+## Дозалив 28 августа 2026 (перерыв с 4 августа)
+
+Дотянуто на прод. Дельты по всем сущностям закрыты в ноль.
+
+| Сущность | В Bubble | Было у нас | Дотянуто | Итог apply |
+|---|---|---|---|---|
+| Files | 570 443 | 570 426 | **+120** | 120 imported, 0 ошибок, 21.9 МБ |
+| Сorrespondence | 35 900 | 35 802 | **+107** | 107 imported (все исходящие, 12 клиентов) |
+| Money | 44 383 | 44 359 | **+24** | 24 Payment (out), 22 288.60 ₽, 17 клиентов |
+| Man | 6 564 | 6 562 | +2 | оба merge в существующих |
+| ProjectBFL | 5 793 | 5 792 | +1 | дубль карточки — привязан, дубль услуги НЕ создан |
+| Events | 11 962 | 11 961 | +1 | imported |
+| Kreditors, PropetyAnketa | — | — | 0 | — |
+
+```bash
+python manage.py fetch_bubble_since 35 --entities "Man,ProjectBFL,Kreditors,PropetyAnketa,Events,Сorrespondence,Money"
+python manage.py fetch_bubble_since 35 --entities "Files"
+```
+
+Files: партия **без единой WA-заглушки** (120 из 120 — живые GDrive: 112 `docs.google.com` + 8 `drive.google.com`). Подтверждает правило «чем короче интервал между fetch'ами, тем меньше placeholder'ов» — bulk skip не понадобился.
+
+### 🛑 `apply_files` НЕ имел fallback на `BubbleRecord(ProjectBFL).target_id` — файлы терялись молча
+
+Главная находка захода. `apply_files` резолвил клиента **только** через `Service.objects.filter(bubble_id=projectBFL)`, тогда как `apply_kreditors` / `apply_events` / `apply_correspondence` / `apply_propertyanketa` имеют fallback на `BubbleRecord(ProjectBFL).target_id`.
+
+Последствие: если ProjectBFL — дубль карточки Bubble, привязанный к существующей услуге по паттерну п.9 (без создания второй `Service`), то файл **скачивался в S3, запись помечалась `imported`, но `ClientFile` не создавался** — в файловом менеджере клиента файла нет, и никакой ошибки в очереди не видно. Ровно так потерялись бы 19 из 120 файлов этого захода (все — запросы АУ по делу Найман от 24.08.2026).
+
+Fallback добавлен в `apply_files` (зеркалит остальные applier'ы). 🛑 **Правка сделана в репозитории dev и на прод НЕ выкачена** — до деплоя баг на проде живой.
+
+Диагностика «нет ли потерь» после любого apply Files:
+
+```python
+recs = BubbleRecord.objects.filter(entity="Files", status="imported", imported_at__gte=since)
+linked = set(ClientFile.objects.filter(stored_file_id__in=[r.target_id for r in recs])
+             .values_list("stored_file_id", flat=True))
+orph = [r for r in recs if str(r.target_id) not in {str(x) for x in linked}]  # должно быть пусто
+```
+
+### Дубль карточки ProjectBFL с ДРУГИМ номером дела — всё равно дубль
+
+Найман Вера Владимировна: в Bubble 21.08.2026 заведён второй ProjectBFL (`1787328622838x...`) на того же `dolgnik`, что и старый (`1750076102675x836...`). Номера дел **разные** — старый `А49-101/2026`, новый `А33-20669/2026` — и это сбивает с толку: выглядит как второе дело.
+
+🛑 **Решает сверка со ссылкой kad, а не с номером.** У существующей в Siri услуги `arbitr_case` уже был `А33-20669/2026` с той же ссылкой `kad.arbitr.ru/Card/7cad3d40-...`, что и в новой записи Bubble → дело одно, просто перенесена подсудность, а юрист завёл под него свежую карточку. Применён паттерн п.9: `target_id` новой записи → существующая `Service`, дубль услуги не создан, из новой карточки перенесены `SummaDogovor` (84 000 — у услуги поле было пустым) и `Arbitragnik` через `_assign_service_employees`.
+
+🛑 **`Man.target_id` может указывать на удалённого клиента** — у Найман он вёл на карточку, снесённую при дедупликации, а живая карточка (заведена менеджером 25.08) имела `bubble_id=None`. Поэтому fallback в `apply_projectbfl` вернул бы `None` и запись упала бы с «Клиент (dolgnik) не импортирован». Сверять надо по телефону/ФИО, а не доверять `target_id` вслепую.
+
+### Оба новых Man уже были в Siri
+
+Заведены менеджерами вручную (`bubble_id=None` либо привязан к другому Man). Привязаны через `overrides.merge_into_client_id` — дублей не создано, подтянулись ИНН/СНИЛС/паспорт/адрес. Расхождение `dateR` с `Client.birth_date` ровно на день — снова UTC-ловушка (`1992-04-17T20:00Z` = 18 апреля), тот же человек.
+
+🛑 **`merged_existing` без `force_rename_existing` НЕ перетирает существующий `Client.bubble_id`** (`appliers.py:367`) — поэтому второй Man на того же клиента безопасен: обогащает пустые поля, связь с первым Man сохраняется.
+
+### Чистка очереди (шаг 7) выполнена
+
+Снято с `approved=True` финальных `skipped`/`error`: Files **14 270** (14 256 старых «appforest — недоступен» + 14 мёртвых GDrive), MessageWSP 11, Money 17, PropetyAnketa 6, Man 2, ProjectBFL 2, User 1. Остаток очереди `approved=True & не imported` — **0**. Без этого следующий `apply_bubble Files` часами долбился бы в мёртвые ссылки.
+
+### MessageWSP — по-прежнему намеренно не трогаем
+
+Разрыв 73 772 (2021, 2022, половина 2023) — решение пользователя от 04.08.2026, дела тех лет закрыты. Свежих сообщений в Bubble не появляется (последнее — 31.05.2026), отдел работает в Siri.
