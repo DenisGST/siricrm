@@ -3,6 +3,8 @@ from django.contrib import admin
 from .models import (
     ArbitrationManager,
     BankruptcyCase,
+    Claim,
+    Creditor,
     MilestoneTemplate,
     Procedure,
     ProcedureMilestone,
@@ -105,3 +107,27 @@ class RequestAdmin(admin.ModelAdmin):
     list_filter = ("status", "sent_method")
     search_fields = ("title", "case__service__client__last_name", "recipient_name")
     raw_id_fields = ("case", "request_type", "recipient", "created_by")
+
+
+class ClaimInline(admin.TabularInline):
+    model = Claim
+    extra = 0
+    fields = ("queue", "registry_date", "registry_number", "amount", "amendment_note")
+
+
+@admin.register(Creditor)
+class CreditorAdmin(admin.ModelAdmin):
+    list_display = ("number", "name", "kind", "case", "total_amount", "source")
+    list_display_links = ("name",)
+    list_filter = ("kind", "source")
+    search_fields = ("name", "inn", "ogrn")
+    raw_id_fields = ("case", "legal_entity", "created_by")
+    inlines = [ClaimInline]
+
+
+@admin.register(Claim)
+class ClaimAdmin(admin.ModelAdmin):
+    list_display = ("creditor", "queue", "registry_date", "registry_number", "amount")
+    list_filter = ("queue",)
+    search_fields = ("creditor__name", "registry_number")
+    raw_id_fields = ("creditor", "created_by")

@@ -1,0 +1,85 @@
+{% load l10n %}
+{% comment %}Карточка требования кредитора (запись РТК) — заведение и правка.
+  Контекст: service, case, cr (кредитор), claim (None = новое), v (значения
+  строками), queue_choices, error.
+  На успехе вью отдаёт пустой 200 + HX-Trigger reloadCreditors → outerHTML-своп
+  пустотой убирает модалку.{% endcomment %}
+<dialog id="claim-card-modal" class="modal modal-middle modal-open">
+  <div class="modal-box p-4" style="max-width:min(720px,96vw)">
+    <div class="flex items-start justify-between mb-3">
+      <div>
+        <h3 class="font-bold text-lg">{% if claim %}Требование{% else %}Новое требование{% endif %}</h3>
+        <p class="text-xs text-base-content/60">
+          Кредитор {% if cr.number %}№ {{ cr.number }} · {% endif %}{{ cr.name }}
+        </p>
+      </div>
+      <button type="button" class="btn btn-sm btn-ghost btn-circle" onclick="this.closest('dialog').remove()">✕</button>
+    </div>
+
+    {% if error %}
+    <div class="alert alert-error text-sm mb-3">{{ error }}</div>
+    {% endif %}
+
+    <form class="flex flex-col gap-3"
+          hx-post="{% if claim %}{% url 'procedure:claim_save' service.id claim.pk %}{% else %}{% url 'procedure:claim_add_save' service.id cr.pk %}{% endif %}"
+          hx-target="#claim-card-modal" hx-swap="outerHTML">
+      {% csrf_token %}
+
+      <label class="form-control">
+        <span class="label-text text-xs">Очередность удовлетворения <span class="text-error">*</span></span>
+        <select name="queue" class="select select-bordered select-sm" required>
+          {% for code, label in queue_choices %}
+          <option value="{{ code }}" {% if code == v.queue %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+
+      <div class="grid grid-cols-3 gap-3">
+        <label class="form-control">
+          <span class="label-text text-xs">Дата внесения записи в РТК</span>
+          <input type="date" name="registry_date" value="{{ v.registry_date|default:'' }}"
+                 class="input input-bordered input-sm">
+          <span class="label-text-alt text-base-content/50 mt-1">Пусто — требование ещё не включено в реестр (строка серая).</span>
+        </label>
+        <label class="form-control">
+          <span class="label-text text-xs">Номер кредитора по реестру</span>
+          <input type="text" name="registry_number" value="{{ v.registry_number|default:'' }}"
+                 class="input input-bordered input-sm" maxlength="50">
+        </label>
+        <label class="form-control">
+          <span class="label-text text-xs">Сумма требования <span class="text-error">*</span></span>
+          <input type="number" name="amount" step="0.01" min="0" required
+                 value="{{ v.amount|default:''|unlocalize }}"
+                 class="input input-bordered input-sm">
+        </label>
+      </div>
+
+      <label class="form-control">
+        <span class="label-text text-xs">Основание</span>
+        <input type="text" name="basis" value="{{ v.basis|default:'' }}"
+               class="input input-bordered input-sm" maxlength="500"
+               placeholder="определение суда, договор, судебный приказ…">
+      </label>
+
+      <label class="form-control">
+        <span class="label-text text-xs">Отметка о внесении изменений</span>
+        <textarea name="amendment_note" rows="2"
+                  class="textarea textarea-bordered textarea-sm"
+                  placeholder="чем и когда изменена запись реестра">{{ v.amendment_note|default:'' }}</textarea>
+      </label>
+
+      <label class="form-control">
+        <span class="label-text text-xs">Комментарий</span>
+        <textarea name="notes" rows="2" class="textarea textarea-bordered textarea-sm">{{ v.notes|default:'' }}</textarea>
+      </label>
+
+      <div class="modal-action mt-1">
+        <button type="button" class="btn btn-sm" onclick="this.closest('dialog').remove()">Отмена</button>
+        <button type="submit" class="btn btn-sm btn-primary">Сохранить</button>
+      </div>
+    </form>
+  </div>
+  <form method="dialog" class="modal-backdrop">
+    <button onclick="this.closest('dialog').remove()">close</button>
+  </form>
+</dialog>

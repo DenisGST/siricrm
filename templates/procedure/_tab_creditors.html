@@ -1,0 +1,228 @@
+{% load icons %}
+{% comment %}Вкладка «Кредиторы / РТК» карточки дела.
+
+  Дерево: кредитор — ветка, его требования — листья (сворачиваются кареткой).
+  Подложка строки говорит о включении в реестр требований кредиторов:
+  дата внесения записи есть → розовая, нет → серая. У кредитора дата = самая
+  ранняя среди его требований.
+
+  Самоперезагрузка по reloadCreditors (все мутации отдают 204 + триггер).
+  Клик по строке → карточка (data-edit-url, общий обработчик в dashboard.html).{% endcomment %}
+<div id="creditors-list"
+     hx-trigger="reloadCreditors from:body"
+     hx-get="{% url 'procedure:tab_creditors' service.id %}"
+     hx-swap="outerHTML">
+  <style>
+    /* Иконки-действия: серые, цветные при наведении — как в «Корреспонденции» */
+    #procedure-creditors .cred-act{display:inline-flex;align-items:center;justify-content:center;
+      width:26px;height:26px;border:none;background:transparent;border-radius:5px;cursor:pointer;
+      color:#94a3b8;transition:color .12s,background .12s}
+    #procedure-creditors .cred-act:hover{background:#eef1f4;color:var(--act-hc,#2563eb)}
+    /* Каретка сворачивания ветки */
+    #procedure-creditors .cred-toggle{border:none;background:transparent;cursor:pointer;color:#64748b;
+      width:22px;height:22px;display:inline-flex;align-items:center;justify-content:center;
+      transition:transform .12s,color .12s}
+    #procedure-creditors .cred-toggle:hover{color:#2563eb}
+    #procedure-creditors tbody.collapsed .cred-toggle{transform:rotate(-90deg)}
+    #procedure-creditors tbody.collapsed .claim-row{display:none}
+    /* 🛑 Подложка «включён в РТК»: розовая — дата есть, серая — даты нет.
+       Задаём CSS-ом, а не tailwind-классами: нужных оттенков в собранном
+       tailwind.css нет, а пересобирать ради двух цветов незачем. */
+    #procedure-creditors .cred-row td{background:#f1f5f9}
+    #procedure-creditors .cred-row.in-rtk td{background:#fce7f3}
+    #procedure-creditors .cred-row:hover td{filter:brightness(.97)}
+    #procedure-creditors .claim-row td{background:#f8fafc}
+    #procedure-creditors .claim-row.in-rtk td{background:#fdf2f8}
+    #procedure-creditors .claim-row:hover td{filter:brightness(.97)}
+    #procedure-creditors .cred-row td{border-top:1px solid #cbd5e1}
+    #procedure-creditors .claim-row td{font-size:12px}
+    /* Мелкая серая подпись у значений в строке требования (колонки «переиспользованы») */
+    #procedure-creditors .leaf-lbl{display:block;font-size:9px;line-height:1.1;color:#94a3b8;
+      text-transform:uppercase;letter-spacing:.02em}
+    #procedure-creditors .leaf-mark{color:#94a3b8;margin-right:4px}
+    #procedure-creditors table td{vertical-align:top}
+  </style>
+
+  <div class="flex flex-col gap-3" id="procedure-creditors">
+
+    {% comment %} ── Панель: свод + кнопки ── {% endcomment %}
+    <div class="flex items-center gap-2 flex-wrap">
+      <div class="flex items-center gap-2 flex-wrap text-sm">
+        <span class="badge badge-ghost badge-sm">Кредиторов: {{ count }}</span>
+        <span class="badge badge-ghost badge-sm">Требований: {{ claims_count }}</span>
+        <span class="badge badge-sm" style="background:#fce7f3;color:#9d174d;border:none"
+              title="Требования с датой внесения записи в реестр">В реестре: {{ included_count }}</span>
+        <span class="text-base-content/60">Заявлено: <b>{{ total_declared|floatformat:2 }} ₽</b></span>
+        <span class="text-base-content/60">Включено в РТК: <b>{{ total_included|floatformat:2 }} ₽</b></span>
+      </div>
+      <div class="ml-auto flex items-center gap-2">
+        <button type="button" class="btn btn-sm btn-outline"
+                hx-post="{% url 'procedure:creditors_import' service.id %}"
+                hx-swap="none"
+                hx-indicator="#cred-import-busy" hx-disabled-elt="this"
+                title="Взять кредиторов из анкеты БФЛ (банки, МФО, маркетплейсы, коммуналка, суды, штрафы). Уже заведённые не дублируются">
+          {% icon "download" size=15 %} Импортировать кредиторов из анкеты</button>
+        <span id="cred-import-busy" class="htmx-indicator text-xs text-base-content/60">
+          <span class="loading loading-spinner loading-xs"></span> импортирую…</span>
+        <button type="button" class="btn btn-sm btn-primary"
+                hx-get="{% url 'procedure:creditor_add' service.id %}"
+                hx-target="body" hx-swap="beforeend">
+          {% icon "plus" size=15 %} Добавить кредитора</button>
+      </div>
+    </div>
+
+    {% comment %} ── Дерево: кредиторы (ветки) → требования (листья) ── {% endcomment %}
+    <div class="overflow-x-auto border border-base-300 rounded">
+      <table class="table table-sm">
+        <thead>
+          <tr class="text-sm">
+            <th class="w-8"></th>
+            <th class="w-12">№</th>
+            <th>Кредитор</th>
+            <th>ИНН / ОГРН</th>
+            <th>Адрес для корреспонденции</th>
+            <th>Банковские реквизиты</th>
+            <th class="text-right">Сумма</th>
+            <th>Дата включения в РТК</th>
+            <th class="text-right"></th>
+          </tr>
+        </thead>
+
+        {% for cr in creditors %}
+        {% comment %}Одна ветка = один <tbody>: сворачивание переключает класс
+          collapsed на нём, листья прячутся CSS-ом.{% endcomment %}
+        <tbody class="cred-branch">
+          <tr class="cred-row cursor-pointer {% if cr.included_date %}in-rtk{% endif %}"
+              data-edit-url="{% url 'procedure:creditor_card' service.id cr.pk %}"
+              title="Открыть карточку кредитора">
+            <td>
+              {% if cr.claims.all %}
+                <button type="button" class="cred-toggle" title="Свернуть / развернуть требования"
+                        onclick="credToggle(this)">{% icon "chevron-down" size=15 %}</button>
+              {% endif %}
+            </td>
+            <td class="font-semibold">{{ cr.number|default:"—" }}</td>
+            <td>
+              <div class="font-semibold">{{ cr.name }}</div>
+              <div class="text-xs text-base-content/60 flex flex-wrap items-center gap-x-2">
+                <span>{{ cr.get_kind_display }}</span>
+                {% if cr.legal_entity_id %}<span title="Кредитор связан с реестром юрлиц">· из реестра</span>{% endif %}
+                {% if cr.source == 'questionnaire' %}<span title="Импортирован из анкеты БФЛ">· из анкеты</span>{% endif %}
+              </div>
+              {% if cr.missing_fields %}
+                <div class="text-xs" style="color:#b45309"
+                     title="Не заполнены обязательные сведения о кредиторе">
+                  ⚠ не заполнено: {{ cr.missing_fields|join:", " }}</div>
+              {% endif %}
+              {% if cr.notes %}
+                <div class="text-xs text-base-content/50 flex items-start gap-1">
+                  <span class="shrink-0" style="margin-top:1px">{% icon "message-square" size=11 %}</span>
+                  <span>{{ cr.notes|truncatechars:70 }}</span>
+                </div>
+              {% endif %}
+            </td>
+            <td class="text-xs font-mono">
+              {% if cr.inn %}{{ cr.inn }}{% endif %}
+              {% if cr.ogrn %}<div>{{ cr.ogrn }}</div>{% endif %}
+              {% if not cr.inn and not cr.ogrn %}<span class="text-base-content/40">—</span>{% endif %}
+            </td>
+            <td class="text-xs">{{ cr.corr_address|default:"—" }}</td>
+            <td class="text-xs">{{ cr.bank_details_display|default:"—" }}</td>
+            <td class="text-right whitespace-nowrap">
+              {% if cr.total_amount is not None %}<b>{{ cr.total_amount|floatformat:2 }} ₽</b>{% else %}<span class="text-base-content/40">—</span>{% endif %}
+              {% if cr.claims_total is not None %}
+                <div class="text-xs text-base-content/50" title="Сумма по требованиям в реестре">
+                  по требованиям {{ cr.claims_total|floatformat:2 }} ₽</div>
+              {% endif %}
+            </td>
+            <td class="whitespace-nowrap">
+              {% if cr.included_date %}{{ cr.included_date|date:"d.m.Y" }}
+              {% else %}<span class="text-base-content/40">не включён</span>{% endif %}
+            </td>
+            <td class="text-right whitespace-nowrap">
+              <div class="inline-flex flex-nowrap gap-1 align-middle">
+                <button type="button" class="cred-act" style="--act-hc:#16a34a"
+                        hx-get="{% url 'procedure:claim_add' service.id cr.pk %}"
+                        hx-target="body" hx-swap="beforeend"
+                        title="Добавить требование этому кредитору">{% icon "file-plus" size=16 %}</button>
+                <button type="button" class="cred-act" style="--act-hc:#dc2626"
+                        hx-post="{% url 'procedure:creditor_delete' service.id cr.pk %}"
+                        hx-swap="none"
+                        hx-confirm="Удалить кредитора «{{ cr.name }}» вместе со всеми его требованиями? Действие необратимо."
+                        title="Удалить кредитора">{% icon "trash" size=16 %}</button>
+              </div>
+            </td>
+          </tr>
+
+          {% for cl in cr.claims.all %}
+          <tr class="claim-row cursor-pointer {% if cl.registry_date %}in-rtk{% endif %}"
+              data-edit-url="{% url 'procedure:claim_card' service.id cl.pk %}"
+              title="Открыть требование">
+            <td></td>
+            <td class="text-right"><span class="leaf-mark">└</span></td>
+            <td>
+              <span class="leaf-lbl">Очередь</span>
+              <span class="font-semibold">{{ cl.get_queue_display }}</span>
+            </td>
+            <td>
+              <span class="leaf-lbl">№ по реестру</span>
+              {{ cl.registry_number|default:"—" }}
+            </td>
+            <td>
+              <span class="leaf-lbl">Отметка об изменениях</span>
+              {{ cl.amendment_note|default:"—"|truncatechars:120 }}
+            </td>
+            <td>
+              <span class="leaf-lbl">Основание</span>
+              {{ cl.basis|default:"—"|truncatechars:80 }}
+            </td>
+            <td class="text-right whitespace-nowrap">
+              <span class="leaf-lbl">Сумма требования</span>
+              {% if cl.amount is not None %}<b>{{ cl.amount|floatformat:2 }} ₽</b>{% else %}—{% endif %}
+            </td>
+            <td class="whitespace-nowrap">
+              <span class="leaf-lbl">Внесено в РТК</span>
+              {% if cl.registry_date %}{{ cl.registry_date|date:"d.m.Y" }}
+              {% else %}<span class="text-base-content/40">не внесено</span>{% endif %}
+            </td>
+            <td class="text-right whitespace-nowrap">
+              <button type="button" class="cred-act" style="--act-hc:#dc2626"
+                      hx-post="{% url 'procedure:claim_delete' service.id cl.pk %}"
+                      hx-swap="none"
+                      hx-confirm="Удалить требование? Действие необратимо."
+                      title="Удалить требование">{% icon "trash" size=16 %}</button>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+        {% empty %}
+        <tbody>
+          <tr><td colspan="9" class="text-center text-base-content/50 py-6">
+            Кредиторов пока нет — импортируйте их из анкеты БФЛ или добавьте вручную.
+          </td></tr>
+        </tbody>
+        {% endfor %}
+      </table>
+    </div>
+  </div>
+
+  <script>
+  (function () {
+    // 🛑 IIFE: партиал свопится HTMX-ом много раз, top-level const/let падали бы.
+    // credToggle — на window: onclick в разметке ищет функцию именно там.
+    window.credToggle = function (btn) {
+      var tb = btn.closest('tbody');
+      if (tb) tb.classList.toggle('collapsed');
+    };
+    // Тост от действий вкладки (импорт из анкеты). Слушатель вешаем один раз на
+    // body: партиал перерисовывается, а слушатель должен пережить перерисовку.
+    if (!window.__procToastWired) {
+      window.__procToastWired = true;
+      document.body.addEventListener('procToast', function (e) {
+        var d = (e && e.detail) || {};
+        if (window.showToast) window.showToast(d.msg || 'Готово', d.kind || 'info');
+      });
+    }
+  })();
+  </script>
+</div>

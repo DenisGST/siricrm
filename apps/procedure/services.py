@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 from datetime import date, timedelta
+from decimal import Decimal
 from typing import Optional
 
 from django.db import transaction
@@ -19,6 +20,8 @@ from .models import (
     CLOSING_OUTCOMES,
     SCOPE_COMMON,
     BankruptcyCase,
+    Claim,
+    Creditor,
     MilestoneTemplate,
     Procedure,
     ProcedureMilestone,
@@ -478,3 +481,128 @@ def set_request_response(req: Request, *, response_date=None, number="", text=""
         "status", "response_date", "response_number", "response_text", "updated_at",
     ])
     return req
+
+
+# ── Кредиторы и реестр требований (вкладка «Кредиторы / РТК») ───────────────
+
+def next_creditor_number(case) -> int:
+    """Следующий сквозной номер кредитора внутри дела."""
+    return (case.creditors.aggregate(m=Max("number"))["m"] or 0) + 1
+
+
+@transaction.atomic
+def create_creditor(case, *, name: str, kind: str = Creditor.KIND_LEGAL,
+                    legal_entity=None, number=None, employee=None,
+                    source: str = Creditor.SOURCE_MANUAL, **fields) -> Creditor:
+    """Завести кредитора. Номер присваивается сразу (как исх.№ у запроса)."""
+    return Creditor.objects.create(
+        case=case,
+        name=(name or "").strip()[:500],
+        kind=kind,
+        legal_entity=legal_entity,
+        number=number if number is not None else next_creditor_number(case),
+        source=source,
+        created_by=employee,
+        **fields,
+    )
+
+
+def creditor_fields_from_legal_entity(le) -> dict:
+    """Реквизиты кредитора из карточки юрлица реестра (адрес + банк + ИНН/ОГРН).
+
+    🛑 Адрес для корреспонденции — почтовый, затем юридический, затем
+    фактический: письма кредитору идут по почтовому, если он указан.
+    """
+    if le is None:
+        return {}
+    return {
+        "inn": le.inn or "",
+        "ogrn": le.ogrn or "",
+        "corr_address": (le.postal_address or le.legal_address
+                         or le.actual_address or ""),
+        "bank_name": le.bank_name or "",
+        "bik": le.bik or "",
+        "settlement_account": le.settlement_account or "",
+        "correspondent_account": le.correspondent_account or "",
+    }
+
+
+@transaction.atomic
+def import_creditors_from_questionnaire(case, *, employee=None) -> dict:
+    """Импорт кредиторов из анкеты БФЛ.
+
+    Источник тот же, что у уведомления кредиторам (`case_creditors`) — банки,
+    МФО, маркетплейсы, коммуналка, суд, штрафы, прочее. Идемпотентно: кредитор,
+    уже заведённый по этому юрлицу (или с тем же наименованием), повторно не
+    создаётся — так кнопку можно жать после каждого уточнения анкеты.
+
+    Суммы берём из самой анкеты и складываем по кредитору: два кредита в одном
+    банке = один кредитор с суммарным долгом. Требования (РТК) при импорте НЕ
+    создаются — они появляются только после определения суда о включении.
+    """
+    from apps.afd import isk_context
+    from apps.crm.models import LegalEntity
+
+    at = isk_context.answers_by_type(isk_context.latest_response(case.service))
+    # Схлопываем анкету по кредитору: ключ — юрлицо реестра либо имя.
+    agg: dict = {}
+    for c in isk_context.resolve_creditors(at):
+        le = (LegalEntity.objects.filter(pk=c["le_id"]).first()
+              if c.get("le_id") else None)
+        name = ((le.short_name or le.name) if le else (c.get("name") or "").strip())
+        if not name or name == "—":
+            continue
+        key = str(le.pk) if le else name.lower()
+        row = agg.setdefault(key, {"le": le, "name": name, "amount": None})
+        amt = c.get("amount")
+        if amt is not None:
+            row["amount"] = (row["amount"] or 0) + amt
+
+    existing = list(case.creditors.all())
+    have_le = {str(cr.legal_entity_id) for cr in existing if cr.legal_entity_id}
+    have_name = {(cr.name or "").strip().lower() for cr in existing}
+
+    created, skipped = [], 0
+    for key, row in agg.items():
+        le, name = row["le"], row["name"]
+        if (le and str(le.pk) in have_le) or name.lower() in have_name:
+            skipped += 1
+            continue
+        cr = create_creditor(
+            case, name=name, kind=Creditor.KIND_LEGAL, legal_entity=le,
+            employee=employee, source=Creditor.SOURCE_QUESTIONNAIRE,
+            total_amount=row["amount"],
+            **creditor_fields_from_legal_entity(le),
+        )
+        created.append(cr)
+        if le:
+            have_le.add(str(le.pk))
+        have_name.add(name.lower())
+
+    return {"created": created, "skipped": skipped, "total": len(agg)}
+
+
+@transaction.atomic
+def add_claim(creditor, *, queue: str, employee=None, **fields) -> Claim:
+    """Добавить требование кредитору."""
+    return Claim.objects.create(
+        creditor=creditor, queue=queue, created_by=employee, **fields)
+
+
+def creditors_summary(case) -> dict:
+    """Свод по вкладке: сколько кредиторов/требований, суммы, сколько в реестре."""
+    creditors = list(
+        case.creditors.select_related("legal_entity").prefetch_related("claims"))
+    claims = [c for cr in creditors for c in cr.claims.all()]
+    included = [c for c in claims if c.registry_date]
+    total_declared = sum(
+        (cr.total_amount for cr in creditors if cr.total_amount is not None), Decimal("0"))
+    total_included = sum((c.amount for c in included if c.amount is not None), Decimal("0"))
+    return {
+        "creditors": creditors,
+        "count": len(creditors),
+        "claims_count": len(claims),
+        "included_count": len(included),
+        "total_declared": total_declared,
+        "total_included": total_included,
+    }

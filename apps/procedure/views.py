@@ -6,6 +6,7 @@
 """
 from __future__ import annotations
 
+import json
 import uuid
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
@@ -46,6 +47,10 @@ from .models import (
     SCOPE_COMMON,
     ArbitrationManager,
     BankruptcyCase,
+    Claim,
+    Creditor,
+    CLAIM_QUEUE_CHOICES,
+    QUEUE_THIRD_MAIN,
     MilestoneTemplate,
     Procedure,
     ProcedureMilestone,
@@ -58,9 +63,9 @@ from .models import (
 from .permissions import require_procedures
 from apps.core.permissions import is_references_access
 
-PLACEHOLDER_TABS = {
-    "creditors": "Кредиторы / РТК",
-}
+# Вкладки-заглушки карточки дела (наполняются на следующих этапах).
+# Сейчас пусто: «Кредиторы / РТК» реализована, ссылка на неё — прямо в card.html.
+PLACEHOLDER_TABS = {}
 
 
 class _NotBFL(Exception):
@@ -3003,3 +3008,289 @@ def request_text_save(request, service_id, req_id):
                                   error=error, saved=True))
     resp["HX-Trigger"] = "reloadRequests"
     return resp
+
+
+# ── Кредиторы / РТК ─────────────────────────────────────────────────────────
+# Дерево: кредитор (ветка) → его требования (листья). Мутации отдают ПУСТОЙ 200
+# + HX-Trigger reloadCreditors: пустое тело при hx-swap="outerHTML" убирает
+# модалку, а вкладка перерисовывается сама (как reloadRequests в «Корреспонденции»).
+# 🛑 Именно 200, а не 204: на 204 htmx не свопит вовсе — модалка осталась бы висеть.
+
+def _money(raw):
+    """«12 345,67» / «12345.67» / «» → Decimal | None (запятая = разделитель дробной)."""
+    raw = (raw or "").strip().replace("\xa0", "").replace(" ", "").replace(",", ".")
+    if not raw:
+        return None
+    try:
+        return Decimal(raw)
+    except (InvalidOperation, ValueError):
+        return None
+
+
+def _cred_trigger(extra=None):
+    """Пустой ответ + сигнал перерисовать вкладку кредиторов."""
+    if extra is None:
+        return HttpResponse(headers={"HX-Trigger": "reloadCreditors"})
+    payload = {"reloadCreditors": True}
+    payload.update(extra)
+    return HttpResponse(headers={"HX-Trigger": json.dumps(payload)})
+
+
+def _creditors_context(case):
+    summary = services.creditors_summary(case)
+    return {
+        "case": case,
+        "service": case.service,
+        "client": case.service.client,
+        "queue_choices": CLAIM_QUEUE_CHOICES,
+        **summary,
+    }
+
+
+@never_cache
+@login_required
+@require_procedures
+def tab_creditors(request, service_id):
+    """Вкладка «Кредиторы / РТК» — дерево кредиторов и их требований."""
+    try:
+        service = _bfl_service(request, service_id)
+    except _NotBFL as exc:
+        return HttpResponseForbidden(str(exc))
+    case = services.ensure_case(service)
+    return render(request, "procedure/_tab_creditors.html", _creditors_context(case))
+
+
+@login_required
+@require_procedures
+@require_POST
+def creditors_import(request, service_id):
+    """«Импортировать кредиторов из анкеты» — идемпотентно, дубли пропускаются."""
+    try:
+        service = _bfl_service(request, service_id)
+    except _NotBFL as exc:
+        return HttpResponseForbidden(str(exc))
+    case = services.ensure_case(service)
+    res = services.import_creditors_from_questionnaire(case, employee=_actor(request))
+
+    n, skipped, total = len(res["created"]), res["skipped"], res["total"]
+    if total == 0:
+        msg, kind = ("В анкете БФЛ кредиторы не заполнены — импортировать нечего "
+                     "(или анкеты у клиента нет)"), "warning"
+    elif n == 0:
+        msg, kind = f"Новых кредиторов нет — все {skipped} уже заведены", "info"
+    else:
+        msg = f"Импортировано кредиторов: {n}"
+        if skipped:
+            msg += f" · пропущено (уже были): {skipped}"
+        kind = "success"
+    return _cred_trigger({"procToast": {"msg": msg, "kind": kind}})
+
+
+def _creditor_values(cr, next_number):
+    """Значения полей для модалки кредитора.
+
+    🛑 Отдаём СТРОКАМИ: Decimal, отрендеренный в <input type="number"> под ru-локалью,
+    получает запятую, браузер считает поле невалидным и показывает пустым — при
+    следующем сохранении значение затирается (память decimal-number-input-localization).
+    """
+    if cr is None:
+        return {"kind": Creditor.KIND_LEGAL, "number": str(next_number)}
+    return {
+        "kind": cr.kind,
+        "number": "" if cr.number is None else str(cr.number),
+        "name": cr.name,
+        "legal_entity_id": str(cr.legal_entity_id or ""),
+        "inn": cr.inn, "ogrn": cr.ogrn,
+        "corr_address": cr.corr_address,
+        "bank_name": cr.bank_name, "bik": cr.bik,
+        "settlement_account": cr.settlement_account,
+        "correspondent_account": cr.correspondent_account,
+        "account_holder": cr.account_holder,
+        "total_amount": "" if cr.total_amount is None else str(cr.total_amount),
+        "contact_person": cr.contact_person, "phone": cr.phone, "email": cr.email,
+        "notes": cr.notes,
+    }
+
+
+def _creditor_modal(request, service, case, cr, values, error=""):
+    le_id = (values.get("legal_entity_id") or "").strip()
+    le = (cr.legal_entity if (cr and str(cr.legal_entity_id or "") == le_id)
+          else LegalEntity.objects.filter(pk=le_id).first() if le_id else None)
+    return render(request, "procedure/_creditor_card_modal.html", {
+        "service": service, "case": case, "cr": cr, "v": values, "error": error,
+        "legal_entity": le,
+        "kind_choices": Creditor.KIND_CHOICES,
+    })
+
+
+@never_cache
+@login_required
+@require_procedures
+def creditor_form(request, service_id, cred_id=None):
+    """Модалка кредитора: новый (cred_id=None) или правка (клик по строке)."""
+    try:
+        service = _bfl_service(request, service_id)
+    except _NotBFL as exc:
+        return HttpResponseForbidden(str(exc))
+    case = services.ensure_case(service)
+    cr = (get_object_or_404(Creditor.objects.select_related("legal_entity"),
+                            pk=cred_id, case=case) if cred_id else None)
+    return _creditor_modal(request, service, case, cr,
+                           _creditor_values(cr, services.next_creditor_number(case)))
+
+
+@login_required
+@require_procedures
+@require_POST
+def creditor_save(request, service_id, cred_id=None):
+    """Сохранить кредитора. Пустые поля очищают значение (это правка, не патч)."""
+    try:
+        service = _bfl_service(request, service_id)
+    except _NotBFL as exc:
+        return HttpResponseForbidden(str(exc))
+    case = services.ensure_case(service)
+    cr = (get_object_or_404(Creditor, pk=cred_id, case=case) if cred_id else None)
+
+    name = (request.POST.get("name") or "").strip()
+    if not name:
+        return _creditor_modal(request, service, case, cr, request.POST,
+                               "Укажите наименование юрлица или ФИО кредитора")
+
+    kind = (request.POST.get("kind") or "").strip()
+    kind = kind if kind in dict(Creditor.KIND_CHOICES) else Creditor.KIND_LEGAL
+    le_id = (request.POST.get("legal_entity_id") or "").strip()
+    le = LegalEntity.objects.filter(pk=le_id).first() if le_id else None
+
+    number = _int_or_none(request.POST.get("number"))
+    if cr is None:
+        cr = Creditor(case=case, created_by=_actor(request))
+        if number is None:
+            number = services.next_creditor_number(case)
+    # 🛑 Номер уникален в пределах дела — занятый номер молча не перетираем.
+    if number is not None and case.creditors.filter(
+            number=number).exclude(pk=cr.pk).exists():
+        return _creditor_modal(request, service, case, (cr if cred_id else None),
+                               request.POST,
+                               f"Кредитор с номером {number} в деле уже есть — "
+                               "укажите другой номер")
+
+    cr.name, cr.kind, cr.legal_entity, cr.number = name[:500], kind, le, number
+    cr.inn = (request.POST.get("inn") or "").strip()[:12]
+    cr.ogrn = (request.POST.get("ogrn") or "").strip()[:15]
+    cr.corr_address = (request.POST.get("corr_address") or "").strip()
+    cr.bank_name = (request.POST.get("bank_name") or "").strip()[:255]
+    cr.bik = (request.POST.get("bik") or "").strip()[:9]
+    cr.settlement_account = (request.POST.get("settlement_account") or "").strip()[:20]
+    cr.correspondent_account = (request.POST.get("correspondent_account") or "").strip()[:20]
+    cr.account_holder = (request.POST.get("account_holder") or "").strip()[:255]
+    cr.total_amount = _money(request.POST.get("total_amount"))
+    cr.contact_person = (request.POST.get("contact_person") or "").strip()[:255]
+    cr.phone = (request.POST.get("phone") or "").strip()[:32]
+    cr.email = (request.POST.get("email") or "").strip()
+    cr.notes = (request.POST.get("notes") or "").strip()
+
+    # Кредитор связан с реестром юрлиц, а реквизиты не заполнены — подтянем их
+    # оттуда (пустые поля, введённое руками не трогаем).
+    if le:
+        for field, val in services.creditor_fields_from_legal_entity(le).items():
+            if not getattr(cr, field, ""):
+                setattr(cr, field, val)
+    cr.save()
+    return _cred_trigger()
+
+
+@login_required
+@require_procedures
+@require_POST
+def creditor_delete(request, service_id, cred_id):
+    """Удалить кредитора вместе с его требованиями (каскад)."""
+    try:
+        service = _bfl_service(request, service_id)
+    except _NotBFL as exc:
+        return HttpResponseForbidden(str(exc))
+    case = services.ensure_case(service)
+    get_object_or_404(Creditor, pk=cred_id, case=case).delete()
+    return _cred_trigger()
+
+
+@never_cache
+@login_required
+@require_procedures
+def claim_form(request, service_id, cred_id=None, claim_id=None):
+    """Модалка требования: новое (по кредитору) или правка существующего."""
+    try:
+        service = _bfl_service(request, service_id)
+    except _NotBFL as exc:
+        return HttpResponseForbidden(str(exc))
+    case = services.ensure_case(service)
+    if claim_id:
+        claim = get_object_or_404(
+            Claim.objects.select_related("creditor"), pk=claim_id, creditor__case=case)
+        cr = claim.creditor
+    else:
+        claim = None
+        cr = get_object_or_404(Creditor, pk=cred_id, case=case)
+    if claim is None:
+        v = {"queue": QUEUE_THIRD_MAIN}
+    else:
+        v = {
+            "queue": claim.queue,
+            "registry_date": _fmt(claim.registry_date),
+            "registry_number": claim.registry_number,
+            "amendment_note": claim.amendment_note,
+            "amount": "" if claim.amount is None else str(claim.amount),
+            "basis": claim.basis,
+            "notes": claim.notes,
+        }
+    return render(request, "procedure/_claim_card_modal.html", {
+        "service": service, "case": case, "cr": cr, "claim": claim, "v": v,
+        "queue_choices": CLAIM_QUEUE_CHOICES,
+    })
+
+
+@login_required
+@require_procedures
+@require_POST
+def claim_save(request, service_id, cred_id=None, claim_id=None):
+    """Сохранить требование."""
+    try:
+        service = _bfl_service(request, service_id)
+    except _NotBFL as exc:
+        return HttpResponseForbidden(str(exc))
+    case = services.ensure_case(service)
+    if claim_id:
+        claim = get_object_or_404(Claim, pk=claim_id, creditor__case=case)
+    else:
+        claim = Claim(creditor=get_object_or_404(Creditor, pk=cred_id, case=case),
+                      created_by=_actor(request))
+
+    queue = (request.POST.get("queue") or "").strip()
+    if queue not in dict(CLAIM_QUEUE_CHOICES):
+        return render(request, "procedure/_claim_card_modal.html", {
+            "service": service, "case": case, "cr": claim.creditor,
+            "claim": (claim if claim_id else None), "v": request.POST,
+            "queue_choices": CLAIM_QUEUE_CHOICES,
+            "error": "Выберите очередь удовлетворения требования",
+        })
+    claim.queue = queue
+    claim.registry_date = _date(request.POST.get("registry_date"))
+    claim.registry_number = (request.POST.get("registry_number") or "").strip()[:50]
+    claim.amendment_note = (request.POST.get("amendment_note") or "").strip()
+    claim.amount = _money(request.POST.get("amount"))
+    claim.basis = (request.POST.get("basis") or "").strip()[:500]
+    claim.notes = (request.POST.get("notes") or "").strip()
+    claim.save()
+    return _cred_trigger()
+
+
+@login_required
+@require_procedures
+@require_POST
+def claim_delete(request, service_id, claim_id):
+    try:
+        service = _bfl_service(request, service_id)
+    except _NotBFL as exc:
+        return HttpResponseForbidden(str(exc))
+    case = services.ensure_case(service)
+    get_object_or_404(Claim, pk=claim_id, creditor__case=case).delete()
+    return _cred_trigger()

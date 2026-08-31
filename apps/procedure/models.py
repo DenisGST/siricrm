@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import uuid
+from decimal import Decimal
 
 from django.contrib.contenttypes.fields import GenericForeignKey, GenericRelation
 from django.contrib.contenttypes.models import ContentType
@@ -1104,3 +1105,216 @@ class OtherAsset(AssetRecordBase):
 
     def __str__(self):
         return self.title
+
+
+# ── Кредиторы и реестр требований кредиторов (РТК) ──────────────────────────
+# Вкладка «Кредиторы / РТК» карточки дела. Два уровня, как в самом реестре:
+#   • Кредитор (Creditor) — юрлицо или физлицо, свой сквозной номер по делу,
+#     адрес для корреспонденции и банковские реквизиты (куда платить), общая
+#     сумма требований.
+#   • Требование (Claim) — 1:N к кредитору: у одного кредитора может быть
+#     несколько требований, каждое со своей очередью, суммой, датой внесения
+#     записи в РТК и номером по реестру.
+# 🛑 Очередь удовлетворения — фиксированный перечень (127-ФЗ, ст. 134 + залог
+# отдельной строкой), а не справочник: перечень нормативный, править его в UI
+# нельзя.
+
+QUEUE_FIRST = "first"
+QUEUE_SECOND = "second"
+QUEUE_THIRD_PLEDGE = "third_pledge"
+QUEUE_THIRD_MAIN = "third_main"
+QUEUE_THIRD_PENALTY = "third_penalty"
+CLAIM_QUEUE_CHOICES = [
+    (QUEUE_FIRST, "Первая очередь"),
+    (QUEUE_SECOND, "Вторая очередь"),
+    (QUEUE_THIRD_PLEDGE, "Третья очередь — залог"),
+    (QUEUE_THIRD_MAIN, "Третья очередь — основной долг"),
+    (QUEUE_THIRD_PENALTY, "Третья очередь — пени/штрафы"),
+]
+
+
+class Creditor(TimeStampedModel):
+    """Кредитор должника по делу — юридическое или физическое лицо.
+
+    Наполняется двумя путями: импортом из анкеты БФЛ (кнопка «Импортировать
+    кредиторов из анкеты» — тот же источник, что у уведомления кредиторам:
+    `services.case_creditors`) и вручную. `legal_entity` — связь с реестром
+    `crm.LegalEntity`: из неё подтягиваются адрес и банковские реквизиты.
+
+    🛑 Обязательные по регламенту поля (наименование/ФИО, адрес для
+    корреспонденции, банковские реквизиты, общая сумма требований, номер
+    кредитора) на уровне модели допускают пустоту: импорт из анкеты приносит
+    только наименование и сумму, а требовать остальное в момент импорта
+    означало бы не импортировать вовсе. Полноту показывает свойство
+    `missing_fields` — в таблице это бейдж «неполные данные».
+    """
+    KIND_LEGAL = "legal"
+    KIND_PERSON = "person"
+    KIND_CHOICES = [
+        (KIND_LEGAL, "Юридическое лицо"),
+        (KIND_PERSON, "Физическое лицо"),
+    ]
+
+    SOURCE_MANUAL = "manual"
+    SOURCE_QUESTIONNAIRE = "questionnaire"
+    SOURCE_CHOICES = [
+        (SOURCE_MANUAL, "Заведён вручную"),
+        (SOURCE_QUESTIONNAIRE, "Импортирован из анкеты"),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    case = models.ForeignKey(
+        "BankruptcyCase", on_delete=models.CASCADE,
+        related_name="creditors", verbose_name="Дело",
+    )
+    number = models.PositiveIntegerField(
+        "Номер кредитора", null=True, blank=True,
+        help_text="Сквозной порядковый номер кредитора внутри дела.",
+    )
+    kind = models.CharField(
+        "Вид лица", max_length=10, choices=KIND_CHOICES, default=KIND_LEGAL,
+    )
+    name = models.CharField(
+        "Наименование / ФИО", max_length=500,
+        help_text="Для юрлица — наименование, для физлица — ФИО.",
+    )
+    legal_entity = models.ForeignKey(
+        "crm.LegalEntity", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="+", verbose_name="Кредитор в реестре юрлиц",
+    )
+    inn = models.CharField("ИНН", max_length=12, blank=True)
+    ogrn = models.CharField("ОГРН / ОГРНИП", max_length=15, blank=True)
+
+    corr_address = models.TextField("Адрес для корреспонденции", blank=True)
+
+    # Банковские реквизиты — куда перечислять по реестру.
+    bank_name = models.CharField("Банк", max_length=255, blank=True)
+    bik = models.CharField("БИК", max_length=9, blank=True)
+    settlement_account = models.CharField("Расчётный счёт", max_length=20, blank=True)
+    correspondent_account = models.CharField("Корр. счёт", max_length=20, blank=True)
+    account_holder = models.CharField(
+        "Получатель платежа", max_length=255, blank=True,
+        help_text="Если отличается от наименования кредитора.",
+    )
+
+    total_amount = models.DecimalField(
+        "Сумма требований (общая)", max_digits=16, decimal_places=2,
+        null=True, blank=True,
+    )
+
+    contact_person = models.CharField("Контактное лицо", max_length=255, blank=True)
+    phone = models.CharField("Телефон", max_length=32, blank=True)
+    email = models.EmailField("Email", blank=True)
+
+    source = models.CharField(
+        "Источник", max_length=16, choices=SOURCE_CHOICES, default=SOURCE_MANUAL,
+    )
+    notes = models.TextField("Комментарий", blank=True)
+    created_by = models.ForeignKey(
+        "core.Employee", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="+", verbose_name="Кто завёл",
+    )
+
+    class Meta:
+        verbose_name = "Кредитор"
+        verbose_name_plural = "Кредиторы"
+        ordering = ["number", "name"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["case", "number"], name="uniq_creditor_number_per_case",
+            ),
+        ]
+
+    def __str__(self):
+        return f"№{self.number or '—'} {self.name}"
+
+    # ── Витрина ────────────────────────────────────────────────────────────
+    @property
+    def bank_details_filled(self) -> bool:
+        """Банковские реквизиты считаем заполненными по паре «р/с + БИК»."""
+        return bool(self.settlement_account and self.bik)
+
+    @property
+    def bank_details_display(self) -> str:
+        parts = []
+        if self.bank_name:
+            parts.append(self.bank_name)
+        if self.bik:
+            parts.append(f"БИК {self.bik}")
+        if self.settlement_account:
+            parts.append(f"р/с {self.settlement_account}")
+        return " · ".join(parts)
+
+    @property
+    def missing_fields(self) -> list:
+        """Незаполненные обязательные по регламенту поля (для бейджа в таблице)."""
+        gaps = []
+        if not (self.name or "").strip():
+            gaps.append("наименование/ФИО")
+        if self.number is None:
+            gaps.append("номер кредитора")
+        if not (self.corr_address or "").strip():
+            gaps.append("адрес для корреспонденции")
+        if not self.bank_details_filled:
+            gaps.append("банковские реквизиты")
+        if self.total_amount is None:
+            gaps.append("сумма требований")
+        return gaps
+
+    @property
+    def included_date(self):
+        """Дата включения в РТК = самая ранняя дата записи среди требований."""
+        dates = [c.registry_date for c in self.claims.all() if c.registry_date]
+        return min(dates) if dates else None
+
+    @property
+    def claims_total(self):
+        """Сумма по требованиям (для сверки с общей суммой требований)."""
+        vals = [c.amount for c in self.claims.all() if c.amount is not None]
+        return sum(vals, Decimal("0")) if vals else None
+
+
+class Claim(TimeStampedModel):
+    """Требование кредитора — запись реестра требований кредиторов (РТК)."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    creditor = models.ForeignKey(
+        "Creditor", on_delete=models.CASCADE,
+        related_name="claims", verbose_name="Кредитор",
+    )
+    queue = models.CharField(
+        "Очередность удовлетворения", max_length=20,
+        choices=CLAIM_QUEUE_CHOICES, default=QUEUE_THIRD_MAIN,
+    )
+    registry_date = models.DateField(
+        "Дата внесения записи в РТК", null=True, blank=True,
+    )
+    registry_number = models.CharField(
+        "Номер кредитора по реестру", max_length=50, blank=True,
+        help_text="Номер записи так, как он проставлен в самом реестре.",
+    )
+    amendment_note = models.TextField("Отметка о внесении изменений", blank=True)
+    amount = models.DecimalField(
+        "Сумма требования", max_digits=16, decimal_places=2, null=True, blank=True,
+    )
+    basis = models.CharField(
+        "Основание", max_length=500, blank=True,
+        help_text="Определение суда, договор, судебный приказ и т. п.",
+    )
+    notes = models.TextField("Комментарий", blank=True)
+    created_by = models.ForeignKey(
+        "core.Employee", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="+", verbose_name="Кто завёл",
+    )
+
+    class Meta:
+        verbose_name = "Требование кредитора"
+        verbose_name_plural = "Требования кредиторов"
+        ordering = ["queue", "registry_date", "created_at"]
+
+    def __str__(self):
+        return f"{self.get_queue_display()} · {self.amount or '—'}"
+
+    @property
+    def is_included(self) -> bool:
+        """Требование внесено в реестр (есть дата) — розовая подложка в таблице."""
+        return self.registry_date is not None
