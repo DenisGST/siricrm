@@ -168,6 +168,46 @@ def _move_files(source, survivor):
             _merge_folder_subtree(canonical, dup)
 
 
+def _fill_blanks(dst, src):
+    """Подтянуть в ``dst`` непустые значения полей ``src`` там, где у dst пусто.
+
+    Нужно при слиянии O2O-записей (карточка колл-центра): запись выжившего
+    остаётся, но терять заполненное у дубля нельзя. Unique-поля и авто-даты
+    пропускаем: первое породило бы новый конфликт, второе не переносится
+    по смыслу.
+    """
+    changed = []
+    for f in dst._meta.concrete_fields:
+        if f.primary_key or f.unique or getattr(f, "auto_now", False) or getattr(f, "auto_now_add", False):
+            continue
+        cur, new = getattr(dst, f.attname), getattr(src, f.attname)
+        if not cur and new:
+            setattr(dst, f.attname, new)
+            changed.append(f.attname)
+    if changed:
+        dst.save(update_fields=changed)
+
+
+def _move_one_to_one(model, field, source, survivor):
+    """Перенести O2O-запись source → survivor.
+
+    🛑 Слепой ``update()`` тут ловит duplicate key: у выжившего такая запись
+    может уже быть (кейс `callcenter.CallCenterCard` — по карточке на каждого
+    клиента). Правило: у выжившего записи нет → переносим; есть → его запись
+    и остаётся, из дубля в неё подтягиваются незаполненные поля (оператор,
+    следующее действие), сам дубль удаляется.
+    """
+    src = model.objects.filter(**{field: source}).first()
+    if src is None:
+        return
+    dst = model.objects.filter(**{field: survivor}).first()
+    if dst is None:
+        model.objects.filter(pk=src.pk).update(**{field: survivor})
+        return
+    _fill_blanks(dst, src)
+    src.delete()
+
+
 # модель+поле для «простых» коллекций (reassign / delete)
 _SIMPLE = {
     "services":  [(Service, "client")],
@@ -207,7 +247,10 @@ def merge_clients(survivor, other, *, scalar_take_other=None, collection_actions
         # через .update() чтобы не запускать пользовательский save() у other
         # (он всё равно удалится в конце merge). Всё в @transaction.atomic —
         # если что-то упадёт, откатится единой транзакцией.
-        Client = type(other)  # локальный алиас чтобы не тащить импорт вверх
+        # 🛑 Локального алиаса `Client = type(other)` тут быть не должно:
+        # присваивание делает имя локальным на ВСЮ функцию, и когда этот
+        # блок не выполняется (ни одно поле не берётся у other), ниже
+        # падает UnboundLocalError на Client.objects.filter(spouse=...).
         empty_values = {}
         for name in changed:
             field = Client._meta.get_field(name)
@@ -263,6 +306,9 @@ def merge_clients(survivor, other, *, scalar_take_other=None, collection_actions
         if model in _HANDLED_MODELS:
             continue
         if model is Client and field == "spouse":
+            continue
+        if rel.field.unique:            # O2O — у выжившего запись может быть уже
+            _move_one_to_one(model, field, other, survivor)
             continue
         model.objects.filter(**{field: other}).update(**{field: survivor})
 
