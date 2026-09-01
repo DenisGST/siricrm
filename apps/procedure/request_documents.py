@@ -96,6 +96,16 @@ def _court_short(service, arb) -> str:
     return _COURT_PREFIX_RE.sub("", name).strip()
 
 
+def _minus_three_years(d):
+    """Дата минус три года. 29 февраля отдаём как 28-е — 29.02 бывает не всегда."""
+    if not d:
+        return None
+    try:
+        return d.replace(year=d.year - 3)
+    except ValueError:
+        return d.replace(year=d.year - 3, day=28)
+
+
 def _am_procedure(case):
     """Процедура, чей ФУ берём для реквизитов (актуальная с назначенным АУ)."""
     return (case.procedures.exclude(arbitr_manager=None).order_by("-order").first()
@@ -138,6 +148,9 @@ def build_request_context(req, *, marriage_cert="", gen_date=None) -> dict:
         "арбитражный суд": _court_short(case.service, arb),
         "номер дела": (arb.case_number if arb else ""),
         "дата решения": _fmt(proc.intro_date) if proc else "",
+        # Глубина запроса выписок: три года до принятия иска судом. Считаем, а не
+        # просим вписать руками — в шаблоне банка дата раньше была зашита жёстко.
+        "три года до принятия иска": _fmt(_minus_three_years(case.claim_accept_date)),
         "срок процедуры": (str(proc.term_months) if proc and proc.term_months else ""),
         # Запрос (исходящее)
         "Исх.№": str(req.outgoing_number) if req.outgoing_number else "",
@@ -210,6 +223,7 @@ _PH_MAP = [
     ("Дело и суд", [
         ("арбитражный суд", "Арбитражный суд"), ("номер дела", "Номер дела"),
         ("дата решения", "Дата решения"), ("срок процедуры", "Срок процедуры, мес."),
+        ("три года до принятия иска", "Дата приёма иска в суде (для периода «−3 года»)"),
     ]),
     ("Адресат (госорган)", [
         ("Адресат", "Адресат"), ("Адрес", "Адрес госоргана"),
