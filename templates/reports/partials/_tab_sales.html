@@ -145,7 +145,10 @@
             <td class="text-right whitespace-nowrap font-semibold"{% if r.is_late %} style="color:#8b0000"{% endif %}>{{ r.amount|floatformat:2 }}</td>
             <td class="text-right whitespace-nowrap">
               <input type="number" step="0.01" min="0" name="value"
-                     {% if r.accrued is not None %}value="{{ r.accrued|floatformat:2 }}"{% endif %}
+                     {# 🛑 ru-локаль: floatformat:2 даёт «400,00», и <input type=number> такое значение
+                        отбрасывает — поле показывалось пустым, будто правка не сохранилась.
+                        Суффикс «u» отключает локализацию → «400.00». #}
+                     {% if r.accrued is not None %}value="{{ r.accrued|floatformat:'2u' }}"{% endif %}
                      placeholder="{{ r.computed|floatformat:0 }}"
                      hx-post="{% url 'reports:budget_entry_save' r.payment.id %}"
                      hx-vals='{"month": "{{ month_value }}", "emp": "{{ emp }}"}'
